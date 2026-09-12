@@ -189,6 +189,91 @@ CREATE TABLE claim_facts (
 );
 
 -- ============================================================
+-- Training sets, food log, meal log: each is one EVENT with several
+-- co-occurring attributes (an exercise + weight + reps + RIR; a food +
+-- its macros; a meal + its totals) -- not independent measurements that
+-- happen to share a date. Exploding these into per-field `measurements`
+-- rows was the same mistake the original flat concerts `events` table
+-- made: it left exercise/food names with nowhere structured to live, so
+-- they ended up baked into metric-key slugs or notes text instead.
+-- ============================================================
+CREATE TABLE exercises (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE training_sets (
+    id              INTEGER PRIMARY KEY,
+    exercise_id     INTEGER NOT NULL REFERENCES exercises(id),
+    measured_at     TEXT NOT NULL,
+    weight          REAL,
+    weight_unit     TEXT,
+    reps            REAL,
+    rir             REAL,
+    is_warmup       INTEGER NOT NULL DEFAULT 0 CHECK (is_warmup IN (0,1)),
+    source_id       INTEGER NOT NULL REFERENCES sources(id),
+    notes           TEXT,
+    date_added      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_training_sets_exercise ON training_sets(exercise_id);
+CREATE INDEX idx_training_sets_date ON training_sets(measured_at);
+
+CREATE TABLE foods (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE food_log_entries (
+    id              INTEGER PRIMARY KEY,
+    food_id         INTEGER NOT NULL REFERENCES foods(id),
+    measured_at     TEXT NOT NULL,
+    time            TEXT,
+    serving_qty     REAL,
+    serving_size    TEXT,
+    calories_kcal   REAL,
+    fat_g           REAL,
+    carbs_g         REAL,
+    protein_g       REAL,
+    alcohol_g       REAL,
+    source_id       INTEGER NOT NULL REFERENCES sources(id),
+    date_added      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_food_log_food ON food_log_entries(food_id);
+CREATE INDEX idx_food_log_date ON food_log_entries(measured_at);
+
+CREATE TABLE meal_log_entries (
+    id                  INTEGER PRIMARY KEY,
+    measured_at         TEXT NOT NULL,
+    meal                TEXT NOT NULL,     -- 'Breakfast'/'Lunch'/etc. -- low-cardinality, not worth its own table
+    calories_kcal       REAL,
+    fat_g               REAL,
+    saturated_fat_g     REAL,
+    carbs_g             REAL,
+    fiber_g             REAL,
+    sugar_g             REAL,
+    protein_g           REAL,
+    sodium_mg           REAL,
+    potassium_mg        REAL,
+    cholesterol_mg      REAL,
+    vitamin_a           REAL,
+    vitamin_c           REAL,
+    calcium             REAL,
+    iron                REAL,
+    source_id           INTEGER NOT NULL REFERENCES sources(id),
+    date_added          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_meal_log_date ON meal_log_entries(measured_at);
+
+CREATE VIEW v_training_sets AS
+SELECT ts.id, e.name AS exercise, ts.measured_at, ts.weight, ts.weight_unit, ts.reps, ts.rir, ts.is_warmup, s.name AS source
+FROM training_sets ts JOIN exercises e ON e.id = ts.exercise_id JOIN sources s ON s.id = ts.source_id;
+
+CREATE VIEW v_food_log AS
+SELECT fl.id, f.name AS food, fl.measured_at, fl.time, fl.serving_qty, fl.serving_size,
+       fl.calories_kcal, fl.fat_g, fl.carbs_g, fl.protein_g, fl.alcohol_g
+FROM food_log_entries fl JOIN foods f ON f.id = fl.food_id;
+
+-- ============================================================
 -- Concert-going, normalized: artists/venues/festivals as their own entities
 -- (so "how many times have I seen X" or "every act at festival Y" is a
 -- join, not a text match), with `concert_attendances` as the fact table

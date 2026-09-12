@@ -1,12 +1,13 @@
-"""Ingest every structured, repeatable numeric reading into `measurements`:
-DEXA (both scans, full field set), bloodwork (verified + the two flagged
-unlocated CRP/ESR readings), manual tape measurements, computed strength
-checkpoints, then the vault's daily/weekly summary tables and full raw logs
-(per-set training, per-meal/per-food nutrition, Fitbit measurements,
-micronutrients). Run after 01_seed_sources.py (needs its citekeys to exist).
-
-Subject and metric are resolved to subject_id/metric_id via get-or-create
-helpers -- never written as repeated text on the measurements row itself.
+"""Ingest every structured, repeatable numeric reading: DEXA (both scans,
+full field set), bloodwork, manual tape measurements, computed strength
+checkpoints, daily/weekly summary tables, and Fitbit/micronutrient logs go
+into `measurements` (subject_id/metric_id resolved via get-or-create
+helpers, never written as repeated text). Per-set training, per-food, and
+per-meal logs go into their own event tables instead (`training_sets`,
+`food_log_entries`, `meal_log_entries`) with `exercises`/`foods` as proper
+entity tables -- a set or a food-log line is one event with several
+co-occurring attributes, not independent measurements sharing a date.
+Run after 01_seed_sources.py (needs its citekeys to exist).
 
 Source: <BODYBUILDING_VAULT>/bodybuilding.db
 """
@@ -117,8 +118,32 @@ def get_or_create_source(cur, citekey, name, description, origin_path=None):
     return source_id
 
 
-def slug(s):
-    return re.sub(r"[^a-z0-9]+", "_", s.lower().strip()).strip("_")
+_exercise_cache = {}
+_food_cache = {}
+
+
+def get_or_create_exercise(cur, name):
+    if name in _exercise_cache:
+        return _exercise_cache[name]
+    row = cur.execute("SELECT id FROM exercises WHERE name = ?", (name,)).fetchone()
+    eid = row[0] if row else None
+    if eid is None:
+        cur.execute("INSERT INTO exercises (name) VALUES (?)", (name,))
+        eid = cur.lastrowid
+    _exercise_cache[name] = eid
+    return eid
+
+
+def get_or_create_food(cur, name):
+    if name in _food_cache:
+        return _food_cache[name]
+    row = cur.execute("SELECT id FROM foods WHERE name = ?", (name,)).fetchone()
+    fid = row[0] if row else None
+    if fid is None:
+        cur.execute("INSERT INTO foods (name) VALUES (?)", (name,))
+        fid = cur.lastrowid
+    _food_cache[name] = fid
+    return fid
 
 
 STALE_NOTE = "Synced into knowledge.db as of 2026-09-11 -- a snapshot of a live, actively-updated vault table, not a re-syncing link."
@@ -130,6 +155,8 @@ def run(con):
     cur = con.cursor()
     _subject_cache.clear()
     _metric_cache.clear()
+    _exercise_cache.clear()
+    _food_cache.clear()
     inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
     dexa_2026 = get_source_id(cur, "bodyspec-dexa-2026-06-17")
@@ -329,32 +356,21 @@ def run(con):
         "Daily micronutrient totals compiled from MacroFactor exports. " + STALE_NOTE, f"{VAULT}/bodybuilding.db#micronutrients")
 
     for row in vault.execute("SELECT * FROM workout_sets"):
-        ex = slug(row["exercise"] or "unknown_exercise")
-        note = f"Exercise: {row['exercise']}" + (" (warmup)" if row["is_warmup"] else "")
-        if row["completed_weight"] is not None:
-            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_weight_lb", value=row["completed_weight"],
-                                unit=row["weight_unit"] or "lb", measured_at=row["date"], source_id=src_sets, trust_level="verified",
-                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
-        if row["completed_reps"] is not None:
-            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_reps", value=row["completed_reps"],
-                                unit="reps", measured_at=row["date"], source_id=src_sets, trust_level="verified",
-                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
-        if row["rir"] is not None:
-            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_rir", value=row["rir"],
-                                unit="RIR", measured_at=row["date"], source_id=src_sets, trust_level="verified",
-                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
+        exercise_id = get_or_create_exercise(cur, row["exercise"] or "Unknown exercise")
+        cur.execute(
+            """INSERT INTO training_sets (exercise_id, measured_at, weight, weight_unit, reps, rir, is_warmup, source_id, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (exercise_id, row["date"], row["completed_weight"], row["weight_unit"] or "lb", row["completed_reps"],
+             row["rir"], 1 if row["is_warmup"] else 0, src_sets, row["notes"]),
+        )
 
     for row in vault.execute("SELECT * FROM jefit_exercise_sets"):
-        ex = slug(row["exercise"] or "unknown_exercise")
-        note = f"Exercise: {row['exercise']}"
-        if row["weight"] is not None:
-            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_weight_lb", value=row["weight"],
-                                unit=row["weight_unit"] or "lb", measured_at=row["date"], source_id=src_jefit, trust_level="verified",
-                                trust_rationale="Self-logged training set (Jefit).", notes=note)
-        if row["reps"] is not None:
-            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_reps", value=row["reps"],
-                                unit="reps", measured_at=row["date"], source_id=src_jefit, trust_level="verified",
-                                trust_rationale="Self-logged training set (Jefit).", notes=note)
+        exercise_id = get_or_create_exercise(cur, row["exercise"] or "Unknown exercise")
+        cur.execute(
+            """INSERT INTO training_sets (exercise_id, measured_at, weight, weight_unit, reps, rir, is_warmup, source_id)
+               VALUES (?, ?, ?, ?, ?, NULL, 0, ?)""",
+            (exercise_id, row["date"], row["weight"], row["weight_unit"] or "lb", row["reps"], src_jefit),
+        )
 
     MFP_M_COLS = [("weight_lbs", "scale_weight_lb", "lb"), ("fitbit_body_fat_pct", "fitbit_bodyfat_pct", "%"),
                   ("fitbit_steps", "fitbit_steps", "steps"), ("fitbit_sleep_minutes", "fitbit_sleep_minutes", "min")]
@@ -379,27 +395,26 @@ def run(con):
                                 unit="min", measured_at=row["date"], source_id=src_mfpe, trust_level="high",
                                 trust_rationale="Self-logged exercise duration via MyFitnessPal.", notes=note)
 
-    MEAL_COLS = ["calories_kcal", "fat_g", "saturated_fat_g", "carbs_g", "fiber_g", "sugar_g", "protein_g",
-                 "sodium_mg", "potassium_mg", "cholesterol_mg", "vitamin_a", "vitamin_c", "calcium", "iron"]
     for row in vault.execute("SELECT * FROM mfp_nutrition_log"):
-        for col in MEAL_COLS:
-            if row[col] is None:
-                continue
-            unit = "mg" if col.endswith("_mg") else ("g" if col.endswith("_g") else ("kcal" if col.endswith("_kcal") else "unit"))
-            insert_measurement(cur, subject="nutrition-energy-balance", metric=f"meal_{col}", value=row[col], unit=unit,
-                                measured_at=row["date"], source_id=src_mfpn, trust_level="verified",
-                                trust_rationale="Self-logged per-meal nutrition via MyFitnessPal.", notes=f"Meal: {row['meal']}")
+        cur.execute(
+            """INSERT INTO meal_log_entries (measured_at, meal, calories_kcal, fat_g, saturated_fat_g, carbs_g, fiber_g,
+                                              sugar_g, protein_g, sodium_mg, potassium_mg, cholesterol_mg, vitamin_a,
+                                              vitamin_c, calcium, iron, source_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (row["date"], row["meal"], row["calories_kcal"], row["fat_g"], row["saturated_fat_g"], row["carbs_g"],
+             row["fiber_g"], row["sugar_g"], row["protein_g"], row["sodium_mg"], row["potassium_mg"],
+             row["cholesterol_mg"], row["vitamin_a"], row["vitamin_c"], row["calcium"], row["iron"], src_mfpn),
+        )
 
-    FOOD_COLS = [("calories_kcal", "food_calories_kcal", "kcal"), ("fat_g", "food_fat_g", "g"),
-                 ("carbs_g", "food_carbs_g", "g"), ("protein_g", "food_protein_g", "g"), ("alcohol_g", "food_alcohol_g", "g")]
     for row in vault.execute("SELECT * FROM nutrition_food_log"):
-        note = f"Food: {row['food_name']}" + (f" ({row['serving_qty']} {row['serving_size']})" if row["serving_size"] else "")
-        for col, metric, unit in FOOD_COLS:
-            if row[col] is None:
-                continue
-            insert_measurement(cur, subject="nutrition-energy-balance", metric=metric, value=row[col], unit=unit,
-                                measured_at=row["date"], source_id=src_food, trust_level="verified",
-                                trust_rationale="Self-logged individual food item via MacroFactor.", notes=note)
+        food_id = get_or_create_food(cur, row["food_name"] or "Unknown food")
+        cur.execute(
+            """INSERT INTO food_log_entries (food_id, measured_at, time, serving_qty, serving_size,
+                                              calories_kcal, fat_g, carbs_g, protein_g, alcohol_g, source_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (food_id, row["date"], row["time"], row["serving_qty"], row["serving_size"],
+             row["calories_kcal"], row["fat_g"], row["carbs_g"], row["protein_g"], row["alcohol_g"], src_food),
+        )
 
     micro_cols = [d[0] for d in vault.execute("SELECT * FROM micronutrients LIMIT 1").description if d[0] not in ("date", "source_file")]
     for row in vault.execute("SELECT * FROM micronutrients"):
@@ -415,8 +430,13 @@ def run(con):
     con.commit()
     vault.close()
     inserted = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0] - inserted_before
+    n_sets = cur.execute("SELECT COUNT(*) FROM training_sets").fetchone()[0]
+    n_foods = cur.execute("SELECT COUNT(*) FROM food_log_entries").fetchone()[0]
+    n_meals = cur.execute("SELECT COUNT(*) FROM meal_log_entries").fetchone()[0]
     print(f"[03_ingest_measurements] inserted {inserted} measurement rows "
           f"({len(_subject_cache)} subjects, {len(_metric_cache)} metrics touched)")
+    print(f"  plus {n_sets} training_sets ({len(_exercise_cache)} exercises), "
+          f"{n_foods} food_log_entries ({len(_food_cache)} foods), {n_meals} meal_log_entries")
 
 
 if __name__ == "__main__":

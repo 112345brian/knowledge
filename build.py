@@ -49,7 +49,9 @@ def build(target_path):
 def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
-    for table in ("sources", "measurements", "facts", "subjects", "claims", "claim_facts", "fact_sources", "fact_measurements",
+    for table in ("sources", "authors", "source_authors", "metrics", "measurements", "facts", "subjects",
+                  "claims", "claim_facts", "fact_sources", "fact_measurements",
+                  "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "artists", "venues", "festivals", "concert_attendances"):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
