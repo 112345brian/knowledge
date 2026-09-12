@@ -1,0 +1,4 @@
+knowledge.db
+backups/
+__pycache__/
+*.pyc
