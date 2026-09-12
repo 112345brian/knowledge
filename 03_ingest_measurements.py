@@ -146,6 +146,21 @@ def get_or_create_food(cur, name):
     return fid
 
 
+_muscle_cache = {}
+
+
+def get_or_create_muscle(cur, name):
+    if name in _muscle_cache:
+        return _muscle_cache[name]
+    row = cur.execute("SELECT id FROM muscles WHERE name = ?", (name,)).fetchone()
+    mid = row[0] if row else None
+    if mid is None:
+        cur.execute("INSERT INTO muscles (name) VALUES (?)", (name,))
+        mid = cur.lastrowid
+    _muscle_cache[name] = mid
+    return mid
+
+
 STALE_NOTE = "Synced into knowledge.db as of 2026-09-11 -- a snapshot of a live, actively-updated vault table, not a re-syncing link."
 
 
@@ -157,6 +172,7 @@ def run(con):
     _metric_cache.clear()
     _exercise_cache.clear()
     _food_cache.clear()
+    _muscle_cache.clear()
     inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
     dexa_2026 = get_source_id(cur, "bodyspec-dexa-2026-06-17")
@@ -333,11 +349,12 @@ def run(con):
         for col in cols:
             if row[col] is None:
                 continue
-            muscle = col.replace("_sets", "")
-            insert_measurement(cur, subject="training-volume-hypertrophy", metric=f"{muscle}_sets_per_week", value=row[col],
-                                unit="sets/week", measured_at=row["date"], source_id=src_volume, trust_level="verified",
-                                trust_rationale="Computed directly from logged training sets by the vault's own volume script.",
-                                notes=f"Muscle: {muscle}")
+            muscle_name = col.replace("_sets", "").replace("_", " ")
+            muscle_id = get_or_create_muscle(cur, muscle_name)
+            cur.execute(
+                "INSERT INTO muscle_volume_weekly (muscle_id, week_start, sets, source_id) VALUES (?, ?, ?, ?)",
+                (muscle_id, row["date"], row[col], src_volume),
+            )
 
     # ---------------- Raw per-set / per-food / Fitbit / micronutrient logs ----------------
     src_sets = get_or_create_source(cur, "vault-db-workout-sets", "bodybuilding.db table workout_sets (per-set training log, 2024-12-12+)",
@@ -433,10 +450,12 @@ def run(con):
     n_sets = cur.execute("SELECT COUNT(*) FROM training_sets").fetchone()[0]
     n_foods = cur.execute("SELECT COUNT(*) FROM food_log_entries").fetchone()[0]
     n_meals = cur.execute("SELECT COUNT(*) FROM meal_log_entries").fetchone()[0]
+    n_volume = cur.execute("SELECT COUNT(*) FROM muscle_volume_weekly").fetchone()[0]
     print(f"[03_ingest_measurements] inserted {inserted} measurement rows "
           f"({len(_subject_cache)} subjects, {len(_metric_cache)} metrics touched)")
     print(f"  plus {n_sets} training_sets ({len(_exercise_cache)} exercises), "
-          f"{n_foods} food_log_entries ({len(_food_cache)} foods), {n_meals} meal_log_entries")
+          f"{n_foods} food_log_entries ({len(_food_cache)} foods), {n_meals} meal_log_entries, "
+          f"{n_volume} muscle_volume_weekly rows ({len(_muscle_cache)} muscles)")
 
 
 if __name__ == "__main__":

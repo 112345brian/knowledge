@@ -297,6 +297,33 @@ SELECT fl.id, f.name AS food, fl.measured_at, fl.time, fl.serving_qty, fl.servin
 FROM food_log_entries fl JOIN foods f ON f.id = fl.food_id;
 
 -- ============================================================
+-- Muscle training volume: weekly sets per muscle group. The muscle name
+-- was previously baked into a metric key (chest_sets_per_week) -- same
+-- flaw as exercises/foods. Sourced from the vault's own precomputed
+-- muscle_volume_weekly rollup (its exercise-to-muscle-group classification
+-- logic isn't reproduced here -- see 03_ingest_measurements.py comments).
+-- ============================================================
+CREATE TABLE muscles (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE muscle_volume_weekly (
+    id              INTEGER PRIMARY KEY,
+    muscle_id       INTEGER NOT NULL REFERENCES muscles(id),
+    week_start      TEXT NOT NULL,
+    sets            REAL NOT NULL,
+    source_id       INTEGER NOT NULL REFERENCES sources(id),
+    date_added      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_muscle_volume_muscle ON muscle_volume_weekly(muscle_id);
+CREATE INDEX idx_muscle_volume_week ON muscle_volume_weekly(week_start);
+
+CREATE VIEW v_muscle_volume_weekly AS
+SELECT mv.id, m.name AS muscle, mv.week_start, mv.sets
+FROM muscle_volume_weekly mv JOIN muscles m ON m.id = mv.muscle_id;
+
+-- ============================================================
 -- Concert-going, normalized: artists/venues/festivals as their own entities
 -- (so "how many times have I seen X" or "every act at festival Y" is a
 -- join, not a text match), with `concert_attendances` as the fact table

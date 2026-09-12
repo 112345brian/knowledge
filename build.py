@@ -52,6 +52,7 @@ def report(path):
     for table in ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
                   "vault_files", "claims", "claim_facts", "fact_sources", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
+                  "muscles", "muscle_volume_weekly",
                   "artists", "venues", "festivals", "concert_attendances"):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
