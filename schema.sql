@@ -43,6 +43,16 @@ CREATE TRIGGER authors_fts_au AFTER UPDATE ON authors BEGIN
 END;
 
 -- ============================================================
+-- Publishers: journals/publishers repeat across sources (JCEM, Sports
+-- Medicine, Human Kinetics, ...) -- worth a table for "everything from
+-- this journal", even though most sources have a unique one.
+-- ============================================================
+CREATE TABLE publishers (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL UNIQUE
+);
+
+-- ============================================================
 -- Sources: anything a fact or measurement can cite.
 -- ============================================================
 CREATE TABLE sources (
@@ -50,16 +60,18 @@ CREATE TABLE sources (
     citekey         TEXT,               -- stable id, e.g. matches vault sources/<citekey>.md
     name            TEXT NOT NULL,
     source_type     TEXT NOT NULL CHECK (source_type IN ('primary','secondary','tertiary')),
-    publisher       TEXT,
+    publisher_id    INTEGER REFERENCES publishers(id),
     url             TEXT,
     published_date  TEXT,
     retrieved_date  TEXT,
     description     TEXT,
-    origin_path     TEXT,               -- the actual file/table this source came from
+    origin_path     TEXT,               -- the actual file/table this source came from -- NOT normalized:
+                                         -- 450/451 distinct, essentially 1:1 with sources, no repetition to fix
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
 CREATE INDEX idx_sources_origin_path ON sources(origin_path);
+CREATE INDEX idx_sources_publisher ON sources(publisher_id);
 
 CREATE TABLE source_authors (
     source_id       INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
@@ -86,10 +98,11 @@ END;
 CREATE VIEW v_sources AS
 SELECT s.id, s.citekey, s.name, s.source_type,
        GROUP_CONCAT(a.name, '; ') AS authors,
-       s.publisher, s.url, s.published_date, s.origin_path
+       p.name AS publisher, s.url, s.published_date, s.origin_path
 FROM sources s
 LEFT JOIN source_authors sa ON sa.source_id = s.id
 LEFT JOIN authors a ON a.id = sa.author_id
+LEFT JOIN publishers p ON p.id = s.publisher_id
 GROUP BY s.id;
 
 -- ============================================================
@@ -103,6 +116,16 @@ CREATE TABLE metrics (
     label           TEXT NOT NULL,          -- human-readable, e.g. 'Body fat'
     unit            TEXT,
     good_direction  INTEGER CHECK (good_direction IN (-1, 0, 1))  -- 1 = up is favorable, -1 = down, 0/NULL = neutral
+);
+
+-- ============================================================
+-- Vault files: 61 distinct files back 295 facts (~5 facts/file) -- real
+-- repetition, and a place to hang file-level metadata (last synced, etc.)
+-- instead of it being implicit across every fact row from that file.
+-- ============================================================
+CREATE TABLE vault_files (
+    id      INTEGER PRIMARY KEY,
+    path    TEXT NOT NULL UNIQUE
 );
 
 -- ============================================================
@@ -124,14 +147,14 @@ CREATE TABLE facts (
     last_reviewed_at        TEXT,
     recheck_by              TEXT,
     recheck_rationale       TEXT,
-    origin_path             TEXT,       -- the vault file this fact was extracted from
+    origin_file_id          INTEGER REFERENCES vault_files(id),
     notes                   TEXT
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
 CREATE INDEX idx_facts_is_personal ON facts(is_personal);
 CREATE INDEX idx_facts_status ON facts(status);
-CREATE INDEX idx_facts_origin_path ON facts(origin_path);
+CREATE INDEX idx_facts_origin_file ON facts(origin_file_id);
 
 CREATE TABLE fact_sources (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
@@ -360,6 +383,15 @@ SELECT
 FROM facts f
 JOIN subjects s ON s.id = f.subject_id
 LEFT JOIN subjects p ON p.id = s.parent_id;
+
+CREATE VIEW v_facts AS
+SELECT
+    f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale,
+    vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
+FROM facts f
+JOIN subjects sub ON sub.id = f.subject_id
+LEFT JOIN vault_files vf ON vf.id = f.origin_file_id;
 
 -- ============================================================
 -- Full-text search over facts (requires an FTS5-enabled sqlite3 -- Python's

@@ -1,12 +1,29 @@
-"""Small helpers shared across ingest scripts -- author normalization."""
+"""Small helpers shared across ingest scripts -- author/publisher/vault-file
+normalization (get-or-create against a dimension table, never repeated text)."""
+
+
+def get_or_create(cur, table, name_col, name):
+    row = cur.execute(f"SELECT id FROM {table} WHERE {name_col} = ?", (name,)).fetchone()
+    if row:
+        return row[0]
+    cur.execute(f"INSERT INTO {table} ({name_col}) VALUES (?)", (name,))
+    return cur.lastrowid
+
+
+def get_or_create_publisher(cur, name):
+    if not name:
+        return None
+    return get_or_create(cur, "publishers", "name", name)
+
+
+def get_or_create_vault_file(cur, path):
+    if not path:
+        return None
+    return get_or_create(cur, "vault_files", "path", path)
 
 
 def get_or_create_author(cur, name):
-    row = cur.execute("SELECT id FROM authors WHERE name = ?", (name,)).fetchone()
-    if row:
-        return row[0]
-    cur.execute("INSERT INTO authors (name) VALUES (?)", (name,))
-    return cur.lastrowid
+    return get_or_create(cur, "authors", "name", name)
 
 
 def link_authors(cur, source_id, author_string):

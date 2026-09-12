@@ -8,7 +8,10 @@ this is a best-effort first pass, not hand-verified per fact.
 
 Run after 01/02/03 (needs sources + subjects + measurements to exist).
 """
-import sqlite3, json, os, re
+import sqlite3, json, os, re, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shared import get_or_create_vault_file
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 VAULT = "<BODYBUILDING_VAULT>"
@@ -130,16 +133,17 @@ def run(con):
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
         origin_path = item.get("origin_path") or resolve_origin_path(item.get("notes"))
+        origin_file_id = get_or_create_vault_file(cur, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
-                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_path)
+                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id)
                VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
-             TODAY, TODAY, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_path)
+             TODAY, TODAY, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id)
         )
         fact_id = cur.lastrowid
 

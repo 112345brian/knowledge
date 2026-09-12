@@ -107,7 +107,7 @@ def get_or_create_source(cur, citekey, name, description, origin_path=None):
     row = cur.execute("SELECT id FROM sources WHERE citekey = ?", (citekey,)).fetchone()
     if row:
         return row[0]
-    cur.execute("""INSERT INTO sources (citekey, name, source_type, publisher, url, published_date, retrieved_date, description, origin_path)
+    cur.execute("""INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path)
         VALUES (?, ?, 'primary', NULL, NULL, NULL, ?, ?, ?)""", (citekey, name, TODAY, description, origin_path))
     source_id = cur.lastrowid
     author_id = cur.execute("SELECT id FROM authors WHERE name = 'user'").fetchone()
