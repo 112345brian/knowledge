@@ -97,10 +97,23 @@ def load_items():
     return items
 
 
+def get_or_create_subject(cur, name, cache):
+    if name in cache:
+        return cache[name]
+    row = cur.execute("SELECT id FROM subjects WHERE name = ?", (name,)).fetchone()
+    if row:
+        sid = row[0]
+    else:
+        cur.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        sid = cur.lastrowid
+    cache[name] = sid
+    return sid
+
+
 def run(con):
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
-    existing_subjects = {r[0] for r in cur.execute("SELECT name FROM subjects")}
+    subject_cache = {}
 
     items = load_items()
     inserted = skipped = 0
@@ -114,9 +127,7 @@ def run(con):
             skipped += 1
             continue
 
-        if subj not in existing_subjects:
-            cur.execute("INSERT OR IGNORE INTO subjects (name) VALUES (?)", (subj,))
-            existing_subjects.add(subj)
+        subject_id = get_or_create_subject(cur, subj, subject_cache)
 
         origin_path = item.get("origin_path") or resolve_origin_path(item.get("notes"))
         measured_metric = item.get("measurement_metric_link")
@@ -124,14 +135,13 @@ def run(con):
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
         cur.execute(
-            """INSERT INTO facts (subject, statement, is_original_claim, is_personal, trust_level, trust_rationale,
+            """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_path)
                VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?)""",
-            (subj, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
+            (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              TODAY, TODAY, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_path)
         )
         fact_id = cur.lastrowid
-        cur.execute("INSERT OR IGNORE INTO fact_subjects (fact_id, subject_id) SELECT ?, id FROM subjects WHERE name = ?", (fact_id, subj))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -146,7 +156,8 @@ def run(con):
 
         if measured_metric:
             cur.execute(
-                "INSERT INTO fact_measurements (fact_id, measurement_id) SELECT ?, id FROM measurements WHERE metric = ?",
+                """INSERT INTO fact_measurements (fact_id, measurement_id)
+                   SELECT ?, m.id FROM measurements m JOIN metrics mt ON mt.id = m.metric_id WHERE mt.key = ?""",
                 (fact_id, measured_metric)
             )
 

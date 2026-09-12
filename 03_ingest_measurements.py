@@ -5,6 +5,9 @@ checkpoints, then the vault's daily/weekly summary tables and full raw logs
 (per-set training, per-meal/per-food nutrition, Fitbit measurements,
 micronutrients). Run after 01_seed_sources.py (needs its citekeys to exist).
 
+Subject and metric are resolved to subject_id/metric_id via get-or-create
+helpers -- never written as repeated text on the measurements row itself.
+
 Source: <BODYBUILDING_VAULT>/bodybuilding.db
 """
 import sqlite3, os, re
@@ -12,6 +15,84 @@ import sqlite3, os, re
 VAULT_DB = os.path.expanduser("<BODYBUILDING_VAULT>/bodybuilding.db")
 VAULT = "<BODYBUILDING_VAULT>"
 TODAY = "2026-09-11"
+
+# Curated labels/good-direction for the metrics worth a human-friendly name.
+# Anything not listed here gets an auto-generated label (see humanize()) --
+# that's expected and fine for the long tail of per-set/per-food/micronutrient
+# metrics, which don't need hand-curation to be usable.
+METRIC_META = {
+    "weight_lb": ("Total weight", 1), "body_fat_pct": ("Body fat", -1), "fat_mass_lb": ("Fat mass", None),
+    "lean_tissue_lb": ("Lean tissue", None), "fat_free_mass_lb": ("Fat-free mass", None),
+    "bone_mineral_content_lb": ("Bone mineral content", None), "bmd_total_g_cm2": ("BMD (total)", None),
+    "bmd_zscore": ("BMD Z-score", 1), "appendicular_lean_lb": ("Appendicular lean mass", None),
+    "lmi": ("LMI", None), "almi": ("ALMI", None), "rmr_kcal": ("RMR", None), "vat_mass_lb": ("Visceral fat mass", -1),
+    "lh_miu_ml": ("LH", None), "fsh_miu_ml": ("FSH", None), "testosterone_total_ng_dl": ("Testosterone (total)", None),
+    "testosterone_free_pg_ml": ("Testosterone (free)", None), "estradiol_pg_ml": ("Estradiol", None),
+    "crp_mg_l": ("CRP", None), "esr_mm_hr": ("ESR", None),
+    "neck_in": ("Neck", None), "shoulders_in": ("Shoulders", None), "chest_in": ("Chest", None),
+    "upper_arm_in": ("Upper arm", None), "forearm_in": ("Forearm", None), "waist_in": ("Waist", -1),
+    "hips_in": ("Hips", None), "thigh_in": ("Thigh", None), "calf_in": ("Calf", None),
+    "wrist_in": ("Wrist", None), "ankle_in": ("Ankle", None),
+    "squat_e1rm_lb": ("Squat e1RM", 1), "bench_e1rm_lb": ("Bench e1RM", 1), "deadlift_e1rm_lb": ("Deadlift e1RM", 1),
+    "squat_bw_ratio": ("Squat : BW", 1), "bench_bw_ratio": ("Bench : BW", 1), "deadlift_bw_ratio": ("Deadlift : BW", 1),
+    "scale_weight_lb": ("Scale weight", None), "scale_bodyfat_pct": ("Scale body fat %", -1),
+    "scale_fat_free_mass_lb": ("Scale fat-free mass", None), "trend_weight_lb": ("Trend weight", None),
+    "logged_calories_kcal": ("Logged calories", None), "logged_protein_g": ("Logged protein", None),
+    "logged_fat_g": ("Logged fat", None), "logged_carbs_g": ("Logged carbs", None),
+    "modeled_expenditure_kcal": ("Modeled expenditure", None),
+    "fitbit_bodyfat_pct": ("Fitbit body fat %", None), "fitbit_steps": ("Fitbit steps", None),
+    "fitbit_sleep_minutes": ("Fitbit sleep", None), "cardio_calories_kcal": ("Cardio calories", None),
+    "cardio_minutes": ("Cardio minutes", None),
+}
+
+
+def humanize(key):
+    return key.replace("_", " ").strip().capitalize()
+
+
+_subject_cache = {}
+_metric_cache = {}
+
+
+def get_or_create_subject(cur, name):
+    if name in _subject_cache:
+        return _subject_cache[name]
+    row = cur.execute("SELECT id FROM subjects WHERE name = ?", (name,)).fetchone()
+    if not row:
+        cur.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        sid = cur.lastrowid
+    else:
+        sid = row[0]
+    _subject_cache[name] = sid
+    return sid
+
+
+def get_or_create_metric(cur, key, unit):
+    if key in _metric_cache:
+        return _metric_cache[key]
+    row = cur.execute("SELECT id FROM metrics WHERE key = ?", (key,)).fetchone()
+    if not row:
+        label, good_direction = METRIC_META.get(key, (humanize(key), None))
+        cur.execute("INSERT INTO metrics (key, label, unit, good_direction) VALUES (?, ?, ?, ?)",
+                    (key, label, unit, good_direction))
+        mid = cur.lastrowid
+    else:
+        mid = row[0]
+    _metric_cache[key] = mid
+    return mid
+
+
+def insert_measurement(cur, *, subject, metric, value, unit, measured_at, source_id, trust_level,
+                        trust_rationale, notes=None, recheck_by=None, recheck_rationale=None):
+    subject_id = get_or_create_subject(cur, subject)
+    metric_id = get_or_create_metric(cur, metric, unit)
+    cur.execute(
+        """INSERT INTO measurements (subject_id, metric_id, value, measured_at, source_id, trust_level,
+                                      trust_rationale, date_added, notes, recheck_by, recheck_rationale)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (subject_id, metric_id, value, measured_at, source_id, trust_level, trust_rationale,
+         TODAY, notes, recheck_by, recheck_rationale),
+    )
 
 
 def get_source_id(cur, citekey):
@@ -25,9 +106,15 @@ def get_or_create_source(cur, citekey, name, description, origin_path=None):
     row = cur.execute("SELECT id FROM sources WHERE citekey = ?", (citekey,)).fetchone()
     if row:
         return row[0]
-    cur.execute("""INSERT INTO sources (citekey, name, source_type, author, publisher, url, published_date, retrieved_date, description, origin_path)
-        VALUES (?, ?, 'primary', 'user', NULL, NULL, NULL, ?, ?, ?)""", (citekey, name, TODAY, description, origin_path))
-    return cur.lastrowid
+    cur.execute("""INSERT INTO sources (citekey, name, source_type, publisher, url, published_date, retrieved_date, description, origin_path)
+        VALUES (?, ?, 'primary', NULL, NULL, NULL, ?, ?, ?)""", (citekey, name, TODAY, description, origin_path))
+    source_id = cur.lastrowid
+    author_id = cur.execute("SELECT id FROM authors WHERE name = 'user'").fetchone()
+    if not author_id:
+        cur.execute("INSERT INTO authors (name) VALUES ('user')")
+        author_id = (cur.lastrowid,)
+    cur.execute("INSERT OR IGNORE INTO source_authors (source_id, author_id) VALUES (?, ?)", (source_id, author_id[0]))
+    return source_id
 
 
 def slug(s):
@@ -41,7 +128,9 @@ def run(con):
     vault = sqlite3.connect(VAULT_DB)
     vault.row_factory = sqlite3.Row
     cur = con.cursor()
-    inserted = 0
+    _subject_cache.clear()
+    _metric_cache.clear()
+    inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
     dexa_2026 = get_source_id(cur, "bodyspec-dexa-2026-06-17")
     dexa_2025 = get_source_id(cur, "bodyspec-dexa-2025-11-15")
@@ -68,30 +157,30 @@ def run(con):
             val = scan[col]
             if val is None:
                 continue
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES (?, ?, ?, ?, ?, ?, 'verified', 'Direct clinical DEXA measurement (BodySpec), read from the vault''s own structured bodycomp_dexa table.', ?, ?)""",
-                (subject, metric, val, unit, scan_date, source_id, TODAY, note))
-            inserted += 1
+            insert_measurement(cur, subject=subject, metric=metric, value=val, unit=unit, measured_at=scan_date,
+                                source_id=source_id, trust_level="verified",
+                                trust_rationale="Direct clinical DEXA measurement (BodySpec), read from the vault's own structured bodycomp_dexa table.",
+                                notes=note)
         ffm = (scan["lean_tissue_lbs"] or 0) + (scan["bmc_lbs"] or 0)
-        cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-            VALUES ('body-composition', 'fat_free_mass_lb', ?, 'lb', ?, ?, 'verified', 'Direct clinical DEXA measurement (BodySpec).', ?, '= lean_tissue_lb + bone_mineral_content_lb, per the vault''s own v_dexa view.')""",
-            (ffm, scan_date, source_id, TODAY))
+        insert_measurement(cur, subject="body-composition", metric="fat_free_mass_lb", value=ffm, unit="lb",
+                            measured_at=scan_date, source_id=source_id, trust_level="verified",
+                            trust_rationale="Direct clinical DEXA measurement (BodySpec).",
+                            notes="= lean_tissue_lb + bone_mineral_content_lb, per the vault's own v_dexa view.")
         appendicular = (scan["arms_lean_lbs"] or 0) + (scan["legs_lean_lbs"] or 0)
-        cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-            VALUES ('body-composition', 'appendicular_lean_lb', ?, 'lb', ?, ?, 'verified', 'Direct clinical DEXA measurement (BodySpec).', ?, '= arms_lean_lb + legs_lean_lb.')""",
-            (appendicular, scan_date, source_id, TODAY))
+        insert_measurement(cur, subject="body-composition", metric="appendicular_lean_lb", value=appendicular, unit="lb",
+                            measured_at=scan_date, source_id=source_id, trust_level="verified",
+                            trust_rationale="Direct clinical DEXA measurement (BodySpec).",
+                            notes="= arms_lean_lb + legs_lean_lb.")
         height_m = (scan["height_in"] or 0) * 0.0254
         if height_m:
             lmi = (scan["lean_tissue_lbs"] or 0) * 0.45359237 / (height_m ** 2)
             almi = appendicular * 0.45359237 / (height_m ** 2)
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('body-composition', 'lmi', ?, 'kg/m²', ?, ?, 'verified', 'Lean mass index, derived from the DEXA scan (lean soft tissue / height², bone excluded).', ?, NULL)""",
-                (round(lmi, 2), scan_date, source_id, TODAY))
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('body-composition', 'almi', ?, 'kg/m²', ?, ?, 'verified', 'Appendicular lean mass index, derived from the DEXA scan.', ?, NULL)""",
-                (round(almi, 2), scan_date, source_id, TODAY))
-            inserted += 2
-        inserted += 2
+            insert_measurement(cur, subject="body-composition", metric="lmi", value=round(lmi, 2), unit="kg/m²",
+                                measured_at=scan_date, source_id=source_id, trust_level="verified",
+                                trust_rationale="Lean mass index, derived from the DEXA scan (lean soft tissue / height², bone excluded).")
+            insert_measurement(cur, subject="body-composition", metric="almi", value=round(almi, 2), unit="kg/m²",
+                                measured_at=scan_date, source_id=source_id, trust_level="verified",
+                                trust_rationale="Appendicular lean mass index, derived from the DEXA scan.")
 
     # ---------------- Bloodwork ----------------
     BLOOD_METRIC_MAP = {"LH": "lh_miu_ml", "FSH": "fsh_miu_ml", "Testosterone total": "testosterone_total_ng_dl",
@@ -119,14 +208,15 @@ def run(con):
                               "of the unexplained FSH result.") if metric == "fsh_miu_ml" else None
 
         if unlocated:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('hormones-endocrinology', ?, ?, ?, ?, ?, 'unverified', 'Value is carried forward from prior vault notes; the vault''s own audit could not locate the underlying lab report for it.', ?, ?)""",
-                (metric, row["value"], row["unit"], row["date"], src_unlocated, TODAY, " ".join(note_parts)))
+            insert_measurement(cur, subject="hormones-endocrinology", metric=metric, value=row["value"], unit=row["unit"],
+                                measured_at=row["date"], source_id=src_unlocated, trust_level="unverified",
+                                trust_rationale="Value is carried forward from prior vault notes; the vault's own audit could not locate the underlying lab report for it.",
+                                notes=" ".join(note_parts))
         else:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes, recheck_by, recheck_rationale)
-                VALUES ('hormones-endocrinology', ?, ?, ?, ?, ?, 'verified', 'Direct primary lab result (Labcorp), read from the vault''s own structured bloodwork table.', ?, ?, ?, ?)""",
-                (metric, row["value"], row["unit"], row["date"], labcorp, TODAY, " ".join(note_parts), recheck_by, recheck_rationale))
-        inserted += 1
+            insert_measurement(cur, subject="hormones-endocrinology", metric=metric, value=row["value"], unit=row["unit"],
+                                measured_at=row["date"], source_id=labcorp, trust_level="verified",
+                                trust_rationale="Direct primary lab result (Labcorp), read from the vault's own structured bloodwork table.",
+                                notes=" ".join(note_parts), recheck_by=recheck_by, recheck_rationale=recheck_rationale)
 
     # ---------------- Manual tape measurements ----------------
     for row in vault.execute("SELECT * FROM body_measurements"):
@@ -135,10 +225,9 @@ def run(con):
             val = row[col]
             if val is None:
                 continue
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES ('body-composition', ?, ?, 'in', ?, ?, 'high', 'Self-measured with a tape measure -- prone to placement/tension variance between sessions, but a direct measurement.', ?)""",
-                (col, val, row["date"], src_tape, TODAY))
-            inserted += 1
+            insert_measurement(cur, subject="body-composition", metric=col, value=val, unit="in",
+                                measured_at=row["date"], source_id=src_tape, trust_level="high",
+                                trust_rationale="Self-measured with a tape measure -- prone to placement/tension variance between sessions, but a direct measurement.")
 
     # ---------------- Strength checkpoints (latest snapshot only) ----------------
     latest = vault.execute("SELECT * FROM strength_checkpoints ORDER BY date DESC LIMIT 1").fetchone()
@@ -154,13 +243,14 @@ def run(con):
             recheck_by = "as soon as the next working set of this lift is logged" if stale else None
             recheck_rationale = ("The vault's own scripts/strength_checkpoint.py flags this specific figure "
                                   f"stale as of the {latest['date']} snapshot.") if stale else None
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes, recheck_by, recheck_rationale)
-                VALUES ('strength-progression-norms', ?, ?, 'lb', ?, ?, 'high', 'Auto-computed estimated 1RM from logged training sets, not a tested single-rep max.', ?, ?, ?, ?)""",
-                (f"{lift}_e1rm_lb", e1rm, as_of, src_strength, TODAY, f"checkpoint as of {latest['date']} snapshot", recheck_by, recheck_rationale))
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, 'ratio', ?, ?, 'high', 'Bodyweight ratio derived from the e1RM checkpoint and same-day bodyweight.', ?, ?)""",
-                (ratio_col, latest[ratio_col], as_of, src_strength, TODAY, f"checkpoint as of {latest['date']} snapshot"))
-            inserted += 2
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"{lift}_e1rm_lb", value=e1rm, unit="lb",
+                                measured_at=as_of, source_id=src_strength, trust_level="high",
+                                trust_rationale="Auto-computed estimated 1RM from logged training sets, not a tested single-rep max.",
+                                notes=f"checkpoint as of {latest['date']} snapshot", recheck_by=recheck_by, recheck_rationale=recheck_rationale)
+            insert_measurement(cur, subject="strength-progression-norms", metric=ratio_col, value=latest[ratio_col], unit="ratio",
+                                measured_at=as_of, source_id=src_strength, trust_level="high",
+                                trust_rationale="Bodyweight ratio derived from the e1RM checkpoint and same-day bodyweight.",
+                                notes=f"checkpoint as of {latest['date']} snapshot")
 
     # ---------------- Daily/weekly summary tables ----------------
     src_nutrition = get_or_create_source(cur, "vault-db-nutrition-daily", "bodybuilding.db table nutrition_daily (daily logged nutrition + weight)",
@@ -183,34 +273,33 @@ def run(con):
         for col, metric, unit, subject in NUTRITION_METRICS:
             if row[col] is None:
                 continue
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES (?, ?, ?, ?, ?, ?, 'verified', 'Self-logged via MacroFactor, compiled into the vault''s own structured daily table.', ?)""",
-                (subject, metric, row[col], unit, row["date"], src_nutrition, TODAY))
-            inserted += 1
+            insert_measurement(cur, subject=subject, metric=metric, value=row[col], unit=unit, measured_at=row["date"],
+                                source_id=src_nutrition, trust_level="verified",
+                                trust_rationale="Self-logged via MacroFactor, compiled into the vault's own structured daily table.")
 
     for row in vault.execute("SELECT * FROM scale_readings"):
         if row["weight_lbs"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES ('body-composition', 'scale_weight_lb', ?, 'lb', ?, ?, 'high', 'Manual/compiled scale reading.', ?)""",
-                (row["weight_lbs"], row["date"], src_scale, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric="scale_weight_lb", value=row["weight_lbs"], unit="lb",
+                                measured_at=row["date"], source_id=src_scale, trust_level="high",
+                                trust_rationale="Manual/compiled scale reading.")
         if row["body_fat_pct"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('body-composition', 'scale_bodyfat_pct', ?, '%', ?, ?, 'low', 'Bioimpedance-scale body-fat estimate, not DEXA.', ?, 'Not DEXA.')""",
-                (row["body_fat_pct"], row["date"], src_scale, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric="scale_bodyfat_pct", value=row["body_fat_pct"], unit="%",
+                                measured_at=row["date"], source_id=src_scale, trust_level="low",
+                                trust_rationale="Bioimpedance-scale body-fat estimate, not DEXA.", notes="Not DEXA.")
 
     for row in vault.execute("SELECT * FROM renpho_scale_readings"):
         if row["weight_lbs"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES ('body-composition', 'scale_weight_lb', ?, 'lb', ?, ?, 'high', 'RENPHO scale weight -- accurate to ~0.2 lb even though its body-composition estimates are not.', ?)""",
-                (row["weight_lbs"], row["date"], src_renpho, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric="scale_weight_lb", value=row["weight_lbs"], unit="lb",
+                                measured_at=row["date"], source_id=src_renpho, trust_level="high",
+                                trust_rationale="RENPHO scale weight -- accurate to ~0.2 lb even though its body-composition estimates are not.")
         if row["body_fat_pct"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('body-composition', 'scale_bodyfat_pct', ?, '%', ?, ?, 'low', 'RENPHO bioimpedance estimate, found 14.3 points high vs. DEXA on a same-day comparison.', ?, 'Not DEXA.')""",
-                (row["body_fat_pct"], row["date"], src_renpho, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric="scale_bodyfat_pct", value=row["body_fat_pct"], unit="%",
+                                measured_at=row["date"], source_id=src_renpho, trust_level="low",
+                                trust_rationale="RENPHO bioimpedance estimate, found 14.3 points high vs. DEXA on a same-day comparison.", notes="Not DEXA.")
         if row["fat_free_mass_lbs"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('body-composition', 'scale_fat_free_mass_lb', ?, 'lb', ?, ?, 'low', 'RENPHO bioimpedance estimate, found 22.4 lb high vs. DEXA on a same-day comparison.', ?, 'Not DEXA.')""",
-                (row["fat_free_mass_lbs"], row["date"], src_renpho, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric="scale_fat_free_mass_lb", value=row["fat_free_mass_lbs"], unit="lb",
+                                measured_at=row["date"], source_id=src_renpho, trust_level="low",
+                                trust_rationale="RENPHO bioimpedance estimate, found 22.4 lb high vs. DEXA on a same-day comparison.", notes="Not DEXA.")
 
     cols = [d[0] for d in vault.execute("SELECT * FROM muscle_volume_weekly LIMIT 1").description if d[0] != "date"]
     for row in vault.execute("SELECT * FROM muscle_volume_weekly"):
@@ -218,10 +307,10 @@ def run(con):
             if row[col] is None:
                 continue
             muscle = col.replace("_sets", "")
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('training-volume-hypertrophy', ?, ?, 'sets/week', ?, ?, 'verified', 'Computed directly from logged training sets by the vault''s own volume script.', ?, ?)""",
-                (f"{muscle}_sets_per_week", row[col], row["date"], src_volume, TODAY, f"Muscle: {muscle}"))
-            inserted += 1
+            insert_measurement(cur, subject="training-volume-hypertrophy", metric=f"{muscle}_sets_per_week", value=row[col],
+                                unit="sets/week", measured_at=row["date"], source_id=src_volume, trust_level="verified",
+                                trust_rationale="Computed directly from logged training sets by the vault's own volume script.",
+                                notes=f"Muscle: {muscle}")
 
     # ---------------- Raw per-set / per-food / Fitbit / micronutrient logs ----------------
     src_sets = get_or_create_source(cur, "vault-db-workout-sets", "bodybuilding.db table workout_sets (per-set training log, 2024-12-12+)",
@@ -243,29 +332,29 @@ def run(con):
         ex = slug(row["exercise"] or "unknown_exercise")
         note = f"Exercise: {row['exercise']}" + (" (warmup)" if row["is_warmup"] else "")
         if row["completed_weight"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, ?, ?, ?, 'verified', 'Self-logged training set (Liftosaur/MacroFactor).', ?, ?)""",
-                (f"set_{ex}_weight_lb", row["completed_weight"], row["weight_unit"] or "lb", row["date"], src_sets, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_weight_lb", value=row["completed_weight"],
+                                unit=row["weight_unit"] or "lb", measured_at=row["date"], source_id=src_sets, trust_level="verified",
+                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
         if row["completed_reps"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, 'reps', ?, ?, 'verified', 'Self-logged training set (Liftosaur/MacroFactor).', ?, ?)""",
-                (f"set_{ex}_reps", row["completed_reps"], row["date"], src_sets, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_reps", value=row["completed_reps"],
+                                unit="reps", measured_at=row["date"], source_id=src_sets, trust_level="verified",
+                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
         if row["rir"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, 'RIR', ?, ?, 'verified', 'Self-logged training set (Liftosaur/MacroFactor).', ?, ?)""",
-                (f"set_{ex}_rir", row["rir"], row["date"], src_sets, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_rir", value=row["rir"],
+                                unit="RIR", measured_at=row["date"], source_id=src_sets, trust_level="verified",
+                                trust_rationale="Self-logged training set (Liftosaur/MacroFactor).", notes=note)
 
     for row in vault.execute("SELECT * FROM jefit_exercise_sets"):
         ex = slug(row["exercise"] or "unknown_exercise")
         note = f"Exercise: {row['exercise']}"
         if row["weight"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, ?, ?, ?, 'verified', 'Self-logged training set (Jefit).', ?, ?)""",
-                (f"set_{ex}_weight_lb", row["weight"], row["weight_unit"] or "lb", row["date"], src_jefit, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_weight_lb", value=row["weight"],
+                                unit=row["weight_unit"] or "lb", measured_at=row["date"], source_id=src_jefit, trust_level="verified",
+                                trust_rationale="Self-logged training set (Jefit).", notes=note)
         if row["reps"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('strength-progression-norms', ?, ?, 'reps', ?, ?, 'verified', 'Self-logged training set (Jefit).', ?, ?)""",
-                (f"set_{ex}_reps", row["reps"], row["date"], src_jefit, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="strength-progression-norms", metric=f"set_{ex}_reps", value=row["reps"],
+                                unit="reps", measured_at=row["date"], source_id=src_jefit, trust_level="verified",
+                                trust_rationale="Self-logged training set (Jefit).", notes=note)
 
     MFP_M_COLS = [("weight_lbs", "scale_weight_lb", "lb"), ("fitbit_body_fat_pct", "fitbit_bodyfat_pct", "%"),
                   ("fitbit_steps", "fitbit_steps", "steps"), ("fitbit_sleep_minutes", "fitbit_sleep_minutes", "min")]
@@ -276,20 +365,19 @@ def run(con):
             trust = "unverified" if metric == "fitbit_bodyfat_pct" else "high"
             rationale = ("Wrist-wearable body-fat estimate -- generally unreliable, not corroborated against DEXA."
                          if metric == "fitbit_bodyfat_pct" else "Fitbit-synced measurement via MyFitnessPal.")
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES ('body-composition', ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (metric, row[col], unit, row["date"], src_mfpm, trust, rationale, TODAY)); inserted += 1
+            insert_measurement(cur, subject="body-composition", metric=metric, value=row[col], unit=unit,
+                                measured_at=row["date"], source_id=src_mfpm, trust_level=trust, trust_rationale=rationale)
 
     for row in vault.execute("SELECT * FROM mfp_exercise_log"):
         note = f"Activity: {row['exercise']} ({row['type']})" if row["exercise"] else None
         if row["exercise_calories"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('nutrition-energy-balance', 'cardio_calories_kcal', ?, 'kcal', ?, ?, 'high', 'Self-logged/app-estimated exercise calories via MyFitnessPal.', ?, ?)""",
-                (row["exercise_calories"], row["date"], src_mfpe, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="nutrition-energy-balance", metric="cardio_calories_kcal", value=row["exercise_calories"],
+                                unit="kcal", measured_at=row["date"], source_id=src_mfpe, trust_level="high",
+                                trust_rationale="Self-logged/app-estimated exercise calories via MyFitnessPal.", notes=note)
         if row["exercise_minutes"] is not None:
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('nutrition-energy-balance', 'cardio_minutes', ?, 'min', ?, ?, 'high', 'Self-logged exercise duration via MyFitnessPal.', ?, ?)""",
-                (row["exercise_minutes"], row["date"], src_mfpe, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="nutrition-energy-balance", metric="cardio_minutes", value=row["exercise_minutes"],
+                                unit="min", measured_at=row["date"], source_id=src_mfpe, trust_level="high",
+                                trust_rationale="Self-logged exercise duration via MyFitnessPal.", notes=note)
 
     MEAL_COLS = ["calories_kcal", "fat_g", "saturated_fat_g", "carbs_g", "fiber_g", "sugar_g", "protein_g",
                  "sodium_mg", "potassium_mg", "cholesterol_mg", "vitamin_a", "vitamin_c", "calcium", "iron"]
@@ -298,9 +386,9 @@ def run(con):
             if row[col] is None:
                 continue
             unit = "mg" if col.endswith("_mg") else ("g" if col.endswith("_g") else ("kcal" if col.endswith("_kcal") else "unit"))
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('nutrition-energy-balance', ?, ?, ?, ?, ?, 'verified', 'Self-logged per-meal nutrition via MyFitnessPal.', ?, ?)""",
-                (f"meal_{col}", row[col], unit, row["date"], src_mfpn, TODAY, f"Meal: {row['meal']}")); inserted += 1
+            insert_measurement(cur, subject="nutrition-energy-balance", metric=f"meal_{col}", value=row[col], unit=unit,
+                                measured_at=row["date"], source_id=src_mfpn, trust_level="verified",
+                                trust_rationale="Self-logged per-meal nutrition via MyFitnessPal.", notes=f"Meal: {row['meal']}")
 
     FOOD_COLS = [("calories_kcal", "food_calories_kcal", "kcal"), ("fat_g", "food_fat_g", "g"),
                  ("carbs_g", "food_carbs_g", "g"), ("protein_g", "food_protein_g", "g"), ("alcohol_g", "food_alcohol_g", "g")]
@@ -309,9 +397,9 @@ def run(con):
         for col, metric, unit in FOOD_COLS:
             if row[col] is None:
                 continue
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added, notes)
-                VALUES ('nutrition-energy-balance', ?, ?, ?, ?, ?, 'verified', 'Self-logged individual food item via MacroFactor.', ?, ?)""",
-                (metric, row[col], unit, row["date"], src_food, TODAY, note)); inserted += 1
+            insert_measurement(cur, subject="nutrition-energy-balance", metric=metric, value=row[col], unit=unit,
+                                measured_at=row["date"], source_id=src_food, trust_level="verified",
+                                trust_rationale="Self-logged individual food item via MacroFactor.", notes=note)
 
     micro_cols = [d[0] for d in vault.execute("SELECT * FROM micronutrients LIMIT 1").description if d[0] not in ("date", "source_file")]
     for row in vault.execute("SELECT * FROM micronutrients"):
@@ -320,13 +408,15 @@ def run(con):
                 continue
             m = re.match(r"^(.*)_([a-z]+)$", col)
             unit = m.group(2) if m else "unit"
-            cur.execute("""INSERT INTO measurements (subject, metric, value, unit, measured_at, source_id, trust_level, trust_rationale, date_added)
-                VALUES ('nutrition-energy-balance', ?, ?, ?, ?, ?, 'verified', 'Self-logged, compiled from MacroFactor daily micronutrient export.', ?)""",
-                (col, row[col], unit, row["date"], src_micro, TODAY)); inserted += 1
+            insert_measurement(cur, subject="nutrition-energy-balance", metric=col, value=row[col], unit=unit,
+                                measured_at=row["date"], source_id=src_micro, trust_level="verified",
+                                trust_rationale="Self-logged, compiled from MacroFactor daily micronutrient export.")
 
     con.commit()
     vault.close()
-    print(f"[03_ingest_measurements] inserted {inserted} measurement rows")
+    inserted = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0] - inserted_before
+    print(f"[03_ingest_measurements] inserted {inserted} measurement rows "
+          f"({len(_subject_cache)} subjects, {len(_metric_cache)} metrics touched)")
 
 
 if __name__ == "__main__":

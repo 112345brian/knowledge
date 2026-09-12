@@ -2,7 +2,10 @@
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after 01_seed_sources.py.
 """
-import sqlite3, os, re, glob
+import sqlite3, os, re, glob, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shared import link_authors
 
 SRC_DIR = os.path.expanduser("<BODYBUILDING_VAULT>/sources")
 VAULT = "<BODYBUILDING_VAULT>"
@@ -133,10 +136,11 @@ def run(con):
         if r["citekey"] in existing:
             continue
         cur.execute(
-            """INSERT INTO sources (citekey, name, source_type, author, publisher, url, published_date, retrieved_date, description, origin_path)
-               VALUES (:citekey, :name, :source_type, :author, :publisher, :url, :published_date, '2026-09-11', :description, :origin_path)""",
-            r,
+            """INSERT INTO sources (citekey, name, source_type, publisher, url, published_date, retrieved_date, description, origin_path)
+               VALUES (:citekey, :name, :source_type, :publisher, :url, :published_date, '2026-09-11', :description, :origin_path)""",
+            {k: v for k, v in r.items() if k != "author"},
         )
+        link_authors(cur, cur.lastrowid, r["author"])
         existing.add(r["citekey"])
         inserted += 1
     con.commit()

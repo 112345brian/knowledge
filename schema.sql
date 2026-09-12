@@ -3,28 +3,13 @@
 -- is a BUILD ARTIFACT of this schema plus the ingest_*.py / seed_*.py scripts
 -- in this directory, run in order by build.py. Never hand-edit the .db file
 -- or run ad hoc ALTER/INSERT against it -- change a script here and rebuild.
+--
+-- Normalization rule of thumb applied throughout: if a column's values repeat
+-- across rows and you'd ever ask "how many/which/all" about those values as a
+-- group, it's an entity with its own table (subjects, authors, metrics,
+-- artists/venues/festivals) -- never a repeated text field.
 
 PRAGMA foreign_keys = ON;
-
--- ============================================================
--- Sources: anything a fact or measurement can cite.
--- ============================================================
-CREATE TABLE sources (
-    id              INTEGER PRIMARY KEY,
-    citekey         TEXT,               -- stable id, e.g. matches vault sources/<citekey>.md
-    name            TEXT NOT NULL,
-    source_type     TEXT NOT NULL CHECK (source_type IN ('primary','secondary','tertiary')),
-    author          TEXT,
-    publisher       TEXT,
-    url             TEXT,
-    published_date  TEXT,
-    retrieved_date  TEXT,
-    description     TEXT,
-    origin_path     TEXT,               -- the actual file/table this source came from
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
-CREATE INDEX idx_sources_origin_path ON sources(origin_path);
 
 -- ============================================================
 -- Subjects: topic tags, arranged in a shallow tree (domain -> parent -> subject).
@@ -37,12 +22,96 @@ CREATE TABLE subjects (
 );
 
 -- ============================================================
+-- Authors: people/orgs credited on a source. Many-to-many via source_authors
+-- (a source can have several authors; the same author writes several sources).
+-- ============================================================
+CREATE TABLE authors (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL UNIQUE
+);
+
+CREATE VIRTUAL TABLE authors_fts USING fts5(name, content='authors', content_rowid='id');
+CREATE TRIGGER authors_fts_ai AFTER INSERT ON authors BEGIN
+  INSERT INTO authors_fts(rowid, name) VALUES (new.id, new.name);
+END;
+CREATE TRIGGER authors_fts_ad AFTER DELETE ON authors BEGIN
+  INSERT INTO authors_fts(authors_fts, rowid, name) VALUES ('delete', old.id, old.name);
+END;
+CREATE TRIGGER authors_fts_au AFTER UPDATE ON authors BEGIN
+  INSERT INTO authors_fts(authors_fts, rowid, name) VALUES ('delete', old.id, old.name);
+  INSERT INTO authors_fts(rowid, name) VALUES (new.id, new.name);
+END;
+
+-- ============================================================
+-- Sources: anything a fact or measurement can cite.
+-- ============================================================
+CREATE TABLE sources (
+    id              INTEGER PRIMARY KEY,
+    citekey         TEXT,               -- stable id, e.g. matches vault sources/<citekey>.md
+    name            TEXT NOT NULL,
+    source_type     TEXT NOT NULL CHECK (source_type IN ('primary','secondary','tertiary')),
+    publisher       TEXT,
+    url             TEXT,
+    published_date  TEXT,
+    retrieved_date  TEXT,
+    description     TEXT,
+    origin_path     TEXT,               -- the actual file/table this source came from
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
+CREATE INDEX idx_sources_origin_path ON sources(origin_path);
+
+CREATE TABLE source_authors (
+    source_id       INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    author_id       INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
+    author_order    INTEGER NOT NULL DEFAULT 0,   -- position in the byline
+    PRIMARY KEY (source_id, author_id)
+);
+CREATE INDEX idx_source_authors_author ON source_authors(author_id);
+
+CREATE VIRTUAL TABLE sources_fts USING fts5(
+  name, description, content='sources', content_rowid='id'
+);
+CREATE TRIGGER sources_fts_ai AFTER INSERT ON sources BEGIN
+  INSERT INTO sources_fts(rowid, name, description) VALUES (new.id, new.name, new.description);
+END;
+CREATE TRIGGER sources_fts_ad AFTER DELETE ON sources BEGIN
+  INSERT INTO sources_fts(sources_fts, rowid, name, description) VALUES ('delete', old.id, old.name, old.description);
+END;
+CREATE TRIGGER sources_fts_au AFTER UPDATE ON sources BEGIN
+  INSERT INTO sources_fts(sources_fts, rowid, name, description) VALUES ('delete', old.id, old.name, old.description);
+  INSERT INTO sources_fts(rowid, name, description) VALUES (new.id, new.name, new.description);
+END;
+
+CREATE VIEW v_sources AS
+SELECT s.id, s.citekey, s.name, s.source_type,
+       GROUP_CONCAT(a.name, '; ') AS authors,
+       s.publisher, s.url, s.published_date, s.origin_path
+FROM sources s
+LEFT JOIN source_authors sa ON sa.source_id = s.id
+LEFT JOIN authors a ON a.id = sa.author_id
+GROUP BY s.id;
+
+-- ============================================================
+-- Metrics: the catalog of measurable things -- unit, display label, and
+-- (for a handful) which direction is favorable, kept in ONE place rather
+-- than re-typed on every measurement row or duplicated into UI code.
+-- ============================================================
+CREATE TABLE metrics (
+    id              INTEGER PRIMARY KEY,
+    key             TEXT NOT NULL UNIQUE,   -- e.g. 'body_fat_pct', 'set_bench_press_weight_lb'
+    label           TEXT NOT NULL,          -- human-readable, e.g. 'Body fat'
+    unit            TEXT,
+    good_direction  INTEGER CHECK (good_direction IN (-1, 0, 1))  -- 1 = up is favorable, -1 = down, 0/NULL = neutral
+);
+
+-- ============================================================
 -- Facts: interpretive/qualitative claims. Numeric+repeatable data belongs in
 -- `measurements` instead -- see feedback_structured_vs_prose_facts memory.
 -- ============================================================
 CREATE TABLE facts (
     id                      INTEGER PRIMARY KEY,
-    subject                 TEXT NOT NULL,
+    subject_id              INTEGER NOT NULL REFERENCES subjects(id),
     statement               TEXT NOT NULL,
     is_original_claim       INTEGER NOT NULL DEFAULT 0 CHECK (is_original_claim IN (0,1)),
     is_personal             INTEGER NOT NULL DEFAULT 1 CHECK (is_personal IN (0,1)),
@@ -58,7 +127,7 @@ CREATE TABLE facts (
     origin_path             TEXT,       -- the vault file this fact was extracted from
     notes                   TEXT
 );
-CREATE INDEX idx_facts_subject ON facts(subject);
+CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
 CREATE INDEX idx_facts_is_personal ON facts(is_personal);
 CREATE INDEX idx_facts_status ON facts(status);
@@ -74,21 +143,14 @@ CREATE TABLE fact_sources (
 CREATE INDEX idx_fact_sources_fact ON fact_sources(fact_id);
 CREATE INDEX idx_fact_sources_source ON fact_sources(source_id);
 
-CREATE TABLE fact_subjects (
-    fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
-    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
-    PRIMARY KEY (fact_id, subject_id)
-);
-
 -- ============================================================
 -- Measurements: structured numeric readings, one row per (metric, date).
 -- ============================================================
 CREATE TABLE measurements (
     id                  INTEGER PRIMARY KEY,
-    subject             TEXT NOT NULL,
-    metric              TEXT NOT NULL,      -- e.g. 'body_fat_pct', 'bmd_zscore'
+    subject_id          INTEGER NOT NULL REFERENCES subjects(id),
+    metric_id           INTEGER NOT NULL REFERENCES metrics(id),
     value               REAL NOT NULL,
-    unit                TEXT,
     measured_at         TEXT NOT NULL,      -- date the measurement was actually taken
     source_id           INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     trust_level         TEXT NOT NULL CHECK (trust_level IN ('verified','high','medium','low','unverified','disputed')),
@@ -100,8 +162,8 @@ CREATE TABLE measurements (
     recheck_rationale   TEXT,
     notes               TEXT
 );
-CREATE INDEX idx_measurements_metric ON measurements(metric, measured_at);
-CREATE INDEX idx_measurements_subject ON measurements(subject);
+CREATE INDEX idx_measurements_metric ON measurements(metric_id, measured_at);
+CREATE INDEX idx_measurements_subject ON measurements(subject_id);
 CREATE INDEX idx_measurements_is_personal ON measurements(is_personal);
 
 CREATE TABLE fact_measurements (
@@ -186,20 +248,24 @@ LEFT JOIN artists sa ON sa.id = ca.supporting_for_artist_id;
 -- ============================================================
 CREATE VIEW fact_with_sources AS
 SELECT
-    f.id AS fact_id, f.subject, f.statement, f.is_original_claim,
+    f.id AS fact_id, sub.name AS subject, f.statement, f.is_original_claim,
     f.trust_level, f.trust_rationale, f.date_added, f.recheck_by, f.recheck_rationale,
     GROUP_CONCAT(s.name, ' | ') AS sources,
     GROUP_CONCAT(s.source_type, ' | ') AS source_types
 FROM facts f
+JOIN subjects sub ON sub.id = f.subject_id
 LEFT JOIN fact_sources fs ON fs.fact_id = f.id
 LEFT JOIN sources s ON s.id = fs.source_id
 GROUP BY f.id;
 
 CREATE VIEW measurement_with_source AS
 SELECT
-    m.id AS measurement_id, m.subject, m.metric, m.value, m.unit, m.measured_at,
+    m.id AS measurement_id, sub.name AS subject, met.key AS metric, met.label AS metric_label,
+    m.value, met.unit, m.measured_at,
     m.trust_level, s.name AS source_name, s.source_type
 FROM measurements m
+JOIN subjects sub ON sub.id = m.subject_id
+JOIN metrics met ON met.id = m.metric_id
 JOIN sources s ON s.id = m.source_id;
 
 CREATE VIEW v_fact_tags AS
@@ -207,12 +273,12 @@ SELECT
     f.id AS fact_id, f.statement, f.trust_level, f.is_original_claim, f.is_personal, f.status,
     s.name AS subject, s.domain, p.name AS parent_subject
 FROM facts f
-JOIN subjects s ON s.name = f.subject
+JOIN subjects s ON s.id = f.subject_id
 LEFT JOIN subjects p ON p.id = s.parent_id;
 
 -- ============================================================
--- Full-text search (requires an FTS5-enabled sqlite3 -- Python's built-in
--- module has it; this machine's `sqlite3` CLI does not).
+-- Full-text search over facts (requires an FTS5-enabled sqlite3 -- Python's
+-- built-in module has it; this machine's `sqlite3` CLI does not).
 -- ============================================================
 CREATE VIRTUAL TABLE facts_fts USING fts5(
   statement, trust_rationale, notes, content='facts', content_rowid='id'
@@ -226,18 +292,4 @@ END;
 CREATE TRIGGER facts_fts_au AFTER UPDATE ON facts BEGIN
   INSERT INTO facts_fts(facts_fts, rowid, statement, trust_rationale, notes) VALUES ('delete', old.id, old.statement, old.trust_rationale, old.notes);
   INSERT INTO facts_fts(rowid, statement, trust_rationale, notes) VALUES (new.id, new.statement, new.trust_rationale, new.notes);
-END;
-
-CREATE VIRTUAL TABLE sources_fts USING fts5(
-  name, author, description, content='sources', content_rowid='id'
-);
-CREATE TRIGGER sources_fts_ai AFTER INSERT ON sources BEGIN
-  INSERT INTO sources_fts(rowid, name, author, description) VALUES (new.id, new.name, new.author, new.description);
-END;
-CREATE TRIGGER sources_fts_ad AFTER DELETE ON sources BEGIN
-  INSERT INTO sources_fts(sources_fts, rowid, name, author, description) VALUES ('delete', old.id, old.name, old.author, old.description);
-END;
-CREATE TRIGGER sources_fts_au AFTER UPDATE ON sources BEGIN
-  INSERT INTO sources_fts(sources_fts, rowid, name, author, description) VALUES ('delete', old.id, old.name, old.author, old.description);
-  INSERT INTO sources_fts(rowid, name, author, description) VALUES (new.id, new.name, new.author, new.description);
 END;
