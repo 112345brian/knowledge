@@ -26,6 +26,28 @@ def get_or_create_author(cur, name):
     return get_or_create(cur, "authors", "name", name)
 
 
+def load_artist_cache(cur):
+    """id keyed by lowercased name, for case-insensitive artist resolution
+    shared across the music ingest scripts (concerts/albums/scrobbles) --
+    Last.fm, RYM, and hand-typed concert names disagree on artist casing
+    ("JPEGMAFIA" vs "Jpegmafia") far more often than you'd guess, and SQL's
+    own NOCASE collation only folds ASCII, so the fold happens in Python."""
+    cache = {}
+    for id_, name in cur.execute("SELECT id, name FROM artists"):
+        cache.setdefault(name.lower(), id_)
+    return cache
+
+
+def get_or_create_artist(cur, cache, name):
+    key = name.lower()
+    if key in cache:
+        return cache[key]
+    cur.execute("INSERT INTO artists (name) VALUES (?)", (name,))
+    id_ = cur.lastrowid
+    cache[key] = id_
+    return id_
+
+
 def link_authors(cur, source_id, author_string):
     """Split a '; '-joined author string and link each to source_authors,
     preserving byline order. No-op if author_string is falsy."""

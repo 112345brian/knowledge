@@ -1,0 +1,106 @@
+"""Ingest a Last.fm scrobble export into `tracks`/`scrobbles`, reusing
+`artists` (shared with concert_attendances/albums) for artist identity.
+
+The export format is a list of *pages* (one per API call during the original
+scrape), each page a list of track dicts -- not a flat list of scrobbles.
+Flattening that is one trick; the other is that repeated text isn't stored
+per play -- 153k scrobbles collapse to ~30k distinct tracks (avg 5
+plays/track), so each gets one `tracks` row; and the source file path
+(previously repeated as ~80 bytes of text on all 153k rows, 12MB+ of pure
+duplication) gets one `import_sources` row instead. Same get-or-create /
+delete-by-source idempotency pattern as 07_ingest_concerts.py and
+08_ingest_music_ratings.py otherwise.
+
+At ~150k rows this is far bigger than any other single ingest in this db, so
+artist and track lookups are batched through in-memory caches instead of one
+SELECT per row, and rows are inserted with executemany.
+
+NOTE: iter_scrobbles() and the artist-cache helpers are duplicated (not
+imported) in <RAVE_RECOMMENDER_DIR>/import_scrobbles.py, which
+parses the same Last.fm export into a separate rave.db. That's deliberate --
+the two repos are independent on purpose -- but it means a parsing fix here
+(e.g. if Last.fm changes its export shape) needs to be made there too.
+"""
+import sqlite3, json, os, datetime
+from _shared import load_artist_cache, get_or_create_artist, get_or_create
+
+SCROBBLES_PATH = os.path.expanduser(
+    "<SCROBBLES_JSON>"
+)
+
+
+def iter_scrobbles(path):
+    with open(path) as f:
+        pages = json.load(f)
+    for page in pages:
+        for t in page:
+            date = t.get("date")
+            if not date:
+                continue  # "now playing" entries from the API carry no date
+            artist = (t.get("artist") or {}).get("#text", "").strip()
+            track = (t.get("name") or "").strip()
+            album = ((t.get("album") or {}).get("#text", "") or "").strip()
+            uts = date.get("uts")
+            if not artist or not track or not uts:
+                continue
+            played_at = datetime.datetime.fromtimestamp(int(uts), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            yield artist, track, album, played_at
+
+
+def get_or_create_track(cur, cache, artist_id, title, album):
+    key = (artist_id, title, album)
+    if key in cache:
+        return cache[key]
+    cur.execute("INSERT INTO tracks (artist_id, title, album) VALUES (?, ?, ?)", key)
+    cache[key] = cur.lastrowid
+    return cache[key]
+
+
+def run(con):
+    cur = con.cursor()
+
+    if not os.path.exists(SCROBBLES_PATH):
+        print(f"[09_ingest_scrobbles] {SCROBBLES_PATH} not found, skipping")
+        return
+
+    import_source_id = get_or_create(cur, "import_sources", "path", SCROBBLES_PATH)
+    cur.execute("DELETE FROM scrobbles WHERE import_source_id = ?", (import_source_id,))
+
+    scrobbles = list(iter_scrobbles(SCROBBLES_PATH))
+
+    artist_cache = load_artist_cache(cur)
+    before_artists = len(artist_cache)
+    artist_ids = {}
+    for artist, *_ in scrobbles:
+        if artist not in artist_ids:
+            artist_ids[artist] = get_or_create_artist(cur, artist_cache, artist)
+    new_artists = len(artist_cache) - before_artists
+
+    track_cache = {
+        (artist_id, title, album): id_
+        for id_, artist_id, title, album in cur.execute("SELECT id, artist_id, title, album FROM tracks")
+    }
+    before_tracks = len(track_cache)
+    rows = []
+    for artist, track, album, played_at in scrobbles:
+        track_id = get_or_create_track(cur, track_cache, artist_ids[artist], track, album)
+        rows.append((track_id, played_at, import_source_id))
+    new_tracks = len(track_cache) - before_tracks
+
+    cur.executemany(
+        "INSERT OR IGNORE INTO scrobbles (track_id, played_at, import_source_id) VALUES (?, ?, ?)",
+        rows,
+    )
+
+    con.commit()
+    print(f"[09_ingest_scrobbles] parsed {len(scrobbles)} scrobbles, {new_artists} new artists, {new_tracks} new tracks")
+    print(f"  scrobbles: {cur.execute('SELECT COUNT(*) FROM scrobbles').fetchone()[0]}, "
+          f"tracks: {cur.execute('SELECT COUNT(*) FROM tracks').fetchone()[0]}, "
+          f"artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}")
+
+
+if __name__ == "__main__":
+    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
+    con.execute("PRAGMA foreign_keys = ON;")
+    run(con)
+    con.close()

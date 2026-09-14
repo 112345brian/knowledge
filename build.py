@@ -14,6 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LIVE_DB = os.path.join(HERE, "knowledge.db")
 SCHEMA = os.path.join(HERE, "schema.sql")
 BACKUP_DIR = os.path.join(HERE, "backups")
+KEEP_BACKUPS = 5
 
 STEPS = [
     "01_seed_sources.py",
@@ -23,6 +24,8 @@ STEPS = [
     "05_seed_claims.py",
     "06_seed_subject_hierarchy.py",
     "07_ingest_concerts.py",
+    "08_ingest_music_ratings.py",
+    "09_ingest_scrobbles.py",
 ]
 
 
@@ -43,7 +46,21 @@ def build(target_path):
         mod = load_module(os.path.join(HERE, step))
         mod.run(con)
     con.execute("VACUUM;")
+    con.execute("ANALYZE;")
     con.close()
+
+
+def prune_backups(keep=KEEP_BACKUPS):
+    """Keep only the `keep` most recent backups -- scrobbles pushed a
+    routine backup from a few hundred KB to 20-45MB, so leaving these
+    unpruned turns every rebuild into unbounded disk growth."""
+    backups = sorted(
+        (f for f in os.listdir(BACKUP_DIR) if f.startswith("knowledge.db.bak-")),
+        reverse=True,
+    )
+    for old in backups[keep:]:
+        os.remove(os.path.join(BACKUP_DIR, old))
+        print(f"  pruned old backup {old}")
 
 
 def report(path):
@@ -53,7 +70,8 @@ def report(path):
                   "vault_files", "claims", "claim_facts", "fact_sources", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "muscles", "muscle_volume_weekly",
-                  "artists", "venues", "festivals", "concert_attendances"):
+                  "artists", "venues", "festivals", "concert_attendances", "albums", "tracks",
+                  "import_sources", "scrobbles"):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
     con.close()
@@ -76,6 +94,7 @@ def main():
         backup = os.path.join(BACKUP_DIR, f"knowledge.db.bak-{datetime.datetime.now():%Y%m%dT%H%M%S}")
         shutil.copy2(LIVE_DB, backup)
         print(f"Backed up existing DB to {backup}")
+        prune_backups()
 
     print(f"Rebuilding {LIVE_DB}...")
     build(LIVE_DB)

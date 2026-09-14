@@ -13,6 +13,7 @@ festivals become orphaned only if nothing else references them, which is
 fine -- they're just not re-created if already present).
 """
 import sqlite3, csv, os, re
+from _shared import load_artist_cache, get_or_create_artist
 
 CSV_PATH = os.path.expanduser("<CONCERTS_CSV>")
 
@@ -75,7 +76,9 @@ def get_or_create(cur, table, **fields):
 
 def run(con):
     cur = con.cursor()
-    cur.execute("DELETE FROM concert_attendances WHERE source_file = ?", (CSV_PATH,))
+    import_source_id = get_or_create(cur, "import_sources", path=CSV_PATH)
+    cur.execute("DELETE FROM concert_attendances WHERE import_source_id = ?", (import_source_id,))
+    artist_cache = load_artist_cache(cur)
 
     inserted = 0
     unresolved_festival_names = 0
@@ -96,16 +99,16 @@ def run(con):
                 unresolved_festival_names += 1
             billing_counts[billing] = billing_counts.get(billing, 0) + 1
 
-            artist_id = get_or_create(cur, "artists", name=name)
+            artist_id = get_or_create_artist(cur, artist_cache, name)
             venue_id = get_or_create(cur, "venues", name=venue, city_state=city_state) if venue else None
             festival_id = get_or_create(cur, "festivals", name=festival_name) if festival_name else None
-            supporting_id = get_or_create(cur, "artists", name=supporting_for) if supporting_for else None
+            supporting_id = get_or_create_artist(cur, artist_cache, supporting_for) if supporting_for else None
 
             cur.execute(
                 """INSERT INTO concert_attendances (artist_id, start_date, end_date, venue_id, festival_id,
-                                                      billing, supporting_for_artist_id, notes, domain, source_file)
+                                                      billing, supporting_for_artist_id, notes, domain, import_source_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'music', ?)""",
-                (artist_id, start_date, end_date, venue_id, festival_id, billing, supporting_id, notes, CSV_PATH),
+                (artist_id, start_date, end_date, venue_id, festival_id, billing, supporting_id, notes, import_source_id),
             )
             inserted += 1
 
