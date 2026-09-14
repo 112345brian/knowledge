@@ -9,13 +9,18 @@ listed as '김뜻돌' / 'Meaningful Stone'). The localized name is what a human
 would recognize and is what the artists table should carry, so it's
 preferred over the raw name when present.
 
+RYM also HTML-escapes special characters in both fields (a joint credit like
+"Freddie Gibbs & Madlib" is stored literally as "Gibbs &amp; Madlib") --
+get_or_create_artist() unescapes artist names; the title field isn't routed
+through that helper, so it's unescaped directly here.
+
 Ownership/Purchase Date/Media Type columns are present in the export but
 every row is blank/'n' -- no information to ingest, so they're dropped
 rather than carried into empty columns.
 
 Idempotent: re-running deletes and re-inserts this source file's own albums.
 """
-import sqlite3, csv, os
+import sqlite3, csv, os, html
 from _shared import load_artist_cache, get_or_create_artist, get_or_create
 
 CSV_PATH = os.path.expanduser("<RYM_EXPORT_CSV>")
@@ -38,7 +43,7 @@ def run(con):
     with open(CSV_PATH, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             name = artist_name(row)
-            title = row["Title"].strip()
+            title = html.unescape(row["Title"].strip())
             if not name or not title:
                 continue
 

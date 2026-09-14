@@ -1,5 +1,6 @@
 """Small helpers shared across ingest scripts -- author/publisher/vault-file
 normalization (get-or-create against a dimension table, never repeated text)."""
+import html
 
 
 def get_or_create(cur, table, name_col, name):
@@ -38,7 +39,65 @@ def load_artist_cache(cur):
     return cache
 
 
+# Same-artist spelling variants that case-folding alone doesn't catch --
+# punctuation/spacing/stylization differences across RYM, Last.fm, and
+# hand-typed concert names ("TR/ST" vs "TRST", "Bri" vs "Brian Powers").
+# Found by normalizing every artists.name to lower+alnum-only and grouping.
+# A joint credit like "Freddie Gibbs & Madlib" stays its OWN artist row --
+# see ARTIST_MEMBERS below for how its real members get recorded without
+# decomposing every track/album it's credited on.
+# Keys are lowercased; values are the canonical name to store instead.
+ARTIST_ALIASES = {
+    "ahn dayoung": "Ahn Da-young",
+    "black eyed peas": "The Black Eyed Peas",
+    "body": "The Body",
+    "brave little abacus": "The Brave Little Abacus",
+    "chaoschaos": "Chaos Chaos",
+    "combatwoundedveteran": "Combat Wounded Veteran",
+    "the destroyer": "Destroyer",
+    "e l u c i d": "Elucid",
+    "フィッシュマンズ [fishmans]": "Fishmans",
+    "freddie gibbs, madlib": "Freddie Gibbs & Madlib",
+    "harunemuri": "Haru Nemuri",
+    "jay z": "JAY-Z",
+    "j.i.d": "JID",
+    "lil' wayne": "Lil Wayne",
+    "(liv).e": "Liv.e",
+    "locust": "The Locust",
+    "l’rain": "L'Rain",
+    "マクロスmacross 82-99": "Macross 82-99",
+    "microphones": "The Microphones",
+    "the misfits": "Misfits",
+    "n*e*r*d": "N.E.R.D",
+    "parrygripp": "Parry Gripp",
+    "the peace": "Peace",
+    "rah band": "The Rah Band",
+    "the ramones": "Ramones",
+    "ratboy": "RAT BOY",
+    "seeyouspacecowboy...": "SeeYouSpaceCowboy",
+    "smashing pumpkins": "The Smashing Pumpkins",
+    "the spirit of the beehive": "Spirit of the Beehive",
+    "spiritualized®": "Spiritualized",
+    "スティーブ・ハイェット [steve hiett]": "Steve Hiett",
+    "落日飛車 sunset rollercoaster": "Sunset Rollercoaster",
+    "three-6 mafia": "Three 6 Mafia",
+    "three 6 mafia": "Three 6 Mafia",
+    "t. p. orchestre poly-rythmo": "T.P. Orchestre Poly-Rythmo",
+    "trst": "TR/ST",
+    "tyler  the creator": "Tyler, The Creator",
+    "tyler the creator": "Tyler, The Creator",
+    "x-marks the pedwalk": "X Marks the Pedwalk",
+    "bri": "Brian Powers",
+}
+
+
 def get_or_create_artist(cur, cache, name):
+    # RYM's export HTML-escapes special characters (stored literally as
+    # "Gibbs &amp; Madlib") and never gets decoded before this -- same class
+    # of bug the sibling rave-recommender project already found and fixed
+    # in its own v1->v2 migration ("Fred again.. &amp; Skrillex").
+    name = html.unescape(name)
+    name = ARTIST_ALIASES.get(name.lower(), name)
     key = name.lower()
     if key in cache:
         return cache[key]
@@ -46,6 +105,35 @@ def get_or_create_artist(cur, cache, name):
     id_ = cur.lastrowid
     cache[key] = id_
     return id_
+
+
+# Group/collab credits and their real members -- an artist-to-artist fact,
+# not tied to any specific track/album (see the artist_members comment in
+# schema.sql for why decomposing per-credit was tried and reverted). Curated
+# by hand, same spirit as ARTIST_ALIASES: add an entry when you notice one.
+ARTIST_MEMBERS = {
+    "Freddie Gibbs & Madlib": ["Freddie Gibbs", "Madlib"],
+    "Madvillain": ["Madlib", "MF DOOM"],
+    "We Needed This and Brian Powers": ["We Needed This", "Brian Powers"],
+}
+
+
+def seed_artist_members(cur, cache):
+    """Populate artist_members from ARTIST_MEMBERS. Call after the ingest
+    scripts have run, so the real member artists (e.g. "Madlib") already
+    exist from their own solo credits rather than being created fresh here
+    with no other data attached."""
+    inserted = 0
+    for group_name, member_names in ARTIST_MEMBERS.items():
+        group_id = get_or_create_artist(cur, cache, group_name)
+        for member_name in member_names:
+            member_id = get_or_create_artist(cur, cache, member_name)
+            cur.execute(
+                "INSERT OR IGNORE INTO artist_members (artist_id, member_id) VALUES (?, ?)",
+                (group_id, member_id),
+            )
+            inserted += cur.rowcount
+    return inserted
 
 
 def link_authors(cur, source_id, author_string):

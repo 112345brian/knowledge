@@ -400,6 +400,29 @@ LEFT JOIN festivals f ON f.id = ca.festival_id
 LEFT JOIN artists sa ON sa.id = ca.supporting_for_artist_id;
 
 -- ============================================================
+-- Artist members: a group/collab credit ("Freddie Gibbs & Madlib",
+-- "Madvillain") stays ONE artist row -- same as the source data actually
+-- writes it -- rather than being decomposed per track/album. Attempting
+-- that decomposition (tried and reverted) ran straight into real-world
+-- mess: RYM stores the ampersand HTML-escaped ("Gibbs &amp; Madlib"),
+-- Last.fm scrobbles four-way feature lists as one string ("Freddie Gibbs,
+-- Madlib, Domo Genesis, Earl Sweatshirt"), and sometimes lists a duo
+-- ALONGSIDE its own members ("Madvillain, Madlib, MF DOOM"). Splitting
+-- every such string is a parsing problem with no safe general rule (see
+-- ARTIST_ALIASES' note on "Earth, Wind & Fire"), so it's not attempted here.
+-- Instead: the credit stays one artist row, and this table records which
+-- other artists (real people, or another act) are its members -- an
+-- artist-to-artist fact, decoupled from any specific track/album. Curated
+-- by hand (see ARTIST_MEMBERS in _shared.py), same spirit as ARTIST_ALIASES.
+-- ============================================================
+CREATE TABLE artist_members (
+    artist_id   INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,  -- the group/collab act
+    member_id   INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,  -- one of its members
+    PRIMARY KEY (artist_id, member_id)
+);
+CREATE INDEX idx_artist_members_member ON artist_members(member_id);
+
+-- ============================================================
 -- Albums: RYM ratings export. Reuses the `artists` table from the concerts
 -- domain -- same entity ("how many times have I seen X" and "what has X
 -- released that I've rated" should join through one artists row, not two).
@@ -423,6 +446,17 @@ CREATE INDEX idx_albums_rating ON albums(rating);
 CREATE VIEW v_albums AS
 SELECT al.id, ar.name AS artist, al.title, al.release_year, al.rating
 FROM albums al JOIN artists ar ON ar.id = al.artist_id;
+
+-- "Everything credited to X, directly OR as a member of a credited group"
+-- -- e.g. Madlib's solo albums plus Freddie Gibbs & Madlib's.
+CREATE VIEW v_albums_with_member_credits AS
+SELECT al.id, ar.name AS artist, al.title, al.release_year, al.rating, 0 AS via_group
+FROM albums al JOIN artists ar ON ar.id = al.artist_id
+UNION ALL
+SELECT al.id, m.name AS artist, al.title, al.release_year, al.rating, 1 AS via_group
+FROM albums al
+JOIN artist_members am ON am.artist_id = al.artist_id
+JOIN artists m ON m.id = am.member_id;
 
 -- ============================================================
 -- Scrobbles: raw Last.fm play history. One row per play -- deliberately not

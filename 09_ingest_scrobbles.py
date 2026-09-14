@@ -15,6 +15,14 @@ At ~150k rows this is far bigger than any other single ingest in this db, so
 artist and track lookups are batched through in-memory caches instead of one
 SELECT per row, and rows are inserted with executemany.
 
+Last.fm scrobbles a group/collab credit as one artist string, sometimes a
+four-way feature list ("Freddie Gibbs, Madlib, Domo Genesis, Earl
+Sweatshirt") or a duo alongside its own members ("Madvillain, Madlib, MF
+DOOM") -- there's no safe general rule for splitting that, so each such
+string just becomes its own artist row like any other, and real membership
+facts ("Madvillain's members are Madlib and MF DOOM") are curated separately
+in artist_members (see ARTIST_MEMBERS in _shared.py), not derived here.
+
 NOTE: iter_scrobbles() and the artist-cache helpers are duplicated (not
 imported) in <RAVE_RECOMMENDER_DIR>/import_scrobbles.py, which
 parses the same Last.fm export into a separate rave.db. That's deliberate --

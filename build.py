@@ -26,6 +26,7 @@ STEPS = [
     "07_ingest_concerts.py",
     "08_ingest_music_ratings.py",
     "09_ingest_scrobbles.py",
+    "10_seed_artist_members.py",
 ]
 
 
@@ -70,8 +71,8 @@ def report(path):
                   "vault_files", "claims", "claim_facts", "fact_sources", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "muscles", "muscle_volume_weekly",
-                  "artists", "venues", "festivals", "concert_attendances", "albums", "tracks",
-                  "import_sources", "scrobbles"):
+                  "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",
+                  "tracks", "import_sources", "scrobbles"):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
     con.close()

@@ -30,9 +30,9 @@ def build_export(con):
 
     albums = rows_as_dicts(
         cur,
-        "SELECT ar.name AS artist, al.title, al.release_year, al.rating, al.rym_id "
-        "FROM albums al JOIN artists ar ON ar.id = al.artist_id "
-        "ORDER BY ar.name, al.release_year",
+        "SELECT v.artist, v.title, v.release_year, v.rating, al.rym_id "
+        "FROM v_albums v JOIN albums al ON al.id = v.id "
+        "ORDER BY v.artist, v.release_year",
     )
 
     concerts = rows_as_dicts(
@@ -41,16 +41,19 @@ def build_export(con):
         "FROM v_concert_attendances ORDER BY start_date",
     )
 
+    # Counts direct credits AND albums credited to a group this artist is a
+    # member of (e.g. Madlib picks up "Freddie Gibbs & Madlib" albums too),
+    # via v_albums_with_member_credits -- see schema.sql on artist_members.
     artists = rows_as_dicts(
         cur,
         """
         SELECT
             a.name AS artist,
-            COUNT(DISTINCT al.id) AS albums_rated,
-            ROUND(AVG(al.rating), 2) AS avg_album_rating,
+            COUNT(DISTINCT v.id) AS albums_rated,
+            ROUND(AVG(v.rating), 2) AS avg_album_rating,
             COUNT(DISTINCT ca.id) AS concerts_seen
         FROM artists a
-        LEFT JOIN albums al ON al.artist_id = a.id
+        LEFT JOIN v_albums_with_member_credits v ON v.artist = a.name
         LEFT JOIN concert_attendances ca ON ca.artist_id = a.id
         GROUP BY a.id
         HAVING albums_rated > 0 OR concerts_seen > 0
