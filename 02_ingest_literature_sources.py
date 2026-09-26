@@ -6,9 +6,9 @@ import sqlite3, os, re, glob, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import link_authors, get_or_create_publisher
+from paths import BODYBUILDING_VAULT as VAULT
 
-SRC_DIR = os.path.expanduser("<BODYBUILDING_VAULT>/sources")
-VAULT = "<BODYBUILDING_VAULT>"
+SRC_DIR = os.path.expanduser(f"{VAULT}/sources")
 
 TYPE_MAP = {
     "peer-reviewed-study": "primary", "primary": "primary", "primary-research": "primary",

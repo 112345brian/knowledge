@@ -12,9 +12,8 @@ import sqlite3, json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import get_or_create_vault_file
+from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-VAULT = "<BODYBUILDING_VAULT>"
 TODAY = "2026-09-11"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 

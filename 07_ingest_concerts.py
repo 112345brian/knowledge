@@ -14,8 +14,9 @@ fine -- they're just not re-created if already present).
 """
 import sqlite3, csv, os, re
 from _shared import load_artist_cache, get_or_create_artist
+from paths import CONCERTS_CSV
 
-CSV_PATH = os.path.expanduser("<CONCERTS_CSV>")
+CSV_PATH = os.path.expanduser(CONCERTS_CSV)
 
 KNOWN_FESTIVALS = {
     "Camp Flog Gnaw", "Flog Gnaw", "Coachella", "Bonnaroo", "Primavera Sound",

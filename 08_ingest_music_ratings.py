@@ -22,8 +22,9 @@ Idempotent: re-running deletes and re-inserts this source file's own albums.
 """
 import sqlite3, csv, os, html
 from _shared import load_artist_cache, get_or_create_artist, get_or_create
+from paths import RYM_EXPORT_CSV
 
-CSV_PATH = os.path.expanduser("<RYM_EXPORT_CSV>")
+CSV_PATH = os.path.expanduser(RYM_EXPORT_CSV)
 
 
 def artist_name(row):

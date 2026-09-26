@@ -10,10 +10,13 @@ Usage:
 """
 import sqlite3, os, sys, shutil, datetime, importlib.util
 
+from paths import KNOWLEDGE_DB_DIR
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-LIVE_DB = os.path.join(HERE, "knowledge.db")
+DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
+LIVE_DB = os.path.join(DB_DIR, "knowledge.db")
 SCHEMA = os.path.join(HERE, "schema.sql")
-BACKUP_DIR = os.path.join(HERE, "backups")
+BACKUP_DIR = os.path.join(DB_DIR, "backups")
 KEEP_BACKUPS = 5
 
 STEPS = [
@@ -27,6 +30,7 @@ STEPS = [
     "08_ingest_music_ratings.py",
     "09_ingest_scrobbles.py",
     "10_seed_artist_members.py",
+    "11_seed_general_facts.py",
 ]
 
 
@@ -90,6 +94,7 @@ def main():
         os.remove(tmp)
         return
 
+    os.makedirs(DB_DIR, exist_ok=True)
     if os.path.exists(LIVE_DB):
         os.makedirs(BACKUP_DIR, exist_ok=True)
         backup = os.path.join(BACKUP_DIR, f"knowledge.db.bak-{datetime.datetime.now():%Y%m%dT%H%M%S}")

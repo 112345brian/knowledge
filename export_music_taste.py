@@ -15,8 +15,9 @@ Usage:
 """
 import sqlite3, os, sys, json, argparse
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(HERE, "knowledge.db")
+from paths import KNOWLEDGE_DB_DIR
+
+DB = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 
 
 def rows_as_dicts(cur, sql):

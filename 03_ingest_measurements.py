@@ -13,8 +13,9 @@ Source: <BODYBUILDING_VAULT>/bodybuilding.db
 """
 import sqlite3, os, re
 
-VAULT_DB = os.path.expanduser("<BODYBUILDING_VAULT>/bodybuilding.db")
-VAULT = "<BODYBUILDING_VAULT>"
+from paths import BODYBUILDING_VAULT as VAULT
+
+VAULT_DB = os.path.expanduser(f"{VAULT}/bodybuilding.db")
 TODAY = "2026-09-11"
 
 # Curated labels/good-direction for the metrics worth a human-friendly name.

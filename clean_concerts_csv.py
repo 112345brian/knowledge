@@ -11,7 +11,9 @@ through unchanged.
 """
 import csv, os
 
-CSV_PATH = os.path.expanduser("<CONCERTS_CSV>")
+from paths import CONCERTS_CSV
+
+CSV_PATH = os.path.expanduser(CONCERTS_CSV)
 
 
 def clean():

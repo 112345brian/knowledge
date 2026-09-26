@@ -31,10 +31,9 @@ the two repos are independent on purpose -- but it means a parsing fix here
 """
 import sqlite3, json, os, datetime
 from _shared import load_artist_cache, get_or_create_artist, get_or_create
+from paths import SCROBBLES_JSON
 
-SCROBBLES_PATH = os.path.expanduser(
-    "<SCROBBLES_JSON>"
-)
+SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)
 
 
 def iter_scrobbles(path):
