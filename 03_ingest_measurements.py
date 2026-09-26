@@ -9,7 +9,7 @@ entity tables -- a set or a food-log line is one event with several
 co-occurring attributes, not independent measurements sharing a date.
 Run after 01_seed_sources.py (needs its citekeys to exist).
 
-Source: <BODYBUILDING_VAULT>/bodybuilding.db
+Source: the bodybuilding vault's own bodybuilding.db (see paths.py -> BODYBUILDING_VAULT)
 """
 import sqlite3, os, re
 

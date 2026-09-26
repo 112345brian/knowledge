@@ -53,7 +53,7 @@ def resolve_origin_path(notes_text):
     """Extract the vault .md file a batch-extracted fact's `notes` references."""
     if not notes_text:
         return None
-    m = re.search(r"(<BODYBUILDING_VAULT>/[^,]+?\.md)", notes_text)
+    m = re.search(r"(" + re.escape(VAULT) + r"/[^,]+?\.md)", notes_text)
     if m:
         return m.group(1)
     if notes_text.startswith("harm-reduction/"):

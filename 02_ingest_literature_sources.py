@@ -1,4 +1,4 @@
-"""Parse every <BODYBUILDING_VAULT>/sources/*.md citation note's
+"""Parse every citation note's (sources/*.md, see paths.py -> BODYBUILDING_VAULT)
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after 01_seed_sources.py.
 """

@@ -24,7 +24,7 @@ facts ("Madvillain's members are Madlib and MF DOOM") are curated separately
 in artist_members (see ARTIST_MEMBERS in _shared.py), not derived here.
 
 NOTE: iter_scrobbles() and the artist-cache helpers are duplicated (not
-imported) in <RAVE_RECOMMENDER_DIR>/import_scrobbles.py, which
+imported) in a sibling personal project's import_scrobbles.py, which
 parses the same Last.fm export into a separate rave.db. That's deliberate --
 the two repos are independent on purpose -- but it means a parsing fix here
 (e.g. if Last.fm changes its export shape) needs to be made there too.

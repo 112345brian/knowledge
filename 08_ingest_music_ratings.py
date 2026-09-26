@@ -1,4 +1,4 @@
-"""Ingest <RYM_EXPORT_CSV> (a RateYourMusic
+"""Ingest the RYM ratings export (see paths.py -> RYM_EXPORT_CSV) (a RateYourMusic
 ratings export) into the `albums` table, reusing the `artists` table shared
 with the concerts domain so an artist seen live and an artist rated on RYM
 are the same row.

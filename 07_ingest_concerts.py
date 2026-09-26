@@ -1,4 +1,4 @@
-"""Ingest <CONCERTS_CSV> into the normalized
+"""Ingest the concerts export CSV (see paths.py -> CONCERTS_CSV) into the normalized
 artists / venues / festivals / concert_attendances tables. Concert-going is
 neither a `facts` claim (no trust/provenance dimension) nor a `measurements`
 metric (not a scalar) -- its own shape. And within that shape, artist/venue/

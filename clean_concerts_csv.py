@@ -1,5 +1,5 @@
 """One-time (but re-runnable/idempotent) cleanup of
-<CONCERTS_CSV>:
+the concerts export CSV (see paths.py -> CONCERTS_CSV):
   - strips stray whitespace from every field
   - drops exact duplicate rows (same name/date/location)
   - merges near-duplicates that differ only by location specificity
