@@ -8,6 +8,7 @@ import concurrent.futures
 import importlib.util
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -18,7 +19,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 
-ORDERED_FULL_KEYS = ["subject", "statement", "trust_level", "is_original_claim", "is_personal",
+ORDERED_FULL_KEYS = ["subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility",
                      "domain", "trust_rationale", "notes", "recheck_by", "recheck_rationale",
                      "source_citekey", "source_locator", "source_quote"]
 
@@ -70,10 +71,13 @@ def env(tmp_path):
 def test_minimal_add_shape_and_defaults(env):
     r = env.cli("  Hello world.  ", "--subject", "car-maintenance", "--trust", "medium")
     assert r.returncode == 0, r.stderr
-    assert env.entries() == [{
+    (entry,) = env.entries()
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", entry.pop("date_added"))  # #19
+    assert entry.pop("visibility") == "private"  # #20
+    assert entry == {
         "subject": "car-maintenance", "statement": "Hello world.", "trust_level": "medium",
         "is_original_claim": False, "is_personal": True,
-    }]
+    }
     assert "Added to " in r.stdout and "general_facts.json" in r.stdout and "(1 facts total)" in r.stdout
     assert "python3 build.py" in r.stdout
 
@@ -293,7 +297,7 @@ def test_failed_replace_leaves_original_intact_and_no_temp_files(af, tmp_path, m
 
 def test_build_entry_matches_cli_shape(af):
     entry = af.build_entry(fact(af, domain="health", notes="n"))
-    assert list(entry.keys()) == ["subject", "statement", "trust_level", "is_original_claim", "is_personal", "domain", "notes"]
+    assert list(entry.keys()) == ["subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "domain", "notes"]
 
 
 def test_a_successful_add_leaves_only_the_facts_file_in_the_data_dir(env):
@@ -316,3 +320,25 @@ def test_file_permissions_are_preserved_on_rewrite(env):
     os.chmod(env.facts, 0o640)
     env.cli("S.", "--subject", "x", "--trust", "low")
     assert (os.stat(env.facts).st_mode & 0o777) == 0o640
+
+
+# ---------------------------------------------------------------- #19: date_added
+
+def test_cli_writes_a_frozen_utc_date_added(env):
+    env.env["KNOWLEDGE_FROZEN_NOW"] = "2026-10-03T08:00:00+00:00"
+    assert env.cli("S.", "--subject", "x", "--trust", "low").returncode == 0
+    assert env.entries()[0]["date_added"] == "2026-10-03T08:00:00+00:00"
+
+
+def test_each_add_gets_its_own_date(env):
+    env.env["KNOWLEDGE_FROZEN_NOW"] = "2026-10-03T08:00:00+00:00"
+    env.cli("A.", "--subject", "x", "--trust", "low")
+    env.env["KNOWLEDGE_FROZEN_NOW"] = "2026-10-04T09:30:00+00:00"
+    env.cli("B.", "--subject", "x", "--trust", "low")
+    assert [e["date_added"] for e in env.entries()] == ["2026-10-03T08:00:00+00:00", "2026-10-04T09:30:00+00:00"]
+
+
+def test_a_bad_frozen_clock_is_not_silently_replaced_by_the_real_one(env):
+    env.env["KNOWLEDGE_FROZEN_NOW"] = "garbage"
+    r = env.cli("S.", "--subject", "x", "--trust", "low")
+    assert r.returncode != 0 and not os.path.exists(env.facts)

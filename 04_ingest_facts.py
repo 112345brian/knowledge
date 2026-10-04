@@ -14,8 +14,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import get_or_create_vault_file
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 
-TODAY = "2026-09-11"
+# Documented fallback for entries with no `date_added` of their own. It is the
+# date the original batch was loaded, kept so that rebuilds don't change those rows.
+LEGACY_DATE_ADDED = "2026-09-11"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
+VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 
 PRONOUN_RE = re.compile(r'\b(he|his|him|the vault owner|vault owner)\b', re.IGNORECASE)
 FINGERPRINT_RE = re.compile(
@@ -128,6 +131,13 @@ def run(con):
         if not subj or not stmt or trust not in VALID_TRUST:
             skipped += 1
             continue
+        visibility = item.get("visibility")
+        if visibility is None:
+            visibility = "private"  # unmarked facts are private; never derived from is_personal
+        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
+            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
@@ -137,12 +147,15 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
+        date_added = item.get("date_added") or LEGACY_DATE_ADDED
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
-                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?)""",
+                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
+                                   captured_via, session_id, captured_at, source_quote)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
-             TODAY, TODAY, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id)
+             date_added, date_added, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
+             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"))
         )
         fact_id = cur.lastrowid
 
