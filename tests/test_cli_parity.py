@@ -35,12 +35,22 @@ def test_registry_fails_for_a_stub_action_without_a_command(group):
     assert cli_parity.actions_without_command(stub, group) == ["nested", "stub_action"]
 
 
-READ_COMMANDS = ("search", "show", "subjects", "facts")
+READ_COMMANDS = ("search", "show", "subjects", "facts", "review-pending")
 
 
 @pytest.mark.parametrize("name", READ_COMMANDS)
 def test_read_commands_have_json_flag(group, name):
     assert "--json" in {o for p in group.commands[name].params for o in p.opts}
+
+
+@pytest.mark.parametrize("name", ("approve", "reject"))
+def test_review_write_commands_report_json_too(group, name):
+    assert "--json" in {o for p in group.commands[name].params for o in p.opts}
+
+
+@pytest.mark.parametrize("name", ("search", "facts", "subjects"))
+def test_status_filtered_reads_offer_include_pending(group, name):
+    assert "--include-pending" in {o for p in group.commands[name].params for o in p.opts}
 
 
 def _check_layer(modname):

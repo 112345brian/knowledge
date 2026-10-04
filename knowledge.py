@@ -4,15 +4,18 @@
     knowledge.py build [--check]
     knowledge.py add-fact "statement" --subject x --trust medium ...
     knowledge.py clean-concerts
-    knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--limit N] [--json]
+    knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--status S] [--include-pending] [--limit N] [--json]
     knowledge.py show <fact_id> [--as-of DATE] [--json]
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
     knowledge.py privacy check "statement" --subject s [--requested normal|private] [--json]
     knowledge.py privacy rules [--json]
     knowledge.py privacy tag|untag <subject> / add-keyword|remove-keyword <word>  [--allow-dirty] [--dry-run]
-    knowledge.py subjects [--json]
-    knowledge.py facts [--subject x] [--trust high] [--status active] [--personal-only|--not-personal] [--limit N] [--json]
+    knowledge.py subjects [--include-pending] [--json]
+    knowledge.py facts [--subject x] [--trust high] [--status active|pending|...] [--include-pending] [--personal-only|--not-personal] [--limit N] [--json]
+    knowledge.py review-pending [--json]
+    knowledge.py approve REF... | --all [--reason TEXT] [--allow-dirty] [--json]
+    knowledge.py reject REF... --reason TEXT [--allow-dirty] [--json]
 
 Convention (issue #34), for every later command: the library function comes
 first (pure, importable, returns data, never prints or exits), the Typer
@@ -33,7 +36,7 @@ import pathlib
 import sqlite3
 import subprocess
 import sys
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -41,6 +44,7 @@ import add_fact
 import claims_audit
 import private_git
 import privacy
+import review
 import revisions
 from paths import KNOWLEDGE_DB_DIR
 
@@ -58,6 +62,7 @@ class Trust(str, enum.Enum):
 
 
 class Status(str, enum.Enum):
+    pending = "pending"
     active = "active"
     superseded = "superseded"
     retracted = "retracted"
@@ -82,8 +87,16 @@ def connect(db_path=None):
 
 # ---- query functions: take a connection, return plain dicts, never print or exit ----
 
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None):
-    """Append the shared fact filters. `personal` is True / False / None (no filter)."""
+def _visible_statuses(include_pending):
+    """Statuses shown when the caller names none: active only (#6), plus pending on request.
+    Superseded and retracted facts need an explicit status filter. Same rule as modes.py."""
+    return ("active", "pending") if include_pending else ("active",)
+
+
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False):
+    """Append the shared fact filters. `personal` is True / False / None (no filter).
+    An explicit `status` wins and `include_pending` is then ignored; without one only
+    active facts (and pending ones when `include_pending`) match."""
     if subject:
         sql += " AND sub.name = ?"
         params.append(subject)
@@ -93,6 +106,10 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None):
     if status:
         sql += " AND f.status = ?"
         params.append(status)
+    else:
+        statuses = _visible_statuses(include_pending)
+        sql += f" AND f.status IN ({','.join('?' for _ in statuses)})"
+        params.extend(statuses)
     if personal is True:
         sql += " AND f.is_personal = 1"
     elif personal is False:
@@ -100,8 +117,8 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None):
     return sql
 
 
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20):
-    """Full-text search, best match first. Raises sqlite3.OperationalError on FTS syntax errors."""
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False):
+    """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
         SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
         FROM facts_fts
@@ -110,17 +127,20 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20):
         WHERE facts_fts MATCH ?
     """
     params = [terms]
-    sql = _filters(sql, params, subject=subject, trust=trust, personal=personal)
+    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
+                   include_pending=include_pending)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50):
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False):
+    """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
     sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
-    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal)
+    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
+                   include_pending=include_pending)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -128,7 +148,8 @@ def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=
 
 def get_fact(con, fact_id):
     """One fact (all columns, plus subject and origin_path) with a `sources` list of
-    {name, locator} dicts; None if there is no such fact."""
+    {name, locator} dicts; None if there is no such fact. Deliberately NOT status-filtered
+    (#6): asking for an id by name shows it whatever its status, pending included."""
     f = con.execute(
         """SELECT f.*, sub.name AS subject, vf.path AS origin_path
            FROM facts f
@@ -149,15 +170,18 @@ def get_fact(con, fact_id):
     return out
 
 
-def list_subjects(con):
+def list_subjects(con, include_pending=False):
+    """Every subject with `n_facts` = its active facts (plus pending ones when `include_pending`).
+    Subjects with no counted facts are still listed, with 0."""
+    statuses = _visible_statuses(include_pending)
     return [dict(r) for r in con.execute(
-        """SELECT s.name, s.domain, p.name AS parent, COUNT(f.id) AS n_facts
-           FROM subjects s
-           LEFT JOIN subjects p ON p.id = s.parent_id
-           LEFT JOIN facts f ON f.subject_id = s.id
-           GROUP BY s.id
-           ORDER BY s.domain, COALESCE(p.name, s.name), s.name"""
-    ).fetchall()]
+        f"""SELECT s.name, s.domain, p.name AS parent, COUNT(f.id) AS n_facts
+            FROM subjects s
+            LEFT JOIN subjects p ON p.id = s.parent_id
+            LEFT JOIN facts f ON f.subject_id = s.id AND f.status IN ({','.join('?' for _ in statuses)})
+            GROUP BY s.id
+            ORDER BY s.domain, COALESCE(p.name, s.name), s.name""",
+        statuses).fetchall()]
 
 
 # ---- thin CLI printers (Typer) ----
@@ -202,6 +226,8 @@ def _print_fact_lines(rows):
 
 
 JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON instead of text.")
+ALLOW_DIRTY_OPT_REVIEW = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on the data repo (deliberate batch edits only); the commit still contains only fact_revisions.jsonl.")
+INCLUDE_PENDING_OPT = typer.Option(False, "--include-pending", help="Also show pending (unreviewed) facts; by default only active facts are listed.")
 
 
 @app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
@@ -231,12 +257,15 @@ def cmd_search(
     limit: int = 20,
     personal_only: bool = typer.Option(False, "--personal-only"),
     not_personal: bool = typer.Option(False, "--not-personal"),
+    status: Optional[Status] = typer.Option(None, "--status", help="Only facts with this status (overrides the active-only default and --include-pending)."),
+    include_pending: bool = INCLUDE_PENDING_OPT,
     as_json: bool = JSON_OPT,
 ):
     personal = _personal(personal_only, not_personal)
     try:
         rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
-                      personal=personal, limit=limit)
+                      personal=personal, limit=limit, status=status.value if status else None,
+                      include_pending=include_pending)
     except sqlite3.OperationalError as e:
         _fail(f"search failed: {e}")
     _emit_json(rows) if as_json else _print_fact_lines(rows)
@@ -386,9 +415,9 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
         raise typer.Exit(1)
 
 
-@app.command("subjects", help="List subjects (indented under parent) with fact counts.")
-def cmd_subjects(as_json: bool = JSON_OPT):
-    rows = _query(list_subjects)
+@app.command("subjects", help="List subjects (indented under parent) with counts of their active facts.")
+def cmd_subjects(include_pending: bool = INCLUDE_PENDING_OPT, as_json: bool = JSON_OPT):
+    rows = _query(list_subjects, include_pending=include_pending)
     if as_json:
         _emit_json(rows)
         return
@@ -397,7 +426,7 @@ def cmd_subjects(as_json: bool = JSON_OPT):
         print(f"{indent}{r['name']:<35} ({r['domain']}, {r['n_facts']} facts)")
 
 
-@app.command("facts", help="List/filter facts without full-text search.")
+@app.command("facts", help="List/filter facts without full-text search. Active facts by default; --include-pending adds pending ones, --status X shows only status X.")
 def cmd_facts(
     subject: Optional[str] = None,
     trust: Optional[Trust] = None,
@@ -405,12 +434,114 @@ def cmd_facts(
     limit: int = 50,
     personal_only: bool = typer.Option(False, "--personal-only"),
     not_personal: bool = typer.Option(False, "--not-personal"),
+    include_pending: bool = INCLUDE_PENDING_OPT,
     as_json: bool = JSON_OPT,
 ):
     rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
-                  status=status.value if status else None,
+                  status=status.value if status else None, include_pending=include_pending,
                   personal=_personal(personal_only, not_personal), limit=limit)
     _emit_json(rows) if as_json else _print_fact_lines(rows)
+
+
+# ---- review of pending facts (#6): `review-pending`, `approve`, `reject` ----
+
+def _review_json(res):
+    return {"ok": res.ok, "items": [dict(ref=i.ref, outcome=i.outcome, source_key=i.source_key, reason=i.reason,
+                                         revision=i.revision) for i in res.items],
+            "errors": res.errors, "notes": res.notes, "commit": res.commit,
+            "commit_error": res.commit_error, "detached": res.detached}
+
+
+def _review_exit_code(res):
+    """3 when revisions were written but not committed (the state that needs attention);
+    else 1 for a batch error or any unknown/error item; else 0. Skipped items are fine."""
+    if res.commit_error is not None:
+        return 3
+    return 0 if res.ok else 1
+
+
+def _report_review(res, as_json):
+    if as_json:
+        _emit_json(_review_json(res))
+    else:
+        for e in res.errors:
+            print(f"error: {e}", file=sys.stderr)
+        for i in res.items:
+            if i.outcome in ("approved", "rejected"):
+                print(f"{i.outcome} {i.ref}" + (f" ({i.source_key})" if i.source_key and i.source_key != i.ref else ""))
+            else:
+                print(f"{i.outcome} {i.ref}: {i.reason}", file=sys.stderr if i.outcome in ("unknown", "error") else sys.stdout)
+        if not res.items and not res.errors:
+            print("Nothing to do.")
+        for n in res.notes:
+            print(f"note: {n}", file=sys.stderr)
+        if res.commit:
+            print(f"Committed {res.commit}")
+        if res.commit_error:
+            print(f"error: {res.commit_error}", file=sys.stderr)
+        if res.detached:
+            print("warning: the data repo has a detached HEAD; that commit is not on any branch.", file=sys.stderr)
+        if res.changed:
+            print("note: knowledge.db is not rebuilt yet; run `knowledge.py build` to see the change.", file=sys.stderr)
+    code = _review_exit_code(res)
+    if code:
+        raise typer.Exit(code)
+
+
+def _review_db():
+    """The db path for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
+    return DB_PATH if os.path.exists(DB_PATH) else None
+
+
+@app.command("review-pending", help="List pending (unreviewed) facts, oldest first.")
+def cmd_review_pending(as_json: bool = JSON_OPT):
+    try:
+        rows = _query(review.list_pending)
+    except sqlite3.OperationalError as e:
+        _fail(f"review-pending failed: {e} (rebuild knowledge.db with the current schema)")
+    if as_json:
+        _emit_json(rows)
+        return
+    if not rows:
+        print("No pending facts.")
+        return
+    for r in rows:
+        via = f"  via={r['captured_via']}" if r["captured_via"] else ""
+        print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']})  {r['source_key']}  added {r['date_added']}{via}")
+        print(f"       {r['statement']}")
+        if r["source_quote"]:
+            print(f"       quote: {r['source_quote']}")
+    print(f"\n{len(rows)} pending. Approve with `approve REF...` (or `--all`), reject with `reject REF... --reason TEXT`.")
+
+
+@app.command("approve", help="Approve pending facts (REF is a fact id or a source_key): appends an 'active' revision "
+                             "and commits it to the data repo. Only pending facts change; others are skipped.")
+def cmd_approve(
+    refs: Optional[List[str]] = typer.Argument(None, help="Fact ids or source_keys."),
+    reason: str = typer.Option("approved", "--reason", help="Why; recorded as the revision's change_reason."),
+    all_: bool = typer.Option(False, "--all", help="Approve every pending fact."),
+    allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
+    as_json: bool = JSON_OPT,
+):
+    refs = list(refs or [])
+    if all_ and refs:
+        raise typer.BadParameter("give REF... or --all, not both")
+    if not all_ and not refs:
+        raise typer.BadParameter("give at least one REF, or --all")
+    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=_review_db())
+    _report_review(res, as_json)
+
+
+@app.command("reject", help="Reject pending facts (REF is a fact id or a source_key): appends a 'retracted' revision. "
+                            "Only pending facts change; others are skipped.")
+def cmd_reject(
+    refs: List[str] = typer.Argument(..., help="Fact ids or source_keys."),
+    reason: str = typer.Option(..., "--reason", help="Why; recorded as the revision's change_reason."),
+    allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
+    as_json: bool = JSON_OPT,
+):
+    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=_review_db())
+    _report_review(res, as_json)
 
 
 # ---- privacy (#31): `privacy check|rules|tag|untag|add-keyword|remove-keyword` ----
