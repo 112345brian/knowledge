@@ -15,7 +15,7 @@ still run fine on their own; this just gives one name to remember. `search`,
 `show`, `subjects`, and `facts` are new: nothing queried knowledge.db before
 this except ad hoc sqlite3/DB Browser.
 """
-import argparse, os, sqlite3, subprocess, sys
+import argparse, os, pathlib, sqlite3, subprocess, sys
 
 from paths import KNOWLEDGE_DB_DIR
 
@@ -39,25 +39,49 @@ def cmd_clean_concerts(args):
     return subprocess.call([sys.executable, os.path.join(HERE, "clean_concerts_csv.py")])
 
 
-def connect():
-    if not os.path.exists(DB_PATH):
-        print(f"error: {DB_PATH} doesn't exist -- run `python3 knowledge.py build` first", file=sys.stderr)
-        sys.exit(1)
-    con = sqlite3.connect(DB_PATH)
+class DatabaseNotFound(FileNotFoundError):
+    """knowledge.db doesn't exist yet (it is built, never hand-created)."""
+
+
+def connect(db_path=None):
+    """Open the knowledge db READ-ONLY. Raises DatabaseNotFound if it is missing.
+
+    Everything in this module only reads; writes go through build.py, which
+    makes its own connection."""
+    path = os.path.abspath(db_path or DB_PATH)
+    if not os.path.exists(path):
+        raise DatabaseNotFound(f"{path} doesn't exist -- run `python3 knowledge.py build` first")
+    con = sqlite3.connect(pathlib.Path(path).as_uri() + "?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     return con
 
 
-def _personal_clause(args, sql, params):
-    if args.personal_only:
+# ---- query functions: take a connection, return plain dicts, never print or exit ----
+
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None):
+    """Append the shared fact filters. `personal` is True / False / None (no filter)."""
+    if subject:
+        sql += " AND sub.name = ?"
+        params.append(subject)
+    if trust:
+        sql += " AND f.trust_level = ?"
+        params.append(trust)
+    if status:
+        sql += " AND f.status = ?"
+        params.append(status)
+    if personal is True:
         sql += " AND f.is_personal = 1"
-    elif args.not_personal:
+    elif personal is False:
         sql += " AND f.is_personal = 0"
     return sql
 
 
-def cmd_search(args):
-    con = connect()
+def _personal(args):
+    return True if args.personal_only else (False if args.not_personal else None)
+
+
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20):
+    """Full-text search, best match first. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
         SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
         FROM facts_fts
@@ -65,19 +89,60 @@ def cmd_search(args):
         JOIN subjects sub ON sub.id = f.subject_id
         WHERE facts_fts MATCH ?
     """
-    params = [args.terms]
-    if args.subject:
-        sql += " AND sub.name = ?"
-        params.append(args.subject)
-    if args.trust:
-        sql += " AND f.trust_level = ?"
-        params.append(args.trust)
-    sql = _personal_clause(args, sql, params)
+    params = [terms]
+    sql = _filters(sql, params, subject=subject, trust=trust, personal=personal)
     sql += " ORDER BY rank LIMIT ?"
-    params.append(args.limit)
+    params.append(limit)
+    return [dict(r) for r in con.execute(sql, params).fetchall()]
 
-    rows = con.execute(sql, params).fetchall()
-    con.close()
+
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50):
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+             FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
+    params = []
+    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal)
+    sql += " ORDER BY f.id LIMIT ?"
+    params.append(limit)
+    return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+def get_fact(con, fact_id):
+    """One fact (all columns, plus subject and origin_path) with a `sources` list of
+    {name, locator} dicts; None if there is no such fact."""
+    f = con.execute(
+        """SELECT f.*, sub.name AS subject, vf.path AS origin_path
+           FROM facts f
+           JOIN subjects sub ON sub.id = f.subject_id
+           LEFT JOIN vault_files vf ON vf.id = f.origin_file_id
+           WHERE f.id = ?""",
+        (fact_id,),
+    ).fetchone()
+    if not f:
+        return None
+    out = dict(f)
+    out["sources"] = [dict(s) for s in con.execute(
+        """SELECT s.name, fs.locator
+           FROM fact_sources fs JOIN sources s ON s.id = fs.source_id
+           WHERE fs.fact_id = ?""",
+        (f["id"],),
+    ).fetchall()]
+    return out
+
+
+def list_subjects(con):
+    return [dict(r) for r in con.execute(
+        """SELECT s.name, s.domain, p.name AS parent, COUNT(f.id) AS n_facts
+           FROM subjects s
+           LEFT JOIN subjects p ON p.id = s.parent_id
+           LEFT JOIN facts f ON f.subject_id = s.id
+           GROUP BY s.id
+           ORDER BY s.domain, COALESCE(p.name, s.name), s.name"""
+    ).fetchall()]
+
+
+# ---- thin CLI printers ----
+
+def _print_fact_lines(rows):
     if not rows:
         print("No matches.")
         return
@@ -86,20 +151,25 @@ def cmd_search(args):
         print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']}){flag}  {r['statement']}")
 
 
+def cmd_search(args):
+    con = connect()
+    try:
+        rows = search_facts(con, args.terms, subject=args.subject, trust=args.trust,
+                            personal=_personal(args), limit=args.limit)
+    finally:
+        con.close()
+    _print_fact_lines(rows)
+
+
 def cmd_show(args):
     con = connect()
-    f = con.execute(
-        """SELECT f.*, sub.name AS subject, vf.path AS origin_path
-           FROM facts f
-           JOIN subjects sub ON sub.id = f.subject_id
-           LEFT JOIN vault_files vf ON vf.id = f.origin_file_id
-           WHERE f.id = ?""",
-        (args.fact_id,),
-    ).fetchone()
+    try:
+        f = get_fact(con, args.fact_id)
+    finally:
+        con.close()
     if not f:
         print(f"error: no fact with id {args.fact_id}", file=sys.stderr)
-        con.close()
-        sys.exit(1)
+        return 1
 
     print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  status={f['status']}")
     print(f"\n{f['statement']}\n")
@@ -111,32 +181,19 @@ def cmd_show(args):
         print(f"Origin: {f['origin_path']}")
     if f["recheck_by"]:
         print(f"Recheck by: {f['recheck_by']}" + (f"  ({f['recheck_rationale']})" if f["recheck_rationale"] else ""))
-
-    sources = con.execute(
-        """SELECT s.name, fs.locator
-           FROM fact_sources fs JOIN sources s ON s.id = fs.source_id
-           WHERE fs.fact_id = ?""",
-        (f["id"],),
-    ).fetchall()
-    if sources:
+    if f["sources"]:
         print("\nSources:")
-        for s in sources:
+        for s in f["sources"]:
             loc = f" ({s['locator']})" if s["locator"] else ""
             print(f"  - {s['name']}{loc}")
-    con.close()
 
 
 def cmd_subjects(args):
     con = connect()
-    rows = con.execute(
-        """SELECT s.name, s.domain, p.name AS parent, COUNT(f.id) AS n_facts
-           FROM subjects s
-           LEFT JOIN subjects p ON p.id = s.parent_id
-           LEFT JOIN facts f ON f.subject_id = s.id
-           GROUP BY s.id
-           ORDER BY s.domain, COALESCE(p.name, s.name), s.name"""
-    ).fetchall()
-    con.close()
+    try:
+        rows = list_subjects(con)
+    finally:
+        con.close()
     for r in rows:
         indent = "  " if r["parent"] else ""
         print(f"{indent}{r['name']:<35} ({r['domain']}, {r['n_facts']} facts)")
@@ -144,30 +201,12 @@ def cmd_subjects(args):
 
 def cmd_facts(args):
     con = connect()
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
-             FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
-    params = []
-    if args.subject:
-        sql += " AND sub.name = ?"
-        params.append(args.subject)
-    if args.trust:
-        sql += " AND f.trust_level = ?"
-        params.append(args.trust)
-    if args.status:
-        sql += " AND f.status = ?"
-        params.append(args.status)
-    sql = _personal_clause(args, sql, params)
-    sql += " ORDER BY f.id LIMIT ?"
-    params.append(args.limit)
-
-    rows = con.execute(sql, params).fetchall()
-    con.close()
-    if not rows:
-        print("No matches.")
-        return
-    for r in rows:
-        flag = "" if r["status"] == "active" else f" [{r['status']}]"
-        print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']}){flag}  {r['statement']}")
+    try:
+        rows = list_facts(con, subject=args.subject, trust=args.trust, status=args.status,
+                          personal=_personal(args), limit=args.limit)
+    finally:
+        con.close()
+    _print_fact_lines(rows)
 
 
 def _add_personal_flags(sp):
@@ -219,7 +258,11 @@ def main(argv=None):
     elif extra:
         p.error(f"unrecognized arguments: {' '.join(extra)}")
 
-    return args.func(args) or 0
+    try:
+        return args.func(args) or 0
+    except DatabaseNotFound as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
