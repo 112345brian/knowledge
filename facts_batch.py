@@ -29,8 +29,9 @@ Decisions (each is tested):
     them for review (#6).
   * Dates and statements are stored exactly as given (surrounding whitespace is trimmed by
     build_entry, nothing else). The tool never resolves 'next week' into a date.
-  * `volatility` is required on every item (no default): a missing or invalid one makes the item invalid
-    and, the batch being all-or-nothing, writes nothing (#7).
+  * Every item needs freshness (#7): `recheck_by`, or `no_decay: true` plus a non-blank
+    `recheck_rationale` (neither, or both, makes the item invalid and, the batch being
+    all-or-nothing, writes nothing). Freshness is derived; an item cannot supply it.
   * Caller-set source_key, status, captured_via, session_id and captured_at are not accepted per
     item: the batch assigns them. Unknown item keys are an error, never silently dropped.
   * Git (#10), same as add_fact: data dir inside a git repo -> clean tree required first (unless
@@ -58,9 +59,9 @@ MAX_BATCH = 1000
 DEFAULT_TRUST = "unverified"   # a fact the user stated in chat: not independently verified
 DEFAULT_CAPTURED_VIA = "register-facts"
 
-_STR_KEYS = ("statement", "subject", "trust_level", "volatility", "domain", "visibility", "trust_rationale", "notes",
+_STR_KEYS = ("statement", "subject", "trust_level", "domain", "visibility", "trust_rationale", "notes",
              "recheck_by", "recheck_rationale", "source_citekey", "source_locator", "source_quote")
-_BOOL_KEYS = ("is_original_claim", "is_personal")
+_BOOL_KEYS = ("is_original_claim", "is_personal", "no_decay")
 ITEM_KEYS = frozenset(_STR_KEYS + _BOOL_KEYS)
 
 
@@ -122,7 +123,7 @@ def _parse_item(raw):
     unknown = sorted(str(k) for k in raw if k not in ITEM_KEYS)
     if unknown:
         errors.append(f"unknown key(s) {unknown}; allowed: {sorted(ITEM_KEYS)} (source_key, status and provenance are set by the batch)")
-    for key in ("statement", "subject", "volatility"):
+    for key in ("statement", "subject"):
         if raw.get(key) is None:
             errors.append(f"{key} is required")
     for key in _STR_KEYS:
@@ -145,8 +146,8 @@ def add_facts(items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session
               dry_run=False, commit=True, allow_dirty=False, session=None, db_path=None):
     """Validate and append a batch of facts. Returns a BatchResult; never prints or exits.
 
-    `items`: list of dicts with `statement`, `subject` and `volatility` required (#7: static | stable |
-    volatile; stable/volatile also need recheck_by; 'unclassified' is refused); optional trust_level (default
+    `items`: list of dicts with `statement` and `subject` required, plus freshness (#7: `recheck_by`, or
+    `no_decay: true` with a `recheck_rationale`; neither or both is refused); optional trust_level (default
     'unverified'), notes, recheck_by, recheck_rationale, trust_rationale, source_quote,
     source_citekey, source_locator, domain, is_original_claim, is_personal, visibility (a request
     that can only raise privacy). `data_dir` defaults to PRIVATE_DATA_DIR. `session` (a modes
@@ -183,7 +184,7 @@ def add_facts(items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session
             fact = NewFact(
                 statement=fields["statement"], subject=fields["subject"],
                 trust_level=fields.get("trust_level") or DEFAULT_TRUST,
-                volatility=fields["volatility"],
+                no_decay=bool(fields.get("no_decay", False)),
                 domain=fields.get("domain") or "general",
                 is_original_claim=bool(fields.get("is_original_claim", False)),
                 is_personal=bool(fields.get("is_personal", True)),

@@ -11,21 +11,19 @@ pick the new fact up, same as any other data/*.json change.
 
 Usage:
     python3 add_fact.py "Statement text." --subject some-subject --trust medium \
-        --volatility stable --recheck-by 2027-01-01
+        --recheck-by 2027-01-01
+    python3 add_fact.py "..." --subject x --trust medium --no-decay \\
+        --recheck-rationale "a birthdate does not change"
     python3 add_fact.py "..." --subject x --trust high --domain general \
         --notes "..." --recheck-by 2026-12-01 --recheck-rationale "..." \
         --source-citekey some-existing-citekey --source-locator "p. 4"
 
---volatility is required (#7): why this fact may go stale.
-    static    does not decay (a birthdate, a completed purchase); the only value that may omit
-              --recheck-by. static is NOT an excuse to default --trust to 'verified': a static
-              fact still needs an honestly considered trust level (cross-checked against an ID
-              vs. typed from memory).
-    stable    decays slowly; --recheck-by required.
-    volatile  decays fast; --recheck-by required (pick a sooner date than for stable).
-Only static vs. the other two is enforced (by the schema); stable vs. volatile is your own
-guidance about how soon the recheck should be. Staleness only: a fact that was wrong when
-typed is --trust's job.
+Freshness is mandatory (#7). A new fact needs EITHER --recheck-by (a date or short phrase) OR
+--no-decay together with --recheck-rationale saying why it does not decay; neither, or both, is
+refused. --no-decay is NOT an excuse to default --trust to 'verified': the fact still needs an
+honestly considered trust level (cross-checked against an ID vs. typed from memory). The schema
+only enforces that one of the two is present; it cannot judge whether a fact really does not
+decay. Staleness only: a fact that was wrong when typed is --trust's job.
 """
 import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile, uuid
 from dataclasses import dataclass, field
@@ -42,10 +40,10 @@ DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
-# #7: every NEW fact carries one of these. 'unclassified' is the fourth value in schema.sql, legacy
-# only (facts that predate the column); it is deliberately NOT accepted here.
-VALID_VOLATILITY = ("static", "stable", "volatile")
-NEEDS_RECHECK_VOLATILITY = ("stable", "volatile")  # these require recheck_by; static is exempt
+# #7: every fact has a freshness (facts.freshness). A NEW fact derives 'recheck' (it has a
+# recheck_by) or 'no-decay' (explicit assertion plus a written recheck_rationale); 'unreviewed' is
+# legacy-only (facts that predate the column and were never reviewed) and is never accepted here.
+FRESHNESS_VALUES = ("recheck", "no-decay", "unreviewed")  # keep in sync with the CHECK in schema.sql
 # A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
 # ('active', e.g. `register facts`, #32). superseded/retracted only arise through revisions.
 VALID_NEW_STATUS = ("pending", "active")
@@ -68,14 +66,14 @@ def parse_args(argv):
     p.add_argument("--domain", default="general", help="Only applies if --subject doesn't exist yet (default: general).")
     p.add_argument("--original-claim", action="store_true", dest="is_original_claim", help="This is your own conclusion, not something a source states.")
     p.add_argument("--not-personal", action="store_false", dest="is_personal", help="Mark as not about the user personally (default: personal).")
-    p.add_argument("--volatility", required=True, choices=VALID_VOLATILITY,
-                   help="Required. static = never decays (only this one may omit --recheck-by; it does NOT justify --trust verified), "
-                        "stable = decays slowly, volatile = decays fast (both need --recheck-by).")
+    p.add_argument("--no-decay", action="store_true", dest="no_decay",
+                   help="Assert this fact does not decay (a birthdate, a completed purchase); requires --recheck-rationale "
+                        "and excludes --recheck-by. It does NOT justify --trust verified.")
     p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
-    p.add_argument("--recheck-by", help="A date (YYYY-MM-DD) or short phrase like 'next physical'.")
-    p.add_argument("--recheck-rationale")
+    p.add_argument("--recheck-by", help="A date (YYYY-MM-DD) or short phrase like 'next physical'. Required unless --no-decay.")
+    p.add_argument("--recheck-rationale", help="Why this recheck date; with --no-decay, why the fact does not decay (required).")
     p.add_argument("--source-citekey", help="Must already exist in the `sources` table.")
     p.add_argument("--source-locator")
     p.add_argument("--source-quote", help="The words that justified the fact (with --captured-via, no --source-citekey is needed).")
@@ -92,9 +90,10 @@ class NewFact:
     statement: str
     subject: str
     trust_level: str
-    # Required, no default (#7): a caller must decide. static | stable | volatile ('unclassified' is
-    # legacy-only and refused). stable/volatile need recheck_by; static need not have one.
-    volatility: str = None  # type: ignore[assignment]  (dataclass ordering: validate_fact rejects None)
+    # #7: every new fact needs a recheck_by OR no_decay=True plus a recheck_rationale (neither or
+    # both is refused). Freshness is derived from these, never passed in, so a caller cannot
+    # supply the legacy-only 'unreviewed'.
+    no_decay: bool = False
     domain: str = "general"
     is_original_claim: bool = False
     is_personal: bool = True
@@ -153,16 +152,23 @@ def validate_fact(fact, db_path=None):
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
         errors.append(f"status {fact.status!r} must be one of {list(VALID_NEW_STATUS)} for a new fact")
-    if not isinstance(fact.volatility, str) or fact.volatility not in VALID_VOLATILITY:
-        hint = " ('unclassified' is for legacy facts only and is not accepted for a new fact)" if fact.volatility == "unclassified" else ""
-        errors.append(f"volatility {fact.volatility!r} is required and must be one of {list(VALID_VOLATILITY)}{hint}")
-    elif fact.volatility in NEEDS_RECHECK_VOLATILITY and not (isinstance(fact.recheck_by, str) and fact.recheck_by.strip()):
-        errors.append(f"volatility {fact.volatility!r} requires recheck_by (a date or short phrase); only 'static' may omit it")
+    if not isinstance(fact.no_decay, bool):
+        errors.append(f"no_decay {fact.no_decay!r} must be true or false")
+    else:
+        has_recheck = isinstance(fact.recheck_by, str) and bool(fact.recheck_by.strip())
+        if has_recheck and fact.no_decay:
+            errors.append("recheck_by and no_decay contradict each other: give a recheck_by (the fact decays) or "
+                          "no_decay with a recheck_rationale (it does not), not both")
+        elif not has_recheck and not fact.no_decay:
+            errors.append("a fact needs freshness: give recheck_by (a date or short phrase), or no_decay together "
+                          "with a recheck_rationale saying why it does not decay")
+        elif fact.no_decay and not (isinstance(fact.recheck_rationale, str) and fact.recheck_rationale.strip()):
+            errors.append("no_decay requires a non-blank recheck_rationale saying why the fact does not decay")
     if not fact.statement.strip():
         errors.append("statement is empty")
     if not SUBJECT_RE.match(fact.subject):
         errors.append(f"--subject {fact.subject!r} must be lowercase kebab-case (e.g. 'car-maintenance')")
-    if fact.recheck_by and DATE_RE.match(fact.recheck_by) is None and len(fact.recheck_by) < 4:
+    if isinstance(fact.recheck_by, str) and fact.recheck_by.strip() and DATE_RE.match(fact.recheck_by) is None and len(fact.recheck_by) < 4:
         errors.append(f"--recheck-by {fact.recheck_by!r} looks too short to be a date or phrase")
     if fact.source_key is not None and (not isinstance(fact.source_key, str) or not SOURCE_KEY_RE.match(fact.source_key)):
         errors.append(f"source_key {fact.source_key!r} must match {SOURCE_KEY_RE.pattern}")
@@ -216,13 +222,15 @@ def build_entry(fact, visibility=None):
         "date_added": clock.now_iso(),
         "visibility": fact.visibility if visibility is None else visibility,
         "status": fact.status,
-        "volatility": fact.volatility,
+        "freshness": "no-decay" if fact.no_decay else "recheck",
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
     for key in ("trust_rationale", "notes", "recheck_by", "recheck_rationale",
                 "source_citekey", "source_locator", "source_quote"):
         value = getattr(fact, key)
+        if key == "recheck_by" and isinstance(value, str) and not value.strip():
+            continue  # blank counts as absent (a no_decay fact may carry a blank one)
         if value:
             entry[key] = value
     if fact.captured_via:
@@ -385,7 +393,7 @@ def append_fact(fact, data_path=None, db_path=None):
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
-        statement=args.statement, subject=args.subject, trust_level=args.trust_level, volatility=args.volatility, domain=args.domain,
+        statement=args.statement, subject=args.subject, trust_level=args.trust_level, no_decay=args.no_decay, domain=args.domain,
         is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,

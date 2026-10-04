@@ -25,7 +25,7 @@ GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 
 REV_COLS = ("fact_id", "source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason",
             "statement", "trust_level", "trust_rationale", "status", "visibility", "superseded_by",
-            "recheck_by", "recheck_rationale", "volatility", "notes")
+            "recheck_by", "recheck_rationale", "freshness", "notes")
 
 
 class Env(BaseEnv):

@@ -223,10 +223,10 @@ def test_source_keys_then_dates_equals_dates_then_source_keys(world, tmp_path):
 
 def test_a_concurrent_add_fact_append_is_not_lost(world, tmp_path):
     d = str(tmp_path / "copy")
-    legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "volatility": "static"} for i in range(3)]
+    legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "freshness": "no-decay", "recheck_rationale": "no decay"} for i in range(3)]
     put(d, "general_facts.json", json.dumps(legacy, indent=2) + "\n")
     script = ("import sys, add_fact; "
-              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', 'static'), data_path=sys.argv[1] + '/general_facts.json'); "
+              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
               "sys.exit(0 if r.ok else 1)")
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=world.env, cwd=REPO,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) for i in range(4)]
@@ -256,7 +256,7 @@ def test_after_the_backfill_ingest_gives_the_legacy_dates_and_keeps_stamped_ones
     ingest.write("pilot_facts.json", legacy)
     for i in range(1, 5):
         ingest.write(f"facts_batch{i}.json", [])
-    ingest.write("general_facts.json", [{"volatility": "static", **e} for e in legacy])  # #7: never legacy
+    ingest.write("general_facts.json", [{"freshness": "no-decay", "recheck_rationale": "no decay", **e} for e in legacy])  # #7: never legacy
     with pytest.raises(ValueError, match="no `date_added`"):      # not yet backfilled: loud, not guessed
         ingest.mod04.DATA_DIR = ingest.env.data_dir
         ingest.mod04.run(ingest.db())

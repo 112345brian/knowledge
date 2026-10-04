@@ -22,7 +22,7 @@ T4 = "2026-10-04T11:00:00+00:00"
 def entry(key="k1", statement="Original statement.", **kw):
     e = {"source_key": key, "subject": "alpha", "statement": statement, "trust_level": "low",
          "is_original_claim": False, "is_personal": True, "date_added": T1, "visibility": "private",
-         "volatility": "static"}  # #7: every entry carries one; static needs no recheck_by
+         "freshness": "no-decay", "recheck_rationale": "no decay"}  # #7: every entry carries a freshness
     e.update(kw)
     return e
 
@@ -119,14 +119,14 @@ def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(wor
 
 
 def test_every_new_fact_gets_a_unique_valid_source_key(world):
-    keys = {world.af.build_entry(world.af.NewFact("S.", "x", "low", volatility="static"))["source_key"] for _ in range(50)}
+    keys = {world.af.build_entry(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay"))["source_key"] for _ in range(50)}
     assert len(keys) == 50 and all(world.af.SOURCE_KEY_RE.match(k) for k in keys)
 
 
 def test_a_supplied_source_key_is_used_and_a_bad_one_is_refused(world):
-    f = world.af.NewFact("S.", "x", "low", volatility="static", source_key="my-key")
+    f = world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="my-key")
     assert world.af.build_entry(f)["source_key"] == "my-key"
-    errors, _ = world.af.validate_fact(world.af.NewFact("S.", "x", "low", volatility="static", source_key="Bad Key!"))
+    errors, _ = world.af.validate_fact(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="Bad Key!"))
     assert any("source_key" in e for e in errors)
 
 
@@ -141,12 +141,12 @@ def test_ingest_stores_the_key_and_an_implicit_revision_1(world):
     assert (r["changed_at"], r["changed_via"], r["session_id"], r["change_reason"]) == (T1, "mcp", "s1", "original entry")
     assert (r["statement"], r["trust_level"], r["trust_rationale"], r["status"], r["visibility"]) == \
         ("Original statement.", "low", "why", "active", "normal")
-    assert (r["superseded_by"], r["recheck_by"], r["recheck_rationale"], r["volatility"], r["notes"]) == (None, "2027-01-01", "rr", "static", "n")
+    assert (r["superseded_by"], r["recheck_by"], r["recheck_rationale"], r["freshness"], r["notes"]) == (None, "2027-01-01", "rr", "no-decay", "n")
 
 
 def test_legacy_entries_without_a_key_get_a_derived_key_and_their_backfilled_date(world):
     legacy = {"subject": "alpha", "statement": "Old fact.", "trust_level": "high"}
-    world.seed(pilot=[dict(legacy)], general=[dict(legacy, volatility="static")])  # #7: only the pilot entry is legacy
+    world.seed(pilot=[dict(legacy)], general=[dict(legacy, freshness="no-decay", recheck_rationale="no decay")])  # #7: only the pilot entry is legacy
     import backfill_dates
     backfill_dates.backfill_dates(world.env.data_dir, apply=True)  # #35: the date lives in the data now
     con = world.build()
@@ -404,7 +404,7 @@ def rec(key="k1", revision=2, at=T2, **kw):
     r = {"source_key": key, "revision": revision, "changed_at": at, "changed_via": "cli", "session_id": None,
          "change_reason": "r", "statement": "Original statement.", "trust_level": "low", "trust_rationale": None,
          "status": "active", "visibility": "private", "superseded_by": None, "recheck_by": None,
-         "recheck_rationale": None, "volatility": "static", "notes": None}
+         "recheck_rationale": "no decay", "freshness": "no-decay", "notes": None}
     r.update(kw)
     return r
 
@@ -577,7 +577,7 @@ def test_the_derived_keys_equal_the_in_memory_keys_so_build_is_identical_before_
     d = "2026-09-11"
     items = [{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": d}, {"subject": "a", "statement": "One.", "trust_level": "low", "date_added": d},
              {"subject": "b", "statement": "Two.", "trust_level": "high", "date_added": d}]
-    world.seed(pilot=[dict(i) for i in items], general=[dict(items[2], volatility="static")])
+    world.seed(pilot=[dict(i) for i in items], general=[dict(items[2], freshness="no-decay", recheck_rationale="no decay")])
     before = world.build()
     keys_before = [tuple(r) for r in before.execute("SELECT id, source_key FROM facts ORDER BY id")]
     revs_before = [tuple(r) for r in before.execute("SELECT fact_id, source_key, revision, changed_at, statement FROM fact_revisions ORDER BY id")]
@@ -591,7 +591,7 @@ def test_the_derived_keys_equal_the_in_memory_keys_so_build_is_identical_before_
 
 
 def test_revisions_written_before_the_backfill_still_resolve_after_it(world):
-    world.seed(general=[{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "2026-09-26", "volatility": "static"}])
+    world.seed(general=[{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "2026-09-26", "freshness": "no-decay", "recheck_rationale": "no decay"}])
     (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
     assert key.startswith("legacy-")
     assert world.append(key, {"trust_level": "high"}, "r", at=T2).ok
@@ -630,10 +630,10 @@ def test_extension_hook_can_add_more_keys_for_issue_35(world, tmp_path):
 def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):
     d = str(tmp_path / "copy")
     os.makedirs(d)
-    legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "volatility": "static"} for i in range(3)]
+    legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "freshness": "no-decay", "recheck_rationale": "no decay"} for i in range(3)]
     open(os.path.join(d, "general_facts.json"), "w").write(json.dumps(legacy, indent=2) + "\n")
     script = ("import sys, add_fact; "
-              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', 'static'), data_path=sys.argv[1] + '/general_facts.json'); "
+              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=env, cwd=REPO) for i in range(6)]

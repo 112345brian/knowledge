@@ -436,7 +436,7 @@ def test_killed_run_leaving_a_dirty_tree_needs_allow_dirty_then_completes(w):
     w.run()
     # simulate a hard kill after writing one more fact: uncommitted facts file
     w.mem("p", "c.md")
-    add_fact.append_fact(add_fact.NewFact(statement="x", subject="s", trust_level="low", volatility="static"), data_path=w.facts, db_path=w.db)
+    add_fact.append_fact(add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=w.facts, db_path=w.db)
     assert w.run().refused
     r = w.run(allow_dirty=True)
     assert actions(r).count("added") == 1 and len([e for e in w.entries() if e["source_key"].startswith("mm-")]) == 3
@@ -447,7 +447,7 @@ def test_concurrent_add_fact_and_two_migrations_lose_and_duplicate_nothing(w):
         w.mem("p", f"{i}.md")
 
     def adder(i):
-        res = add_fact.append_fact(add_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", volatility="static"),
+        res = add_fact.append_fact(add_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", no_decay=True, recheck_rationale="no decay"),
                                    data_path=w.facts, db_path=w.db)
         assert res.ok
 

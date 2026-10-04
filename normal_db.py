@@ -11,7 +11,7 @@ What goes in (everything else is absent, not empty):
                    still keeps a fact out). Columns: id, subject_id, statement, is_original_claim,
                    trust_level, trust_rationale, status, superseded_by_fact_id (NULL unless that
                    fact is also in), date_added, last_reviewed_at, recheck_by, recheck_rationale,
-                   visibility, source_key, volatility (#7; staleness metadata like recheck_by, not
+                   visibility, source_key, freshness (#7; staleness metadata like recheck_by, not
                    private: without it a NULL recheck_by cannot be told from "never reviewed").
                    LEFT OUT on purpose: is_personal (a keyword heuristic that can hint at private
                    topics), notes (free text), origin_file_id (vault path), provided_by,
@@ -94,8 +94,9 @@ CREATE TABLE facts (
     recheck_rationale      TEXT,
     visibility             TEXT NOT NULL CHECK (visibility = 'normal'),
     source_key             TEXT UNIQUE,
-    volatility             TEXT NOT NULL CHECK (volatility IN ('static','stable','volatile','unclassified')),
-    CHECK (volatility IN ('static','unclassified') OR recheck_by IS NOT NULL)
+    freshness              TEXT NOT NULL CHECK (freshness IN ('recheck','no-decay','unreviewed')),
+    CHECK (freshness <> 'recheck' OR recheck_by IS NOT NULL),
+    CHECK (freshness <> 'no-decay' OR COALESCE(length(trim(recheck_rationale, char(32, 9, 10, 11, 12, 13))), 0) > 0)
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE TABLE fact_revisions (
@@ -113,7 +114,7 @@ CREATE TABLE fact_revisions (
     superseded_by      TEXT,
     recheck_by         TEXT,
     recheck_rationale  TEXT,
-    volatility         TEXT,
+    freshness          TEXT,
     UNIQUE (source_key, revision)
 );
 CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
@@ -180,7 +181,7 @@ def populate(out, full, rules):
     fact_keys, subject_ids = set(), set()
     cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
             "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
-            "visibility, source_key, volatility")
+            "visibility, source_key, freshness")
     facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
              if passes(r[1], r[2], r[12])]
     fact_ids = {r[0] for r in facts}
@@ -201,7 +202,7 @@ def populate(out, full, rules):
 
     # 3. revisions: of an included fact, only revisions that are themselves normal and pass the rules
     rcols = ("id, fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "
-             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, volatility")
+             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness")
     subject_of = {r[0]: r[1] for r in facts}
     for r in full.execute(f"SELECT {rcols} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"):
         if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10]):

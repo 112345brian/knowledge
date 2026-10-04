@@ -33,7 +33,7 @@ def _one_subject(con):
 def test_visibility_column_defaults_to_private_for_raw_inserts(ingest):
     con = ingest.db()
     _one_subject(con)
-    con.execute("INSERT INTO facts (subject_id, statement, trust_level, volatility) VALUES (1, 'x', 'low', 'static')")
+    con.execute("INSERT INTO facts (subject_id, statement, trust_level, freshness) VALUES (1, 'x', 'low', 'unreviewed')")
     assert con.execute("SELECT visibility FROM facts").fetchone()[0] == "private"
 
 
@@ -42,14 +42,14 @@ def test_check_constraint_rejects_invalid_visibility(ingest, bad):
     con = ingest.db()
     _one_subject(con)
     with pytest.raises(sqlite3.IntegrityError):
-        con.execute("INSERT INTO facts (subject_id, statement, trust_level, visibility, volatility) VALUES (1, 'x', 'low', ?, 'static')", (bad,))
+        con.execute("INSERT INTO facts (subject_id, statement, trust_level, visibility, freshness) VALUES (1, 'x', 'low', ?, 'unreviewed')", (bad,))
 
 
 def test_null_visibility_is_rejected(ingest):
     con = ingest.db()
     _one_subject(con)
     with pytest.raises(sqlite3.IntegrityError):
-        con.execute("INSERT INTO facts (subject_id, statement, trust_level, visibility, volatility) VALUES (1, 'x', 'low', NULL, 'static')")
+        con.execute("INSERT INTO facts (subject_id, statement, trust_level, visibility, freshness) VALUES (1, 'x', 'low', NULL, 'unreviewed')")
 
 
 def test_visibility_is_indexed(ingest):
@@ -95,18 +95,18 @@ def env(tmp_path):
 
 
 def test_cli_default_is_private_and_recorded_explicitly(env):
-    assert env.cli("S.", "--subject", "x", "--volatility", "static", "--trust", "low").returncode == 0
+    assert env.cli("S.", "--subject", "x", "--no-decay", "--recheck-rationale", "no decay", "--trust", "low").returncode == 0
     assert env.entries()[0]["visibility"] == "private"
 
 
 def test_cli_visibility_normal(env):
-    assert env.cli("S.", "--subject", "x", "--volatility", "static", "--trust", "low", "--visibility", "normal").returncode == 0
+    assert env.cli("S.", "--subject", "x", "--no-decay", "--recheck-rationale", "no decay", "--trust", "low", "--visibility", "normal").returncode == 0
     assert env.entries()[0]["visibility"] == "normal"
 
 
 @pytest.mark.parametrize("bad", ["public", "Normal", "", " normal"])
 def test_cli_rejects_invalid_visibility_and_writes_nothing(env, bad):
-    r = env.cli("S.", "--subject", "x", "--volatility", "static", "--trust", "low", "--visibility", bad)
+    r = env.cli("S.", "--subject", "x", "--no-decay", "--recheck-rationale", "no decay", "--trust", "low", "--visibility", bad)
     assert r.returncode == 1 and "visibility" in r.stderr
     assert not os.path.exists(env.facts)
 
@@ -114,21 +114,21 @@ def test_cli_rejects_invalid_visibility_and_writes_nothing(env, bad):
 def test_function_api_rejects_invalid_visibility_including_non_strings(ingest):
     import add_fact
     for bad in ("public", None, 1, ["normal"]):
-        errors, _ = add_fact.validate_fact(add_fact.NewFact(statement="s", subject="x", volatility="static", trust_level="low", visibility=bad))
+        errors, _ = add_fact.validate_fact(add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility=bad))
         assert any("visibility" in e for e in errors), bad
 
 
 def test_new_fact_defaults_to_private_when_visibility_is_omitted(ingest):
     import add_fact
-    assert add_fact.NewFact(statement="s", subject="x", volatility="static", trust_level="low").visibility == "private"
+    assert add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low").visibility == "private"
 
 
 def test_add_then_rebuild_round_trip(ingest):
     import add_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     nodb = os.path.join(ingest.env.root, "none.db")
-    add_fact.append_fact(add_fact.NewFact(statement="Open.", subject="x", volatility="static", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
-    add_fact.append_fact(add_fact.NewFact(statement="Closed.", subject="x", volatility="static", trust_level="low"), data_path=path, db_path=nodb)
+    add_fact.append_fact(add_fact.NewFact(statement="Open.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
+    add_fact.append_fact(add_fact.NewFact(statement="Closed.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low"), data_path=path, db_path=nodb)
     ingest.mod11.DATA_DIR = ingest.env.data_dir
     con = ingest.db()
     ingest.mod11.run(con)

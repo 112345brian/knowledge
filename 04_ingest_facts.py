@@ -163,18 +163,19 @@ def run(con):
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
         date_added = require_date_added(item, *item["_where"])
-        # #7: the entry's own volatility, or for a legacy entry (original files, no provenance) the
-        # 'unclassified' marker plus the "predates this field" note. Anything else fails the build.
+        # #7: the entry's own freshness, or for a legacy entry (original files, no provenance)
+        # 'recheck' if it has a recheck_by, else 'unreviewed' plus the "predates this field" note.
+        # Anything else fails the build.
         eff = revisions.effective_entry(item, item["_where"][0])
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
-                                   captured_via, session_id, captured_at, source_quote, status, source_key, volatility)
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
                VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, eff.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["volatility"])
+             status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
         revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))
@@ -211,7 +212,7 @@ def run(con):
     if derived:
         print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
               f"Run backfill_source_keys.py to write them into the files (same values).")
-    print("  facts by volatility:", dict(cur.execute("SELECT volatility, COUNT(*) FROM facts GROUP BY volatility").fetchall()))
+    print("  facts by freshness:", dict(cur.execute("SELECT freshness, COUNT(*) FROM facts GROUP BY freshness").fetchall()))
     print("  facts by trust_level:", dict(cur.execute("SELECT trust_level, COUNT(*) FROM facts GROUP BY trust_level").fetchall()))
     print("  facts by is_personal:", dict(cur.execute("SELECT is_personal, COUNT(*) FROM facts GROUP BY is_personal").fetchall()))
 

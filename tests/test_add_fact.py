@@ -19,7 +19,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 
-ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "volatility",
+ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness",
                      "domain", "trust_rationale", "notes", "recheck_by", "recheck_rationale",
                      "source_citekey", "source_locator", "source_quote"]
 
@@ -48,11 +48,13 @@ class Env:
         con.commit()
         con.close()
 
-    def cli(self, *args, via="add_fact", volatility="static"):
-        # #7: --volatility is required; most tests are about something else, so they get 'static'
-        # (the only value that needs no --recheck-by). Pass volatility=None to omit the flag.
-        if volatility is not None and "--volatility" not in args:
-            args = (*args, "--volatility", volatility)
+    def cli(self, *args, via="add_fact", freshness=True):
+        # #7: freshness is required; most tests are about something else, so they get --no-decay with
+        # a rationale unless they pass --recheck-by / --no-decay themselves. freshness=False omits it.
+        if freshness and "--recheck-by" not in args and "--no-decay" not in args:
+            args = (*args, "--no-decay")
+            if "--recheck-rationale" not in args:
+                args = (*args, "--recheck-rationale", "no decay")
         cmd = [sys.executable, ADD_FACT, *args] if via == "add_fact" else [sys.executable, KNOWLEDGE, "add-fact", *args]
         return subprocess.run(cmd, env=self.env, cwd=self.root, capture_output=True, text=True)
 
@@ -82,7 +84,7 @@ def test_minimal_add_shape_and_defaults(env):
     assert re.fullmatch(r"f-[0-9a-f]{12}", entry.pop("source_key"))  # #30
     assert entry == {
         "subject": "car-maintenance", "statement": "Hello world.", "trust_level": "medium",
-        "is_original_claim": False, "is_personal": True, "volatility": "static",
+        "is_original_claim": False, "is_personal": True, "freshness": "no-decay", "recheck_rationale": "no decay",
     }
     assert "Added to " in r.stdout and "general_facts.json" in r.stdout and "(1 facts total)" in r.stdout
     assert "python3 build.py" in r.stdout
@@ -250,7 +252,7 @@ def af(tmp_path_factory):
 
 
 def fact(af, **kw):
-    base = dict(statement="A fact.", subject="x", trust_level="low", volatility="static")
+    base = dict(statement="A fact.", subject="x", trust_level="low", no_decay=True, recheck_rationale="no decay")
     base.update(kw)
     return af.NewFact(**base)
 
@@ -303,7 +305,7 @@ def test_failed_replace_leaves_original_intact_and_no_temp_files(af, tmp_path, m
 
 def test_build_entry_matches_cli_shape(af):
     entry = af.build_entry(fact(af, domain="health", notes="n"))
-    assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "volatility", "domain", "notes"]
+    assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "domain", "notes", "recheck_rationale"]
 
 
 def test_a_successful_add_leaves_only_the_facts_file_in_the_data_dir(env):
