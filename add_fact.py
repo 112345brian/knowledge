@@ -15,7 +15,9 @@ Usage:
         --notes "..." --recheck-by 2026-12-01 --recheck-rationale "..." \
         --source-citekey some-existing-citekey --source-locator "p. 4"
 """
-import argparse, json, os, re, sqlite3, sys
+import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 
@@ -46,67 +48,199 @@ def parse_args(argv):
     return p.parse_args(argv)
 
 
-def validate(args):
-    errors = []
-    if not args.statement.strip():
+@dataclass
+class NewFact:
+    """One fact to add. Mirrors the CLI flags so the CLI, the MCP tools and tests share one shape."""
+    statement: str
+    subject: str
+    trust_level: str
+    domain: str = "general"
+    is_original_claim: bool = False
+    is_personal: bool = True
+    trust_rationale: Optional[str] = None
+    notes: Optional[str] = None
+    recheck_by: Optional[str] = None
+    recheck_rationale: Optional[str] = None
+    source_citekey: Optional[str] = None
+    source_locator: Optional[str] = None
+    source_quote: Optional[str] = None
+
+
+@dataclass
+class AddResult:
+    ok: bool
+    errors: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+    entry: Optional[dict] = None
+    total: Optional[int] = None
+
+
+class DataFileError(Exception):
+    """The facts file exists but can't be safely appended to."""
+
+
+def validate_fact(fact, db_path=None):
+    """Returns (errors, notes). Never prints. Same rules and messages the CLI has always had."""
+    db_path = DB_PATH if db_path is None else db_path
+    errors, notes = [], []
+    if fact.trust_level not in VALID_TRUST:
+        errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
+    if not fact.statement.strip():
         errors.append("statement is empty")
-    if not SUBJECT_RE.match(args.subject):
-        errors.append(f"--subject {args.subject!r} must be lowercase kebab-case (e.g. 'car-maintenance')")
-    if args.recheck_by and DATE_RE.match(args.recheck_by) is None and len(args.recheck_by) < 4:
-        errors.append(f"--recheck-by {args.recheck_by!r} looks too short to be a date or phrase")
-    if (args.source_locator or args.source_quote) and not args.source_citekey:
+    if not SUBJECT_RE.match(fact.subject):
+        errors.append(f"--subject {fact.subject!r} must be lowercase kebab-case (e.g. 'car-maintenance')")
+    if fact.recheck_by and DATE_RE.match(fact.recheck_by) is None and len(fact.recheck_by) < 4:
+        errors.append(f"--recheck-by {fact.recheck_by!r} looks too short to be a date or phrase")
+    if (fact.source_locator or fact.source_quote) and not fact.source_citekey:
         errors.append("--source-locator/--source-quote given without --source-citekey")
-    if args.source_citekey:
-        if not os.path.exists(DB_PATH):
-            print(f"  (skipping citekey check -- {DB_PATH} doesn't exist yet)", file=sys.stderr)
+    if fact.source_citekey:
+        if not os.path.exists(db_path):
+            notes.append(f"  (skipping citekey check -- {db_path} doesn't exist yet)")
         else:
-            con = sqlite3.connect(DB_PATH)
-            row = con.execute("SELECT 1 FROM sources WHERE citekey = ?", (args.source_citekey,)).fetchone()
-            con.close()
-            if not row:
-                errors.append(f"--source-citekey {args.source_citekey!r} not found in sources table")
-    return errors
+            try:
+                con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                try:
+                    row = con.execute("SELECT 1 FROM sources WHERE citekey = ?", (fact.source_citekey,)).fetchone()
+                finally:
+                    con.close()
+            except sqlite3.Error as e:
+                errors.append(f"could not check --source-citekey against {db_path}: {e}")
+            else:
+                if not row:
+                    errors.append(f"--source-citekey {fact.source_citekey!r} not found in sources table")
+    return errors, notes
+
+
+def build_entry(fact):
+    """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format."""
+    entry = {
+        "subject": fact.subject,
+        "statement": fact.statement.strip(),
+        "trust_level": fact.trust_level,
+        "is_original_claim": bool(fact.is_original_claim),
+        "is_personal": bool(fact.is_personal),
+    }
+    if fact.domain != "general":
+        entry["domain"] = fact.domain
+    for key in ("trust_rationale", "notes", "recheck_by", "recheck_rationale",
+                "source_citekey", "source_locator", "source_quote"):
+        value = getattr(fact, key)
+        if value:
+            entry[key] = value
+    return entry
+
+
+def _lock_path(path):
+    """Lock sidecar in the system temp dir, keyed by the data file's real path, so no lock file
+    ever appears inside knowledge-private (it would break the clean-tree check in issue #10)."""
+    key = hashlib.sha1(os.path.realpath(path).encode()).hexdigest()
+    directory = os.path.join(tempfile.gettempdir(), "knowledge-locks")
+    os.makedirs(directory, exist_ok=True)
+    return os.path.join(directory, key + ".lock")
+
+
+@contextlib.contextmanager
+def _file_lock(lock_path):
+    """Exclusive inter-process lock on a sidecar file (fcntl on POSIX, msvcrt on Windows)."""
+    f = open(lock_path, "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        finally:
+            f.close()
+
+
+def _read_array(path):
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path) as f:
+            items = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DataFileError(f"{path} is not valid JSON ({e}); left untouched") from e
+    if not isinstance(items, list):
+        raise DataFileError(f"{path} must contain a JSON array; left untouched")
+    return items
+
+
+def _atomic_write_json(path, items):
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(path):
+            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(tmp, 0o666 & ~umask)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def append_record(path, record):
+    """Append one record to a JSON array file: locked, read inside the lock, written to a temp
+    file and swapped in with os.replace, so a crash leaves the old file or the new one, never half.
+    Generic on purpose -- other append-only JSON files reuse it. Returns the new total."""
+    with _file_lock(_lock_path(path)):
+        items = _read_array(path)
+        items.append(record)
+        _atomic_write_json(path, items)
+    return len(items)
+
+
+def append_fact(fact, data_path=None, db_path=None):
+    """Validate and append one fact. Returns an AddResult; never prints or exits."""
+    data_path = DATA_PATH if data_path is None else data_path
+    errors, notes = validate_fact(fact, db_path)
+    if errors:
+        return AddResult(ok=False, errors=errors, notes=notes)
+    entry = build_entry(fact)
+    try:
+        total = append_record(data_path, entry)
+    except DataFileError as e:
+        return AddResult(ok=False, errors=[str(e)], notes=notes)
+    except OSError as e:
+        return AddResult(ok=False, errors=[f"could not write {data_path}: {e}"], notes=notes)
+    return AddResult(ok=True, notes=notes, entry=entry, total=total)
 
 
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
-    errors = validate(args)
-    if errors:
-        for e in errors:
+    fact = NewFact(
+        statement=args.statement, subject=args.subject, trust_level=args.trust_level, domain=args.domain,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal,
+        trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
+        recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
+        source_locator=args.source_locator, source_quote=args.source_quote,
+    )
+    result = append_fact(fact)
+    for note in result.notes:
+        print(note, file=sys.stderr)
+    if not result.ok:
+        for e in result.errors:
             print(f"error: {e}", file=sys.stderr)
         return 1
-
-    entry = {
-        "subject": args.subject,
-        "statement": args.statement.strip(),
-        "trust_level": args.trust_level,
-        "is_original_claim": bool(args.is_original_claim),
-        "is_personal": bool(args.is_personal),
-    }
-    if args.domain != "general":
-        entry["domain"] = args.domain
-    if args.trust_rationale:
-        entry["trust_rationale"] = args.trust_rationale
-    if args.notes:
-        entry["notes"] = args.notes
-    if args.recheck_by:
-        entry["recheck_by"] = args.recheck_by
-    if args.recheck_rationale:
-        entry["recheck_rationale"] = args.recheck_rationale
-    if args.source_citekey:
-        entry["source_citekey"] = args.source_citekey
-    if args.source_locator:
-        entry["source_locator"] = args.source_locator
-    if args.source_quote:
-        entry["source_quote"] = args.source_quote
-
-    items = json.load(open(DATA_PATH)) if os.path.exists(DATA_PATH) else []
-    items.append(entry)
-    with open(DATA_PATH, "w") as f:
-        json.dump(items, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-
-    print(f"Added to {os.path.relpath(DATA_PATH, HERE)} ({len(items)} facts total). Run `python3 build.py` to rebuild knowledge.db.")
+    print(f"Added to {os.path.relpath(DATA_PATH, HERE)} ({result.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
     return 0
 
 
