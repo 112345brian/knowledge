@@ -5,10 +5,19 @@ way to change knowledge.db's structure or bulk contents -- edit a script
 here and rerun, never ALTER/INSERT by hand against the live file.
 
 Usage:
-    python3 build.py            # rebuilds knowledge.db in place (backs up the old one first)
+    python3 build.py            # rebuilds knowledge.db (backs up the old one first)
     python3 build.py --check    # builds into a temp file and reports counts, doesn't touch the live DB
+
+After the swap, knowledge-normal.db (#21: only visibility='normal' facts and what hangs off them, see
+normal_db.py) is built the same atomic way into the same directory and leak-checked. If that fails the
+main build stays in place, a stale knowledge-normal.db is removed, and the exit code is non-zero.
+
+The rebuild goes into a temp file next to the live DB and is os.replace()d onto
+it only after every step succeeds, so a failing step (exit 1, naming the step)
+leaves the previous knowledge.db byte-identical, and a reader holding the old
+file open keeps a consistent snapshot.
 """
-import sqlite3, os, sys, shutil, datetime, importlib.util
+import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile
 
 from paths import KNOWLEDGE_DB_DIR
 
@@ -31,6 +40,7 @@ STEPS = [
     "09_ingest_scrobbles.py",
     "10_seed_artist_members.py",
     "11_seed_general_facts.py",
+    "12_apply_fact_revisions.py",
 ]
 
 
@@ -41,18 +51,59 @@ def load_module(path):
     return mod
 
 
+class BuildError(Exception):
+    """A build stage failed; `stage` names it (a step filename or 'schema')."""
+    def __init__(self, stage, cause):
+        super().__init__(f"{stage}: {cause}")
+        self.stage = stage
+        self.cause = cause
+
+
 def build(target_path):
     if os.path.exists(target_path):
         os.remove(target_path)
     con = sqlite3.connect(target_path)
-    con.execute("PRAGMA foreign_keys = ON;")
-    con.executescript(open(SCHEMA).read())
-    for step in STEPS:
-        mod = load_module(os.path.join(HERE, step))
-        mod.run(con)
-    con.execute("VACUUM;")
-    con.execute("ANALYZE;")
-    con.close()
+    try:
+        con.execute("PRAGMA foreign_keys = ON;")
+        try:
+            with open(SCHEMA) as f:
+                con.executescript(f.read())
+        except Exception as e:
+            raise BuildError("schema", e) from e
+        for step in STEPS:
+            try:
+                mod = load_module(os.path.join(HERE, step))
+                mod.run(con)
+            except Exception as e:
+                raise BuildError(step, e) from e
+        con.execute("VACUUM;")
+        con.execute("ANALYZE;")
+    finally:
+        con.close()
+
+
+def build_to_temp(directory):
+    """Build into a fresh unique temp file in `directory`; return its path.
+    On failure the temp file is removed and BuildError propagates."""
+    fd, tmp = tempfile.mkstemp(prefix="knowledge.db.building-", dir=directory)
+    os.close(fd)
+    umask = os.umask(0)
+    os.umask(umask)
+    os.chmod(tmp, 0o666 & ~umask)  # mkstemp makes it 0600; keep the mode a plain sqlite3.connect gives
+    try:
+        build(tmp)
+    except BaseException:
+        remove_db_files(tmp)
+        raise
+    return tmp
+
+
+def remove_db_files(path):
+    for p in (path, path + "-journal", path + "-wal", path + "-shm"):
+        try:
+            os.remove(p)
+        except FileNotFoundError:
+            pass
 
 
 def prune_backups(keep=KEEP_BACKUPS):
@@ -68,11 +119,24 @@ def prune_backups(keep=KEEP_BACKUPS):
         print(f"  pruned old backup {old}")
 
 
+def build_normal(full_path, directory, rules=None):
+    """Build + leak-check knowledge-normal.db in `directory` from the freshly built `full_path`.
+    Privacy rules come from the private data dir (a bad rules file raises: fail closed)."""
+    import normal_db
+    if rules is None:
+        import privacy
+        rules = privacy.load_rules()
+    path, counts = normal_db.build_normal_atomic(full_path, directory, rules)
+    print(f"Built {path} (leak test passed)")
+    print(normal_db.format_counts(counts))
+    return path
+
+
 def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
     for table in ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                  "vault_files", "claims", "claim_facts", "fact_sources", "fact_measurements",
+                  "vault_files", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "muscles", "muscle_volume_weekly",
                   "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",
@@ -85,26 +149,49 @@ def report(path):
 
 def main():
     check_only = "--check" in sys.argv
+    try:
+        if check_only:
+            print("Building into a temp file (live DB untouched)...")
+            tmp = build_to_temp(tempfile.gettempdir())
+            try:
+                report(tmp)
+                with tempfile.TemporaryDirectory() as nd:
+                    print("Normal-only DB (temp):")
+                    build_normal(tmp, nd)
+            except Exception as e:
+                print(f"error: normal DB build failed: {e}", file=sys.stderr)
+                sys.exit(1)
+            finally:
+                remove_db_files(tmp)
+            return
 
-    if check_only:
-        tmp = "/tmp/knowledge_db_build_check.db"
-        print(f"Building into {tmp} (live DB untouched)...")
-        build(tmp)
-        report(tmp)
-        os.remove(tmp)
-        return
+        os.makedirs(DB_DIR, exist_ok=True)
+        print(f"Rebuilding {LIVE_DB}...")
+        tmp = build_to_temp(DB_DIR)
+    except BuildError as e:
+        print(f"error: build failed in {e.stage}: {e.cause!r}; live DB left untouched", file=sys.stderr)
+        sys.exit(1)
 
-    os.makedirs(DB_DIR, exist_ok=True)
-    if os.path.exists(LIVE_DB):
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        backup = os.path.join(BACKUP_DIR, f"knowledge.db.bak-{datetime.datetime.now():%Y%m%dT%H%M%S}")
-        shutil.copy2(LIVE_DB, backup)
-        print(f"Backed up existing DB to {backup}")
-        prune_backups()
-
-    print(f"Rebuilding {LIVE_DB}...")
-    build(LIVE_DB)
+    try:
+        if os.path.exists(LIVE_DB):
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            backup = os.path.join(BACKUP_DIR, f"knowledge.db.bak-{datetime.datetime.now():%Y%m%dT%H%M%S}")
+            shutil.copy2(LIVE_DB, backup)
+            print(f"Backed up existing DB to {backup}")
+            prune_backups()
+        os.replace(tmp, LIVE_DB)
+    except BaseException:
+        remove_db_files(tmp)
+        raise
     report(LIVE_DB)
+
+    # The main build is done and stays in place whatever happens here.
+    try:
+        build_normal(LIVE_DB, DB_DIR)
+    except Exception as e:
+        print(f"error: knowledge.db was rebuilt, but the normal-only DB failed: {e}; "
+              f"any previous knowledge-normal.db was removed", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

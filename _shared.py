@@ -149,3 +149,21 @@ def link_authors(cur, source_id, author_string):
             "INSERT OR IGNORE INTO source_authors (source_id, author_id, author_order) VALUES (?, ?, ?)",
             (source_id, author_id, i),
         )
+
+
+def require_date_added(item, filename, index):
+    """The entry's own `date_added`, validated. A missing, null, blank or non-ISO value is a
+    build error naming the file and entry -- never a made-up date (#35). Fix the data, or run
+    backfill_dates.py for the original entries."""
+    from datetime import datetime
+    value = item.get("date_added")
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        datetime.fromisoformat(value)
+    except ValueError:
+        what = "has no `date_added`" if "date_added" not in item else f"has an invalid `date_added` {value!r}"
+        raise ValueError(
+            f"{filename}[{index}] ({str(item.get('statement') or '')[:60]!r}) {what}. A date is never invented: "
+            f"set it by hand, or for the original entries run `python3 backfill_dates.py --apply`.") from None
+    return value

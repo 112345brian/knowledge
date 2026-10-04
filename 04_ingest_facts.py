@@ -11,11 +11,13 @@ Run after 01/02/03 (needs sources + subjects + measurements to exist).
 import sqlite3, json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shared import get_or_create_vault_file
+from _shared import get_or_create_vault_file, require_date_added
+import revisions
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
+import privacy
 
-TODAY = "2026-09-11"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
+VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 
 PRONOUN_RE = re.compile(r'\b(he|his|him|the vault owner|vault owner)\b', re.IGNORECASE)
 FINGERPRINT_RE = re.compile(
@@ -88,13 +90,15 @@ def classify_is_personal(statement, notes, is_original_claim, measured_link):
 
 
 def load_items():
-    items = json.load(open(os.path.join(DATA_DIR, "pilot_facts.json")))
-    for item in items:
-        item["_is_pilot"] = True
-    for i in range(1, 5):
-        batch = json.load(open(os.path.join(DATA_DIR, f"facts_batch{i}.json")))
-        for item in batch:
-            item["_is_pilot"] = False
+    """All entries, each with `_is_pilot`, `_where` (file, index) and `_source_key` (its own, or the deterministic
+    legacy-... key from revisions.derive_keys until backfill_source_keys.py writes one)."""
+    items = []
+    for name, is_pilot in [("pilot_facts.json", True)] + [(f"facts_batch{i}.json", False) for i in range(1, 5)]:
+        batch = json.load(open(os.path.join(DATA_DIR, name)))
+        for index, (item, key) in enumerate(zip(batch, revisions.derive_keys(batch, name))):
+            item["_is_pilot"] = is_pilot
+            item["_source_key"] = key
+            item["_where"] = (name, index)
         items.extend(batch)
     return items
 
@@ -113,6 +117,8 @@ def get_or_create_subject(cur, name, cache):
 
 
 def run(con):
+    # Fail early on a corrupt rules file; an absent one means empty rules (#31).
+    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -120,6 +126,7 @@ def run(con):
     items = load_items()
     inserted = skipped = 0
     bad_citekeys = set()
+    derived = 0
 
     for item in items:
         subj = (item.get("subject") or "").strip()
@@ -128,6 +135,24 @@ def run(con):
         if not subj or not stmt or trust not in VALID_TRUST:
             skipped += 1
             continue
+        visibility = item.get("visibility")
+        if visibility is None:
+            visibility = "private"  # unmarked facts are private; never derived from is_personal
+        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
+            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        status = item.get("status") or "active"
+        if status not in revisions.VALID_STATUS:
+            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        key = item["_source_key"]
+        if not revisions.SOURCE_KEY_RE.match(key):
+            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
+            raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
+        derived += 0 if item.get("source_key") else 1
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
@@ -137,14 +162,23 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
+        date_added = require_date_added(item, *item["_where"])
+        # #7: the entry's own freshness, or for a legacy entry (original files, no provenance)
+        # 'recheck' if it has a recheck_by, else 'unreviewed' plus the "predates this field" note.
+        # Anything else fails the build.
+        eff = revisions.effective_entry(item, item["_where"][0])
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
-                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?)""",
+                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
-             TODAY, TODAY, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id)
+             date_added, date_added, eff.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
+             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
+             status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -166,10 +200,19 @@ def run(con):
 
         inserted += 1
 
+    # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
+    # Subjects' parent_id is set by step 06, so 11 (last) is the pass that sees the whole tree.
+    applied = privacy.apply_rules_to_db(con, rules)
     con.commit()
+    if applied["raised"]:
+        print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
     print(f"[04_ingest_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
+    if derived:
+        print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
+              f"Run backfill_source_keys.py to write them into the files (same values).")
+    print("  facts by freshness:", dict(cur.execute("SELECT freshness, COUNT(*) FROM facts GROUP BY freshness").fetchall()))
     print("  facts by trust_level:", dict(cur.execute("SELECT trust_level, COUNT(*) FROM facts GROUP BY trust_level").fetchall()))
     print("  facts by is_personal:", dict(cur.execute("SELECT is_personal, COUNT(*) FROM facts GROUP BY is_personal").fetchall()))
 

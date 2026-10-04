@@ -18,7 +18,10 @@ CREATE TABLE subjects (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     domain      TEXT NOT NULL DEFAULT 'health-and-fitness',
-    parent_id   INTEGER REFERENCES subjects(id)
+    parent_id   INTEGER REFERENCES subjects(id),
+    -- #31 privacy: 1 when this subject or an ancestor is tagged private in privacy_rules.json
+    -- (set by privacy.apply_rules_to_db at the end of 04/11; the rules file is the source of truth).
+    private     INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1))
 );
 
 -- ============================================================
@@ -140,7 +143,7 @@ CREATE TABLE facts (
     is_personal             INTEGER NOT NULL DEFAULT 1 CHECK (is_personal IN (0,1)),
     trust_level             TEXT NOT NULL CHECK (trust_level IN ('verified','high','medium','low','unverified','disputed')),
     trust_rationale         TEXT,
-    status                  TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded','retracted')),
+    status                  TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending','active','superseded','retracted')),  -- 'pending' added by #30 (revisions can set it; #6 owns the workflow)
     superseded_by_fact_id   INTEGER REFERENCES facts(id),
     provided_by             TEXT NOT NULL DEFAULT 'user',
     date_added              TEXT NOT NULL DEFAULT (datetime('now')),
@@ -148,13 +151,76 @@ CREATE TABLE facts (
     recheck_by              TEXT,
     recheck_rationale       TEXT,
     origin_file_id          INTEGER REFERENCES vault_files(id),
-    notes                   TEXT
+    notes                   TEXT,
+    -- Who may see this fact. NOT derived from is_personal (a keyword heuristic, not a privacy
+    -- boundary). Anything unmarked is private; the value is only ever stored here, never inferred.
+    visibility              TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','normal')),
+    -- Provenance, all optional here; add_fact.py requires session_id + source_quote when
+    -- captured_via = 'mcp'. captured_via is an open vocabulary (cli, mcp, migrate-memory, ...).
+    -- source_quote is the words that justified the fact; when a fact also cites a source the
+    -- same text is in fact_sources.quote, which stays the per-source copy.
+    captured_via            TEXT,
+    session_id              TEXT,
+    captured_at             TEXT,
+    source_quote            TEXT,
+    -- Stable identity across rebuilds (#30); fact_revisions and fact_revisions.jsonl point at it.
+    -- Nullable only so hand-built test rows work; the ingest scripts always set it.
+    source_key              TEXT UNIQUE,
+    -- Freshness (#7): every fact either has a recheck_by or explicitly asserts it does not decay.
+    --   recheck     the fact may go stale; recheck_by is required (first CHECK below).
+    --   no-decay    an explicit assertion that the fact does not decay (a birthdate, a completed
+    --               purchase); a written recheck_rationale (non-blank) is required, recheck_by may
+    --               be NULL. It is NOT an excuse to default trust_level to 'verified': the fact
+    --               still needs an honestly considered trust level reflecting how it was actually
+    --               captured (cross-checked against an ID vs. typed from memory).
+    --   unreviewed  LEGACY ONLY: predates this column and was never individually reviewed (183 of
+    --               the 295 legacy facts have no recheck_by). Exempt from both rules. The add_fact /
+    --               facts_batch / migrate paths REJECT it for a new fact and revisions may only
+    --               move a fact OUT of it; only 04_ingest_facts.py assigns it, to entries in the
+    --               legacy files that have no recheck_by.
+    -- What the schema ENFORCES: only that the required field is present (recheck_by, or a
+    -- non-blank rationale). It cannot judge whether a fact really does not decay, or whether a
+    -- recheck_by is sensible; that stays with whoever writes the fact. Staleness only: a fact that
+    -- was wrong when typed is trust_level's job.
+    freshness               TEXT NOT NULL CHECK (freshness IN ('recheck','no-decay','unreviewed')),
+    CHECK (freshness <> 'recheck' OR recheck_by IS NOT NULL),
+    CHECK (freshness <> 'no-decay' OR COALESCE(length(trim(recheck_rationale, char(32, 9, 10, 11, 12, 13))), 0) > 0)
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
 CREATE INDEX idx_facts_is_personal ON facts(is_personal);
 CREATE INDEX idx_facts_status ON facts(status);
 CREATE INDEX idx_facts_origin_file ON facts(origin_file_id);
+CREATE INDEX idx_facts_visibility ON facts(visibility);
+
+-- ===== BEGIN #30 fact revisions (own block; keep merges separate) =====
+-- One row per revision of a fact, including the implicit revision 1 (the original JSON entry,
+-- written by 04_ingest_facts.py / 11_seed_general_facts.py). Revisions >= 2 come from
+-- fact_revisions.jsonl via 12_apply_fact_revisions.py. `facts` holds the CURRENT state, copied
+-- from each fact's latest revision; this table is the history. superseded_by is a source_key.
+CREATE TABLE fact_revisions (
+    id               INTEGER PRIMARY KEY,
+    fact_id          INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+    source_key       TEXT NOT NULL,
+    revision         INTEGER NOT NULL CHECK (revision >= 1),
+    changed_at       TEXT NOT NULL,
+    changed_via      TEXT NOT NULL,
+    session_id       TEXT,
+    change_reason    TEXT,
+    statement        TEXT NOT NULL,
+    trust_level      TEXT NOT NULL CHECK (trust_level IN ('verified','high','medium','low','unverified','disputed')),
+    trust_rationale  TEXT,
+    status           TEXT NOT NULL CHECK (status IN ('pending','active','superseded','retracted')),
+    visibility       TEXT NOT NULL CHECK (visibility IN ('private','normal')),
+    superseded_by    TEXT,
+    recheck_by       TEXT,
+    recheck_rationale TEXT,
+    freshness        TEXT,
+    notes            TEXT,
+    UNIQUE (source_key, revision)
+);
+CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
+-- ===== END #30 fact revisions =====
 
 CREATE TABLE fact_sources (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
@@ -202,7 +268,11 @@ CREATE TABLE claims (
     id          INTEGER PRIMARY KEY,
     statement   TEXT NOT NULL,
     date_added  TEXT NOT NULL DEFAULT (datetime('now')),
-    notes       TEXT
+    notes       TEXT,
+    -- How the cited facts (claim_facts) support the statement. Nullable and forward-only: set it on
+    -- new claims; the claims that existed before this column are deliberately NOT backfilled, and
+    -- NULL means "not classified", never a default type.
+    inference_type TEXT CHECK (inference_type IN ('deductive','inductive','abductive'))
 );
 
 CREATE TABLE claim_facts (
@@ -210,6 +280,19 @@ CREATE TABLE claim_facts (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
     PRIMARY KEY (claim_id, fact_id)
 );
+
+-- One row per (claim, cited fact) where the fact is superseded or retracted. Claims have no status of
+-- their own, so every claim counts as active. The "past recheck_by" case is NOT here: recheck_by is
+-- free text that is only sometimes a date, so claims_audit.audit_claims() does that part in Python.
+CREATE VIEW v_claims_with_stale_premises AS
+SELECT
+    c.id AS claim_id, c.statement AS claim_statement, c.inference_type,
+    f.id AS fact_id, f.statement AS fact_statement, f.status AS reason,
+    f.superseded_by_fact_id, f.trust_rationale, f.notes AS fact_notes
+FROM claims c
+JOIN claim_facts cf ON cf.claim_id = c.id
+JOIN facts f ON f.id = cf.fact_id
+WHERE f.status IN ('superseded','retracted');
 
 -- ============================================================
 -- Training sets, food log, meal log: each is one EVENT with several
@@ -534,7 +617,7 @@ LEFT JOIN subjects p ON p.id = s.parent_id;
 CREATE VIEW v_facts AS
 SELECT
     f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
-    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness,
     vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
 FROM facts f
 JOIN subjects sub ON sub.id = f.subject_id

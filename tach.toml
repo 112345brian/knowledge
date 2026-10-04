@@ -1,0 +1,339 @@
+# tach module boundaries for the flat-module `knowledge` repo (#36).
+#
+# Read the README "Architecture enforcement" section first. Summary:
+#   * Every top-level module (and every numbered script) is one tach module.
+#   * `depends_on` is a deny-by-default ALLOWLIST: an import not listed here fails
+#     `uv run tach check`. That is how "`paths` is imported only by an allowlist" and
+#     "`private_git` is imported only by add_fact / review / knowledge" are enforced.
+#   * `layer` adds the direction rule on top: serving > cli > pipeline > library. A module may
+#     only import from its own or a lower layer, so a library can never import the CLI, the
+#     serving layer or the pipeline (the issue's "libraries never import up"). NOTE the order:
+#     "pipeline" sits ABOVE "library" because the ingest scripts and build.py consume the
+#     libraries (revisions, privacy, normal_db), never the reverse.
+#   * root_module = "forbid": a .py file that is not listed below is an error, so a new module
+#     cannot be added without choosing its layer and its allowed imports.
+#
+# Lines starting with `#planned:` are entries for modules that other in-flight issues are adding
+# (only #2, mcp_server, is left; the wave-4 modules are active). They are inert comments today. When the module
+# lands, delete the `#planned: ` prefix (tests/test_architecture.py fails with the exact line
+# numbers if you forget) and adjust depends_on to the real imports. The negative tests run with
+# every planned line enabled, so the planned layout is itself checked.
+#
+# Not expressible here: SQL in strings, importlib/__import__ loads (build.py loads the numbered
+# scripts with importlib: that is the pipeline talking to itself), string-built git commands.
+# The import-linter contracts (pyproject.toml) and the regex scan tests cover part of that.
+
+source_roots = ["."]
+exclude = ["tests", "docs", ".venv", "**/__pycache__"]
+layers = ["serving", "cli", "pipeline", "library"]
+root_module = "forbid"
+# Without this, tach lets a higher layer import ANY lower layer without declaring it, which would
+# switch the allowlists off for the CLI, serving and pipeline (e.g. any script could import paths).
+layers_explicit_depends_on = true
+# Count `if TYPE_CHECKING:` imports too (tach ignores them by default): a type-only import of the
+# CLI from a library is still a layering mistake.
+ignore_type_checking_imports = false
+# Report depends_on entries that are no longer used, so the allowlists cannot silently grow stale.
+exact = true
+# Cycles among libraries are checked by import-linter (pyproject.toml, "libraries-layered"),
+# because there is exactly one documented, lazy exception (normal_db <-> leak_test) and tach
+# has no per-edge cycle exception. Turn this on if that exception ever goes away.
+forbid_circular_dependencies = false
+
+# ===================================================================== libraries (lowest)
+# Pure importable functions that return data. No typer, no CLI, no serving, no pipeline.
+
+[[modules]]
+path = "clock"
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "paths"          # the only module that knows personal paths
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "private_git"    # the only module that runs git against knowledge-private
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "privacy"
+layer = "library"
+depends_on = [
+    "paths",            # lazy import of PRIVATE_DATA_DIR, so the module imports without a private repo
+]
+
+[[modules]]
+path = "add_fact"
+layer = "library"
+depends_on = [
+    "clock",
+    "paths",
+    "privacy",
+    "private_git",
+]
+
+[[modules]]
+path = "revisions"
+layer = "library"
+depends_on = [
+    "add_fact",
+    "clock",
+    "paths",            # lazy
+]
+
+[[modules]]
+path = "review"
+layer = "library"
+depends_on = [
+    "privacy",          # the rule behind a fact's visibility, for the review page (pending_view)
+    "private_git",
+    "revisions",
+]
+
+[[modules]]
+path = "modes"          # the only serving-side reader of facts
+layer = "library"
+depends_on = [
+    "privacy",
+    "revisions",
+]
+
+[[modules]]
+path = "claims_audit"
+layer = "library"
+depends_on = [
+    "clock",
+]
+
+[[modules]]
+path = "normal_db"
+layer = "library"
+depends_on = [
+    "leak_test",        # lazy, to leak-check the DB it just built
+    "privacy",
+]
+
+[[modules]]
+path = "leak_test"
+layer = "library"
+depends_on = [
+    "normal_db",        # lazy, self_test() builds a fixture normal DB. The one documented
+                        # library cycle (see import-linter "libraries-layered" ignore_imports).
+    "privacy",          # lazy
+]
+
+[[modules]]
+path = "lifecycle"      # #8 supersede/retract, #23 set-visibility, #33 edit_fact (moved out of inbox, #36)
+layer = "library"
+depends_on = [
+    "privacy",
+    "private_git",
+    "review",
+    "revisions",
+]
+
+[[modules]]
+path = "facts_batch"    # #32 add_facts batch + `register facts`
+layer = "library"
+depends_on = [
+    "add_fact",
+    "modes",
+    "privacy",
+    "private_git",
+]
+
+[[modules]]
+path = "migrate_memory" # #29
+layer = "library"
+depends_on = [
+    "add_fact",
+    "clock",
+    "paths",
+    "private_git",
+    "revisions",
+]
+
+# ===================================================================== CLI
+
+[[modules]]
+path = "cli_parity"     # pure registry (no typer) so the parity test and serving layers can import it
+layer = "cli"
+depends_on = []
+
+[[modules]]
+path = "knowledge"      # the Typer app; the only module that imports typer besides cli_*
+layer = "cli"
+depends_on = [
+    "add_fact",
+    "claims_audit",
+    "cli_facts_batch",  # registration lines (CLI-internal)
+    "cli_inbox",
+    "cli_lifecycle",
+    "cli_migrate",
+    "paths",
+    "privacy",
+    "private_git",
+    "review",
+    "revisions",
+]
+
+[[modules]]
+path = "cli_lifecycle"  # supersede, retract, set-visibility
+layer = "cli"
+depends_on = [
+    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
+    "lifecycle",
+]
+
+[[modules]]
+path = "cli_migrate"
+layer = "cli"
+depends_on = ["migrate_memory"]
+
+[[modules]]
+path = "cli_facts_batch"
+layer = "cli"
+depends_on = ["facts_batch"]
+
+# cli_inbox is the ONE documented exception to "the CLI never imports serving": the `inbox` command
+# has to START the server, so it imports `inbox` and calls inbox.serve (a launcher, nothing else).
+# tach's layers cannot be overridden by depends_on, so the exception is the inline `# tach-ignore`
+# on the single `import inbox` line in cli_inbox.py (not a depends_on entry, so `exact` stays on)
+# plus the single matching `ignore_imports` line of the import-linter contract
+# "cli-never-imports-serving". Every other CLI module (and any other import from cli_inbox) that
+# imports `inbox` or `mcp_server` still fails (negative tests). A subprocess launch was rejected: it
+# would need a second exception (the subprocess allowlist), lose the in-process on_ready/Ctrl-C
+# handling and add nothing, since cli_inbox keeps no other serving dependency.
+[[modules]]
+path = "cli_inbox"
+layer = "cli"
+depends_on = [
+    "lifecycle",        # `edit` -> lifecycle.edit_fact
+]
+
+# ===================================================================== serving (highest)
+# Reads facts only through `modes`; writes only through the libraries `review` and `lifecycle`. Imports nothing else
+# of this repo (no revisions, privacy, private_git, sqlite3): see import-linter "serving-reads-facts-through-modes".
+
+[[modules]]
+path = "inbox"          # #33. Pure serving: no revisions / privacy / private_git / sqlite3 (import-linter
+layer = "serving"       # "serving-reads-facts-through-modes"); writes and display state come from lifecycle / review.
+depends_on = [
+    "lifecycle",        # edit_fact, set_visibility(raise_only=True)
+    "review",           # list/approve/reject, pending_view, status_word
+]
+
+#planned: [[modules]]
+#planned: path = "mcp_server"         # #2
+#planned: layer = "serving"
+#planned: depends_on = [
+#planned:     "cli_parity",
+#planned:     "modes",
+#planned:     "review",
+#planned: ]
+
+# ===================================================================== pipeline / ingest
+# build.py, the numbered scripts (01_*.py ... 12_*.py: not importable names, so import-linter
+# cannot see them; tach models them by file) and the backfill/export tools.
+
+[[modules]]
+path = "_shared"
+layer = "pipeline"
+depends_on = []
+
+[[modules]]
+path = "snapshot_date"
+layer = "pipeline"
+depends_on = []
+
+[[modules]]
+path = "build"
+layer = "pipeline"
+depends_on = [
+    "normal_db",        # lazy
+    "paths",
+    "privacy",          # lazy
+]
+
+[[modules]]
+path = "backfill_source_keys"
+layer = "pipeline"
+depends_on = ["add_fact", "revisions"]
+
+[[modules]]
+path = "backfill_dates"
+layer = "pipeline"
+depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date"]
+
+[[modules]]
+path = "clean_concerts_csv"
+layer = "pipeline"
+depends_on = ["paths"]
+
+[[modules]]
+path = "export_music_taste"
+layer = "pipeline"
+depends_on = ["paths"]
+
+[[modules]]
+path = "01_seed_sources"
+layer = "pipeline"
+depends_on = ["_shared", "paths"]
+
+[[modules]]
+path = "02_ingest_literature_sources"
+layer = "pipeline"
+depends_on = ["_shared", "paths"]
+
+[[modules]]
+path = "03_ingest_measurements"
+layer = "pipeline"
+depends_on = ["paths", "snapshot_date"]
+
+[[modules]]
+path = "04_ingest_facts"
+layer = "pipeline"
+depends_on = ["_shared", "paths", "privacy", "revisions"]
+
+[[modules]]
+path = "05_seed_claims"
+layer = "pipeline"
+depends_on = []
+
+[[modules]]
+path = "06_seed_subject_hierarchy"
+layer = "pipeline"
+depends_on = []
+
+[[modules]]
+path = "07_ingest_concerts"
+layer = "pipeline"
+depends_on = ["_shared", "paths"]
+
+[[modules]]
+path = "08_ingest_music_ratings"
+layer = "pipeline"
+depends_on = ["_shared", "paths"]
+
+[[modules]]
+path = "09_ingest_scrobbles"
+layer = "pipeline"
+depends_on = ["_shared", "paths"]
+
+[[modules]]
+path = "10_seed_artist_members"
+layer = "pipeline"
+depends_on = ["_shared"]
+
+[[modules]]
+path = "11_seed_general_facts"
+layer = "pipeline"
+depends_on = ["_shared", "paths", "privacy", "revisions"]
+
+[[modules]]
+path = "12_apply_fact_revisions"
+layer = "pipeline"
+depends_on = ["paths", "privacy", "revisions"]

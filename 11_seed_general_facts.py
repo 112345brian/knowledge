@@ -13,9 +13,12 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
+from _shared import require_date_added
+import privacy
+import revisions
 
-TODAY = "2026-09-26"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
+VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 
 
 def get_or_create_subject(cur, name, domain, cache):
@@ -32,6 +35,8 @@ def get_or_create_subject(cur, name, domain, cache):
 
 
 def run(con):
+    # Fail early on a corrupt rules file; an absent one means empty rules (#31).
+    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -39,28 +44,53 @@ def run(con):
     items = json.load(open(os.path.join(DATA_DIR, "general_facts.json")))
     inserted = skipped = 0
     bad_citekeys = set()
+    derived = 0
 
-    for item in items:
+    for index, (item, key) in enumerate(zip(items, revisions.derive_keys(items, "general_facts.json"))):
         subj = (item.get("subject") or "").strip()
         stmt = (item.get("statement") or "").strip()
         trust = (item.get("trust_level") or "").strip()
         if not subj or not stmt or trust not in VALID_TRUST:
             skipped += 1
             continue
+        visibility = item.get("visibility")
+        if visibility is None:
+            visibility = "private"  # unmarked facts are private; never derived from is_personal
+        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
+            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        status = item.get("status") or "active"
+        if status not in revisions.VALID_STATUS:
+            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        if not revisions.SOURCE_KEY_RE.match(key):
+            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
+            raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
+        derived += 0 if item.get("source_key") else 1
 
         subject_id = get_or_create_subject(cur, subj, item.get("domain") or "general", subject_cache)
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
+        date_added = require_date_added(item, "general_facts.json", index)
+        # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
+        eff = revisions.effective_entry(item, "general_facts.json")
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
-                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?)""",
+                                   provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
-             item.get("date_added") or TODAY, TODAY, item.get("notes"),
-             item.get("recheck_by"), item.get("recheck_rationale"))
+             date_added, date_added, item.get("notes"),
+             item.get("recheck_by"), item.get("recheck_rationale"), visibility,
+             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
+             status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -75,10 +105,18 @@ def run(con):
 
         inserted += 1
 
+    # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
+    # This is the last build step, so subjects' parent_id (step 06) is set and tags inherit.
+    applied = privacy.apply_rules_to_db(con, rules)
     con.commit()
+    if applied["raised"]:
+        print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
     print(f"[11_seed_general_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
+    if derived:
+        print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
+              f"Run backfill_source_keys.py to write them into the files (same values).")
 
 
 if __name__ == "__main__":

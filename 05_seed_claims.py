@@ -28,7 +28,9 @@ CLAIMS = [
 def run(con):
     cur = con.cursor()
     for c in CLAIMS:
-        cur.execute("INSERT INTO claims (statement, notes) VALUES (?, ?)", (c["statement"], c["notes"]))
+        # inference_type is optional and forward-only: the two claims above are deliberately unclassified.
+        cur.execute("INSERT INTO claims (statement, notes, inference_type) VALUES (?, ?, ?)",
+                    (c["statement"], c["notes"], c.get("inference_type")))
         claim_id = cur.lastrowid
         for prefix in c["fact_match_prefixes"]:
             cur.execute(

@@ -13,10 +13,15 @@ Source: the bodybuilding vault's own bodybuilding.db (see paths.py -> BODYBUILDI
 """
 import sqlite3, os, re
 
-from paths import BODYBUILDING_VAULT as VAULT
+from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
+from snapshot_date import read_snapshot_date
 
 VAULT_DB = os.path.expanduser(f"{VAULT}/bodybuilding.db")
-TODAY = "2026-09-11"
+# The vault db has no per-row load timestamp (only the date each reading was taken), so the
+# date_added of these rows, and the retrieved_date of the vault-db sources, is the date the
+# snapshot was taken. It is read from the data (measurements_snapshot.json, written once by
+# backfill_dates.py) in run(); a missing or malformed file fails the build. #35.
+SNAPSHOT_DATE = None
 
 # Curated labels/good-direction for the metrics worth a human-friendly name.
 # Anything not listed here gets an auto-generated label (see humanize()) --
@@ -93,7 +98,7 @@ def insert_measurement(cur, *, subject, metric, value, unit, measured_at, source
                                       trust_rationale, date_added, notes, recheck_by, recheck_rationale)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (subject_id, metric_id, value, measured_at, source_id, trust_level, trust_rationale,
-         TODAY, notes, recheck_by, recheck_rationale),
+         SNAPSHOT_DATE, notes, recheck_by, recheck_rationale),
     )
 
 
@@ -109,7 +114,7 @@ def get_or_create_source(cur, citekey, name, description, origin_path=None):
     if row:
         return row[0]
     cur.execute("""INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path)
-        VALUES (?, ?, 'primary', NULL, NULL, NULL, ?, ?, ?)""", (citekey, name, TODAY, description, origin_path))
+        VALUES (?, ?, 'primary', NULL, NULL, NULL, ?, ?, ?)""", (citekey, name, SNAPSHOT_DATE, description, origin_path))
     source_id = cur.lastrowid
     author_id = cur.execute("SELECT id FROM authors WHERE name = 'user'").fetchone()
     if not author_id:
@@ -162,10 +167,11 @@ def get_or_create_muscle(cur, name):
     return mid
 
 
-STALE_NOTE = "Synced into knowledge.db as of 2026-09-11 -- a snapshot of a live, actively-updated vault table, not a re-syncing link."
-
-
 def run(con):
+    global SNAPSHOT_DATE
+    SNAPSHOT_DATE = read_snapshot_date(DATA_DIR)  # raises, naming the file, if it is not in the data
+    STALE_NOTE = (f"Synced into knowledge.db as of {SNAPSHOT_DATE} -- a snapshot of a live, "
+                  f"actively-updated vault table, not a re-syncing link.")
     vault = sqlite3.connect(VAULT_DB)
     vault.row_factory = sqlite3.Row
     cur = con.cursor()
