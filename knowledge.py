@@ -714,6 +714,8 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
         return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
+import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, set-visibility (#8, #23)
+
 
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
