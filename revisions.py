@@ -303,13 +303,18 @@ def _log_line(rev):
     return json.dumps({k: rev[k] for k in REVISION_KEYS}, ensure_ascii=False)
 
 
-def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None):
+def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
     """Append one revision to a fact: locked, validated, atomic. Never raises for bad input and
     never touches the original entry files; returns RevisionResult(ok, errors, revision).
 
     `changes` maps mutable field names to new values; unchanged fields are carried over from
     the fact's current state, so the stored line is always a full snapshot. A call that
-    changes nothing is refused (it would only add noise to the history)."""
+    changes nothing is refused (it would only add noise to the history).
+
+    `expect` (optional dict of mutable field -> value) is a precondition checked under the same
+    lock as the write: if the fact's current state differs, nothing is written and the result is
+    not ok with error "precondition failed: ...". review.approve uses it so a fact that was
+    retracted by another process between the check and the write is never silently re-activated."""
     data_dir = default_data_dir() if data_dir is None else data_dir
     revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
     errors = []
@@ -324,6 +329,8 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
         errors.append(f"via {via!r} must be a lowercase kebab-case token (e.g. 'cli', 'mcp', 'approve')")
     if session_id is not None and not (isinstance(session_id, str) and session_id.strip()):
         errors.append("session_id must be None or a non-empty string")
+    if expect is not None and (not isinstance(expect, dict) or any(k not in MUTABLE_FIELDS for k in expect)):
+        errors.append(f"expect must be a dict over the mutable fields {list(MUTABLE_FIELDS)}")
     if errors:
         return RevisionResult(False, errors)
     try:
@@ -338,6 +345,11 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
             mine = [r for _, r in records if r["source_key"] == source_key]
             current = mine[-1] if mine else implicit_revision(source_key, by_key[source_key]["entry"],
                                                                 by_key[source_key]["legacy_date"])
+            if expect:
+                wrong = {k: current[k] for k, v in expect.items() if current[k] != v}
+                if wrong:
+                    return RevisionResult(False, [f"precondition failed: current {wrong}, expected "
+                                                  f"{ {k: expect[k] for k in wrong} }"])
             snapshot = {f: current[f] for f in MUTABLE_FIELDS}
             snapshot.update(changes)
             if isinstance(snapshot["statement"], str):
