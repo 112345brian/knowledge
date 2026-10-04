@@ -583,6 +583,9 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
 
+import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
+
+
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:

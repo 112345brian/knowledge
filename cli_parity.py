@@ -26,6 +26,7 @@ ACTIONS = {
     "list_facts": ("facts",),
     "get_history": ("history",),
     "audit_claims": ("audit-claims",),
+    "migrate_memory": ("migrate-memory",),
     "privacy_check": ("privacy", "check"),
     "privacy_rules": ("privacy", "rules"),
     "privacy_tag": ("privacy", "tag"),
