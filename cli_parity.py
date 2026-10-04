@@ -28,6 +28,7 @@ ACTIONS = {
     "audit_claims": ("audit-claims",),
     "supersede_fact": ("supersede",),
     "retract_fact": ("retract",),
+    "set_visibility": ("set-visibility",),
     "privacy_check": ("privacy", "check"),
     "privacy_rules": ("privacy", "rules"),
     "privacy_tag": ("privacy", "tag"),

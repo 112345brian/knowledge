@@ -1,4 +1,4 @@
-"""Typer commands for the fact lifecycle (#8): supersede, retract.
+"""Typer commands for the fact lifecycle (#8, #23): supersede, retract, set-visibility.
 
 Thin printers over lifecycle.py (which never prints or exits). Registered in knowledge.py by one
 line, `app.add_typer(cli_lifecycle.app)`; this module must not import knowledge at import time
@@ -8,6 +8,7 @@ Exit codes (same as review): 0 changed or already in the requested state, 1 refu
 any error, 3 the revision was written but the commit failed. `--json` prints LifecycleResult.to_json().
 A change takes effect in knowledge.db after the next rebuild (`knowledge.py build`).
 """
+import enum
 import json
 import sys
 
@@ -20,6 +21,11 @@ app = typer.Typer(pretty_exceptions_enable=False, rich_markup_mode=None)
 JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON instead of text.")
 ALLOW_DIRTY_OPT = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (the commit still holds only the revision log).")
 REASON_OPT = typer.Option(..., "--reason", help="Why (required; recorded in the revision history).")
+
+
+class Visibility(str, enum.Enum):
+    normal = "normal"
+    private = "private"
 
 
 def _open_db():
@@ -77,3 +83,9 @@ def cmd_supersede(ref: str, by: str = typer.Option(..., "--by", help="The replac
 @app.command("retract", help="Mark a fact retracted (appends a revision; never edits the entry).")
 def cmd_retract(ref: str, reason: str = REASON_OPT, allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
     _call(lifecycle.retract, ref, reason, allow_dirty=allow_dirty, as_json=as_json)
+
+
+@app.command("set-visibility", help="Promote to normal or demote to private (appends a revision). Lowering to normal is refused when the privacy rules keep the fact private.")
+def cmd_set_visibility(ref: str, visibility: Visibility, reason: str = REASON_OPT,
+                       allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
+    _call(lifecycle.set_visibility, ref, visibility.value, reason, allow_dirty=allow_dirty, as_json=as_json)

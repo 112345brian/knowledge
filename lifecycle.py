@@ -1,26 +1,27 @@
-"""Fact lifecycle (#8): supersede and retract, each one appended revision.
+"""Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision.
 
 A fact entry in the JSON data files is never edited. A lifecycle change appends a revision (#30)
-that carries the whole fact with the new status, so a rebuild shows it in `facts`,
+that carries the whole fact with the new status / visibility, so a rebuild shows it in `facts`,
 `history` lists it with its reason, and `show --as-of` before it still shows the old state.
 
-Library API (the Typer `supersede` / `retract` commands are thin callers, see
+Library API (the Typer `supersede` / `retract` / `set-visibility` commands are thin callers, see
 cli_lifecycle.py; the inbox and the MCP server will be too):
     supersede(ref, by_ref, reason, ...)          -> LifecycleResult   status 'superseded', superseded_by = replacement
     retract(ref, reason, ...)                    -> LifecycleResult   status 'retracted' (clears superseded_by)
+    set_visibility(ref, visibility, reason, ...) -> LifecycleResult   'private' always; 'normal' only if the privacy floor allows
 
 `ref` / `by_ref` are a fact id (int, or a string of digits; needs `db`, a sqlite connection or a
 path to the built db) or a source_key (works for facts from general_facts.json, pilot_facts.json and
 facts_batch*.json alike). `reason` is required. Decisions are made from the data files + revision
 log (the source of truth), not from the db, so they are right even when the db is stale; the db is
-only used to turn a fact id into a source_key. 
+only used to turn a fact id into a source_key, and for the subject tree when lowering visibility.
 
 Semantics (decided, tested):
   * One call = one fact = at most one revision. The precondition is repeated under the revision
     log's lock (append_revision's `expect`); if it fails because another process got there first,
     the call re-plans against the fresh state once, so a concurrent identical call is reported as
     "unchanged", never as a duplicate revision.
-  * Outcomes: 'superseded' / 'retracted' (a revision was written); 'unchanged'
+  * Outcomes: 'superseded' / 'retracted' / 'visibility_set' (a revision was written); 'unchanged'
     (already in the requested state: no revision, no tree check, no commit, ok); 'refused' (a rule
     said no; `reason` explains); 'unknown' (ref does not resolve); 'error' (anything else).
   * Retract: pending / active / superseded facts. Already retracted -> unchanged. Retracting also
@@ -29,6 +30,11 @@ Semantics (decided, tested):
     Refused: pending (approve or reject it first), retracted (reverse it with an `active` revision
     first), self-supersede, an unknown / retracted / pending replacement, and a cycle (A->B->A, or any
     longer chain that leads back to the fact). Same replacement again -> unchanged.
+  * Set-visibility: raising to 'private' always works. Lowering to 'normal' is refused with the
+    privacy resolver's own explanation when the floor says private (subject tag, ancestor tag,
+    keyword/name rule, unknown subject): the build re-applies the floor raise-only, so a normal
+    revision would be a silent no-op that misleads `history`. Lowering needs the built db for the
+    subject tree and is refused without one (fail closed). Same visibility -> unchanged.
   * There is no un-supersede / un-retract command. Reversal is another revision, appended through
     the library: revisions.append_revision(key, {"status": "active", "superseded_by": None}, reason,
     via). The history keeps every step; nothing is deleted.
@@ -39,14 +45,16 @@ Semantics (decided, tested):
 Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
 """
 import os
+import sqlite3
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
+import privacy
 import review
 import revisions
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
-CHANGED_OUTCOMES = ("superseded", "retracted")
+CHANGED_OUTCOMES = ("superseded", "retracted", "visibility_set")
 OUTCOMES = CHANGED_OUTCOMES + ("unchanged", "refused", "unknown", "error")
 
 
@@ -126,6 +134,44 @@ def _decide_supersede(states, key, ctx):
         return _no("unchanged", f"already superseded by {by!r}")
     return _write({"status": "superseded", "superseded_by": by},
                   {"status": cur["status"], "superseded_by": cur["superseded_by"]}, "superseded")
+
+
+def _decide_visibility(states, key, ctx):
+    want = ctx["visibility"]
+    cur = states[key]
+    if cur["visibility"] == want:
+        return _no("unchanged", f"visibility is already {want!r}")
+    if want == "normal":
+        floor = _floor_resolution(ctx, key, cur)
+        if isinstance(floor, str):
+            return _no("refused", floor)
+        if floor.visibility == "private":
+            return _no("refused", "cannot lower to normal, the privacy rules keep it private (the build would "
+                                  "raise it again): " + floor.explain())
+    return _write({"visibility": want}, {"visibility": cur["visibility"]}, "visibility_set")
+
+
+def _floor_resolution(ctx, key, cur):
+    """privacy.check for the fact as it stands now; a string is a refusal message."""
+    db = ctx["db"]
+    if db is None:
+        return ("lowering to normal needs the built db (for the subject tree the privacy rules apply to); "
+                "build it, or pass db=")
+    entry = ctx["entries"][key]["entry"]
+    subject = entry.get("subject")
+    try:
+        rules = privacy.load_rules(privacy.rules_path(ctx["data_dir"]))
+        with revisions._connection(db) as con:
+            rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
+    except privacy.PrivacyRulesError as e:
+        return f"cannot check the privacy rules: {e}"
+    except sqlite3.Error as e:
+        return f"cannot read the subject tree from the db: {e} (rebuild it)"
+    parents = {n: p for n, p in rows}
+    known = set(parents) | {e["entry"].get("subject") for e in ctx["entries"].values()
+                            if isinstance(e["entry"].get("subject"), str)}
+    return privacy.check(subject, cur["statement"], rules.with_context(parents=parents, known_subjects=known),
+                         requested="normal")
 
 
 # --------------------------------------------------------------------------- engine
@@ -221,3 +267,13 @@ def retract(ref, reason, via="cli", session_id=None, data_dir=None, commit=True,
     """Mark `ref` retracted. `reason` is required."""
     return _run("retract", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
                 _decide_retract, {}, lambda key, _r: f"retract: {key}")
+
+
+def set_visibility(ref, visibility, reason, via="cli", session_id=None, data_dir=None, commit=True,
+                   allow_dirty=False, db=None):
+    """Set `ref`'s visibility to 'normal' or 'private'. Lowering to normal needs `db` and is refused
+    when the privacy rules say private. `reason` is required."""
+    if visibility not in ("normal", "private"):
+        return LifecycleResult("set-visibility", str(ref), errors=[f"visibility {visibility!r} must be 'normal' or 'private'"])
+    return _run("set-visibility", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
+                _decide_visibility, {"visibility": visibility}, lambda key, _r: f"set-visibility: {key} {visibility}")
