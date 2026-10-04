@@ -14,7 +14,7 @@
 #     cannot be added without choosing its layer and its allowed imports.
 #
 # Lines starting with `#planned:` are entries for modules that other in-flight issues are adding
-# (#6 review CLI, #8, #23, #29, #32, #33, #2). They are inert comments today. When the module
+# (only #2, mcp_server, is left; the wave-4 modules are active). They are inert comments today. When the module
 # lands, delete the `#planned: ` prefix (tests/test_architecture.py fails with the exact line
 # numbers if you forget) and adjust depends_on to the real imports. The negative tests run with
 # every planned line enabled, so the planned layout is itself checked.
@@ -88,6 +88,7 @@ depends_on = [
 path = "review"
 layer = "library"
 depends_on = [
+    "privacy",          # the rule behind a fact's visibility, for the review page (pending_view)
     "private_git",
     "revisions",
 ]
@@ -124,32 +125,36 @@ depends_on = [
     "privacy",          # lazy
 ]
 
-#planned: [[modules]]
-#planned: path = "lifecycle"          # #8 supersede/retract, #23 set-visibility
-#planned: layer = "library"
-#planned: depends_on = [
-#planned:     "clock",
-#planned:     "privacy",
-#planned:     "revisions",
-#planned: ]
-#planned:
-#planned: [[modules]]
-#planned: path = "facts_batch"        # #32 add_facts batch + `register facts`
-#planned: layer = "library"
-#planned: depends_on = [
-#planned:     "add_fact",
-#planned:     "privacy",
-#planned:     "revisions",
-#planned: ]
-#planned:
-#planned: [[modules]]
-#planned: path = "migrate_memory"     # #29
-#planned: layer = "library"
-#planned: depends_on = [
-#planned:     "add_fact",
-#planned:     "privacy",
-#planned:     "revisions",
-#planned: ]
+[[modules]]
+path = "lifecycle"      # #8 supersede/retract, #23 set-visibility, #33 edit_fact (moved out of inbox, #36)
+layer = "library"
+depends_on = [
+    "privacy",
+    "private_git",
+    "review",
+    "revisions",
+]
+
+[[modules]]
+path = "facts_batch"    # #32 add_facts batch + `register facts`
+layer = "library"
+depends_on = [
+    "add_fact",
+    "modes",
+    "privacy",
+    "private_git",
+]
+
+[[modules]]
+path = "migrate_memory" # #29
+layer = "library"
+depends_on = [
+    "add_fact",
+    "clock",
+    "paths",
+    "private_git",
+    "revisions",
+]
 
 # ===================================================================== CLI
 
@@ -159,56 +164,68 @@ layer = "cli"
 depends_on = []
 
 [[modules]]
-path = "knowledge"      # the Typer app; the only module that imports typer
+path = "knowledge"      # the Typer app; the only module that imports typer besides cli_*
 layer = "cli"
 depends_on = [
     "add_fact",
     "claims_audit",
+    "cli_facts_batch",  # registration lines (CLI-internal)
+    "cli_inbox",
+    "cli_lifecycle",
+    "cli_migrate",
     "paths",
     "privacy",
     "private_git",
+    "review",
     "revisions",
-#planned:     "cli_facts_batch",
-#planned:     "cli_inbox",
-#planned:     "cli_lifecycle",
-#planned:     "cli_migrate",
 ]
 
-#planned: [[modules]]
-#planned: path = "cli_lifecycle"
-#planned: layer = "cli"
-#planned: depends_on = ["lifecycle", "review"]
-#planned:
-#planned: [[modules]]
-#planned: path = "cli_migrate"
-#planned: layer = "cli"
-#planned: depends_on = ["migrate_memory"]
-#planned:
-#planned: [[modules]]
-#planned: path = "cli_facts_batch"
-#planned: layer = "cli"
-#planned: depends_on = ["facts_batch"]
-#planned:
-#planned: # cli_inbox: the CLI must NOT import `inbox` (cli -> serving is forbidden). The `inbox`
-#planned: # command has to start the server in a subprocess, or the shared functions have to live in a
-#planned: # library module. Adding "inbox" here would be a change to the rule, not to the config.
-#planned: [[modules]]
-#planned: path = "cli_inbox"
-#planned: layer = "cli"
-#planned: depends_on = []
+[[modules]]
+path = "cli_lifecycle"  # supersede, retract, set-visibility
+layer = "cli"
+depends_on = [
+    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
+    "lifecycle",
+]
+
+[[modules]]
+path = "cli_migrate"
+layer = "cli"
+depends_on = ["migrate_memory"]
+
+[[modules]]
+path = "cli_facts_batch"
+layer = "cli"
+depends_on = ["facts_batch"]
+
+# cli_inbox is the ONE documented exception to "the CLI never imports serving": the `inbox` command
+# has to START the server, so it imports `inbox` and calls inbox.serve (a launcher, nothing else).
+# tach's layers cannot be overridden by depends_on, so the exception is the inline `# tach-ignore`
+# on the single `import inbox` line in cli_inbox.py (not a depends_on entry, so `exact` stays on)
+# plus the single matching `ignore_imports` line of the import-linter contract
+# "cli-never-imports-serving". Every other CLI module (and any other import from cli_inbox) that
+# imports `inbox` or `mcp_server` still fails (negative tests). A subprocess launch was rejected: it
+# would need a second exception (the subprocess allowlist), lose the in-process on_ready/Ctrl-C
+# handling and add nothing, since cli_inbox keeps no other serving dependency.
+[[modules]]
+path = "cli_inbox"
+layer = "cli"
+depends_on = [
+    "lifecycle",        # `edit` -> lifecycle.edit_fact
+]
 
 # ===================================================================== serving (highest)
-# Reads facts only through `modes`; writes only through the libraries (modes -> add_fact / review).
+# Reads facts only through `modes`; writes only through the libraries `review` and `lifecycle`. Imports nothing else
+# of this repo (no revisions, privacy, private_git, sqlite3): see import-linter "serving-reads-facts-through-modes".
 
-#planned: [[modules]]
-#planned: path = "inbox"              # #33
-#planned: layer = "serving"
-#planned: depends_on = [
-#planned:     "cli_parity",
-#planned:     "modes",
-#planned:     "review",            # documented exception: the inbox approves/rejects pending facts
-#planned: ]
-#planned:
+[[modules]]
+path = "inbox"          # #33. Pure serving: no revisions / privacy / private_git / sqlite3 (import-linter
+layer = "serving"       # "serving-reads-facts-through-modes"); writes and display state come from lifecycle / review.
+depends_on = [
+    "lifecycle",        # edit_fact, set_visibility(raise_only=True)
+    "review",           # list/approve/reject, pending_view, status_word
+]
+
 #planned: [[modules]]
 #planned: path = "mcp_server"         # #2
 #planned: layer = "serving"
@@ -274,7 +291,7 @@ depends_on = ["_shared", "paths"]
 [[modules]]
 path = "03_ingest_measurements"
 layer = "pipeline"
-depends_on = ["paths"]
+depends_on = ["paths", "snapshot_date"]
 
 [[modules]]
 path = "04_ingest_facts"
@@ -314,7 +331,7 @@ depends_on = ["_shared"]
 [[modules]]
 path = "11_seed_general_facts"
 layer = "pipeline"
-depends_on = ["paths", "privacy", "revisions"]
+depends_on = ["_shared", "paths", "privacy", "revisions"]
 
 [[modules]]
 path = "12_apply_fact_revisions"

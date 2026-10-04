@@ -17,8 +17,10 @@ from typing import Optional
 
 import typer
 
-import inbox
 import lifecycle
+
+# THE one allowed CLI -> serving import (see the module docstring and tach.toml): this command starts the server.
+import inbox  # tach-ignore inbox
 
 
 def _fail(msg, code=1):
