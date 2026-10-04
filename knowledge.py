@@ -1,42 +1,56 @@
 #!/usr/bin/env python3
-"""Single entry point for this repo.
+"""Single entry point for this repo (Typer CLI; run `uv sync` once, then `uv run python knowledge.py --help`).
 
-    python3 knowledge.py build [--check]
-    python3 knowledge.py add-fact "statement" --subject x --trust medium ...
-    python3 knowledge.py clean-concerts
-    python3 knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--limit N]
-    python3 knowledge.py show <fact_id>
-    python3 knowledge.py subjects
-    python3 knowledge.py facts [--subject x] [--trust high] [--status active] [--personal-only|--not-personal] [--limit N]
+    knowledge.py build [--check]
+    knowledge.py add-fact "statement" --subject x --trust medium ...
+    knowledge.py clean-concerts
+    knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--limit N] [--json]
+    knowledge.py show <fact_id> [--json]
+    knowledge.py subjects [--json]
+    knowledge.py facts [--subject x] [--trust high] [--status active] [--personal-only|--not-personal] [--limit N] [--json]
+
+Convention (issue #34), for every later command: the library function comes
+first (pure, importable, returns data, never prints or exits), the Typer
+command second (a thin printer, with `--json` on every read command), the MCP
+tool / inbox handler third. `cli_parity.py` registers each action's CLI
+command and tests/test_cli_parity.py fails when a registered command is
+missing or a future MCP tool / inbox action has no registry entry.
 
 `build`, `add-fact`, and `clean-concerts` are thin dispatches to the existing
 standalone scripts (build.py, add_fact.py, clean_concerts_csv.py) -- those
-still run fine on their own; this just gives one name to remember. `search`,
-`show`, `subjects`, and `facts` are new: nothing queried knowledge.db before
-this except ad hoc sqlite3/DB Browser.
+still run fine on their own, without typer; this just gives one name to
+remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
-import argparse, os, pathlib, sqlite3, subprocess, sys
+import enum
+import json
+import os
+import pathlib
+import sqlite3
+import subprocess
+import sys
+from typing import Optional
+
+import typer
 
 from paths import KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 
 
-def cmd_build(args):
-    cmd = [sys.executable, os.path.join(HERE, "build.py")]
-    if args.check:
-        cmd.append("--check")
-    return subprocess.call(cmd)
+class Trust(str, enum.Enum):
+    verified = "verified"
+    high = "high"
+    medium = "medium"
+    low = "low"
+    unverified = "unverified"
+    disputed = "disputed"
 
 
-def cmd_add_fact(args):
-    return subprocess.call([sys.executable, os.path.join(HERE, "add_fact.py")] + args.add_fact_args)
-
-
-def cmd_clean_concerts(args):
-    return subprocess.call([sys.executable, os.path.join(HERE, "clean_concerts_csv.py")])
+class Status(str, enum.Enum):
+    active = "active"
+    superseded = "superseded"
+    retracted = "retracted"
 
 
 class DatabaseNotFound(FileNotFoundError):
@@ -74,10 +88,6 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None):
     elif personal is False:
         sql += " AND f.is_personal = 0"
     return sql
-
-
-def _personal(args):
-    return True if args.personal_only else (False if args.not_personal else None)
 
 
 def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20):
@@ -140,7 +150,37 @@ def list_subjects(con):
     ).fetchall()]
 
 
-# ---- thin CLI printers ----
+# ---- thin CLI printers (Typer) ----
+
+app = typer.Typer(help=__doc__, pretty_exceptions_enable=False, rich_markup_mode=None)
+
+
+def _personal(personal_only, not_personal):
+    if personal_only and not_personal:
+        raise typer.BadParameter("--personal-only and --not-personal are mutually exclusive")
+    return True if personal_only else (False if not_personal else None)
+
+
+def _fail(msg, code=1):
+    print(f"error: {msg}", file=sys.stderr)
+    raise typer.Exit(code)
+
+
+def _query(fn, *a, **kw):
+    """Open the db, run one library function, close. A missing db is a one-line error, exit 1."""
+    try:
+        con = connect()
+    except DatabaseNotFound as e:
+        _fail(e)
+    try:
+        return fn(con, *a, **kw)
+    finally:
+        con.close()
+
+
+def _emit_json(data):
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+
 
 def _print_fact_lines(rows):
     if not rows:
@@ -151,25 +191,55 @@ def _print_fact_lines(rows):
         print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']}){flag}  {r['statement']}")
 
 
-def cmd_search(args):
-    con = connect()
-    try:
-        rows = search_facts(con, args.terms, subject=args.subject, trust=args.trust,
-                            personal=_personal(args), limit=args.limit)
-    finally:
-        con.close()
-    _print_fact_lines(rows)
+JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON instead of text.")
 
 
-def cmd_show(args):
-    con = connect()
+@app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
+def cmd_build(check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
+    cmd = [sys.executable, os.path.join(HERE, "build.py")]
+    if check:
+        cmd.append("--check")
+    raise typer.Exit(subprocess.call(cmd))
+
+
+@app.command("add-fact", help="Append an ad hoc fact to data/general_facts.json. Every argument is forwarded to add_fact.py (see add_fact.py --help).",
+             context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []})
+def cmd_add_fact(ctx: typer.Context):
+    raise typer.Exit(subprocess.call([sys.executable, os.path.join(HERE, "add_fact.py")] + list(ctx.args)))
+
+
+@app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
+def cmd_clean_concerts():
+    raise typer.Exit(subprocess.call([sys.executable, os.path.join(HERE, "clean_concerts_csv.py")]))
+
+
+@app.command("search", help="Full-text search over facts (statement/trust_rationale/notes).")
+def cmd_search(
+    terms: str,
+    subject: Optional[str] = None,
+    trust: Optional[Trust] = None,
+    limit: int = 20,
+    personal_only: bool = typer.Option(False, "--personal-only"),
+    not_personal: bool = typer.Option(False, "--not-personal"),
+    as_json: bool = JSON_OPT,
+):
+    personal = _personal(personal_only, not_personal)
     try:
-        f = get_fact(con, args.fact_id)
-    finally:
-        con.close()
+        rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
+                      personal=personal, limit=limit)
+    except sqlite3.OperationalError as e:
+        _fail(f"search failed: {e}")
+    _emit_json(rows) if as_json else _print_fact_lines(rows)
+
+
+@app.command("show", help="Show one fact in full, with its sources.")
+def cmd_show(fact_id: int, as_json: bool = JSON_OPT):
+    f = _query(get_fact, fact_id)
     if not f:
-        print(f"error: no fact with id {args.fact_id}", file=sys.stderr)
-        return 1
+        _fail(f"no fact with id {fact_id}")
+    if as_json:
+        _emit_json(f)
+        return
 
     print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  status={f['status']}")
     print(f"\n{f['statement']}\n")
@@ -188,81 +258,40 @@ def cmd_show(args):
             print(f"  - {s['name']}{loc}")
 
 
-def cmd_subjects(args):
-    con = connect()
-    try:
-        rows = list_subjects(con)
-    finally:
-        con.close()
+@app.command("subjects", help="List subjects (indented under parent) with fact counts.")
+def cmd_subjects(as_json: bool = JSON_OPT):
+    rows = _query(list_subjects)
+    if as_json:
+        _emit_json(rows)
+        return
     for r in rows:
         indent = "  " if r["parent"] else ""
         print(f"{indent}{r['name']:<35} ({r['domain']}, {r['n_facts']} facts)")
 
 
-def cmd_facts(args):
-    con = connect()
-    try:
-        rows = list_facts(con, subject=args.subject, trust=args.trust, status=args.status,
-                          personal=_personal(args), limit=args.limit)
-    finally:
-        con.close()
-    _print_fact_lines(rows)
-
-
-def _add_personal_flags(sp):
-    grp = sp.add_mutually_exclusive_group()
-    grp.add_argument("--personal-only", action="store_true")
-    grp.add_argument("--not-personal", action="store_true")
+@app.command("facts", help="List/filter facts without full-text search.")
+def cmd_facts(
+    subject: Optional[str] = None,
+    trust: Optional[Trust] = None,
+    status: Optional[Status] = None,
+    limit: int = 50,
+    personal_only: bool = typer.Option(False, "--personal-only"),
+    not_personal: bool = typer.Option(False, "--not-personal"),
+    as_json: bool = JSON_OPT,
+):
+    rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
+                  status=status.value if status else None,
+                  personal=_personal(personal_only, not_personal), limit=limit)
+    _emit_json(rows) if as_json else _print_fact_lines(rows)
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="knowledge.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = p.add_subparsers(dest="command", required=True)
-
-    b = sub.add_parser("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
-    b.add_argument("--check", action="store_true", help="Build into a throwaway file and report counts; live DB untouched.")
-    b.set_defaults(func=cmd_build)
-
-    af = sub.add_parser("add-fact", help="Append an ad hoc fact to data/general_facts.json.", add_help=False)
-    af.set_defaults(func=cmd_add_fact)
-
-    cc = sub.add_parser("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
-    cc.set_defaults(func=cmd_clean_concerts)
-
-    s = sub.add_parser("search", help="Full-text search over facts (statement/trust_rationale/notes).")
-    s.add_argument("terms")
-    s.add_argument("--subject")
-    s.add_argument("--trust", choices=sorted(VALID_TRUST))
-    s.add_argument("--limit", type=int, default=20)
-    _add_personal_flags(s)
-    s.set_defaults(func=cmd_search)
-
-    sh = sub.add_parser("show", help="Show one fact in full, with its sources.")
-    sh.add_argument("fact_id", type=int)
-    sh.set_defaults(func=cmd_show)
-
-    su = sub.add_parser("subjects", help="List subjects (indented under parent) with fact counts.")
-    su.set_defaults(func=cmd_subjects)
-
-    fa = sub.add_parser("facts", help="List/filter facts without full-text search.")
-    fa.add_argument("--subject")
-    fa.add_argument("--trust", choices=sorted(VALID_TRUST))
-    fa.add_argument("--status", choices=["active", "superseded", "retracted"])
-    fa.add_argument("--limit", type=int, default=50)
-    _add_personal_flags(fa)
-    fa.set_defaults(func=cmd_facts)
-
-    args, extra = p.parse_known_args(argv)
-    if args.command == "add-fact":
-        args.add_fact_args = extra
-    elif extra:
-        p.error(f"unrecognized arguments: {' '.join(extra)}")
-
+    """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:
-        return args.func(args) or 0
-    except DatabaseNotFound as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+        app(args=argv, prog_name="knowledge.py")
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    return 0
 
 
 if __name__ == "__main__":
