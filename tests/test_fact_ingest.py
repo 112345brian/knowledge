@@ -68,6 +68,9 @@ def ingest(tmp_path, monkeypatch):
         @classmethod
         def run11(cls, items, con=None, stamp=True):
             con = con or cls.db()
+            # #7: general_facts.json is never legacy, so an entry needs a volatility; fixtures that
+            # are about something else get 'static' (a test passes its own to override).
+            items = [{"volatility": "static", **e} for e in items]
             cls.write("general_facts.json", cls.stamped(items, LEGACY_11) if stamp else items)
             cls.mod11.DATA_DIR = e.data_dir
             cls.mod11.run(con)
@@ -180,7 +183,7 @@ def test_a_fact_added_today_keeps_its_date_across_a_rebuild_on_a_later_day(inges
     from add_fact import NewFact, append_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     with clock.frozen("2026-10-03T08:00:00+00:00"):
-        res = append_fact(NewFact(statement="Kept.", subject="s", trust_level="low"), data_path=path,
+        res = append_fact(NewFact(statement="Kept.", subject="s", trust_level="low", volatility="static"), data_path=path,
                           db_path=os.path.join(ingest.env.root, "none.db"))
     assert res.ok
     with clock.frozen("2027-03-01T00:00:00+00:00"):

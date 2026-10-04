@@ -21,9 +21,9 @@ class Env(BaseEnv):
         super().__init__(root, with_db=with_db)
         if with_db:
             self.sql("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (5, 'diary', 'personal', NULL, 1)")
-            self.sql("""INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, status, source_key) VALUES
-                          (6, 2, 'Pending protein lemma about whey', 0, 'low', 'pending', 'p-six'),
-                          (7, 5, 'Pending diary entry about whey', 1, 'low', 'pending', 'p-seven')""")
+            self.sql("""INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, status, source_key, volatility) VALUES
+                          (6, 2, 'Pending protein lemma about whey', 0, 'low', 'pending', 'p-six', 'static'),
+                          (7, 5, 'Pending diary entry about whey', 1, 'low', 'pending', 'p-seven', 'static')""")
 
     def sql(self, q, *params):
         con = sqlite3.connect(self.db)

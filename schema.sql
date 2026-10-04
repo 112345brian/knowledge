@@ -165,7 +165,28 @@ CREATE TABLE facts (
     source_quote            TEXT,
     -- Stable identity across rebuilds (#30); fact_revisions and fact_revisions.jsonl point at it.
     -- Nullable only so hand-built test rows work; the ingest scripts always set it.
-    source_key              TEXT UNIQUE
+    source_key              TEXT UNIQUE,
+    -- Why this fact may or may not go stale (#7). Staleness only: a fact that was wrong from the
+    -- moment it was typed is trust_level's job, not this column's.
+    --   static        does not decay (a birthdate, a completed purchase). The ONLY value that may
+    --                 omit recheck_by. It is NOT an excuse to default trust_level to 'verified':
+    --                 a static fact still needs an honestly considered trust level reflecting how
+    --                 it was actually captured (cross-checked against an ID vs. typed from memory).
+    --   stable        decays slowly; recheck_by required.
+    --   volatile      decays fast; recheck_by required (and should be sooner than for stable).
+    --   unclassified  LEGACY ONLY: predates this column, never individually classified, treat as
+    --                 stable until reviewed. Exempt from the recheck_by rule (183 of the 295 legacy
+    --                 facts have none). The add_fact / facts_batch / migrate paths REJECT it for a
+    --                 new fact; only 04_ingest_facts.py assigns it, to entries in the legacy files.
+    --                 DEVIATION from #7, which asked for 'stable' on all legacy facts: that cannot
+    --                 satisfy the recheck_by CHECK below. To drop it, backfill those facts to a
+    --                 real class with recheck_by and remove 'unclassified' here and in
+    --                 revisions.STORED_VOLATILITY / LEGACY_VOLATILITY.
+    -- What the schema ENFORCES: only the static-or-unclassified vs. needs-recheck_by split (second
+    -- CHECK below). stable vs. volatile is self-reported guidance about how soon recheck_by should
+    -- be; no interval is enforced and nothing stops a 'volatile' fact from a distant recheck_by.
+    volatility              TEXT NOT NULL CHECK (volatility IN ('static','stable','volatile','unclassified')),
+    CHECK (volatility IN ('static','unclassified') OR recheck_by IS NOT NULL)
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
@@ -598,7 +619,7 @@ LEFT JOIN subjects p ON p.id = s.parent_id;
 CREATE VIEW v_facts AS
 SELECT
     f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
-    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.volatility,
     vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
 FROM facts f
 JOIN subjects sub ON sub.id = f.subject_id

@@ -48,13 +48,13 @@ class Env:
               (1, 'smith2020', 'Smith 2020 protein review', 'primary'),
               (2, 'blog1', 'Some blog', 'tertiary');
             INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, trust_rationale,
-                               status, recheck_by, recheck_rationale, origin_file_id, notes) VALUES
+                               status, recheck_by, recheck_rationale, origin_file_id, notes, volatility) VALUES
               (1, 2, 'Protein intake of 1.6 g/kg maximizes hypertrophy', 0, 'high', 'meta-analysis',
-                  'active', '2027-01-01', 'new reviews yearly', 1, 'see review'),
-              (2, 1, 'Creatine monohydrate is effective', 0, 'verified', NULL, 'active', NULL, NULL, NULL, NULL),
-              (3, 2, 'I feel best on 2 g/kg protein', 1, 'low', 'self report', 'active', '2027-02-02', NULL, NULL, NULL),
-              (4, 1, 'Old claim about protein timing', 0, 'medium', NULL, 'superseded', NULL, NULL, NULL, NULL),
-              (5, 4, 'Coltrane recorded A Love Supreme in 1964', 0, 'high', NULL, 'retracted', NULL, NULL, NULL, NULL);
+                  'active', '2027-01-01', 'new reviews yearly', 1, 'see review', 'stable'),
+              (2, 1, 'Creatine monohydrate is effective', 0, 'verified', NULL, 'active', NULL, NULL, NULL, NULL, 'static'),
+              (3, 2, 'I feel best on 2 g/kg protein', 1, 'low', 'self report', 'active', '2027-02-02', NULL, NULL, NULL, 'stable'),
+              (4, 1, 'Old claim about protein timing', 0, 'medium', NULL, 'superseded', NULL, NULL, NULL, NULL, 'static'),
+              (5, 4, 'Coltrane recorded A Love Supreme in 1964', 0, 'high', NULL, 'retracted', NULL, NULL, NULL, NULL, 'static');
             INSERT INTO fact_sources (fact_id, source_id, locator, quote) VALUES
               (1, 1, 'p. 12', 'q'), (1, 2, NULL, NULL);
         """)

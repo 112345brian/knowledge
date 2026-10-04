@@ -23,9 +23,10 @@ def new_db():
 
 def add_fact(con, statement, status="active", recheck_by=None, **kw):
     cur = con.execute(
-        "INSERT INTO facts (subject_id, statement, trust_level, status, recheck_by, trust_rationale, notes, superseded_by_fact_id)"
-        " VALUES (1, ?, 'medium', ?, ?, ?, ?, ?)",
-        (statement, status, recheck_by, kw.get("trust_rationale"), kw.get("notes"), kw.get("superseded_by")))
+        "INSERT INTO facts (subject_id, statement, trust_level, status, recheck_by, trust_rationale, notes, superseded_by_fact_id, volatility)"
+        " VALUES (1, ?, 'medium', ?, ?, ?, ?, ?, ?)",
+        (statement, status, recheck_by, kw.get("trust_rationale"), kw.get("notes"), kw.get("superseded_by"),
+         "stable" if recheck_by else "static"))  # #7: a fact with a recheck_by is stable, one without is static
     return cur.lastrowid
 
 

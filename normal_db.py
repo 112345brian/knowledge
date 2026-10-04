@@ -11,7 +11,8 @@ What goes in (everything else is absent, not empty):
                    still keeps a fact out). Columns: id, subject_id, statement, is_original_claim,
                    trust_level, trust_rationale, status, superseded_by_fact_id (NULL unless that
                    fact is also in), date_added, last_reviewed_at, recheck_by, recheck_rationale,
-                   visibility, source_key.
+                   visibility, source_key, volatility (#7; staleness metadata like recheck_by, not
+                   private: without it a NULL recheck_by cannot be told from "never reviewed").
                    LEFT OUT on purpose: is_personal (a keyword heuristic that can hint at private
                    topics), notes (free text), origin_file_id (vault path), provided_by,
                    captured_via, session_id, captured_at, source_quote (words from a conversation).
@@ -92,7 +93,9 @@ CREATE TABLE facts (
     recheck_by             TEXT,
     recheck_rationale      TEXT,
     visibility             TEXT NOT NULL CHECK (visibility = 'normal'),
-    source_key             TEXT UNIQUE
+    source_key             TEXT UNIQUE,
+    volatility             TEXT NOT NULL CHECK (volatility IN ('static','stable','volatile','unclassified')),
+    CHECK (volatility IN ('static','unclassified') OR recheck_by IS NOT NULL)
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE TABLE fact_revisions (
@@ -177,7 +180,7 @@ def populate(out, full, rules):
     fact_keys, subject_ids = set(), set()
     cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
             "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
-            "visibility, source_key")
+            "visibility, source_key, volatility")
     facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
              if passes(r[1], r[2], r[12])]
     fact_ids = {r[0] for r in facts}
@@ -188,7 +191,7 @@ def populate(out, full, rules):
         subject_ids.update(_chain_ids(r[1], parents))
         if r[13] is not None:
             fact_keys.add(r[13])
-        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(14)})", r)
+        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(15)})", r)
 
     # 2. subjects (used + ancestors), parents first is not required (FKs are checked at commit)
     for sid in sorted(subject_ids):

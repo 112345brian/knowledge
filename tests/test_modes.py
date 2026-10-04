@@ -30,8 +30,8 @@ def _fact(con, fid, subject, statement, vis="normal", status="active", key=None,
           notes=None):
     sid = con.execute("SELECT id FROM subjects WHERE name = ?", (subject,)).fetchone()[0]
     con.execute(
-        """INSERT INTO facts (id, subject_id, statement, trust_level, status, visibility, source_key, notes)
-           VALUES (?,?,?,?,?,?,?,?)""",
+        """INSERT INTO facts (id, subject_id, statement, trust_level, status, visibility, source_key, notes, volatility)
+           VALUES (?,?,?,?,?,?,?,?, 'static')""",
         (fid, sid, statement, trust, status, vis, key or f"k{fid}", notes))
 
 
