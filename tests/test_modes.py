@@ -230,6 +230,15 @@ def test_compat_get_fact_matches_knowledge(db):
     assert modes.get_fact(S("private"), db, 1)["sources"] == [{"name": "A paper", "locator": "p. 3"}]
 
 
+def _all_statuses(fn, db, *a, **kw):
+    """knowledge.* now hides non-active facts by default (#6); private mode shows every status, so
+    the reference is the union over each explicit status."""
+    rows = {}
+    for st in ("active", "pending", "superseded", "retracted"):
+        rows.update({r["id"]: r for r in fn(db, *a, status=st, **kw)})
+    return rows
+
+
 def test_compat_list_search_subjects_row_shapes(db):
     got = {r["id"]: r for r in modes.list_facts(S("normal"), db)}
     ref = {r["id"]: r for r in knowledge.list_facts(db)}
@@ -240,9 +249,15 @@ def test_compat_list_search_subjects_row_shapes(db):
     for fid, row in s_got.items():
         assert row == s_ref[fid]
     assert set(s_got) == {1, 4, 9, 10, 11}
-    assert modes.list_facts(S("private"), db, limit=1000) == knowledge.list_facts(db, limit=1000)
-    assert modes.search_facts(S("private"), db, "banana") == knowledge.search_facts(db, "banana")
-    assert modes.list_subjects(S("private"), db) == knowledge.list_subjects(db)
+    priv = {r["id"]: r for r in modes.list_facts(S("private"), db, limit=1000)}
+    assert priv == _all_statuses(knowledge.list_facts, db, limit=1000)
+    priv_s = {r["id"]: r for r in modes.search_facts(S("private"), db, "banana")}
+    assert priv_s == _all_statuses(knowledge.search_facts, db, "banana")
+    # Subjects: same rows; private mode counts every status, knowledge.list_subjects only active ones.
+    p_sub, k_sub = modes.list_subjects(S("private"), db), knowledge.list_subjects(db)
+    names = lambda rows: [{k: v for k, v in r.items() if k in ("name", "domain", "parent")} for r in rows]
+    assert names(p_sub) == names(k_sub)
+    assert all(p["n_facts"] >= k["n_facts"] for p, k in zip(p_sub, k_sub))
 
 
 def test_compat_history_and_as_of_match_revisions_for_visible_fact(db):

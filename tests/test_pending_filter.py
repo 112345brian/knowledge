@@ -1,7 +1,8 @@
 """Issue #6, default status filter: knowledge.py query functions and commands vs pending facts.
 
-Section 1 pinned the behavior BEFORE the filter existed (everything visible, pending included);
-it is rewritten alongside the change, see the commit history. Fixture: test_knowledge's db plus
+The first version of this file pinned the behavior BEFORE the filter existed (everything visible,
+pending included); see the commit history. Now: facts/search/subjects show active facts only unless
+--include-pending or --status says otherwise; show and history work for any status. Fixture: test_knowledge's db plus
 fact 6 (pending, protein), fact 7 (pending, in a subject tagged private), all from the real schema.sql.
 """
 import json
@@ -40,38 +41,76 @@ def env(tmp_path):
     return Env(tmp_path)
 
 
-# ---------------------------------------------------------------- section 1: old behavior
+# ---------------------------------------------------------------- default: active only
 
-def test_facts_lists_pending_too(env):
-    assert ok(env.cli("facts")) == L1 + L2 + L3 + L4 + L5 + L6 + L7
-
-
-def test_facts_status_pending_is_not_a_choice_yet(env):
-    assert env.cli("facts", "--status", "pending").returncode == 2
+def test_facts_default_hides_pending(env):
+    assert ok(env.cli("facts")) == L1 + L2 + L3
 
 
-def test_search_finds_pending_too(env):
-    assert set(ok(env.cli("search", "whey")).splitlines(keepends=True)) == {L6, L7}
+def test_facts_include_pending_adds_pending_but_not_superseded_or_retracted(env):
+    assert ok(env.cli("facts", "--include-pending")) == L1 + L2 + L3 + L6 + L7
 
 
-def test_subjects_count_pending_too(env):
+def test_facts_status_pending_works_without_the_flag_and_status_overrides_it(env):
+    assert ok(env.cli("facts", "--status", "pending")) == L6 + L7
+    assert ok(env.cli("facts", "--status", "pending", "--include-pending")) == L6 + L7
+    assert ok(env.cli("facts", "--status", "active", "--include-pending")) == L1 + L2 + L3
+    assert ok(env.cli("facts", "--status", "retracted", "--include-pending")) == L5
+
+
+def test_facts_json_follows_the_same_filter(env):
+    assert [r["id"] for r in json.loads(ok(env.cli("facts", "--json")))] == [1, 2, 3]
+    assert [r["id"] for r in json.loads(ok(env.cli("facts", "--include-pending", "--json")))] == [1, 2, 3, 6, 7]
+    assert {r["status"] for r in json.loads(ok(env.cli("facts", "--status", "pending", "--json")))} == {"pending"}
+
+
+def test_search_hides_pending_by_default(env):
+    assert ok(env.cli("search", "whey")) == "No matches.\n"
+    assert set(ok(env.cli("search", "whey", "--include-pending")).splitlines(keepends=True)) == {L6, L7}
+    assert set(ok(env.cli("search", "whey", "--status", "pending")).splitlines(keepends=True)) == {L6, L7}
+    assert [r["id"] for r in json.loads(ok(env.cli("search", "lemma", "--include-pending", "--json")))] == [6]
+
+
+def test_subjects_count_active_facts_by_default(env):
     out = ok(env.cli("subjects"))
+    assert "  protein                             (health-and-fitness, 2 facts)\n" in out
+    assert "diary                               (personal, 0 facts)\n" in out
+    out = ok(env.cli("subjects", "--include-pending"))
     assert "  protein                             (health-and-fitness, 3 facts)\n" in out
     assert "diary                               (personal, 1 facts)\n" in out
+    counts = {s["name"]: s["n_facts"] for s in json.loads(ok(env.cli("subjects", "--include-pending", "--json")))}
+    assert counts["protein"] == 3 and counts["diary"] == 1
 
 
-def test_show_displays_a_pending_fact_with_its_status(env):
+def test_show_by_explicit_id_displays_any_status(env):
     out = ok(env.cli("show", "6"))
     assert out.splitlines()[0] == "Fact #6  [protein]  trust=low  personal=False  visibility=private  status=pending"
+    assert json.loads(ok(env.cli("show", "7", "--json")))["status"] == "pending"
+    assert "status=superseded" in ok(env.cli("show", "4"))
+    assert "status=retracted" in ok(env.cli("show", "5"))
 
 
-def test_library_functions_see_pending(lib, env):
+def test_library_functions(lib, env):
     con = lib.connect()
-    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3, 4, 5, 6, 7]
-    assert {r["id"] for r in lib.search_facts(con, "whey")} == {6, 7}
-    assert lib.get_fact(con, 6)["status"] == "pending"
-    assert {s["name"]: s["n_facts"] for s in lib.list_subjects(con)}["diary"] == 1
+    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]
+    assert [r["id"] for r in lib.list_facts(con, include_pending=True)] == [1, 2, 3, 6, 7]
+    assert [r["id"] for r in lib.list_facts(con, status="pending")] == [6, 7]
+    assert [r["id"] for r in lib.list_facts(con, status="pending", include_pending=False)] == [6, 7]
+    assert lib.search_facts(con, "whey") == []
+    assert {r["id"] for r in lib.search_facts(con, "whey", include_pending=True)} == {6, 7}
+    assert {r["id"] for r in lib.search_facts(con, "protein", status="superseded")} == {4}
+    assert lib.get_fact(con, 6)["status"] == "pending"  # not filtered
+    assert lib.get_fact(con, 4)["status"] == "superseded"
+    counts = {s["name"]: s["n_facts"] for s in lib.list_subjects(con)}
+    assert counts["diary"] == 0 and counts["protein"] == 2 and counts["emptysubject"] == 0
+    assert {s["name"]: s["n_facts"] for s in lib.list_subjects(con, include_pending=True)}["diary"] == 1
     con.close()
+
+
+def test_no_pending_facts_means_include_pending_changes_nothing(tmp_path):
+    e = BaseEnv(tmp_path)
+    assert ok(e.cli("facts", "--include-pending")) == ok(e.cli("facts"))
+    assert ok(e.cli("subjects", "--include-pending")) == ok(e.cli("subjects"))
 
 
 def test_history_of_a_pending_fact_works(env):

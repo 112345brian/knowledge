@@ -87,14 +87,15 @@ L5 = "#5     [jazz] (high) [retracted]  Coltrane recorded A Love Supreme in 1964
 
 def test_search_basic(env):
     out = ok(env.cli("search", "protein"))
-    assert set(out.splitlines(keepends=True)) == {L1, L3, L4}
-    assert out.count("\n") == 3
+    assert set(out.splitlines(keepends=True)) == {L1, L3}  # L4 is superseded: hidden by the default (#6)
+    assert out.count("\n") == 2
 
 
 def test_search_filters(env):
     assert ok(env.cli("search", "protein", "--subject", "protein", "--trust", "high")) == L1
     assert ok(env.cli("search", "protein", "--personal-only")) == L3
-    assert set(ok(env.cli("search", "protein", "--not-personal")).splitlines(keepends=True)) == {L1, L4}
+    assert ok(env.cli("search", "protein", "--not-personal")) == L1
+    assert ok(env.cli("search", "protein", "--not-personal", "--status", "superseded")) == L4
     assert ok(env.cli("search", "protein", "--limit", "1")).count("\n") == 1
 
 
@@ -109,7 +110,7 @@ def test_search_personal_flags_mutually_exclusive(env):
 
 
 def test_search_prefix_and_quoted_phrase(env):
-    assert set(ok(env.cli("search", "protei*")).splitlines(keepends=True)) == {L1, L3, L4}
+    assert set(ok(env.cli("search", "protei*")).splitlines(keepends=True)) == {L1, L3}
     assert ok(env.cli("search", '"feel best"')) == L3
 
 
@@ -177,25 +178,26 @@ def test_subjects_listing_includes_empty_subject(env):
 
 SUBJECTS_OUT = (
     "emptysubject                        (health-and-fitness, 0 facts)\n"
-    "nutrition                           (health-and-fitness, 2 facts)\n"
+    "nutrition                           (health-and-fitness, 1 facts)\n"
     "  protein                             (health-and-fitness, 2 facts)\n"
-    "jazz                                (music, 1 facts)\n"
+    "jazz                                (music, 0 facts)\n"
 )
 
 
 # ---------------------------------------------------------------- facts
 
-def test_facts_all_ordered_by_id(env):
-    assert ok(env.cli("facts")) == L1 + L2 + L3 + L4 + L5
+def test_facts_default_is_active_only_ordered_by_id(env):
+    assert ok(env.cli("facts")) == L1 + L2 + L3
 
 
 def test_facts_filters(env):
     assert ok(env.cli("facts", "--subject", "protein")) == L1 + L3
-    assert ok(env.cli("facts", "--trust", "high")) == L1 + L5
+    assert ok(env.cli("facts", "--trust", "high")) == L1
+    assert ok(env.cli("facts", "--trust", "high", "--status", "retracted")) == L5
     assert ok(env.cli("facts", "--status", "superseded")) == L4
     assert ok(env.cli("facts", "--status", "active")) == L1 + L2 + L3
     assert ok(env.cli("facts", "--personal-only")) == L3
-    assert ok(env.cli("facts", "--not-personal")) == L1 + L2 + L4 + L5
+    assert ok(env.cli("facts", "--not-personal")) == L1 + L2
     assert ok(env.cli("facts", "--not-personal", "--trust", "high", "--status", "retracted", "--subject", "jazz")) == L5
     assert ok(env.cli("facts", "--limit", "2")) == L1 + L2
 
@@ -275,10 +277,11 @@ def test_connect_path_with_uri_special_characters(lib, tmp_path):
 def test_functions_return_dicts_and_never_print_or_exit(lib, capsys):
     con = lib.connect()
     hits = lib.search_facts(con, "protein", personal=False)
-    assert {h["id"] for h in hits} == {1, 4}
+    assert {h["id"] for h in hits} == {1}
     assert set(hits[0]) == {"id", "subject", "trust_level", "status", "statement"}
     assert [r["id"] for r in lib.list_facts(con, status="active", personal=True)] == [3]
-    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3, 4, 5]
+    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]  # active only (#6)
+    assert [r["id"] for r in lib.list_facts(con, status="superseded")] == [4]
     assert lib.list_facts(con, subject="emptysubject") == []
     assert lib.search_facts(con, "zzzz") == []
     assert lib.get_fact(con, 999) is None
@@ -307,7 +310,7 @@ def test_main_converts_missing_db_to_message_and_exit_code(lib, env, capsys):
 def test_json_flag_on_every_read_command(env):
     import json
     hits = json.loads(ok(env.cli("search", "protein", "--not-personal", "--json")))
-    assert {h["id"] for h in hits} == {1, 4}
+    assert {h["id"] for h in hits} == {1}
     assert set(hits[0]) == {"id", "subject", "trust_level", "status", "statement"}
     assert json.loads(ok(env.cli("search", "zzzznothing", "--json"))) == []
     assert [r["id"] for r in json.loads(ok(env.cli("facts", "--status", "active", "--json")))] == [1, 2, 3]
