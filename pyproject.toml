@@ -9,7 +9,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.15",
     "pytest>=8",
+    "tach>=0.35.2",
 ]
 
 [tool.uv]
@@ -17,3 +19,193 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# --------------------------------------------------------------------------------------------
+# import-linter contracts (#36). See README "Architecture enforcement".
+#
+# The repo is flat top-level modules, which grimp/import-linter cannot analyse directly (it only
+# accepts packages), so the check runs on a generated shadow package `kn` (one `kn.<module>` per
+# top-level module, imports rewritten; see tests/arch_check.py). Run it with
+#     uv run python tests/arch_check.py        # tach + import-linter + git scan
+# or just `uv run pytest tests/test_architecture.py`. Plain `uv run lint-imports` cannot work on
+# a flat repo (it fails with "'x' is a module, not a package").
+#
+# Layers, top to bottom:  serving (inbox, mcp_server)  >  CLI (knowledge, cli_*)  >
+#   pipeline (build, numbered scripts, backfill_*, ...)  >  libraries.  tach.toml holds the
+#   per-module import allowlists (and the `paths` / `private_git` allowlists); the contracts here
+#   cover what tach cannot: external packages (typer, sqlite3, subprocess) and the library DAG.
+#
+# Lines starting `#planned:` are entries for modules still in flight on other branches. They are
+# inert; delete the `#planned: ` prefix when the module lands (the test tells you which lines).
+# --------------------------------------------------------------------------------------------
+[tool.importlinter]
+root_packages = ["kn"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "libraries-never-import-upward"
+name = "Libraries never import the CLI, serving or pipeline layers"
+# Why: the CLI and the serving layers are thin wrappers over library functions (#34). If a library
+# imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact",
+    "kn.claims_audit",
+    "kn.clock",
+    "kn.leak_test",
+    "kn.modes",
+    "kn.normal_db",
+    "kn.paths",
+    "kn.privacy",
+    "kn.private_git",
+    "kn.review",
+    "kn.revisions",
+#planned:     "kn.facts_batch",
+#planned:     "kn.lifecycle",
+#planned:     "kn.migrate_memory",
+]
+forbidden_modules = [
+    # CLI
+    "kn.cli_parity",
+    "kn.knowledge",
+#planned:     "kn.cli_facts_batch",
+#planned:     "kn.cli_inbox",
+#planned:     "kn.cli_lifecycle",
+#planned:     "kn.cli_migrate",
+    # serving
+#planned:     "kn.inbox",
+#planned:     "kn.mcp_server",
+    # pipeline / ingest (the numbered scripts are not importable, see tach.toml)
+    "kn._shared",
+    "kn.backfill_dates",
+    "kn.backfill_source_keys",
+    "kn.build",
+    "kn.clean_concerts_csv",
+    "kn.export_music_taste",
+    "kn.snapshot_date",
+]
+
+[[tool.importlinter.contracts]]
+id = "typer-only-in-knowledge"
+name = "Libraries and the parity registry never import typer (or click)"
+# Why: library functions and cli_parity must stay importable without Typer (build.py and add_fact.py
+# run standalone, #34). Only the Typer app modules (knowledge.py, cli_*.py) may import it; this is the
+# conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact",
+    "kn.claims_audit",
+    "kn.clock",
+    "kn.cli_parity",
+    "kn.leak_test",
+    "kn.modes",
+    "kn.normal_db",
+    "kn.paths",
+    "kn.privacy",
+    "kn.private_git",
+    "kn.review",
+    "kn.revisions",
+#planned:     "kn.facts_batch",
+#planned:     "kn.inbox",
+#planned:     "kn.lifecycle",
+#planned:     "kn.mcp_server",
+#planned:     "kn.migrate_memory",
+]
+forbidden_modules = ["typer", "click"]
+
+#planned: [[tool.importlinter.contracts]]
+#planned: id = "cli-never-imports-serving"
+#planned: name = "The CLI never imports the serving layers"
+#planned: # Why: serving (inbox, mcp_server) sits above the CLI. The `inbox` CLI command has to start the
+#planned: # server in a subprocess instead of importing it (or the shared code goes in a library).
+#planned: type = "forbidden"
+#planned: source_modules = [
+#planned:     "kn.cli_facts_batch",
+#planned:     "kn.cli_inbox",
+#planned:     "kn.cli_lifecycle",
+#planned:     "kn.cli_migrate",
+#planned:     "kn.cli_parity",
+#planned:     "kn.knowledge",
+#planned: ]
+#planned: forbidden_modules = ["kn.inbox", "kn.mcp_server"]
+#planned:
+#planned: [[tool.importlinter.contracts]]
+#planned: id = "serving-never-imports-pipeline"
+#planned: name = "Serving never imports the pipeline"
+#planned: # Why: the serving layers must not be able to rebuild or ingest; they only use library functions.
+#planned: type = "forbidden"
+#planned: source_modules = ["kn.inbox", "kn.mcp_server"]
+#planned: forbidden_modules = [
+#planned:     "kn._shared",
+#planned:     "kn.backfill_dates",
+#planned:     "kn.backfill_source_keys",
+#planned:     "kn.build",
+#planned:     "kn.clean_concerts_csv",
+#planned:     "kn.export_music_taste",
+#planned:     "kn.snapshot_date",
+#planned: ]
+#planned:
+#planned: [[tool.importlinter.contracts]]
+#planned: id = "serving-reads-facts-through-modes"
+#planned: name = "Serving reads facts only through modes"
+#planned: # Why: modes is the one place that enforces off/normal/private (#22). A serving module that
+#planned: # imported knowledge's query functions, claims_audit, a raw sqlite3 connection or the
+#planned: # revision/privacy internals could read a private fact in normal mode.
+#planned: # Only DIRECT imports are checked (allow_indirect_imports): modes and review legitimately
+#planned: # import sqlite3 / revisions themselves.
+#planned: # DOCUMENTED EXCEPTIONS: `review` is not forbidden because the inbox approves and rejects pending
+#planned: # facts through it. Add any further exception as an `ignore_imports` line with a reason,
+#planned: # e.g.  "kn.inbox -> kn.revisions"  # inbox needs parse_timestamp for display
+#planned: type = "forbidden"
+#planned: source_modules = ["kn.inbox", "kn.mcp_server"]
+#planned: forbidden_modules = [
+#planned:     "kn.add_fact",
+#planned:     "kn.claims_audit",
+#planned:     "kn.knowledge",
+#planned:     "kn.leak_test",
+#planned:     "kn.normal_db",
+#planned:     "kn.privacy",
+#planned:     "kn.revisions",
+#planned:     "sqlite3",
+#planned: ]
+#planned: allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "subprocess-allowlist"
+name = "Only private_git (git) and knowledge (python scripts) import subprocess"
+# Why: private_git is the only module that runs git against knowledge-private (lock, clean-tree and
+# detached-HEAD checks live there, #10). This forbids every other module from spawning processes.
+# knowledge.py is the one exception: `build`, `add-fact` and `clean-concerts` shell out to this
+# repo's own scripts. LIMIT: import-linter sees imports, not arguments, so knowledge.py running git
+# is caught by the `scan_git_usage` AST test in tests/test_architecture.py, not here.
+type = "forbidden"
+source_modules = ["kn"]
+forbidden_modules = ["subprocess"]
+allow_indirect_imports = true   # add_fact -> private_git -> subprocess is the intended path
+ignore_imports = [
+    "kn.private_git -> subprocess",
+    "kn.knowledge -> subprocess",
+]
+
+[[tool.importlinter.contracts]]
+id = "libraries-layered"
+name = "Libraries form a DAG (no cycles) in a fixed order"
+# Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
+# Higher entries may import lower ones; entries joined with `|` are independent of each other.
+# Adding a library means choosing its row. Exactly one cycle exists today and is accepted:
+# normal_db lazily imports leak_test (to leak-check what it built) and leak_test.self_test lazily
+# imports normal_db (to build a fixture). Both imports are inside functions; the upward one is ignored below.
+type = "layers"
+containers = ["kn"]
+layers = [
+#planned:     "facts_batch | lifecycle | migrate_memory",
+    "review | modes | claims_audit | normal_db",
+    "leak_test",
+    "revisions",
+    "add_fact",
+    "privacy | private_git",
+    "clock | paths",
+]
+ignore_imports = [
+    "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above
+]
