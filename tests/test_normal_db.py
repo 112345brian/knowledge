@@ -134,7 +134,7 @@ def test_revision_history_rules(built):
 
 def test_fts_is_rebuilt_over_normal_rows_only(built):
     assert [r[0] for r in q(built.path, "SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'creatine'")] == [1]
-    assert not q(built.path, "SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'Zorblax'")
+    assert not q(built.path, "SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'Velthorn'")
     assert q(built.path, "SELECT rowid FROM sources_fts WHERE sources_fts MATCH 'shared'") == [(1,)]
 
 

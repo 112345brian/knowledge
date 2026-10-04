@@ -535,6 +535,8 @@ FACT_READERS_ALLOWED = {
     # build/ingest pipeline: writes the tables, never serves tool results
     "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",
+    # build-time checker: scans the full db for private markers, never serves tool results
+    "leak_test.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

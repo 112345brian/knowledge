@@ -128,8 +128,8 @@ def scan_against_full(normal_path, full_path):
 # ----------------------------------------------------------------------------- fixture
 
 MARKERS = {
-    "private fact text": "Zorblax hormone panel result was alarming",
-    "rules-file name in untagged subject": "Quenby Fothergill",
+    "private fact text": "Velthorn hormone panel result was alarming",
+    "rules-file name in untagged subject": "Marnoq Fothergill",
     "private fact source quote": "quenchwhistle verbatim private quote",
     "private subject name": "zephyr-family-matters",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
