@@ -39,6 +39,12 @@ __all__ = [
 
 MAX_LIMIT = 1000
 
+# Columns of a fact that normal mode never returns: the same ones normal_db.py leaves out of the
+# normal-only database (a keyword heuristic, free text, a vault path, conversation provenance). A
+# fact being "normal" says its statement may be shown, not that its notes or where it came from may.
+NORMAL_HIDDEN_FIELDS = ("is_personal", "notes", "origin_file_id", "origin_path", "provided_by",
+                        "captured_via", "session_id", "captured_at", "source_quote")
+
 
 class Mode(str, enum.Enum):
     off = "off"
@@ -272,6 +278,9 @@ def get_fact(session, con, ref, include_pending=False):
     if not f:
         return None
     out = dict(f)
+    if mode is not Mode.private:
+        for hidden in NORMAL_HIDDEN_FIELDS:
+            out.pop(hidden, None)
     out["sources"] = [dict(s) for s in con.execute(
         """SELECT s.name, fs.locator
            FROM fact_sources fs JOIN sources s ON s.id = fs.source_id

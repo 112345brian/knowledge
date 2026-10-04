@@ -91,7 +91,10 @@ def current_states(data_dir=None):
     log, in entry order (dict order). Raises revisions.RevisionError if either is unusable."""
     data_dir = revisions.default_data_dir() if data_dir is None else data_dir
     entries = revisions.load_entries(data_dir)
-    states = {e["key"]: revisions.implicit_revision(e["key"], e["entry"], e["legacy_date"]) for e in entries}
+    # The file name matters: it is what marks an entry in pilot_facts.json / facts_batch*.json that
+    # has no `freshness` as legacy ('unreviewed'/'recheck') instead of an error.
+    states = {e["key"]: revisions.implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])
+              for e in entries}
     for _, rec in revisions.read_log(os.path.join(data_dir, revisions.REVISIONS_FILENAME)):
         if rec["source_key"] in states:
             states[rec["source_key"]] = rec

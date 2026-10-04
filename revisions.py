@@ -27,7 +27,7 @@ import os
 import re
 import sqlite3
 import stat
-import tempfile
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -353,8 +353,9 @@ class RevisionResult:
 def _atomic_write_text(path, text):
     """Write `text` to `path` via a temp file + os.replace (a crash leaves the old or the new
     file, never half). Keeps the file's mode; a new file gets the umask default."""
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
+    # mode 0o666 at creation: the kernel applies the umask (os.umask(0) would change it process-wide)
+    tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -362,10 +363,6 @@ def _atomic_write_text(path, text):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        else:
-            umask = os.umask(0)
-            os.umask(umask)
-            os.chmod(tmp, 0o666 & ~umask)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):

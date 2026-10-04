@@ -224,10 +224,31 @@ def _strip_gate(rows):
 
 
 def test_compat_get_fact_matches_knowledge(db):
+    # Private mode returns the full row, exactly knowledge.get_fact. Normal mode returns the same row
+    # minus NORMAL_HIDDEN_FIELDS (the columns normal_db.py also leaves out).
     for fid in (1, 4, 9, 10):
-        assert modes.get_fact(S("normal"), db, fid) == knowledge.get_fact(db, fid)
-        assert modes.get_fact(S("private"), db, fid) == knowledge.get_fact(db, fid)
+        full = knowledge.get_fact(db, fid)
+        assert modes.get_fact(S("private"), db, fid) == full
+        trimmed = {k: v for k, v in full.items() if k not in modes.NORMAL_HIDDEN_FIELDS}
+        assert modes.get_fact(S("normal"), db, fid) == trimmed
     assert modes.get_fact(S("private"), db, 1)["sources"] == [{"name": "A paper", "locator": "p. 3"}]
+
+
+def test_normal_mode_get_fact_hides_notes_provenance_and_the_vault_path(db):
+    path = db.execute("PRAGMA database_list").fetchone()[2]
+    w = sqlite3.connect(path)  # the fixture's own connection is read-only
+    w.execute("""UPDATE facts SET notes = 'a private aside', source_quote = 'my own words', session_id = 's-1',
+                 captured_via = 'mcp', is_personal = 1 WHERE id = 1""")
+    w.commit()
+    w.close()
+    normal = modes.get_fact(S("normal"), db, 1)
+    assert normal is not None and normal["statement"]
+    for hidden in modes.NORMAL_HIDDEN_FIELDS:
+        assert hidden not in normal, hidden
+    assert "a private aside" not in repr(normal) and "my own words" not in repr(normal)
+    private = modes.get_fact(S("private"), db, 1)
+    assert private["notes"] == "a private aside" and private["session_id"] == "s-1"
+    assert set(modes.NORMAL_HIDDEN_FIELDS) <= set(private) | {"origin_path"}
 
 
 def _all_statuses(fn, db, *a, **kw):

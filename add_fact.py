@@ -287,8 +287,11 @@ def _read_array(path):
 
 
 def _atomic_write_json(path, items):
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
+    # Created with mode 0o666 so the KERNEL applies the umask (a plain new file's default). Reading the
+    # umask with os.umask(0) would change it for the whole process, and other threads creating files
+    # in that window would get the wrong mode.
+    tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(items, f, indent=2, ensure_ascii=False)
@@ -296,11 +299,7 @@ def _atomic_write_json(path, items):
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(path):
-            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        else:
-            umask = os.umask(0)
-            os.umask(umask)
-            os.chmod(tmp, 0o666 & ~umask)
+            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))  # an existing file keeps its mode
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -365,7 +364,9 @@ def resolve_privacy(fact, data_path, db_path):
     if known is not None:
         known |= {e["subject"] for e in _read_array(data_path) if isinstance(e, dict) and isinstance(e.get("subject"), str)}
     return privacy.resolve_visibility(fact.subject, fact.statement, fact.visibility,
-                                      rules.with_context(parents=parents, known_subjects=known))
+                                      rules.with_context(parents=parents, known_subjects=known),
+                                      extra_text=(fact.notes, fact.trust_rationale, fact.recheck_rationale,
+                                                  fact.source_quote, fact.source_locator))
 
 
 def append_fact(fact, data_path=None, db_path=None):

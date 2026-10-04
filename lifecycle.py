@@ -454,11 +454,16 @@ def edit_fact(ref, reason, statement=None, trust_level=None, trust_rationale=Non
         return _fail(ref, "nothing to edit: give at least one field")
 
     def adjust(key, current, ch):
-        if "statement" not in ch:
+        # Any edit to text the keyword rules scan (statement, notes, rationales) re-runs them on the
+        # fact as it will stand, so adding a listed name in `notes` raises visibility like a new statement.
+        if not any(k in ch for k in ("statement", "notes", "trust_rationale")):
             return ch, None
         subject = _subjects(revisions.default_data_dir() if data_dir is None else data_dir).get(key)
         rules = review.rules_with_db_context(data_dir, db)
-        res = privacy.resolve_visibility(subject, ch["statement"], current["visibility"], rules)
+        merged = {**current, **ch}
+        res = privacy.resolve_visibility(subject, merged["statement"], current["visibility"], rules,
+                                         extra_text=(merged.get("notes"), merged.get("trust_rationale"),
+                                                     merged.get("recheck_rationale")))
         if res.visibility == "private" and current["visibility"] != "private":
             ch["visibility"] = "private"
             adjust.notes.append(f"visibility raised to private: {res.explain()}")

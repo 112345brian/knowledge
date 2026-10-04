@@ -34,8 +34,8 @@ import os
 import re
 import sqlite3
 import stat
-import tempfile
 import unicodedata
+import uuid
 from dataclasses import dataclass, field, replace
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
@@ -170,8 +170,9 @@ def save_rules(rules, path):
     data = {"version": VERSION,
             "subject_tags": {k: rules.subject_tags[k] for k in sorted(rules.subject_tags)},
             "keywords": sorted(rules.keywords)}
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
+    # mode 0o666 at creation: the kernel applies the umask (os.umask(0) would change it process-wide)
+    tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -180,10 +181,6 @@ def save_rules(rules, path):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        else:
-            umask = os.umask(0)
-            os.umask(umask)
-            os.chmod(tmp, 0o666 & ~umask)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -255,10 +252,15 @@ def _subject_chain(subject, rules):
     return chain, False
 
 
-def resolve_visibility(subject, statement, requested, rules) -> Resolution:
+def resolve_visibility(subject, statement, requested, rules, extra_text=None) -> Resolution:
     """Pure. The stored visibility and which rules raised it. `requested` must be 'private' or
     'normal' (anything else is a ValueError: a caller bug must not be guessed at). The result is
-    'private' if any input is private, so no input can lower it."""
+    'private' if any input is private, so no input can lower it.
+
+    `extra_text` (optional iterable of strings): the fact's OTHER free-text fields (notes, trust and
+    recheck rationale, source quote, citation locator/quote). The keyword list is matched against
+    them too, because they are stored, searchable and (in some tiers) served just like the statement:
+    a listed name in `notes` must make the fact private even when the statement is harmless."""
     if not isinstance(requested, str) or requested not in VALID_VISIBILITY:
         raise ValueError(f"requested visibility {requested!r} must be one of {list(VALID_VISIBILITY)}")
     reasons = []
@@ -283,8 +285,15 @@ def resolve_visibility(subject, statement, requested, rules) -> Resolution:
         if known is not None and subject not in known and not registered:
             reasons.append(Reason("unknown-subject", f"subject {subject!r} does not exist yet (fail closed)", True))
 
-    for kw in match_keywords(statement if isinstance(statement, str) else "", rules.keywords):
+    in_statement = match_keywords(statement if isinstance(statement, str) else "", rules.keywords)
+    for kw in in_statement:
         reasons.append(Reason("keyword", f"the statement contains the listed word {kw!r}", True))
+    if extra_text:
+        other = "\n".join(t for t in extra_text if isinstance(t, str) and t)
+        for kw in match_keywords(other, rules.keywords):
+            if kw not in in_statement:
+                reasons.append(Reason("keyword", f"another field of the fact (notes, rationale, quote or citation) "
+                                                 f"contains the listed word {kw!r}", True))
 
     visibility = "private" if any(r.forces_private for r in reasons) else "normal"
     return Resolution(visibility, tuple(reasons))
@@ -318,9 +327,14 @@ def apply_rules_to_db(con, rules):
         con.execute("UPDATE subjects SET private = ? WHERE name = ?", (flag, name))
         private_subjects += flag
     raised = []
-    rows = con.execute("SELECT f.id, s.name, f.statement, f.visibility FROM facts f JOIN subjects s ON s.id = f.subject_id").fetchall()
-    for fact_id, subject, statement, stored in rows:
-        res = resolve_visibility(subject, statement, stored, ctx)
+    rows = con.execute(
+        """SELECT f.id, s.name, f.statement, f.visibility, f.notes, f.trust_rationale, f.recheck_rationale,
+                  f.source_quote,
+                  (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
+                   FROM fact_sources fs WHERE fs.fact_id = f.id)
+           FROM facts f JOIN subjects s ON s.id = f.subject_id""").fetchall()
+    for fact_id, subject, statement, stored, *extra in rows:
+        res = resolve_visibility(subject, statement, stored, ctx, extra_text=extra)
         if res.visibility == "private" and stored != "private":
             con.execute("UPDATE facts SET visibility = 'private' WHERE id = ?", (fact_id,))
             raised.append((fact_id, res.explain()))

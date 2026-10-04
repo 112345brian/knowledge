@@ -171,19 +171,27 @@ def populate(out, full, rules):
     ctx = rules.with_context(
         parents={names[i]: names.get(parents[i]) for i in names}, known_subjects=set(names.values()))
 
-    def passes(sid, statement, visibility):
+    # Free text that is COPIED into this DB besides the statement must pass the keyword rules too:
+    # the resolver only ever scanned the statement, so a listed name in a rationale or a citation
+    # quote would otherwise slip through into the tier that is served remotely.
+    cite_text = {}
+    for fid, locator, quote in full.execute("SELECT fact_id, locator, quote FROM fact_sources"):
+        cite_text.setdefault(fid, []).extend(t for t in (locator, quote) if t)
+
+    def passes(sid, statement, visibility, extra=()):
         chain = _chain_ids(sid, parents)
         if chain is None or any(private[i] for i in chain):
             return False
-        return privacy.resolve_visibility(names[sid], statement, visibility, ctx).visibility == "normal"
+        return privacy.resolve_visibility(names[sid], statement, visibility, ctx, extra_text=extra).visibility == "normal"
 
     # 1. facts
     fact_keys, subject_ids = set(), set()
     cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
             "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
             "visibility, source_key, freshness")
+    # cols: r[5] trust_rationale, r[11] recheck_rationale (both copied)
     facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
-             if passes(r[1], r[2], r[12])]
+             if passes(r[1], r[2], r[12], extra=(r[5], r[11], *cite_text.get(r[0], ())))]
     fact_ids = {r[0] for r in facts}
     for r in facts:
         r = list(r)
@@ -205,7 +213,8 @@ def populate(out, full, rules):
              "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness")
     subject_of = {r[0]: r[1] for r in facts}
     for r in full.execute(f"SELECT {rcols} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"):
-        if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10]):
+        # rcols: r[8] trust_rationale, r[13] recheck_rationale
+        if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10], extra=(r[8], r[13])):
             continue
         r = list(r)
         if r[11] not in fact_keys:
