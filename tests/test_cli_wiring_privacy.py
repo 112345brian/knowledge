@@ -108,7 +108,7 @@ def test_check_agrees_with_what_add_fact_stores(env):
     put_rules(env, keywords=["secretname"])
     for statement, subject in (("about secretname", "nutrition"), ("plain", "nutrition"), ("plain", "nope-subject")):
         expected = json.loads(ok(env.cli("privacy", "check", statement, "--subject", subject, "--json")))["visibility"]
-        got = env.cli("add-fact", statement, "--subject", subject, "--trust", "medium", "--volatility", "static", "--visibility", "normal")
+        got = env.cli("add-fact", statement, "--subject", subject, "--trust", "medium", "--no-decay", "--recheck-rationale", "no decay", "--visibility", "normal")
         assert got.returncode == 0, got.stderr
         assert entries_last(env)["visibility"] == expected, (statement, subject)
 
@@ -347,14 +347,14 @@ def test_second_attempt_after_a_failed_commit_needs_allow_dirty(g):
 
 def test_add_fact_notes_when_visibility_was_raised(g):
     assert g.cli("privacy", "add-keyword", "secretname").returncode == 0
-    r = g.cli("add-fact", "About secretname.", "--subject", "nutrition", "--trust", "medium", "--volatility", "static", "--visibility", "normal")
+    r = g.cli("add-fact", "About secretname.", "--subject", "nutrition", "--trust", "medium", "--no-decay", "--recheck-rationale", "no decay", "--visibility", "normal")
     assert r.returncode == 0, r.stderr
     assert "stored as private" in r.stderr and "secretname" in r.stderr
     assert entries_last(g)["visibility"] == "private"
 
 
 def test_add_fact_silent_when_nothing_raised_it(g):
-    r = g.cli("add-fact", "Plain statement.", "--subject", "nutrition", "--trust", "medium", "--volatility", "static", "--visibility", "normal")
+    r = g.cli("add-fact", "Plain statement.", "--subject", "nutrition", "--trust", "medium", "--no-decay", "--recheck-rationale", "no decay", "--visibility", "normal")
     assert r.returncode == 0, r.stderr
     assert "stored as private" not in r.stderr
     assert entries_last(g)["visibility"] == "normal"
@@ -362,5 +362,5 @@ def test_add_fact_silent_when_nothing_raised_it(g):
 
 def test_add_fact_silent_when_private_was_requested(g):
     assert g.cli("privacy", "add-keyword", "secretname").returncode == 0
-    r = g.cli("add-fact", "About secretname.", "--subject", "nutrition", "--trust", "medium", "--volatility", "static")  # default: private
+    r = g.cli("add-fact", "About secretname.", "--subject", "nutrition", "--trust", "medium", "--no-decay", "--recheck-rationale", "no decay")  # default: private
     assert r.returncode == 0 and "stored as private" not in r.stderr
