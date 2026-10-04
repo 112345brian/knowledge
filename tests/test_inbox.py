@@ -615,7 +615,7 @@ def _group():
 def test_every_inbox_action_is_declared_registered_and_dispatched(ib):
     import cli_parity
     inbox = ib.inbox
-    registry = {**cli_parity.PENDING_COMMANDS, **cli_parity.ACTIONS}
+    registry = dict(cli_parity.ACTIONS)
     assert set(inbox.PARITY_ACTIONS) <= set(registry)
     for name, path in inbox.PARITY_ACTIONS.items():
         assert tuple(registry[name]) == tuple(path), name
