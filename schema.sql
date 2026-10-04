@@ -140,7 +140,7 @@ CREATE TABLE facts (
     is_personal             INTEGER NOT NULL DEFAULT 1 CHECK (is_personal IN (0,1)),
     trust_level             TEXT NOT NULL CHECK (trust_level IN ('verified','high','medium','low','unverified','disputed')),
     trust_rationale         TEXT,
-    status                  TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded','retracted')),
+    status                  TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending','active','superseded','retracted')),  -- 'pending' added by #30 (revisions can set it; #6 owns the workflow)
     superseded_by_fact_id   INTEGER REFERENCES facts(id),
     provided_by             TEXT NOT NULL DEFAULT 'user',
     date_added              TEXT NOT NULL DEFAULT (datetime('now')),
@@ -159,7 +159,10 @@ CREATE TABLE facts (
     captured_via            TEXT,
     session_id              TEXT,
     captured_at             TEXT,
-    source_quote            TEXT
+    source_quote            TEXT,
+    -- Stable identity across rebuilds (#30); fact_revisions and fact_revisions.jsonl point at it.
+    -- Nullable only so hand-built test rows work; the ingest scripts always set it.
+    source_key              TEXT UNIQUE
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
@@ -167,6 +170,35 @@ CREATE INDEX idx_facts_is_personal ON facts(is_personal);
 CREATE INDEX idx_facts_status ON facts(status);
 CREATE INDEX idx_facts_origin_file ON facts(origin_file_id);
 CREATE INDEX idx_facts_visibility ON facts(visibility);
+
+-- ===== BEGIN #30 fact revisions (own block; keep merges separate) =====
+-- One row per revision of a fact, including the implicit revision 1 (the original JSON entry,
+-- written by 04_ingest_facts.py / 11_seed_general_facts.py). Revisions >= 2 come from
+-- fact_revisions.jsonl via 12_apply_fact_revisions.py. `facts` holds the CURRENT state, copied
+-- from each fact's latest revision; this table is the history. superseded_by is a source_key.
+CREATE TABLE fact_revisions (
+    id               INTEGER PRIMARY KEY,
+    fact_id          INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+    source_key       TEXT NOT NULL,
+    revision         INTEGER NOT NULL CHECK (revision >= 1),
+    changed_at       TEXT NOT NULL,
+    changed_via      TEXT NOT NULL,
+    session_id       TEXT,
+    change_reason    TEXT,
+    statement        TEXT NOT NULL,
+    trust_level      TEXT NOT NULL CHECK (trust_level IN ('verified','high','medium','low','unverified','disputed')),
+    trust_rationale  TEXT,
+    status           TEXT NOT NULL CHECK (status IN ('pending','active','superseded','retracted')),
+    visibility       TEXT NOT NULL CHECK (visibility IN ('private','normal')),
+    superseded_by    TEXT,
+    recheck_by       TEXT,
+    recheck_rationale TEXT,
+    volatility       TEXT,
+    notes            TEXT,
+    UNIQUE (source_key, revision)
+);
+CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
+-- ===== END #30 fact revisions =====
 
 CREATE TABLE fact_sources (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,

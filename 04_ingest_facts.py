@@ -12,6 +12,7 @@ import sqlite3, json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import get_or_create_vault_file
+import revisions
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 
 # Documented fallback for entries with no `date_added` of their own. It is the
@@ -91,13 +92,14 @@ def classify_is_personal(statement, notes, is_original_claim, measured_link):
 
 
 def load_items():
-    items = json.load(open(os.path.join(DATA_DIR, "pilot_facts.json")))
-    for item in items:
-        item["_is_pilot"] = True
-    for i in range(1, 5):
-        batch = json.load(open(os.path.join(DATA_DIR, f"facts_batch{i}.json")))
-        for item in batch:
-            item["_is_pilot"] = False
+    """All entries, each with `_is_pilot` and `_source_key` (its own, or the deterministic
+    legacy-... key from revisions.derive_keys until backfill_source_keys.py writes one)."""
+    items = []
+    for name, is_pilot in [("pilot_facts.json", True)] + [(f"facts_batch{i}.json", False) for i in range(1, 5)]:
+        batch = json.load(open(os.path.join(DATA_DIR, name)))
+        for item, key in zip(batch, revisions.derive_keys(batch, name)):
+            item["_is_pilot"] = is_pilot
+            item["_source_key"] = key
         items.extend(batch)
     return items
 
@@ -123,6 +125,7 @@ def run(con):
     items = load_items()
     inserted = skipped = 0
     bad_citekeys = set()
+    derived = 0
 
     for item in items:
         subj = (item.get("subject") or "").strip()
@@ -138,6 +141,17 @@ def run(con):
             print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
             skipped += 1
             continue
+        status = item.get("status") or "active"
+        if status not in revisions.VALID_STATUS:
+            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        key = item["_source_key"]
+        if not revisions.SOURCE_KEY_RE.match(key):
+            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
+            raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
+        derived += 0 if item.get("source_key") else 1
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
@@ -151,13 +165,15 @@ def run(con):
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
-                                   captured_via, session_id, captured_at, source_quote)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   captured_via, session_id, captured_at, source_quote, status, source_key)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, item.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
-             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"))
+             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
+             status, key)
         )
         fact_id = cur.lastrowid
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, LEGACY_DATE_ADDED))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -183,6 +199,9 @@ def run(con):
     print(f"[04_ingest_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
+    if derived:
+        print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
+              f"Run backfill_source_keys.py to write them into the files (same values).")
     print("  facts by trust_level:", dict(cur.execute("SELECT trust_level, COUNT(*) FROM facts GROUP BY trust_level").fetchall()))
     print("  facts by is_personal:", dict(cur.execute("SELECT is_personal, COUNT(*) FROM facts GROUP BY is_personal").fetchall()))
 

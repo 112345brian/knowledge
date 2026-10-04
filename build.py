@@ -36,6 +36,7 @@ STEPS = [
     "09_ingest_scrobbles.py",
     "10_seed_artist_members.py",
     "11_seed_general_facts.py",
+    "12_apply_fact_revisions.py",
 ]
 
 
@@ -118,7 +119,7 @@ def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
     for table in ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                  "vault_files", "claims", "claim_facts", "fact_sources", "fact_measurements",
+                  "vault_files", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "muscles", "muscle_volume_weekly",
                   "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",

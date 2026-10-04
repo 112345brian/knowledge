@@ -15,7 +15,7 @@ Usage:
         --notes "..." --recheck-by 2026-12-01 --recheck-rationale "..." \
         --source-citekey some-existing-citekey --source-locator "p. 4"
 """
-import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile
+import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile, uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
@@ -32,6 +32,12 @@ VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+# Stable identity of a fact across rebuilds (#30): revisions in fact_revisions.jsonl point at it.
+SOURCE_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def new_source_key():
+    return "f-" + uuid.uuid4().hex[:12]
 
 
 def parse_args(argv):
@@ -79,6 +85,8 @@ class NewFact:
     captured_via: Optional[str] = None
     session_id: Optional[str] = None
     captured_at: Optional[str] = None
+    # Stable identity (#30). Normally left None: build_entry assigns a fresh one.
+    source_key: Optional[str] = None
 
 
 @dataclass
@@ -117,6 +125,8 @@ def validate_fact(fact, db_path=None):
         errors.append(f"--subject {fact.subject!r} must be lowercase kebab-case (e.g. 'car-maintenance')")
     if fact.recheck_by and DATE_RE.match(fact.recheck_by) is None and len(fact.recheck_by) < 4:
         errors.append(f"--recheck-by {fact.recheck_by!r} looks too short to be a date or phrase")
+    if fact.source_key is not None and (not isinstance(fact.source_key, str) or not SOURCE_KEY_RE.match(fact.source_key)):
+        errors.append(f"source_key {fact.source_key!r} must match {SOURCE_KEY_RE.pattern}")
     if fact.captured_via is not None:
         if not isinstance(fact.captured_via, str) or not VIA_RE.match(fact.captured_via):
             errors.append(f"captured_via {fact.captured_via!r} must be a lowercase kebab-case token (e.g. 'mcp', 'cli', 'migrate-memory')")
@@ -156,6 +166,7 @@ def validate_fact(fact, db_path=None):
 def build_entry(fact):
     """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format."""
     entry = {
+        "source_key": fact.source_key or new_source_key(),
         "subject": fact.subject,
         "statement": fact.statement.strip(),
         "trust_level": fact.trust_level,
