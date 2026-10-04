@@ -29,6 +29,7 @@ ACTIONS = {
     "approve": ("approve",),
     "reject": ("reject",),
     "audit_claims": ("audit-claims",),
+    "migrate_memory": ("migrate-memory",),
     "privacy_check": ("privacy", "check"),
     "privacy_rules": ("privacy", "rules"),
     "privacy_tag": ("privacy", "tag"),
