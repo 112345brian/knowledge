@@ -14,6 +14,7 @@ import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 import privacy
+import revisions
 
 # Documented fallback for entries with no `date_added` of their own (add_fact.py
 # always writes one). It is the date the first batch was loaded, kept so rebuilds
@@ -46,8 +47,9 @@ def run(con):
     items = json.load(open(os.path.join(DATA_DIR, "general_facts.json")))
     inserted = skipped = 0
     bad_citekeys = set()
+    derived = 0
 
-    for item in items:
+    for item, key in zip(items, revisions.derive_keys(items, "general_facts.json")):
         subj = (item.get("subject") or "").strip()
         stmt = (item.get("statement") or "").strip()
         trust = (item.get("trust_level") or "").strip()
@@ -61,6 +63,16 @@ def run(con):
             print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
             skipped += 1
             continue
+        status = item.get("status") or "active"
+        if status not in revisions.VALID_STATUS:
+            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
+            skipped += 1
+            continue
+        if not revisions.SOURCE_KEY_RE.match(key):
+            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
+            raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
+        derived += 0 if item.get("source_key") else 1
 
         subject_id = get_or_create_subject(cur, subj, item.get("domain") or "general", subject_cache)
         is_original = 1 if item.get("is_original_claim") else 0
@@ -70,14 +82,16 @@ def run(con):
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
-                                   captured_via, session_id, captured_at, source_quote)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   captured_via, session_id, captured_at, source_quote, status, source_key)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, item.get("notes"),
              item.get("recheck_by"), item.get("recheck_rationale"), visibility,
-             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"))
+             item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
+             status, key)
         )
         fact_id = cur.lastrowid
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, LEGACY_DATE_ADDED))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -101,6 +115,9 @@ def run(con):
     print(f"[11_seed_general_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
+    if derived:
+        print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
+              f"Run backfill_source_keys.py to write them into the files (same values).")
 
 
 if __name__ == "__main__":
