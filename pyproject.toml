@@ -11,6 +11,7 @@ dependencies = [
 dev = [
     "import-linter>=2.15",
     "pytest>=8",
+    "pytest-xdist>=3.8.0",
     "tach>=0.35.2",
 ]
 
@@ -19,6 +20,10 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Run in parallel by default (about 40 s instead of about 4 min for the whole suite; many tests are
+# subprocess- or temp-git-repo-heavy). Nothing is skipped or marked slow: the architecture tests
+# run every time. Serial run if you need it: `uv run pytest -n 0`.
+addopts = "-n auto"
 
 # --------------------------------------------------------------------------------------------
 # import-linter contracts (#36). See README "Architecture enforcement".
