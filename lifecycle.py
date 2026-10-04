@@ -1,0 +1,223 @@
+"""Fact lifecycle (#8): supersede and retract, each one appended revision.
+
+A fact entry in the JSON data files is never edited. A lifecycle change appends a revision (#30)
+that carries the whole fact with the new status, so a rebuild shows it in `facts`,
+`history` lists it with its reason, and `show --as-of` before it still shows the old state.
+
+Library API (the Typer `supersede` / `retract` commands are thin callers, see
+cli_lifecycle.py; the inbox and the MCP server will be too):
+    supersede(ref, by_ref, reason, ...)          -> LifecycleResult   status 'superseded', superseded_by = replacement
+    retract(ref, reason, ...)                    -> LifecycleResult   status 'retracted' (clears superseded_by)
+
+`ref` / `by_ref` are a fact id (int, or a string of digits; needs `db`, a sqlite connection or a
+path to the built db) or a source_key (works for facts from general_facts.json, pilot_facts.json and
+facts_batch*.json alike). `reason` is required. Decisions are made from the data files + revision
+log (the source of truth), not from the db, so they are right even when the db is stale; the db is
+only used to turn a fact id into a source_key. 
+
+Semantics (decided, tested):
+  * One call = one fact = at most one revision. The precondition is repeated under the revision
+    log's lock (append_revision's `expect`); if it fails because another process got there first,
+    the call re-plans against the fresh state once, so a concurrent identical call is reported as
+    "unchanged", never as a duplicate revision.
+  * Outcomes: 'superseded' / 'retracted' (a revision was written); 'unchanged'
+    (already in the requested state: no revision, no tree check, no commit, ok); 'refused' (a rule
+    said no; `reason` explains); 'unknown' (ref does not resolve); 'error' (anything else).
+  * Retract: pending / active / superseded facts. Already retracted -> unchanged. Retracting also
+    clears superseded_by (a retracted fact is not "replaced by" anything).
+  * Supersede: only an ACTIVE fact (or a superseded one being re-pointed at another replacement).
+    Refused: pending (approve or reject it first), retracted (reverse it with an `active` revision
+    first), self-supersede, an unknown / retracted / pending replacement, and a cycle (A->B->A, or any
+    longer chain that leads back to the fact). Same replacement again -> unchanged.
+  * There is no un-supersede / un-retract command. Reversal is another revision, appended through
+    the library: revisions.append_revision(key, {"status": "active", "superseded_by": None}, reason,
+    via). The history keeps every step; nothing is deleted.
+  * Git (#10): same as review.approve. If the data dir is in a git repo and commit=True, a dirty
+    tree is refused up front (nothing written) unless allow_dirty; after the write ONE commit
+    contains only the revision log file; a failed commit leaves the revision written and sets
+    `commit_error` (CLI exit 3). Not in a repo: written, not committed, with a note.
+Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
+"""
+import os
+from dataclasses import asdict, dataclass, field
+from typing import List, Optional
+
+import review
+import revisions
+from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
+
+CHANGED_OUTCOMES = ("superseded", "retracted")
+OUTCOMES = CHANGED_OUTCOMES + ("unchanged", "refused", "unknown", "error")
+
+
+@dataclass
+class LifecycleResult:
+    verb: str
+    ref: str
+    outcome: str = "error"                 # one of OUTCOMES
+    source_key: Optional[str] = None
+    reason: Optional[str] = None           # why unchanged / refused / unknown / failed
+    revision: Optional[dict] = None        # the appended revision when something changed
+    errors: List[str] = field(default_factory=list)   # call-level failure (blank reason, dirty tree, bad data)
+    notes: List[str] = field(default_factory=list)
+    commit: Optional[str] = None           # short hash when a commit was made
+    commit_error: Optional[str] = None     # revision written but NOT committed
+    detached: bool = False
+
+    @property
+    def changed(self):
+        return self.outcome in CHANGED_OUTCOMES
+
+    @property
+    def ok(self):
+        """True when the request is satisfied: a revision was written and committed (or not in a
+        repo), or the fact was already in the requested state. Refused, unknown, error, a call-level
+        error or a failed commit are not ok."""
+        return (not self.errors and self.commit_error is None
+                and self.outcome in CHANGED_OUTCOMES + ("unchanged",))
+
+    def to_json(self):
+        d = asdict(self)
+        d["ok"] = self.ok
+        return d
+
+
+# A decision for one fact: ("write", changes, expect, outcome, note) | ("unchanged"|"refused", message)
+def _write(changes, expect, outcome):
+    return ("write", changes, expect, outcome)
+
+
+def _no(kind, message):
+    return (kind, message)
+
+
+# --------------------------------------------------------------------------- decisions
+
+def _decide_retract(states, key, ctx):
+    cur = states[key]
+    if cur["status"] == "retracted":
+        return _no("unchanged", "already retracted")
+    return _write({"status": "retracted", "superseded_by": None},
+                  {"status": cur["status"], "superseded_by": cur["superseded_by"]}, "retracted")
+
+
+def _decide_supersede(states, key, ctx):
+    by = ctx["by_key"]
+    cur = states[key]
+    if cur["status"] == "pending":
+        return _no("refused", "the fact is pending; approve or reject it first")
+    if cur["status"] == "retracted":
+        return _no("refused", "the fact is retracted; reverse that with an 'active' revision first "
+                              "(revisions.append_revision) if it should be superseded instead")
+    if by == key:
+        return _no("refused", "a fact cannot supersede itself")
+    rep = states[by]
+    if rep["status"] == "retracted":
+        return _no("refused", f"the replacement {by!r} is retracted")
+    if rep["status"] == "pending":
+        return _no("refused", f"the replacement {by!r} is pending; approve it first")
+    seen, x = set(), by
+    while x is not None and x not in seen:
+        if x == key:
+            return _no("refused", f"cycle: {by!r} is (indirectly) superseded by {key!r}")
+        seen.add(x)
+        x = states[x]["superseded_by"] if x in states else None
+    if cur["status"] == "superseded" and cur["superseded_by"] == by:
+        return _no("unchanged", f"already superseded by {by!r}")
+    return _write({"status": "superseded", "superseded_by": by},
+                  {"status": cur["status"], "superseded_by": cur["superseded_by"]}, "superseded")
+
+
+# --------------------------------------------------------------------------- engine
+
+def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db, decide, ctx, message):
+    result = LifecycleResult(verb, str(ref))
+    if not isinstance(reason, str) or not reason.strip():
+        result.errors.append("reason is required")
+        return result
+    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
+    try:
+        states = review.current_states(data_dir)
+        entries = {e["key"]: e for e in revisions.load_entries(data_dir)}
+    except revisions.RevisionError as e:
+        result.errors.append(str(e))
+        return result
+    key, problem = review._resolve(ref, states, db)
+    if problem:
+        result.outcome = "error" if "database" in problem else "unknown"
+        result.reason = problem
+        return result
+    result.source_key = key
+    ctx = dict(ctx, db=db, data_dir=data_dir, entries=entries)
+    if by_ref is not None:
+        by_key, problem = review._resolve(by_ref, states, db)
+        if problem:
+            result.outcome = "error" if "database" in problem else "unknown"
+            result.reason = "replacement: " + problem
+            return result
+        ctx["by_key"] = by_key
+        if states[by_key]["status"] == "superseded":
+            result.notes.append(f"the replacement {by_key!r} is itself superseded")
+
+    plan = decide(states, key, ctx)
+    if plan[0] != "write":
+        result.outcome, result.reason = plan[0], plan[1]
+        return result
+
+    repo = None
+    if commit:
+        try:
+            repo = find_repo(data_dir)
+            if repo is None:
+                result.notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
+            elif not allow_dirty:
+                ensure_clean_tree(repo)
+        except PrivateGitError as e:
+            result.errors.append(str(e))
+            return result
+
+    for attempt in (1, 2):
+        _, changes, expect, outcome = plan
+        res = revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+        if res.ok:
+            result.outcome, result.revision = outcome, res.revision
+            break
+        if attempt == 1 and any(e.startswith("precondition failed") for e in res.errors):
+            # Someone else changed the fact since we looked: decide again on the fresh state.
+            try:
+                states = review.current_states(data_dir)
+            except revisions.RevisionError as e:
+                result.errors.append(str(e))
+                return result
+            plan = decide(states, key, ctx)
+            if plan[0] != "write":
+                result.outcome, result.reason = plan[0], "changed by another process: " + plan[1]
+                return result
+            continue
+        result.outcome = "error"
+        result.reason = "; ".join(res.errors)
+        return result
+
+    if repo is not None:
+        try:
+            result.commit = commit_private_change([log_path], message(key, reason), repo)
+            result.detached = is_detached(repo)
+        except PrivateGitError as e:
+            result.commit_error = f"the revision IS in {log_path} but is NOT committed: {e}"
+    return result
+
+
+# --------------------------------------------------------------------------- public API
+
+def supersede(ref, by_ref, reason, via="cli", session_id=None, data_dir=None, commit=True,
+              allow_dirty=False, db=None):
+    """Mark `ref` superseded by `by_ref` (a fact id or source_key). `reason` is required."""
+    return _run("supersede", ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db,
+                _decide_supersede, {}, lambda key, _r: f"supersede: {key}")
+
+
+def retract(ref, reason, via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None):
+    """Mark `ref` retracted. `reason` is required."""
+    return _run("retract", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
+                _decide_retract, {}, lambda key, _r: f"retract: {key}")

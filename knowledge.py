@@ -582,6 +582,8 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
         return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
+import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract (#8)
+
 
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
