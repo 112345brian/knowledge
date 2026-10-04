@@ -76,9 +76,12 @@ def test_a_layer_module_with_an_unregistered_tool_fails(tmp_path, monkeypatch):
 def test_a_layer_module_without_declaration_fails(tmp_path, monkeypatch):
     (tmp_path / "inbox.py").write_text("X = 1\n")
     monkeypatch.syspath_prepend(str(tmp_path))
+    real = sys.modules.pop("inbox", None)  # the real inbox.py now exists; shadow it with the stub
     importlib.invalidate_caches()
     try:
         with pytest.raises(AssertionError, match="PARITY_ACTIONS"):
             _check_layer("inbox")
     finally:
         sys.modules.pop("inbox", None)
+        if real is not None:
+            sys.modules["inbox"] = real

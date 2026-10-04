@@ -583,6 +583,9 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
 
+from cli_inbox import register as _register_inbox; _register_inbox(app, DB_PATH)  # inbox, edit (#33)
+
+
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:
