@@ -5,7 +5,12 @@
     knowledge.py add-fact "statement" --subject x --trust medium ...
     knowledge.py clean-concerts
     knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--limit N] [--json]
-    knowledge.py show <fact_id> [--json]
+    knowledge.py show <fact_id> [--as-of DATE] [--json]
+    knowledge.py history <fact_id|source_key> [--json]
+    knowledge.py audit-claims [--json]
+    knowledge.py privacy check "statement" --subject s [--requested normal|private] [--json]
+    knowledge.py privacy rules [--json]
+    knowledge.py privacy tag|untag <subject> / add-keyword|remove-keyword <word>  [--allow-dirty] [--dry-run]
     knowledge.py subjects [--json]
     knowledge.py facts [--subject x] [--trust high] [--status active] [--personal-only|--not-personal] [--limit N] [--json]
 
@@ -32,6 +37,11 @@ from typing import Optional
 
 import typer
 
+import add_fact
+import claims_audit
+import private_git
+import privacy
+import revisions
 from paths import KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -232,8 +242,54 @@ def cmd_search(
     _emit_json(rows) if as_json else _print_fact_lines(rows)
 
 
-@app.command("show", help="Show one fact in full, with its sources.")
-def cmd_show(fact_id: int, as_json: bool = JSON_OPT):
+def fact_as_of(con, fact_id, as_of):
+    """('ok', revision) | ('no-fact', None) | ('no-history', None) | ('not-yet', None).
+    Raises ValueError for a bad `as_of` (from revisions.get_fact_as_of)."""
+    rev = revisions.get_fact_as_of(con, fact_id, as_of)
+    if rev is not None:
+        return "ok", rev
+    if get_fact(con, fact_id) is None:
+        return "no-fact", None
+    return ("not-yet", None) if revisions.get_history(con, fact_id) else ("no-history", None)
+
+
+def _print_revision_state(r):
+    print(f"\n{r['statement']}\n")
+    for label, key in (("Trust rationale", "trust_rationale"), ("Notes", "notes"), ("Superseded by", "superseded_by"),
+                       ("Volatility", "volatility")):
+        if r[key]:
+            print(f"{label}: {r[key]}")
+    if r["recheck_by"]:
+        print(f"Recheck by: {r['recheck_by']}" + (f"  ({r['recheck_rationale']})" if r["recheck_rationale"] else ""))
+
+
+def _show_as_of(fact_id, as_of, as_json):
+    try:
+        kind, r = _query(fact_as_of, fact_id, as_of)
+    except ValueError as e:
+        _fail(e)
+    if kind == "no-fact":
+        _fail(f"no fact with id {fact_id}")
+    if kind == "no-history":
+        _fail(f"fact {fact_id} has no revision history (rebuild, or it predates revisions)")
+    if kind == "not-yet":
+        _fail(f"fact {fact_id} did not exist yet at {as_of}")
+    if as_json:
+        _emit_json(r)
+        return
+    via = f" via {r['changed_via']}" if r["changed_via"] else ""
+    print(f"Fact #{r['fact_id']}  [{r['subject']}]  as of {as_of}  (revision {r['revision']}, changed {r['changed_at']}{via})")
+    print(f"trust={r['trust_level']}  visibility={r['visibility']}  status={r['status']}")
+    if r["change_reason"]:
+        print(f"Reason: {r['change_reason']}")
+    _print_revision_state(r)
+
+
+@app.command("show", help="Show one fact in full, with its sources. --as-of DATE shows it as it stood then (end of that day, UTC; or an ISO timestamp).")
+def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
+             as_of: Optional[str] = typer.Option(None, "--as-of", help="YYYY-MM-DD (end of that day, UTC) or an ISO-8601 timestamp.")):
+    if as_of is not None:
+        return _show_as_of(fact_id, as_of, as_json)
     f = _query(get_fact, fact_id)
     if not f:
         _fail(f"no fact with id {fact_id}")
@@ -265,6 +321,71 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT):
             print(f"  - {s['name']}{loc}")
 
 
+def _revision_diff(prev, cur):
+    return [f"{k}: {prev[k]!r} -> {cur[k]!r}" for k in revisions.MUTABLE_FIELDS if prev[k] != cur[k]]
+
+
+@app.command("history", help="Every revision of a fact, oldest first. REF is a fact id (digits) or a source_key.")
+def cmd_history(ref: str, as_json: bool = JSON_OPT):
+    ref = ref.strip()
+    if not ref:
+        _fail("give a fact id or a source_key")
+    key = int(ref) if ref.isascii() and ref.isdigit() else ref
+    rows = _query(revisions.get_history, key)
+    if not rows:
+        _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
+    if as_json:
+        _emit_json(rows)
+        return
+    first = rows[0]
+    n = len(rows)
+    print(f"Fact #{first['fact_id']}  [{first['subject']}]  source_key={first['source_key']}  ({n} revision{'' if n == 1 else 's'})")
+    prev = None
+    for r in rows:
+        extra = (f"  via={r['changed_via']}" if r["changed_via"] else "") + (f"  session={r['session_id']}" if r["session_id"] else "")
+        print(f"\nrev {r['revision']}  {r['changed_at']}{extra}")
+        if r["change_reason"]:
+            print(f"  reason: {r['change_reason']}")
+        if prev is None:
+            for k in revisions.MUTABLE_FIELDS:
+                if r[k] not in (None, ""):
+                    print(f"  {k}: {r[k]}")
+        else:
+            diff = _revision_diff(prev, r)
+            for d in diff or ["(no field changed)"]:
+                print(f"  {d}")
+        prev = r
+
+
+@app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when any are found.")
+def cmd_audit_claims(as_json: bool = JSON_OPT):
+    def run(con):
+        return claims_audit.audit_claims(con), claims_audit.unparseable_rechecks(con)
+    try:
+        rows, unparsed = _query(run)
+    except sqlite3.OperationalError as e:
+        _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
+    if as_json:
+        _emit_json({"stale_premises": rows, "unparseable_rechecks": unparsed})
+    elif not rows:
+        print("No stale premises.")
+    else:
+        for r in rows:
+            kind = f" ({r['inference_type']})" if r["inference_type"] else ""
+            print(f"claim #{r['claim_id']}{kind}: {r['claim_statement']}")
+            line = f"  fact #{r['fact_id']} {r['reason']}"
+            if r["reason"] == "past_recheck_by":
+                line += f" ({r['recheck_by']})"
+            elif r["superseded_by_fact_id"]:
+                line += f" (by fact #{r['superseded_by_fact_id']})"
+            print(f"{line}: {r['fact_statement']}")
+    if unparsed and not as_json:
+        ids = ", ".join(f"#{u['fact_id']} ({u['recheck_by']!r})" for u in unparsed)
+        print(f"note: {len(unparsed)} cited fact(s) have a recheck_by that is not an ISO date, so the audit cannot judge them: {ids}", file=sys.stderr)
+    if rows:
+        raise typer.Exit(1)
+
+
 @app.command("subjects", help="List subjects (indented under parent) with fact counts.")
 def cmd_subjects(as_json: bool = JSON_OPT):
     rows = _query(list_subjects)
@@ -290,6 +411,176 @@ def cmd_facts(
                   status=status.value if status else None,
                   personal=_personal(personal_only, not_personal), limit=limit)
     _emit_json(rows) if as_json else _print_fact_lines(rows)
+
+
+# ---- privacy (#31): `privacy check|rules|tag|untag|add-keyword|remove-keyword` ----
+
+privacy_app = typer.Typer(help="Privacy rules: check what visibility a statement would get, and edit the rules "
+                               "(subject tags and keywords). The rules file is edited only through these commands.",
+                          pretty_exceptions_enable=False, rich_markup_mode=None)
+app.add_typer(privacy_app, name="privacy")
+
+
+class Requested(str, enum.Enum):
+    normal = "normal"
+    private = "private"
+
+
+def _load_rules():
+    try:
+        return privacy.load_rules(privacy.rules_path())
+    except privacy.PrivacyRulesError as e:
+        _fail(e)
+
+
+def _db_context(rules):
+    """`rules` with the subject tree and the known-subject list from the live db (read-only) plus
+    subjects already in general_facts.json (same notion of "known" as add-fact). No db -> empty
+    context, so the unknown-subject rule is not enforced (nothing to compare against)."""
+    try:
+        con = connect()
+    except DatabaseNotFound:
+        return rules
+    try:
+        rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
+    except sqlite3.Error:
+        return rules
+    finally:
+        con.close()
+    parents = {n: p for n, p in rows}
+    known = set(parents)
+    try:
+        known |= {e["subject"] for e in add_fact._read_array(add_fact.DATA_PATH)
+                  if isinstance(e, dict) and isinstance(e.get("subject"), str)}
+    except add_fact.DataFileError:
+        pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
+    return rules.with_context(parents=parents, known_subjects=known)
+
+
+def _resolution_json(res):
+    return {"visibility": res.visibility, "raised_above_request": res.raised_above_request,
+            "explanation": res.explain(),
+            "reasons": [{"kind": r.kind, "detail": r.detail, "forces_private": r.forces_private} for r in res.reasons]}
+
+
+@privacy_app.command("check", help="Resolve the visibility a statement would be stored with, and name the rule that raised it.")
+def cmd_privacy_check(statement: str,
+                      subject: str = typer.Option(..., "--subject", help="Subject the fact would be filed under."),
+                      requested: Requested = typer.Option(Requested.normal, "--requested",
+                                                          help="What the caller asks for; default normal shows what the rules alone do."),
+                      as_json: bool = JSON_OPT):
+    res = privacy.check(subject, statement, _db_context(_load_rules()), requested=requested.value)
+    _emit_json(_resolution_json(res)) if as_json else print(res.explain())
+
+
+@privacy_app.command("rules", help="Show the loaded privacy rules (subject tags and keywords).")
+def cmd_privacy_rules(as_json: bool = JSON_OPT):
+    path = privacy.rules_path()
+    rules = _load_rules()
+    exists = os.path.exists(path)
+    if as_json:
+        _emit_json({"path": path, "exists": exists, "version": privacy.VERSION,
+                    "subject_tags": dict(sorted(rules.subject_tags.items())), "keywords": sorted(rules.keywords)})
+        return
+    print(f"Privacy rules: {path}" + ("" if exists else "  (no rules file; empty rules)"))
+    if rules.subject_tags:
+        print("subject tags:")
+        for name, tag in sorted(rules.subject_tags.items()):
+            print(f"  {name}: {tag}")
+    else:
+        print("subject tags: (none)")
+    if rules.keywords:
+        print("keywords:")
+        for kw in sorted(rules.keywords):
+            print(f"  - {kw}")
+    else:
+        print("keywords: (none)")
+
+
+def _edit_rules(edit, describe, allow_dirty, dry_run):
+    """Shared body of the rules-editing commands, mirroring add-fact's git safety net (#10):
+    load, apply the library edit, refuse on a dirty private repo, write, commit only the rules file.
+    `edit(rules) -> (new_rules, changed)`; `describe(old, new) -> (what, commit_message)`.
+    An edit that changes nothing writes and commits nothing (and needs no clean tree)."""
+    path = privacy.rules_path()
+    rules = _load_rules()
+    try:
+        new, changed = edit(rules)
+    except privacy.PrivacyRulesError as e:
+        _fail(e)
+    if not changed:
+        print(f"no change: {path} already has this rule state")
+        return
+    what, message = describe(rules, new)
+    directory = os.path.dirname(os.path.abspath(path))
+    probe = directory
+    while not os.path.isdir(probe):  # the data dir may not exist before the first rule
+        probe = os.path.dirname(probe)
+    try:
+        repo = private_git.find_repo(probe)
+        if repo is None:
+            print(f"note: {directory} is not inside a git repository; the change will not be committed.", file=sys.stderr)
+        elif not allow_dirty:
+            private_git.ensure_clean_tree(repo)
+    except private_git.PrivateGitError as e:
+        _fail(e)
+    if dry_run:
+        print(f"dry run: would {what} in {path}" + (f" and commit {message!r}" if repo else "") + "; nothing written")
+        return
+    os.makedirs(directory, exist_ok=True)
+    privacy.save_rules(new, path)
+    print(f"Updated {path}: {what}.")
+    if repo is None:
+        return
+    try:
+        commit = private_git.commit_private_change([path], message, repo)
+        detached = private_git.is_detached(repo)
+    except private_git.PrivateGitError as e:
+        print(f"error: the rule IS written to {path} but is NOT committed: {e}", file=sys.stderr)
+        raise typer.Exit(3)
+    print(f"Committed {commit} in {repo}: {message}")
+    if detached:
+        print(f"warning: {repo} has a detached HEAD; that commit is not on any branch.", file=sys.stderr)
+
+
+ALLOW_DIRTY_OPT = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the rules file.")
+DRY_RUN_OPT = typer.Option(False, "--dry-run", help="Report what would change and commit; write nothing.")
+
+
+class Tag(str, enum.Enum):
+    private = "private"
+    normal = "normal"
+
+
+@privacy_app.command("tag", help="Tag a subject private (inherited by its children); --tag normal only registers it as a known subject.")
+def cmd_privacy_tag(subject: str, tag: Tag = typer.Option(Tag.private, "--tag"),
+                    allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    _edit_rules(lambda r: privacy.tag_subject(r, subject, tag.value),
+                lambda old, new: (f"tag subject {subject} {tag.value}", f"privacy: tag {subject} ({tag.value})"),
+                allow_dirty, dry_run)
+
+
+@privacy_app.command("untag", help="Remove a subject's tag.")
+def cmd_privacy_untag(subject: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    _edit_rules(lambda r: privacy.untag_subject(r, subject),
+                lambda old, new: (f"untag subject {subject}", f"privacy: untag {subject}"),
+                allow_dirty, dry_run)
+
+
+@privacy_app.command("add-keyword", help="Add a name/keyword; statements containing it as a whole word become private. Literal text, case-insensitive.")
+def cmd_privacy_add_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    def describe(old, new):
+        kw = next(k for k in new.keywords if k not in old.keywords)
+        return f"add keyword {kw!r}", f"privacy: add keyword {kw!r}"
+    _edit_rules(lambda r: privacy.add_keyword(r, keyword), describe, allow_dirty, dry_run)
+
+
+@privacy_app.command("remove-keyword", help="Remove a keyword. Facts already stored private stay private.")
+def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    def describe(old, new):
+        kw = next(k for k in old.keywords if k not in new.keywords)
+        return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
+    _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
 
 def main(argv=None):
