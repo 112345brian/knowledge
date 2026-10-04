@@ -32,19 +32,31 @@ files in `knowledge-private`. Never hand-edit the `.db` file with ad hoc
 
 ## CLI
 
-`knowledge.py` is the one entry point — everything below also still runs as
-its own standalone script if you'd rather call it directly.
+`knowledge.py` is the one entry point, a [Typer](https://typer.tiangolo.com) app (`--help` on it and on every command; shell completion via `--install-completion`). `build.py`, `add_fact.py` and `clean_concerts_csv.py` still run standalone with plain `python3` and do not need typer.
+
+**Setup (once):** the CLI and the tests need typer and pytest, declared in `pyproject.toml` and installed into a repo-local `.venv` (git-ignored) by [uv](https://docs.astral.sh/uv/). Nothing goes into the system python.
 
 ```bash
-python3 knowledge.py build            # rebuilds knowledge.db in place (auto-backs up the old file first)
-python3 knowledge.py build --check    # builds into a throwaway temp file and reports counts; live DB untouched
-python3 knowledge.py add-fact "statement" --subject some-subject --trust medium   # see add_fact.py --help for all flags
-python3 knowledge.py clean-concerts   # dedupes the concerts export in place
-python3 knowledge.py search "terms" [--subject x] [--trust high] [--personal-only|--not-personal]
-python3 knowledge.py show <fact_id>
-python3 knowledge.py subjects
-python3 knowledge.py facts [--subject x] [--trust high] [--status active]
+uv sync                                        # creates .venv with typer + pytest
+export KNOWLEDGE_PRIVATE_DIR=~/programming/knowledge-private   # as before
+uv run pytest                                  # run the tests (plain `python3 -m pytest` fails: no typer)
+uv run python knowledge.py --help
 ```
+
+```bash
+uv run python knowledge.py build            # rebuilds knowledge.db in place (auto-backs up the old file first)
+uv run python knowledge.py build --check    # builds into a throwaway temp file and reports counts; live DB untouched
+uv run python knowledge.py add-fact "statement" --subject some-subject --trust medium   # forwards every argument to add_fact.py; see add_fact.py --help
+uv run python knowledge.py clean-concerts   # dedupes the concerts export in place
+uv run python knowledge.py search "terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--limit N] [--json]
+uv run python knowledge.py show <fact_id> [--json]
+uv run python knowledge.py subjects [--json]
+uv run python knowledge.py facts [--subject x] [--trust high] [--status active] [--personal-only|--not-personal] [--limit N] [--json]
+```
+
+`--json` on a read command prints the same rows the library function returns (`search_facts`, `get_fact`, `list_subjects`, `list_facts`). An invalid full-text query (unbalanced quote, empty string) prints `error: search failed: ...` and exits 1.
+
+**CLI first (parity rule).** Everything doable from a UI button, the inbox or an MCP tool is also a CLI command. For every new action, in this order: (1) a library function in `knowledge.py` (or its own module): pure, importable, returns data, never prints or exits; (2) a Typer command that only parses flags and prints, with `--json` if it reads; (3) the MCP tool / inbox handler, which calls the same library function. Register the action in `cli_parity.py` (`ACTIONS`: action name -> CLI command path). `mcp_server.py` and `inbox.py` must declare `PARITY_ACTIONS` (the action names they expose); `tests/test_cli_parity.py` fails if a registered action has no real command, or if either module exposes a name with no registry entry.
 
 ## Pipeline order
 

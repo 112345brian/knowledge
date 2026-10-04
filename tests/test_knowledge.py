@@ -114,18 +114,20 @@ def test_search_prefix_and_quoted_phrase(env):
 
 @pytest.mark.parametrize("q", ["", '"unbalanced', "(protein", "protein)", "a AND", "'", "*"])
 def test_search_fts_syntax_errors_are_pinned(env, q):
-    """FTS syntax errors currently escape as an uncaught sqlite3.OperationalError
-    (traceback, exit 1). Pinned so any change to that is deliberate."""
+    """FTS syntax errors used to escape as an uncaught sqlite3.OperationalError traceback.
+    Since the Typer migration (#34) the CLI layer catches it: one-line error, exit 1.
+    The library function still raises (see test_functions_return_dicts...)."""
     r = env.cli("search", q)
     assert r.returncode == 1
     assert r.stdout == ""
-    assert "sqlite3.OperationalError" in r.stderr
+    assert r.stderr.startswith("error: search failed: ") and r.stderr.count("\n") == 1
+    assert "Traceback" not in r.stderr
 
 
-def test_search_leading_dash_is_an_argparse_option_and_fts_column_filter(env):
-    assert env.cli("search", "-protein").returncode == 2  # argparse sees an unknown option
+def test_search_leading_dash_is_a_cli_option_and_fts_column_filter(env):
+    assert env.cli("search", "-protein").returncode == 2  # the CLI parser sees an unknown option
     r = env.cli("search", "--", "-protein")  # reaches FTS, where it is read as a column filter
-    assert r.returncode == 1 and "sqlite3.OperationalError" in r.stderr
+    assert r.returncode == 1 and r.stderr.startswith("error: search failed: ")
 
 
 # ---------------------------------------------------------------- show
@@ -297,3 +299,38 @@ def test_main_converts_missing_db_to_message_and_exit_code(lib, env, capsys):
     os.remove(env.db)
     assert lib.main(["facts"]) == 1
     assert capsys.readouterr().err == f"error: {env.db} doesn't exist -- run `python3 knowledge.py build` first\n"
+
+
+# ---------------------------------------------------------------- --json (issue #34)
+
+def test_json_flag_on_every_read_command(env):
+    import json
+    hits = json.loads(ok(env.cli("search", "protein", "--not-personal", "--json")))
+    assert {h["id"] for h in hits} == {1, 4}
+    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "statement"}
+    assert json.loads(ok(env.cli("search", "zzzznothing", "--json"))) == []
+    assert [r["id"] for r in json.loads(ok(env.cli("facts", "--status", "active", "--json")))] == [1, 2, 3]
+    assert json.loads(ok(env.cli("facts", "--subject", "nope", "--json"))) == []
+    f = json.loads(ok(env.cli("show", "1", "--json")))
+    assert f["subject"] == "protein" and f["sources"][0] == {"name": "Smith 2020 protein review", "locator": "p. 12"}
+    subs = {s["name"]: s for s in json.loads(ok(env.cli("subjects", "--json")))}
+    assert subs["protein"]["parent"] == "nutrition" and subs["emptysubject"]["n_facts"] == 0
+
+
+def test_json_errors_stay_on_stderr_with_same_exit_code(env, tmp_path):
+    r = env.cli("show", "999", "--json")
+    assert (r.returncode, r.stdout, r.stderr) == (1, "", "error: no fact with id 999\n")
+    e = Env(tmp_path / "nodb", with_db=False)
+    r = e.cli("facts", "--json")
+    assert r.returncode == 1 and r.stdout == "" and "run `python3 knowledge.py build` first" in r.stderr
+
+
+def test_help_works_for_app_and_every_command(env):
+    assert "search" in ok(env.cli("--help"))
+    for c in ("build", "clean-concerts", "search", "show", "subjects", "facts"):
+        assert ok(env.cli(c, "--help")).strip(), c
+    assert "--json" in ok(env.cli("facts", "--help"))
+
+
+def test_add_fact_help_is_forwarded_to_add_fact_py(env):
+    assert "usage:" in ok(env.cli("add-fact", "--help")).lower()
