@@ -358,6 +358,8 @@ def main(argv=None):
         for e in result.errors:
             print(f"error: {e}", file=sys.stderr)
         return 1
+    if result.privacy is not None and result.privacy.raised_above_request:
+        print(f"note: stored as private although {fact.visibility} was requested -- {result.privacy.explain()}", file=sys.stderr)
     print(f"Added to {os.path.relpath(DATA_PATH, HERE)} ({result.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
     if repo is not None:
         message = f"add-fact: {fact.subject} ({fact.trust_level})"

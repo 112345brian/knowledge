@@ -24,6 +24,14 @@ ACTIONS = {
     "get_fact": ("show",),
     "list_subjects": ("subjects",),
     "list_facts": ("facts",),
+    "get_history": ("history",),
+    "audit_claims": ("audit-claims",),
+    "privacy_check": ("privacy", "check"),
+    "privacy_rules": ("privacy", "rules"),
+    "privacy_tag": ("privacy", "tag"),
+    "privacy_untag": ("privacy", "untag"),
+    "privacy_add_keyword": ("privacy", "add-keyword"),
+    "privacy_remove_keyword": ("privacy", "remove-keyword"),
 }
 
 # Optional future layers that must declare PARITY_ACTIONS.
