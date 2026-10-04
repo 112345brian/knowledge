@@ -30,6 +30,9 @@ DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
+# A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
+# ('active', e.g. `register facts`, #32). superseded/retracted only arise through revisions.
+VALID_NEW_STATUS = ("pending", "active")
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -88,6 +91,9 @@ class NewFact:
     captured_at: Optional[str] = None
     # Stable identity (#30). Normally left None: build_entry assigns a fresh one.
     source_key: Optional[str] = None
+    # Review state (#6). Ad hoc facts start 'pending' and become active via review.approve; a caller
+    # that already showed the fact to the user passes 'active'. Always written to the entry.
+    status: str = "pending"
 
 
 @dataclass
@@ -123,6 +129,8 @@ def validate_fact(fact, db_path=None):
         errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
     if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
+    if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
+        errors.append(f"status {fact.status!r} must be one of {list(VALID_NEW_STATUS)} for a new fact")
     if not fact.statement.strip():
         errors.append("statement is empty")
     if not SUBJECT_RE.match(fact.subject):
@@ -180,6 +188,7 @@ def build_entry(fact, visibility=None):
         "is_personal": bool(fact.is_personal),
         "date_added": clock.now_iso(),
         "visibility": fact.visibility if visibility is None else visibility,
+        "status": fact.status,
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
