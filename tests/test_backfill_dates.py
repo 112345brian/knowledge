@@ -241,7 +241,9 @@ def test_a_concurrent_add_fact_append_is_not_lost(world, tmp_path):
 
 # ---------------------------------------------------------------- the build sees the same dates
 
-def test_ingest_gives_the_same_dates_before_and_after_the_backfill(world, tmp_path, ingest):  # noqa: F811
+def test_after_the_backfill_ingest_gives_the_legacy_dates_and_keeps_stamped_ones(world, tmp_path, ingest):  # noqa: F811
+    """Before #35 the build filled these from constants (04: 2026-09-11, 11: 2026-09-26); the backfill
+    writes exactly those into the data, so the same dates come out (facts, last_reviewed_at, revision 1)."""
     legacy = [{"subject": "s", "statement": f"Legacy {i}.", "trust_level": "low"} for i in range(3)]
     legacy.append({"subject": "s", "statement": "Stamped.", "trust_level": "low", "date_added": "2026-10-03T12:00:00+00:00"})
 
@@ -251,15 +253,20 @@ def test_ingest_gives_the_same_dates_before_and_after_the_backfill(world, tmp_pa
             "SELECT f.statement, r.changed_at FROM fact_revisions r JOIN facts f ON f.id = r.fact_id ORDER BY f.statement")]
         return facts, revs
 
-    before04 = dump(ingest.run04([dict(e) for e in legacy]))
-    before11 = dump(ingest.run11([dict(e) for e in legacy]))
-    run(world, ingest.env.data_dir, "--apply")
-    assert all("date_added" in e for e in json.loads(read(ingest.env.data_dir, "pilot_facts.json")))
-    ingest.mod04.DATA_DIR = ingest.env.data_dir
-    con04 = ingest.db()
+    ingest.write("pilot_facts.json", legacy)
+    for i in range(1, 5):
+        ingest.write(f"facts_batch{i}.json", [])
+    ingest.write("general_facts.json", legacy)
+    with pytest.raises(ValueError, match="no `date_added`"):      # not yet backfilled: loud, not guessed
+        ingest.mod04.DATA_DIR = ingest.env.data_dir
+        ingest.mod04.run(ingest.db())
+    r = run(world, ingest.env.data_dir, "--apply")
+    assert r.returncode == 0, r.stderr
+    ingest.mod04.DATA_DIR = ingest.mod11.DATA_DIR = ingest.env.data_dir
+    con04, con11 = ingest.db(), ingest.db()
     ingest.mod04.run(con04)
-    ingest.mod11.DATA_DIR = ingest.env.data_dir
-    con11 = ingest.db()
     ingest.mod11.run(con11)
-    assert dump(con04) == before04 and dump(con11) == before11
-    assert ("Legacy 0.", "2026-09-11", "2026-09-11") in before04[0] and ("Legacy 0.", "2026-09-26", "2026-09-26") in before11[0]
+    stamped = "2026-10-03T12:00:00+00:00"
+    assert dump(con04) == ([(f"Legacy {i}.", "2026-09-11", "2026-09-11") for i in range(3)] + [("Stamped.", stamped, stamped)],
+                           [(f"Legacy {i}.", "2026-09-11") for i in range(3)] + [("Stamped.", stamped)])
+    assert dump(con11)[0][:3] == [(f"Legacy {i}.", "2026-09-26", "2026-09-26") for i in range(3)]

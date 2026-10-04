@@ -41,8 +41,9 @@ MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visi
                   "superseded_by", "recheck_by", "recheck_rationale", "volatility", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
-# (file, date used for entries with no date_added). Must equal LEGACY_DATE_ADDED in
-# 04_ingest_facts.py / 11_seed_general_facts.py (tests/test_fact_revisions.py checks this).
+# (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
+# longer falls back to these (#35): 04/11 fail on an undated entry. Do not change them: they are
+# the values the old LEGACY_DATE_ADDED constants had, i.e. the dates already in knowledge.db.
 ENTRY_FILES = (
     [("pilot_facts.json", "2026-09-11")]
     + [(f"facts_batch{i}.json", "2026-09-11") for i in range(1, 5)]
