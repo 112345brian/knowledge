@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
+from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
@@ -44,6 +45,7 @@ def parse_args(argv):
     p.add_argument("--source-citekey", help="Must already exist in the `sources` table.")
     p.add_argument("--source-locator")
     p.add_argument("--source-quote")
+    p.add_argument("--allow-dirty", action="store_true", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the facts file.")
     p.set_defaults(is_personal=True)
     return p.parse_args(argv)
 
@@ -233,6 +235,18 @@ def main(argv=None):
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote,
     )
+    # Git safety net (#10): only when the data file lives in a git repo (a non-git data dir,
+    # e.g. a throwaway test layout, is written without committing, with a note). append_fact
+    # itself stays free of git side effects.
+    try:
+        repo = find_repo(os.path.dirname(DATA_PATH))
+        if repo is None:
+            print(f"note: {os.path.dirname(DATA_PATH)} is not inside a git repository; the change will not be committed.", file=sys.stderr)
+        elif not args.allow_dirty:
+            ensure_clean_tree(repo)
+    except PrivateGitError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     result = append_fact(fact)
     for note in result.notes:
         print(note, file=sys.stderr)
@@ -241,6 +255,17 @@ def main(argv=None):
             print(f"error: {e}", file=sys.stderr)
         return 1
     print(f"Added to {os.path.relpath(DATA_PATH, HERE)} ({result.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
+    if repo is not None:
+        message = f"add-fact: {fact.subject} ({fact.trust_level})"
+        try:
+            commit = commit_private_change([DATA_PATH], message, repo)
+            detached = is_detached(repo)
+        except PrivateGitError as e:
+            print(f"error: the fact IS in {DATA_PATH} but is NOT committed: {e}", file=sys.stderr)
+            return 3
+        print(f"Committed {commit} in {repo}: {message}")
+        if detached:
+            print(f"warning: {repo} has a detached HEAD; that commit is not on any branch.", file=sys.stderr)
     return 0
 
 
