@@ -26,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
+VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -38,6 +39,7 @@ def parse_args(argv):
     p.add_argument("--domain", default="general", help="Only applies if --subject doesn't exist yet (default: general).")
     p.add_argument("--original-claim", action="store_true", dest="is_original_claim", help="This is your own conclusion, not something a source states.")
     p.add_argument("--not-personal", action="store_false", dest="is_personal", help="Mark as not about the user personally (default: personal).")
+    p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
     p.add_argument("--recheck-by", help="A date (YYYY-MM-DD) or short phrase like 'next physical'.")
@@ -58,6 +60,7 @@ class NewFact:
     domain: str = "general"
     is_original_claim: bool = False
     is_personal: bool = True
+    visibility: str = "private"
     trust_rationale: Optional[str] = None
     notes: Optional[str] = None
     recheck_by: Optional[str] = None
@@ -86,6 +89,8 @@ def validate_fact(fact, db_path=None):
     errors, notes = [], []
     if fact.trust_level not in VALID_TRUST:
         errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
+    if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
+        errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not fact.statement.strip():
         errors.append("statement is empty")
     if not SUBJECT_RE.match(fact.subject):
@@ -121,6 +126,7 @@ def build_entry(fact):
         "is_original_claim": bool(fact.is_original_claim),
         "is_personal": bool(fact.is_personal),
         "date_added": clock.now_iso(),
+        "visibility": fact.visibility,
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
@@ -230,7 +236,7 @@ def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
         statement=args.statement, subject=args.subject, trust_level=args.trust_level, domain=args.domain,
-        is_original_claim=args.is_original_claim, is_personal=args.is_personal,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote,

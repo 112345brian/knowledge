@@ -148,13 +148,17 @@ CREATE TABLE facts (
     recheck_by              TEXT,
     recheck_rationale       TEXT,
     origin_file_id          INTEGER REFERENCES vault_files(id),
-    notes                   TEXT
+    notes                   TEXT,
+    -- Who may see this fact. NOT derived from is_personal (a keyword heuristic, not a privacy
+    -- boundary). Anything unmarked is private; the value is only ever stored here, never inferred.
+    visibility              TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','normal'))
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
 CREATE INDEX idx_facts_is_personal ON facts(is_personal);
 CREATE INDEX idx_facts_status ON facts(status);
 CREATE INDEX idx_facts_origin_file ON facts(origin_file_id);
+CREATE INDEX idx_facts_visibility ON facts(visibility);
 
 CREATE TABLE fact_sources (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
