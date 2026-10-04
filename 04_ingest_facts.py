@@ -13,6 +13,7 @@ import sqlite3, json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import get_or_create_vault_file
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
+import privacy
 
 # Documented fallback for entries with no `date_added` of their own. It is the
 # date the original batch was loaded, kept so that rebuilds don't change those rows.
@@ -116,6 +117,8 @@ def get_or_create_subject(cur, name, cache):
 
 
 def run(con):
+    # Fail early on a corrupt rules file; an absent one means empty rules (#31).
+    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -179,7 +182,12 @@ def run(con):
 
         inserted += 1
 
+    # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
+    # Subjects' parent_id is set by step 06, so 11 (last) is the pass that sees the whole tree.
+    applied = privacy.apply_rules_to_db(con, rules)
     con.commit()
+    if applied["raised"]:
+        print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
     print(f"[04_ingest_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")

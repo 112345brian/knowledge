@@ -13,6 +13,7 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
+import privacy
 
 # Documented fallback for entries with no `date_added` of their own (add_fact.py
 # always writes one). It is the date the first batch was loaded, kept so rebuilds
@@ -36,6 +37,8 @@ def get_or_create_subject(cur, name, domain, cache):
 
 
 def run(con):
+    # Fail early on a corrupt rules file; an absent one means empty rules (#31).
+    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -89,7 +92,12 @@ def run(con):
 
         inserted += 1
 
+    # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
+    # This is the last build step, so subjects' parent_id (step 06) is set and tags inherit.
+    applied = privacy.apply_rules_to_db(con, rules)
     con.commit()
+    if applied["raised"]:
+        print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
     print(f"[11_seed_general_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")

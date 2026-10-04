@@ -18,7 +18,10 @@ CREATE TABLE subjects (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     domain      TEXT NOT NULL DEFAULT 'health-and-fitness',
-    parent_id   INTEGER REFERENCES subjects(id)
+    parent_id   INTEGER REFERENCES subjects(id),
+    -- #31 privacy: 1 when this subject or an ancestor is tagged private in privacy_rules.json
+    -- (set by privacy.apply_rules_to_db at the end of 04/11; the rules file is the source of truth).
+    private     INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1))
 );
 
 -- ============================================================

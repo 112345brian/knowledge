@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import clock
+import privacy
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
@@ -88,6 +89,9 @@ class AddResult:
     notes: List[str] = field(default_factory=list)
     entry: Optional[dict] = None
     total: Optional[int] = None
+    # #31: how the stored visibility was derived. entry["visibility"] is the resolved value, which
+    # may be stricter than NewFact.visibility; privacy.explain() says which rule raised it.
+    privacy: Optional["privacy.Resolution"] = None
 
 
 class DataFileError(Exception):
@@ -153,8 +157,10 @@ def validate_fact(fact, db_path=None):
     return errors, notes
 
 
-def build_entry(fact):
-    """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format."""
+def build_entry(fact, visibility=None):
+    """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format.
+    `visibility` is the resolved value from privacy.resolve_visibility (append_fact passes it);
+    left None it falls back to the caller's request."""
     entry = {
         "subject": fact.subject,
         "statement": fact.statement.strip(),
@@ -162,7 +168,7 @@ def build_entry(fact):
         "is_original_claim": bool(fact.is_original_claim),
         "is_personal": bool(fact.is_personal),
         "date_added": clock.now_iso(),
-        "visibility": fact.visibility,
+        "visibility": fact.visibility if visibility is None else visibility,
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
@@ -257,20 +263,50 @@ def append_record(path, record):
     return len(items)
 
 
+def resolve_privacy(fact, data_path, db_path):
+    """The privacy rules (privacy_rules.json next to the data file) applied to one fact. Subject
+    context comes from the db when it has a subjects table (parents for tag inheritance, and the set
+    of known subjects) plus subjects already in the facts file; with no usable db the unknown-subject
+    rule is not enforced (nothing to compare against). Raises privacy.PrivacyRulesError."""
+    rules = privacy.load_rules(os.path.join(os.path.dirname(os.path.abspath(data_path)), privacy.RULES_FILENAME))
+    parents, known = {}, None
+    if os.path.exists(db_path):
+        try:
+            con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
+            finally:
+                con.close()
+            parents = {n: p for n, p in rows}
+            known = set(parents)
+        except sqlite3.Error:
+            pass  # no subjects table (or unreadable): cannot tell which subjects exist
+    if known is not None:
+        known |= {e["subject"] for e in _read_array(data_path) if isinstance(e, dict) and isinstance(e.get("subject"), str)}
+    return privacy.resolve_visibility(fact.subject, fact.statement, fact.visibility,
+                                      rules.with_context(parents=parents, known_subjects=known))
+
+
 def append_fact(fact, data_path=None, db_path=None):
-    """Validate and append one fact. Returns an AddResult; never prints or exits."""
+    """Validate and append one fact. Returns an AddResult; never prints or exits. The stored
+    visibility is the most restrictive of the request, the subject tag and the keyword list (#31)."""
     data_path = DATA_PATH if data_path is None else data_path
+    db_path = DB_PATH if db_path is None else db_path
     errors, notes = validate_fact(fact, db_path)
     if errors:
         return AddResult(ok=False, errors=errors, notes=notes)
-    entry = build_entry(fact)
+    try:
+        resolution = resolve_privacy(fact, data_path, db_path)
+    except (privacy.PrivacyRulesError, DataFileError) as e:
+        return AddResult(ok=False, errors=[str(e)], notes=notes)
+    entry = build_entry(fact, visibility=resolution.visibility)
     try:
         total = append_record(data_path, entry)
     except DataFileError as e:
         return AddResult(ok=False, errors=[str(e)], notes=notes)
     except OSError as e:
         return AddResult(ok=False, errors=[f"could not write {data_path}: {e}"], notes=notes)
-    return AddResult(ok=True, notes=notes, entry=entry, total=total)
+    return AddResult(ok=True, notes=notes, entry=entry, total=total, privacy=resolution)
 
 
 def main(argv=None):
