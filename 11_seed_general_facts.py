@@ -14,7 +14,10 @@ import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 
-TODAY = "2026-09-26"
+# Documented fallback for entries with no `date_added` of their own (add_fact.py
+# always writes one). It is the date the first batch was loaded, kept so rebuilds
+# don't change those rows.
+LEGACY_DATE_ADDED = "2026-09-26"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 
 
@@ -52,12 +55,13 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
+        date_added = item.get("date_added") or LEGACY_DATE_ADDED
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale)
                VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
-             item.get("date_added") or TODAY, TODAY, item.get("notes"),
+             date_added, date_added, item.get("notes"),
              item.get("recheck_by"), item.get("recheck_rationale"))
         )
         fact_id = cur.lastrowid

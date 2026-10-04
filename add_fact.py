@@ -19,6 +19,7 @@ import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import clock
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -119,6 +120,7 @@ def build_entry(fact):
         "trust_level": fact.trust_level,
         "is_original_claim": bool(fact.is_original_claim),
         "is_personal": bool(fact.is_personal),
+        "date_added": clock.now_iso(),
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
