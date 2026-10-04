@@ -80,6 +80,16 @@ A fact entry is never edited. The JSON entry is **revision 1**; every later chan
 - **Validation at build time** (fails the build naming `fact_revisions.jsonl:<line>`): revision numbers contiguous per fact starting at 2 (a gap or duplicate fails), `changed_at` not before the previous revision, every `source_key` exists, `superseded_by` resolves, every line well-formed. `append_revision` runs the same checks first, so it will not write a line the build would reject. Blank lines are ignored. Hand-editing an old line is caught only by these checks and by git.
 - `facts.status` now also allows `pending` (revisions and entries may set it; the approve workflow is #6).
 
+## Modes: off | normal | private (#22)
+
+`modes.py` is the query layer every tool must read facts through (the MCP server #2 and the CLI `--mode` option are thin callers; the CLI option is not wired yet). A `modes.Session` holds the mode for one conversation (a fresh one is `normal`; sessions never share state). `set_mode(session, mode)` is a user action ("database private") and must not be a tool the model calls on its own.
+
+- **off**: every read and write raises `ModeOff`. **normal**: only facts stored `visibility='normal'`, on a subject not tagged private, and only `active` (plus `pending` with `include_pending=True`). **private**: everything.
+- Reads: `search_facts`, `get_fact` (id or source_key), `list_facts`, `list_subjects`, `get_history`, `get_fact_as_of`, each `fn(session, con, ...)` with the same row shapes as `knowledge.py` / `revisions.py`. The filter is in the SQL (join on `facts.visibility`), so it cannot be skipped. A hidden fact answers exactly like a missing one (`None` / `[]`), subject lists and counts only count visible facts, and in normal mode revision snapshots stored private are left out (a fact currently private has no history at all). Claims, measurements and other tables are not exposed. Bad search text (empty, unbalanced quote) raises `InvalidQuery`.
+- Writes: `prepare_write(session, subject, statement, rules, requested=None)` resolves through `privacy.resolve_visibility` and gates it; `check_write(session, resolution)` gates an existing `privacy.Resolution`. Store the returned `.visibility`. The model's requested value is only a resolver input; with none given, private mode uses `private`, never `normal`. Normal mode refuses a resolved-private write and tells the user to say "database private" first.
+- Attach `modes.with_mode(session, result)` to every tool response so the current mode is always visible.
+- `tests/test_modes.py` fails if any module outside the query layers and build pipeline reads `facts` / `fact_revisions` / `facts_fts`, or if a caller discards a `check_write` / `prepare_write` result.
+
 ## Adding new data
 
 - **New literature citation**: drop a note in the vault's `sources/` folder with the usual frontmatter, then rebuild — `02_ingest_literature_sources.py` picks it up automatically.
