@@ -283,6 +283,31 @@ def append_record(path, record):
     return len(items)
 
 
+def append_records(path, records, reject=None):
+    """Append several records to a JSON array file in ONE locked read-modify-write (one atomic
+    swap), for batch callers (facts_batch.add_facts, #32). Same lock, read and write as
+    append_record, so it serialises with add_fact and with other batches.
+
+    `reject(existing, record)`, if given, runs INSIDE the lock for each record in order
+    (`existing` already holds the file's records plus the records accepted earlier in this call)
+    and returns a reason string to skip that record, or None to accept it. Nothing is written when
+    no record is accepted. Returns (total, rejected) where `rejected` is a list of
+    (index_in_records, reason) and `total` is the length of the file afterwards."""
+    with _file_lock(_lock_path(path)):
+        items = _read_array(path)
+        rejected, accepted = [], 0
+        for index, record in enumerate(records):
+            reason = reject(items, record) if reject is not None else None
+            if reason:
+                rejected.append((index, reason))
+            else:
+                items.append(record)
+                accepted += 1
+        if accepted:
+            _atomic_write_json(path, items)
+    return len(items), rejected
+
+
 def resolve_privacy(fact, data_path, db_path):
     """The privacy rules (privacy_rules.json next to the data file) applied to one fact. Subject
     context comes from the db when it has a subjects table (parents for tag inheritance, and the set

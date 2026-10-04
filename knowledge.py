@@ -163,6 +163,7 @@ def list_subjects(con):
 # ---- thin CLI printers (Typer) ----
 
 app = typer.Typer(help=__doc__, pretty_exceptions_enable=False, rich_markup_mode=None)
+import cli_facts_batch; cli_facts_batch.register(app)  # `add-facts` (#32)
 
 
 def _personal(personal_only, not_personal):

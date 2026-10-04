@@ -19,6 +19,7 @@ read by any layer; the test passes in the click command tree.
 ACTIONS = {
     "build": ("build",),
     "add_fact": ("add-fact",),
+    "add_facts": ("add-facts",),
     "clean_concerts": ("clean-concerts",),
     "search_facts": ("search",),
     "get_fact": ("show",),
