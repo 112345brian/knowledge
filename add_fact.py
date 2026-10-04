@@ -17,6 +17,7 @@ Usage:
 """
 import argparse, contextlib, hashlib, json, os, re, sqlite3, stat, sys, tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 import clock
@@ -29,6 +30,7 @@ VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
 
 def parse_args(argv):
@@ -46,7 +48,9 @@ def parse_args(argv):
     p.add_argument("--recheck-rationale")
     p.add_argument("--source-citekey", help="Must already exist in the `sources` table.")
     p.add_argument("--source-locator")
-    p.add_argument("--source-quote")
+    p.add_argument("--source-quote", help="The words that justified the fact (with --captured-via, no --source-citekey is needed).")
+    p.add_argument("--captured-via", help="Where the fact came from: cli, mcp, migrate-memory, ... With 'mcp', --session-id and --source-quote are required.")
+    p.add_argument("--session-id", help="The conversation/session the fact was captured in.")
     p.set_defaults(is_personal=True)
     return p.parse_args(argv)
 
@@ -68,6 +72,11 @@ class NewFact:
     source_citekey: Optional[str] = None
     source_locator: Optional[str] = None
     source_quote: Optional[str] = None
+    # Provenance. All optional except that captured_via="mcp" requires session_id and source_quote.
+    # captured_at is stamped from the clock when captured_via is set and it is left None.
+    captured_via: Optional[str] = None
+    session_id: Optional[str] = None
+    captured_at: Optional[str] = None
 
 
 @dataclass
@@ -81,6 +90,15 @@ class AddResult:
 
 class DataFileError(Exception):
     """The facts file exists but can't be safely appended to."""
+
+
+def _is_utc_offset_timestamp(value):
+    if not isinstance(value, str):
+        return False
+    try:
+        return datetime.fromisoformat(value).utcoffset() is not None
+    except ValueError:
+        return False
 
 
 def validate_fact(fact, db_path=None):
@@ -97,7 +115,23 @@ def validate_fact(fact, db_path=None):
         errors.append(f"--subject {fact.subject!r} must be lowercase kebab-case (e.g. 'car-maintenance')")
     if fact.recheck_by and DATE_RE.match(fact.recheck_by) is None and len(fact.recheck_by) < 4:
         errors.append(f"--recheck-by {fact.recheck_by!r} looks too short to be a date or phrase")
-    if (fact.source_locator or fact.source_quote) and not fact.source_citekey:
+    if fact.captured_via is not None:
+        if not isinstance(fact.captured_via, str) or not VIA_RE.match(fact.captured_via):
+            errors.append(f"captured_via {fact.captured_via!r} must be a lowercase kebab-case token (e.g. 'mcp', 'cli', 'migrate-memory')")
+    if fact.captured_via is None and (fact.session_id or fact.captured_at):
+        errors.append("session_id/captured_at given without captured_via")
+    if fact.captured_via == "mcp":
+        for name in ("session_id", "source_quote"):
+            value = getattr(fact, name)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{name} is required when captured_via is 'mcp'")
+    if fact.captured_at is not None and not _is_utc_offset_timestamp(fact.captured_at):
+        errors.append(f"captured_at {fact.captured_at!r} must be an ISO-8601 timestamp with a UTC offset (e.g. 2026-10-03T08:00:00+00:00)")
+    # A quote needs a citekey to hang off, unless the fact carries provenance: then the quote is
+    # the user's own words and lives on the fact itself.
+    if fact.source_locator and not fact.source_citekey:
+        errors.append("--source-locator/--source-quote given without --source-citekey")
+    elif fact.source_quote and not fact.source_citekey and fact.captured_via is None:
         errors.append("--source-locator/--source-quote given without --source-citekey")
     if fact.source_citekey:
         if not os.path.exists(db_path):
@@ -135,6 +169,11 @@ def build_entry(fact):
         value = getattr(fact, key)
         if value:
             entry[key] = value
+    if fact.captured_via:
+        entry["captured_via"] = fact.captured_via
+        if fact.session_id:
+            entry["session_id"] = fact.session_id
+        entry["captured_at"] = fact.captured_at or clock.now_iso()
     return entry
 
 
@@ -240,6 +279,7 @@ def main(argv=None):
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote,
+        captured_via=args.captured_via, session_id=args.session_id,
     )
     result = append_fact(fact)
     for note in result.notes:

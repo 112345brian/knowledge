@@ -151,7 +151,15 @@ CREATE TABLE facts (
     notes                   TEXT,
     -- Who may see this fact. NOT derived from is_personal (a keyword heuristic, not a privacy
     -- boundary). Anything unmarked is private; the value is only ever stored here, never inferred.
-    visibility              TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','normal'))
+    visibility              TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','normal')),
+    -- Provenance, all optional here; add_fact.py requires session_id + source_quote when
+    -- captured_via = 'mcp'. captured_via is an open vocabulary (cli, mcp, migrate-memory, ...).
+    -- source_quote is the words that justified the fact; when a fact also cites a source the
+    -- same text is in fact_sources.quote, which stays the per-source copy.
+    captured_via            TEXT,
+    session_id              TEXT,
+    captured_at             TEXT,
+    source_quote            TEXT
 );
 CREATE INDEX idx_facts_subject ON facts(subject_id);
 CREATE INDEX idx_facts_trust ON facts(trust_level);
