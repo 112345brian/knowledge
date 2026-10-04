@@ -22,9 +22,9 @@ Usage:
     python3 backfill_source_keys.py --apply               # write
     python3 backfill_source_keys.py --data-dir DIR ...    # a copy, for trying it out
 
-Extension point for #35 (writing `date_added` onto legacy entries): pass `adders` to
-`backfill()` -- each is a callable (entry, filename, index) -> {key: value} of keys to insert
-for that entry; keys the entry already has are skipped. Not implemented here.
+Extension point (used by backfill_dates.py, #35): pass `extra_adders` to `backfill()` -- each is
+a callable (entry, filename, index) -> {key: value} of keys to insert for that entry; keys the
+entry already has are skipped. `source_keys=False` turns the source_key pass off.
 """
 import argparse
 import json
@@ -135,9 +135,9 @@ def _backfill_file(path, name, adders, apply):
     return changed
 
 
-def backfill(data_dir, apply=False, extra_adders=()):
-    """Backfill source_key (and whatever `extra_adders` return) across the legacy files.
-    Returns {filename: entries_changed}. Nothing is written unless apply=True."""
+def backfill(data_dir, apply=False, extra_adders=(), source_keys=True):
+    """Backfill source_key (when `source_keys`) and whatever `extra_adders` return across the
+    legacy files. Returns {filename: entries_changed}. Nothing is written unless apply=True."""
     # All keys must be unique across files before we write anything.
     revisions.load_entries(data_dir)
     result = {}
@@ -146,7 +146,7 @@ def backfill(data_dir, apply=False, extra_adders=()):
         if not os.path.exists(path):
             continue
         result[name] = _backfill_file(path, name,
-                                      lambda ctx: [source_key_adder(ctx), *extra_adders], apply)
+                                      lambda ctx: [*([source_key_adder(ctx)] if source_keys else []), *extra_adders], apply)
     return result
 
 
