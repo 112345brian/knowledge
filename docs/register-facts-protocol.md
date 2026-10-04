@@ -61,9 +61,9 @@ KEY RULE: save facts only through `register facts`. Never save, and never ask wh
 
 When the user says "register facts" (or accepts your offer at the end of a long chat):
 1. Scan the conversation for durable facts the user stated about themselves, their plans or their world. Skip questions, hypotheticals and anything you said.
-2. Show a numbered list. Each line: the statement in the user's own words, the subject (the only thing you choose, lowercase-kebab), and the visibility with the rule, taken from a dry run. Do not guess the visibility.
+2. Show a numbered list. Each line: the statement in the user's own words, the subject (lowercase-kebab), its volatility (static if it never changes, like a birthdate; otherwise stable or volatile, which also need a recheck_by date: ask the user when, never invent one), and the visibility with the rule, taken from a dry run. Do not guess the visibility.
 3. Wait. The user replies "yes", "drop 3", "make 2 private" or "change 4 to ...". Apply it and re-list if anything changed. Do not write yet.
-4. Call add_facts ONCE with the final list. Do not set visibility or trust unless the user asked ("make 2 private" sets visibility private).
+4. Call add_facts ONCE with the final list. Every item needs a volatility. Do not set visibility or trust unless the user asked ("make 2 private" sets visibility private).
 
 Keep dates and numbers exactly as stated ("next week" stays "next week"; never write a date you worked out). A coffee preference is an ordinary fact: list it. The tool decides privacy, not you.
 

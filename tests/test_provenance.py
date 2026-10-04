@@ -29,7 +29,7 @@ def af(ingest):  # noqa: F811  (add_fact imported against the throwaway private 
 
 
 def nf(af, **kw):
-    base = dict(statement="A fact.", subject="x", trust_level="low")
+    base = dict(statement="A fact.", subject="x", trust_level="low", volatility="static")
     base.update(kw)
     return af.NewFact(**base)
 
@@ -53,12 +53,12 @@ def test_source_quote_with_a_citekey_still_lands_in_fact_sources(ingest, run):
 
 
 def test_cli_without_provenance_writes_no_provenance_keys(env):
-    assert env.cli("S.", "--subject", "x", "--trust", "low").returncode == 0
+    assert env.cli("S.", "--subject", "x", "--trust", "low", "--volatility", "static").returncode == 0
     assert not {"captured_via", "session_id", "captured_at"} & set(env.entries()[0])
 
 
 def test_cli_still_rejects_a_quote_without_a_citekey(env):
-    r = env.cli("S.", "--subject", "x", "--trust", "low", "--source-quote", "q")
+    r = env.cli("S.", "--subject", "x", "--trust", "low", "--volatility", "static", "--source-quote", "q")
     assert r.returncode == 1 and "without --source-citekey" in r.stderr
 
 
@@ -67,7 +67,7 @@ def test_cli_still_rejects_a_quote_without_a_citekey(env):
 def test_provenance_columns_exist_and_are_nullable(ingest):
     con = ingest.db()
     con.execute("INSERT INTO subjects (name) VALUES ('s')")
-    con.execute("INSERT INTO facts (subject_id, statement, trust_level) VALUES (1, 'x', 'low')")
+    con.execute("INSERT INTO facts (subject_id, statement, trust_level, volatility) VALUES (1, 'x', 'low', 'static')")
     r = con.execute("SELECT captured_via, session_id, captured_at, source_quote FROM facts").fetchone()
     assert tuple(r) == (None, None, None, None)
 
@@ -75,7 +75,7 @@ def test_provenance_columns_exist_and_are_nullable(ingest):
 @pytest.mark.parametrize("run", ["run04", "run11"])
 def test_ingest_stores_provenance_and_leaves_it_null_when_absent(ingest, run):
     con = getattr(ingest, run)([
-        F(statement="With.", captured_via="mcp", session_id="s1", captured_at=FROZEN, source_quote="my words"),
+        F(statement="With.", volatility="static", captured_via="mcp", session_id="s1", captured_at=FROZEN, source_quote="my words"),
         F(statement="Without."),
     ])
     rows = {r["statement"]: tuple(r)[1:] for r in
@@ -161,7 +161,7 @@ def test_nul_in_quote_is_pinned_as_accepted(af):
 
 def test_cli_flags_record_provenance(env):
     env.env["KNOWLEDGE_FROZEN_NOW"] = FROZEN
-    r = env.cli("S.", "--subject", "x", "--trust", "low", "--captured-via", "mcp", "--session-id", "s9",
+    r = env.cli("S.", "--subject", "x", "--trust", "low", "--volatility", "static", "--captured-via", "mcp", "--session-id", "s9",
                 "--source-quote", "my words")
     assert r.returncode == 0, r.stderr
     e = env.entries()[0]
@@ -169,7 +169,7 @@ def test_cli_flags_record_provenance(env):
 
 
 def test_cli_mcp_without_session_or_quote_is_rejected_and_writes_nothing(env):
-    r = env.cli("S.", "--subject", "x", "--trust", "low", "--captured-via", "mcp")
+    r = env.cli("S.", "--subject", "x", "--trust", "low", "--volatility", "static", "--captured-via", "mcp")
     assert r.returncode == 1 and "session_id" in r.stderr and "source_quote" in r.stderr
     assert not os.path.exists(env.facts)
 
@@ -189,5 +189,5 @@ def test_session_id_or_captured_at_without_captured_via_is_rejected_not_silently
     for kw in (dict(session_id="s"), dict(captured_at=FROZEN)):
         errors, _ = af.validate_fact(nf(af, **kw))
         assert any("without captured_via" in e for e in errors), kw
-    r = env.cli("S.", "--subject", "x", "--trust", "low", "--session-id", "s")
+    r = env.cli("S.", "--subject", "x", "--trust", "low", "--volatility", "static", "--session-id", "s")
     assert r.returncode == 1 and not os.path.exists(env.facts)

@@ -50,8 +50,8 @@ class Env(BaseEnv):
             self.sql("INSERT INTO subjects (id, name, domain, private) VALUES (5, 'diary', 'personal', 1)")
             for i, e in enumerate(entries, start=6):
                 self.sql("""INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, status, source_key,
-                                               date_added, captured_via, source_quote)
-                            VALUES (?, ?, ?, 0, 'low', ?, ?, ?, ?, ?)""",
+                                               date_added, captured_via, source_quote, volatility)
+                            VALUES (?, ?, ?, 0, 'low', ?, ?, ?, ?, ?, 'static')""",
                          i, 5 if e["subject"] == "diary" else 2, e["statement"], e["status"], e["source_key"],
                          e["date_added"], e.get("captured_via"), e.get("source_quote"))
         if repo:
@@ -64,7 +64,8 @@ class Env(BaseEnv):
     @staticmethod
     def entry(key, statement, subject="protein", **kw):
         e = {"source_key": key, "subject": subject, "statement": statement, "trust_level": "low",
-             "is_original_claim": False, "is_personal": False, "visibility": "private"}
+             "is_original_claim": False, "is_personal": False, "visibility": "private",
+             "volatility": "static"}
         e.update(kw)
         return e
 

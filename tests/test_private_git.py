@@ -56,7 +56,7 @@ class GitEnv(Env):
         return git(self.private, "log", "--format=%s").splitlines()
 
     def add(self, text="A fact.", subject="car-maintenance", trust="medium", *extra):
-        return self.cli(text, "--subject", subject, "--trust", trust, *extra)
+        return self.cli(text, "--subject", subject, "--trust", trust, "--volatility", "static", *extra)
 
 
 @pytest.fixture
@@ -185,7 +185,7 @@ def test_gitignored_facts_file_is_reported_not_swallowed(g):
 def test_data_dir_outside_any_repo_writes_with_an_explicit_note(tmp_path):
     e = Env(tmp_path)
     e.env = {**e.env, **GIT_ENV}
-    r = e.cli("Fact.", "--subject", "x", "--trust", "low")
+    r = e.cli("Fact.", "--subject", "x", "--trust", "low", "--volatility", "static")
     assert r.returncode == 0
     assert "not inside a git repository" in r.stderr and "Committed" not in r.stdout
     assert len(e.entries()) == 1
@@ -194,13 +194,13 @@ def test_data_dir_outside_any_repo_writes_with_an_explicit_note(tmp_path):
 def test_knowledge_py_wrapper_propagates_the_refusal(g):
     with open(os.path.join(g.private, "scratch.txt"), "w") as f:
         f.write("x")
-    r = g.cli("Fact.", "--subject", "x", "--trust", "low", via="knowledge")
+    r = g.cli("Fact.", "--subject", "x", "--trust", "low", "--volatility", "static", via="knowledge")
     assert r.returncode == 1 and "uncommitted changes" in r.stderr
 
 
 def test_append_fact_library_function_has_no_git_side_effects(g):
     code = ("import add_fact; r = add_fact.append_fact(add_fact.NewFact(statement='L.', subject='lib', "
-            "trust_level='low')); print(r.ok)")
+            "trust_level='low', volatility='static')); print(r.ok)")
     p = subprocess.run([sys.executable, "-c", code], env=g.env, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        capture_output=True, text=True)
     assert p.stdout.strip() == "True", p.stderr

@@ -33,7 +33,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import clock
-from add_fact import SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE, _file_lock, _lock_path
+from add_fact import (NEEDS_RECHECK_VOLATILITY, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VALID_VOLATILITY,
+                      VIA_RE, _file_lock, _lock_path)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
@@ -49,6 +50,15 @@ ENTRY_FILES = (
     + [(f"facts_batch{i}.json", "2026-09-11") for i in range(1, 5)]
     + [("general_facts.json", "2026-09-26")]
 )
+
+
+# #7. A stored fact's volatility is one of the three a new fact may carry, or the legacy-only
+# 'unclassified' (keep in sync with the CHECK on facts.volatility in schema.sql).
+LEGACY_VOLATILITY = "unclassified"
+STORED_VOLATILITY = VALID_VOLATILITY + (LEGACY_VOLATILITY,)
+LEGACY_FILES = tuple(name for name, _ in ENTRY_FILES if name != "general_facts.json")
+LEGACY_VOLATILITY_NOTE = ("volatility: unclassified -- this fact predates the volatility field (#7) and has not been "
+                          "individually classified; treat as stable until reviewed.")
 
 
 class RevisionError(Exception):
@@ -126,6 +136,45 @@ def load_entries(data_dir=None):
     return out
 
 
+def volatility_problem(volatility, recheck_by):
+    """Why (volatility, recheck_by) is not a state the facts CHECK allows, or None. A blank
+    recheck_by counts as missing (the schema only sees NULL; we are stricter on purpose)."""
+    if not isinstance(volatility, str) or volatility not in STORED_VOLATILITY:
+        return f"volatility {volatility!r} must be one of {list(STORED_VOLATILITY)}"
+    if volatility in NEEDS_RECHECK_VOLATILITY and not (isinstance(recheck_by, str) and recheck_by.strip()):
+        return f"volatility {volatility!r} requires recheck_by; only 'static' (or legacy 'unclassified') may omit it"
+    return None
+
+
+def is_legacy_entry(entry, file):
+    """An entry that predates the volatility field: it sits in one of the original fact files and
+    has no provenance (anything captured via add_fact/mcp/migrate carries `captured_via`)."""
+    return file in LEGACY_FILES and not entry.get("captured_via")
+
+
+def effective_entry(entry, file=None):
+    """The entry as it enters the db. A legacy entry with no `volatility` becomes 'unclassified'
+    plus the 'predates this field' note appended to its notes; every other entry must already
+    carry a valid volatility. Raises RevisionError (loudly, never a silent default)."""
+    legacy = is_legacy_entry(entry, file)
+    vol = entry.get("volatility")
+    if vol is None:
+        if not legacy:
+            raise RevisionError(f"{file or 'entry'}: fact {(entry.get('statement') or '')[:60]!r} has no `volatility` and is "
+                                f"not a legacy entry; every new fact must carry one of {list(VALID_VOLATILITY)}")
+        eff = dict(entry)
+        eff["volatility"] = LEGACY_VOLATILITY
+        eff["notes"] = (entry["notes"] + "\n" if entry.get("notes") else "") + LEGACY_VOLATILITY_NOTE
+        return eff
+    if vol == LEGACY_VOLATILITY and not legacy:
+        raise RevisionError(f"{file or 'entry'}: 'unclassified' is legacy-only and not allowed on fact "
+                            f"{(entry.get('statement') or '')[:60]!r}")
+    problem = volatility_problem(vol, entry.get("recheck_by"))
+    if problem:
+        raise RevisionError(f"{file or 'entry'}: fact {(entry.get('statement') or '')[:60]!r}: {problem}")
+    return entry
+
+
 def entry_snapshot(entry):
     """The mutable fields of a JSON entry: what revision 1 says."""
     snap = {f: entry.get(f) for f in MUTABLE_FIELDS}
@@ -135,8 +184,11 @@ def entry_snapshot(entry):
     return snap
 
 
-def implicit_revision(key, entry, legacy_date):
-    """Revision 1 as a full revision dict (what 04/11 insert into fact_revisions)."""
+def implicit_revision(key, entry, legacy_date, file=None):
+    """Revision 1 as a full revision dict (what 04/11 insert into fact_revisions). `file` is the
+    entry's data file; it decides whether a missing volatility is legacy (see effective_entry).
+    Raises RevisionError for an entry the facts CHECK would reject."""
+    entry = effective_entry(entry, file)
     rev = {"source_key": key, "revision": 1,
            "changed_at": entry.get("date_added") or legacy_date,
            "changed_via": entry.get("captured_via") or "original",
@@ -217,6 +269,9 @@ def validate_record_shape(rec):
     for k in ("trust_rationale", "recheck_by", "recheck_rationale", "volatility", "notes"):
         if rec[k] is not None and not isinstance(rec[k], str):
             errs.append(f"{k} must be null or a string")
+    problem = volatility_problem(rec["volatility"], rec["recheck_by"])
+    if problem:
+        errs.append(problem + " (a revision is a full snapshot; the facts table would reject this combination)")
     return errs
 
 
@@ -241,10 +296,13 @@ def read_log(path):
     return out
 
 
-def validate_sequence(path, records, first_revisions, known_keys):
+def validate_sequence(path, records, first_revisions, known_keys, first_volatility=None):
     """Cross-line rules. `first_revisions` maps source_key -> revision-1 changed_at;
-    `known_keys` is every existing source_key. Raises RevisionError naming path:line."""
+    `known_keys` is every existing source_key; `first_volatility` (optional) maps source_key ->
+    revision-1 volatility, so 'unclassified' can be refused where the fact never had it (it is a
+    legacy marker, not a value a revision may choose). Raises RevisionError naming path:line."""
     last = {}
+    vol = dict(first_volatility or {})
     for k, v in first_revisions.items():
         try:
             last[k] = (1, parse_timestamp(v))
@@ -265,6 +323,9 @@ def validate_sequence(path, records, first_revisions, known_keys):
                                 f"revision ({prev_at.isoformat()}); timestamps must not go backwards")
         if rec["superseded_by"] is not None and rec["superseded_by"] not in known_keys:
             raise RevisionError(f"{where}: superseded_by {rec['superseded_by']!r} is not an existing source_key")
+        if first_volatility is not None and rec["volatility"] == LEGACY_VOLATILITY and vol.get(key) != LEGACY_VOLATILITY:
+            raise RevisionError(f"{where}: volatility 'unclassified' is legacy-only; {key!r} was never unclassified")
+        vol[key] = rec["volatility"]
         last[key] = (rec["revision"], at)
 
 
@@ -342,10 +403,12 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
                 return RevisionResult(False, [f"unknown source_key {source_key!r}"])
             records = read_log(revisions_path)
             first = {e["key"]: e["entry"].get("date_added") or e["legacy_date"] for e in entries}
-            validate_sequence(revisions_path, records, first, set(by_key))
+            validate_sequence(revisions_path, records, first, set(by_key),
+                              {e["key"]: implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])["volatility"]
+                               for e in entries})
             mine = [r for _, r in records if r["source_key"] == source_key]
             current = mine[-1] if mine else implicit_revision(source_key, by_key[source_key]["entry"],
-                                                                by_key[source_key]["legacy_date"])
+                                                                by_key[source_key]["legacy_date"], by_key[source_key]["file"])
             if expect:
                 wrong = {k: current[k] for k, v in expect.items() if current[k] != v}
                 if wrong:
@@ -361,6 +424,8 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
                    "changed_via": via, "session_id": session_id, "change_reason": reason.strip(), **snapshot}
             rev = {k: rev[k] for k in REVISION_KEYS}
             errs = validate_record_shape(rev)
+            if rev["volatility"] == LEGACY_VOLATILITY and current["volatility"] != LEGACY_VOLATILITY:
+                errs.append("volatility 'unclassified' is legacy-only; choose static, stable or volatile")
             if not errs and rev["superseded_by"] is not None and rev["superseded_by"] not in by_key:
                 errs.append(f"superseded_by {rev['superseded_by']!r} is not an existing source_key")
             if not errs and parse_timestamp(rev["changed_at"]) < parse_timestamp(current["changed_at"]):
@@ -392,8 +457,9 @@ def apply_revisions(con, revisions_path):
     cur = con.cursor()
     fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
     first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
+    first_vol = {k: v for k, v in cur.execute("SELECT source_key, volatility FROM fact_revisions WHERE revision = 1")}
     records = read_log(revisions_path)
-    validate_sequence(revisions_path, records, first, set(fact_ids))
+    validate_sequence(revisions_path, records, first, set(fact_ids), first_vol)
     latest = {}
     for _, rec in records:
         insert_revision_row(cur, fact_ids[rec["source_key"]], rec)
@@ -402,10 +468,10 @@ def apply_revisions(con, revisions_path):
         sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
         cur.execute(
             """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
-                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, notes = ?
+                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, volatility = ?, notes = ?
                WHERE id = ?""",
             (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
-             rec["recheck_by"], rec["recheck_rationale"], rec["notes"], fact_ids[key]))
+             rec["recheck_by"], rec["recheck_rationale"], rec["volatility"], rec["notes"], fact_ids[key]))
     con.commit()
     return len(records)
 

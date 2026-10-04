@@ -33,7 +33,7 @@ def fb(world, monkeypatch):
 
 
 def it(statement="I drink dark roast coffee.", subject="coffee", **kw):
-    return {"statement": statement, "subject": subject, **kw}
+    return {"statement": statement, "subject": subject, "volatility": "static", **kw}  # #7: required per item
 
 
 def git(cwd, *args):
@@ -135,19 +135,19 @@ def test_invalid_item_leaves_an_existing_file_byte_identical(fb):
     w = fb
     assert w.fb.add_facts([it("First.")], commit=False).ok
     before = digest(w.env.facts)
-    assert not w.fb.add_facts([it("Second."), {"statement": "", "subject": "coffee"}], commit=False).ok
+    assert not w.fb.add_facts([it("Second."), {"volatility": "static", "statement": "", "subject": "coffee"}], commit=False).ok
     assert digest(w.env.facts) == before
 
 
 @pytest.mark.parametrize("bad", [
-    {"statement": "x"}, {"subject": "coffee"}, {"statement": "x", "subject": "coffee", "bogus": 1},
-    {"statement": "x", "subject": "coffee", "source_key": "k1"}, {"statement": "x", "subject": "coffee", "status": "pending"},
-    {"statement": "x", "subject": "coffee", "captured_via": "evil"}, {"statement": 5, "subject": "coffee"},
-    {"statement": "x", "subject": None}, {"statement": "x", "subject": "coffee", "notes": ["a"]},
-    {"statement": "x", "subject": "coffee", "is_personal": "yes"}, {"statement": "x", "subject": "coffee", "trust_level": "great"},
-    {"statement": "x", "subject": "coffee", "visibility": "public"}, {"statement": "   ", "subject": "coffee"},
+    {"volatility": "static", "statement": "x"}, {"volatility": "static", "subject": "coffee"}, {"volatility": "static", "statement": "x", "subject": "coffee", "bogus": 1},
+    {"volatility": "static", "statement": "x", "subject": "coffee", "source_key": "k1"}, {"volatility": "static", "statement": "x", "subject": "coffee", "status": "pending"},
+    {"volatility": "static", "statement": "x", "subject": "coffee", "captured_via": "evil"}, {"volatility": "static", "statement": 5, "subject": "coffee"},
+    {"volatility": "static", "statement": "x", "subject": None}, {"volatility": "static", "statement": "x", "subject": "coffee", "notes": ["a"]},
+    {"volatility": "static", "statement": "x", "subject": "coffee", "is_personal": "yes"}, {"volatility": "static", "statement": "x", "subject": "coffee", "trust_level": "great"},
+    {"volatility": "static", "statement": "x", "subject": "coffee", "visibility": "public"}, {"volatility": "static", "statement": "   ", "subject": "coffee"},
     "just a string", None, 7, [],
-    {"statement": "x\u0000y", "subject": "coffee\u0000"},
+    {"volatility": "static", "statement": "x\u0000y", "subject": "coffee\u0000"},
 ])
 def test_malformed_items_are_reported_not_raised(fb, bad):
     w = fb
@@ -193,7 +193,7 @@ def test_corrupt_privacy_rules_is_a_batch_error(fb):
 
 def test_duplicates_in_one_batch_and_against_the_file_are_skipped_per_item(fb):
     w = fb
-    assert w.af.append_fact(w.af.NewFact("Already here.", "coffee", "medium")).ok
+    assert w.af.append_fact(w.af.NewFact("Already here.", "coffee", "medium", volatility="static")).ok
     r = w.fb.add_facts([it("Already here."), it("New one."), it("  new   ONE. "), it("Already here.", subject="plans")], commit=False)
     assert [i.outcome for i in r.items] == ["duplicate", "saved", "duplicate", "saved"]
     assert r.ok and [x["statement"] for x in w.env.entries()] == ["Already here.", "New one.", "Already here."]
@@ -216,7 +216,7 @@ def test_rerunning_the_same_file_writes_and_commits_nothing(fb):
 
 def test_dry_run_reports_visibility_and_rule_and_writes_nothing(fb):
     w = fb
-    assert w.af.append_fact(w.af.NewFact("Exists.", "coffee", "low")).ok
+    assert w.af.append_fact(w.af.NewFact("Exists.", "coffee", "low", volatility="static")).ok
     d = make_repo(w)
     open(os.path.join(d, "stray.txt"), "w").write("x")  # a dirty tree does not stop a dry run
     n = commits(d)
@@ -300,7 +300,7 @@ def test_concurrent_batches_and_single_adds_lose_nothing(fb):
         return w.fb.add_facts([it(f"B{n} item {j}.") for j in range(5)], commit=False).ok
 
     def single(n):
-        return w.af.append_fact(w.af.NewFact(f"Single {n}.", "coffee", "low")).ok
+        return w.af.append_fact(w.af.NewFact(f"Single {n}.", "coffee", "low", volatility="static")).ok
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
         futs = [ex.submit(batch, n) for n in range(8)] + [ex.submit(single, n) for n in range(8)]
@@ -354,7 +354,7 @@ def test_append_records_is_one_write_with_an_in_lock_reject_hook_and_append_reco
 
 def test_add_fact_still_resolves_privacy_the_same_way(fb):
     w = fb
-    r = w.af.append_fact(w.af.NewFact("Hello Alice.", "coffee", "low", visibility="normal"))
+    r = w.af.append_fact(w.af.NewFact("Hello Alice.", "coffee", "low", volatility="static", visibility="normal"))
     assert r.ok and r.entry["visibility"] == "private" and r.privacy.raised_above_request
 
 
