@@ -52,7 +52,10 @@ source_modules = [
     "kn.add_fact",
     "kn.claims_audit",
     "kn.clock",
+    "kn.facts_batch",
     "kn.leak_test",
+    "kn.lifecycle",
+    "kn.migrate_memory",
     "kn.modes",
     "kn.normal_db",
     "kn.paths",
@@ -60,20 +63,17 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
-#planned:     "kn.facts_batch",
-#planned:     "kn.lifecycle",
-#planned:     "kn.migrate_memory",
 ]
 forbidden_modules = [
     # CLI
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
     "kn.cli_parity",
     "kn.knowledge",
-#planned:     "kn.cli_facts_batch",
-#planned:     "kn.cli_inbox",
-#planned:     "kn.cli_lifecycle",
-#planned:     "kn.cli_migrate",
     # serving
-#planned:     "kn.inbox",
+    "kn.inbox",
 #planned:     "kn.mcp_server",
     # pipeline / ingest (the numbered scripts are not importable, see tach.toml)
     "kn._shared",
@@ -97,7 +97,11 @@ source_modules = [
     "kn.claims_audit",
     "kn.clock",
     "kn.cli_parity",
+    "kn.facts_batch",
+    "kn.inbox",
     "kn.leak_test",
+    "kn.lifecycle",
+    "kn.migrate_memory",
     "kn.modes",
     "kn.normal_db",
     "kn.paths",
@@ -105,70 +109,89 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
-#planned:     "kn.facts_batch",
-#planned:     "kn.inbox",
-#planned:     "kn.lifecycle",
 #planned:     "kn.mcp_server",
-#planned:     "kn.migrate_memory",
 ]
 forbidden_modules = ["typer", "click"]
 
-#planned: [[tool.importlinter.contracts]]
-#planned: id = "cli-never-imports-serving"
-#planned: name = "The CLI never imports the serving layers"
-#planned: # Why: serving (inbox, mcp_server) sits above the CLI. The `inbox` CLI command has to start the
-#planned: # server in a subprocess instead of importing it (or the shared code goes in a library).
-#planned: type = "forbidden"
-#planned: source_modules = [
-#planned:     "kn.cli_facts_batch",
-#planned:     "kn.cli_inbox",
-#planned:     "kn.cli_lifecycle",
-#planned:     "kn.cli_migrate",
-#planned:     "kn.cli_parity",
-#planned:     "kn.knowledge",
-#planned: ]
-#planned: forbidden_modules = ["kn.inbox", "kn.mcp_server"]
-#planned:
-#planned: [[tool.importlinter.contracts]]
-#planned: id = "serving-never-imports-pipeline"
-#planned: name = "Serving never imports the pipeline"
-#planned: # Why: the serving layers must not be able to rebuild or ingest; they only use library functions.
-#planned: type = "forbidden"
-#planned: source_modules = ["kn.inbox", "kn.mcp_server"]
-#planned: forbidden_modules = [
-#planned:     "kn._shared",
-#planned:     "kn.backfill_dates",
-#planned:     "kn.backfill_source_keys",
-#planned:     "kn.build",
-#planned:     "kn.clean_concerts_csv",
-#planned:     "kn.export_music_taste",
-#planned:     "kn.snapshot_date",
-#planned: ]
-#planned:
-#planned: [[tool.importlinter.contracts]]
-#planned: id = "serving-reads-facts-through-modes"
-#planned: name = "Serving reads facts only through modes"
-#planned: # Why: modes is the one place that enforces off/normal/private (#22). A serving module that
-#planned: # imported knowledge's query functions, claims_audit, a raw sqlite3 connection or the
-#planned: # revision/privacy internals could read a private fact in normal mode.
-#planned: # Only DIRECT imports are checked (allow_indirect_imports): modes and review legitimately
-#planned: # import sqlite3 / revisions themselves.
-#planned: # DOCUMENTED EXCEPTIONS: `review` is not forbidden because the inbox approves and rejects pending
-#planned: # facts through it. Add any further exception as an `ignore_imports` line with a reason,
-#planned: # e.g.  "kn.inbox -> kn.revisions"  # inbox needs parse_timestamp for display
-#planned: type = "forbidden"
-#planned: source_modules = ["kn.inbox", "kn.mcp_server"]
-#planned: forbidden_modules = [
-#planned:     "kn.add_fact",
-#planned:     "kn.claims_audit",
-#planned:     "kn.knowledge",
-#planned:     "kn.leak_test",
-#planned:     "kn.normal_db",
-#planned:     "kn.privacy",
-#planned:     "kn.revisions",
-#planned:     "sqlite3",
-#planned: ]
-#planned: allow_indirect_imports = true
+[[tool.importlinter.contracts]]
+id = "cli-never-imports-serving"
+name = "The CLI never imports the serving layers"
+# Why: serving (inbox, mcp_server) sits above the CLI; a CLI module that imported it could pull the
+# server into every command.
+# THE ONE EXCEPTION: `kn.cli_inbox -> kn.inbox`. The `inbox` command has to START the server, so
+# cli_inbox is a launcher (it only calls inbox.serve; its `edit` command uses lifecycle). It is one
+# named edge, ignored below; any other CLI module importing serving, or cli_inbox importing
+# mcp_server, still fails (tests/test_architecture.py negative cases). tach.toml has the matching
+# inline `# tach-ignore inbox` on that same single import line in cli_inbox.py.
+type = "forbidden"
+source_modules = [
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
+    "kn.cli_parity",
+    "kn.knowledge",
+]
+forbidden_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+ignore_imports = [
+    "kn.cli_inbox -> kn.inbox",   # launcher: the `inbox` command starts the server (see above)
+]
+
+[[tool.importlinter.contracts]]
+id = "serving-never-imports-pipeline"
+name = "Serving never imports the pipeline"
+# Why: the serving layers must not be able to rebuild or ingest; they only use library functions.
+type = "forbidden"
+source_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+forbidden_modules = [
+    "kn._shared",
+    "kn.backfill_dates",
+    "kn.backfill_source_keys",
+    "kn.build",
+    "kn.clean_concerts_csv",
+    "kn.export_music_taste",
+    "kn.snapshot_date",
+]
+
+[[tool.importlinter.contracts]]
+id = "serving-reads-facts-through-modes"
+name = "Serving reads facts only through modes"
+# Why: modes is the one place that enforces off/normal/private (#22). A serving module that
+# imported knowledge's query functions, claims_audit, a raw sqlite3 connection, the git helper or
+# the revision/privacy internals could read a private fact in normal mode, or write one around the
+# lifecycle rules.
+# What serving MAY import (everything not listed here): the libraries `review` and `lifecycle`
+# (the sanctioned write path: approve/reject/edit/make-private) and `modes`, plus the standard
+# library. There is NO exception: `inbox` used to import revisions, privacy and private_git
+# directly; that logic now lives in lifecycle / review (#36).
+# Only DIRECT imports are checked (allow_indirect_imports): review and lifecycle legitimately
+# import sqlite3 / revisions / privacy / private_git themselves. Add any future exception as an
+# `ignore_imports` line with a reason, e.g.  "kn.inbox -> kn.revisions"  # why.
+type = "forbidden"
+source_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+forbidden_modules = [
+    "kn.add_fact",
+    "kn.claims_audit",
+    "kn.facts_batch",
+    "kn.knowledge",
+    "kn.leak_test",
+    "kn.migrate_memory",
+    "kn.normal_db",
+    "kn.privacy",
+    "kn.private_git",
+    "kn.revisions",
+    "sqlite3",
+]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "subprocess-allowlist"
@@ -198,7 +221,7 @@ name = "Libraries form a DAG (no cycles) in a fixed order"
 type = "layers"
 containers = ["kn"]
 layers = [
-#planned:     "facts_batch | lifecycle | migrate_memory",
+    "facts_batch | lifecycle | migrate_memory",
     "review | modes | claims_audit | normal_db",
     "leak_test",
     "revisions",

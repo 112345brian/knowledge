@@ -20,16 +20,18 @@ CLI first (#34). Every button calls the same library function as a CLI command:
     list pending -> review.list_pending           (`review-pending`)
     approve      -> review.approve                (`approve`)
     reject       -> review.reject                 (`reject`)
-    edit         -> inbox.edit_fact               (`edit`, built here)
-    make private -> inbox.set_visibility          (`set-visibility`)
+    edit         -> lifecycle.edit_fact           (`edit`)
+    make private -> lifecycle.set_visibility      (`set-visibility`, raise_only=True: the page never lowers)
     bulk approve -> review.approve over the keys shown on the page (`approve KEY...`; the CLI also
                     has `approve --all`, which the page deliberately does not use: the page lists a
                     db snapshot, and "all" would approve facts added after the last rebuild that
                     nobody has seen yet).
-PARITY_ACTIONS below maps each action to its CLI command path. DEPENDENCY: `review-pending`,
-`approve`, `reject` and `set-visibility` are built by other changes; until they exist,
-tests/test_inbox.py skips only that entry. `inbox.set_visibility` goes straight to
-revisions.append_revision (a raise-only subset of what `set-visibility` will do).
+PARITY_ACTIONS below maps each action to its CLI command path.
+
+Architecture (#36): this serving module imports only the libraries `review` and `lifecycle` plus
+the standard library. It holds no write logic, no privacy rules and no git: the edit and
+visibility writes are lifecycle functions, and the display state (pending overlay, the rule behind
+a visibility) is review.pending_view. tach and import-linter enforce that.
 
 The page lists the BUILT db (a snapshot, so it says to rebuild to see new pending facts), but each
 fact's current state is read from the data files and revision log, which are the source of truth,
@@ -37,26 +39,20 @@ so a fact approved or rejected since the last rebuild is not offered again and a
 since then is shown as edited. Every mutation is serialized in this process by a lock; the revision
 log's own file lock and `expect` preconditions protect against the CLI and Claude sessions.
 
-Library code (edit_fact, set_visibility, view_model) never prints or exits.
+Library code (view_model) never prints or exits.
 """
-import datetime
 import html
 import ipaddress
 import json
 import os
 import re
 import secrets
-import sqlite3
 import threading
 import urllib.parse
-from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import List, Optional
 
-import privacy
+import lifecycle
 import review
-import revisions
-from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
 # action -> CLI command path (words after `knowledge.py`). A dict, so iterating gives the names
 # tests/test_cli_parity.py checks against cli_parity.ACTIONS.
@@ -75,264 +71,13 @@ VIA = "inbox"
 BLANK_CLEARS = ("trust_rationale", "recheck_by", "notes")
 
 
-# --------------------------------------------------------------------------- library: edit
-
-@dataclass
-class ReviseResult:
-    ok: bool
-    outcome: str                       # 'changed' | 'skipped' | 'refused' | 'error'
-    ref: str = ""
-    source_key: Optional[str] = None
-    message: str = ""                  # one line for a person
-    errors: List[str] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
-    revision: Optional[dict] = None
-    commit: Optional[str] = None
-    commit_error: Optional[str] = None
-    detached: bool = False
-
-    def to_dict(self):
-        return {"ok": self.ok, "outcome": self.outcome, "ref": self.ref, "source_key": self.source_key,
-                "message": self.message, "errors": self.errors, "notes": self.notes, "revision": self.revision,
-                "commit": self.commit, "commit_error": self.commit_error}
-
-
-def _fail(ref, message, outcome="error", source_key=None):
-    return ReviseResult(False, outcome, str(ref), source_key, message, errors=[message])
-
-
-def _db_context(rules, db):
-    """`rules` plus the subject tree from the db (read-only), as `privacy check` does."""
-    if db is None:
-        return rules
-    try:
-        with revisions._connection(db) as con:
-            rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
-    except Exception:  # noqa: BLE001 - a missing/odd db only means less context, never a crash
-        return rules
-    parents = {n: p for n, p in rows}
-    return rules.with_context(parents=parents, known_subjects=set(parents))
-
-
-def _load_rules(data_dir, db):
-    return _db_context(privacy.load_rules(privacy.rules_path(data_dir)), db)
-
-
-def _subjects(data_dir):
-    return {e["key"]: e["entry"].get("subject") for e in revisions.load_entries(data_dir)}
-
-
-def _validate_edit(changes):
-    """Normalize and validate requested edits -> (changes, errors). A blank rationale / recheck /
-    notes clears the field; a blank statement is refused."""
-    errors, out = [], {}
-    for name, value in changes.items():
-        if value is None:
-            continue
-        if not isinstance(value, str):
-            errors.append(f"{name} must be text")
-            continue
-        if name == "statement":
-            if not value.strip():
-                errors.append("statement must not be blank")
-                continue
-            out[name] = value.strip()
-        elif name == "trust_level":
-            if value not in revisions.VALID_TRUST:
-                errors.append(f"trust level {value!r} must be one of {sorted(revisions.VALID_TRUST)}")
-                continue
-            out[name] = value
-        elif name == "recheck_by":
-            text = value.strip()
-            if text:
-                try:
-                    datetime.date.fromisoformat(text)
-                except ValueError:
-                    errors.append(f"recheck-by {value!r} must be a date as YYYY-MM-DD")
-                    continue
-            out[name] = text or None
-        else:
-            out[name] = value.strip() or None
-    return out, errors
-
-
-def _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, verb, adjust=None):
-    """Shared by edit_fact and set_visibility: resolve, check, one locked write, one commit.
-    `adjust(key, current, changes) -> (changes, ReviseResult | None)` may add fields or refuse."""
-    ref = str(ref)
-    if not isinstance(reason, str) or not reason.strip():
-        return _fail(ref, "reason is required")
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
-    try:
-        states = review.current_states(data_dir)
-    except revisions.RevisionError as e:
-        return _fail(ref, str(e))
-    try:
-        key, problem = review._resolve(ref, states, db)
-    except sqlite3.Error as e:
-        return _fail(ref, f"could not read the database to resolve fact id {ref}: {e}")
-    if problem:
-        return _fail(ref, problem, "error")
-    current = states[key]
-    if expect_status is not None and current["status"] != expect_status:
-        return ReviseResult(True, "skipped", ref, key, f"already {_status_word(current['status'])}: nothing changed")
-    if current["status"] == "retracted":
-        return ReviseResult(False, "skipped", ref, key, "already retracted: not edited")
-    notes = []
-    if adjust is not None:
-        try:
-            changes, early = adjust(key, current, dict(changes))
-        except privacy.PrivacyRulesError as e:
-            return _fail(ref, str(e), source_key=key)
-        if early is not None:
-            early.ref, early.source_key = ref, key
-            return early
-    if all(current[k] == v for k, v in changes.items()):
-        return _fail(ref, "no field would change", source_key=key)
-
-    repo, log_path = None, os.path.join(data_dir, revisions.REVISIONS_FILENAME)
-    if commit:
-        try:
-            repo = find_repo(data_dir)
-            if repo is None:
-                notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
-            elif not allow_dirty:
-                ensure_clean_tree(repo)
-        except PrivateGitError as e:
-            return _fail(ref, str(e), source_key=key)
-
-    expect = {"status": expect_status or current["status"], **{k: current[k] for k in changes}}
-    res = revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
-    if not res.ok:
-        if any(e.startswith("precondition failed") for e in res.errors):
-            return ReviseResult(False, "skipped", ref, key,
-                                "changed by someone else since it was loaded; reload and try again", errors=res.errors)
-        return _fail(ref, "; ".join(res.errors), source_key=key)
-    out = ReviseResult(True, "changed", ref, key, f"{verb}: {', '.join(changes)}", notes=notes, revision=res.revision)
-    if repo is not None:
-        try:
-            out.commit = commit_private_change([log_path], f"{verb}: {key} ({', '.join(changes)})", repo)
-            out.detached = is_detached(repo)
-        except PrivateGitError as e:
-            out.ok = False
-            out.commit_error = f"the revision IS in {log_path} but is NOT committed: {e}"
-            out.errors.append(out.commit_error)
-    return out
-
-
-def _status_word(status):
-    return {"active": "approved", "retracted": "rejected", "pending": "pending"}.get(status, status)
-
-
-def edit_fact(ref, reason, statement=None, trust_level=None, trust_rationale=None, recheck_by=None, notes=None,
-              via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None,
-              expect_status=None):
-    """Append one revision changing the given fields (None = leave alone; "" clears trust_rationale,
-    recheck_by, notes). The subject is immutable and the visibility is never lowered: if the new
-    statement trips a privacy rule the revision also raises visibility to private. `expect_status`
-    (the inbox passes 'pending') makes a fact reviewed elsewhere since it was listed a clean
-    skip. The write carries an `expect` of every field it changes as it was read, so a concurrent
-    edit is never silently overwritten. ONE commit in the data repo, like review.approve."""
-    changes, errors = _validate_edit({"statement": statement, "trust_level": trust_level,
-                                      "trust_rationale": trust_rationale, "recheck_by": recheck_by, "notes": notes})
-    if errors:
-        return _fail(ref, "; ".join(errors))
-    if not changes:
-        return _fail(ref, "nothing to edit: give at least one field")
-
-    def adjust(key, current, ch):
-        if "statement" not in ch:
-            return ch, None
-        subject = _subjects(revisions.default_data_dir() if data_dir is None else data_dir).get(key)
-        rules = _load_rules(data_dir, db)
-        res = privacy.resolve_visibility(subject, ch["statement"], current["visibility"], rules)
-        if res.visibility == "private" and current["visibility"] != "private":
-            ch["visibility"] = "private"
-            ch_note = f"visibility raised to private: {res.explain()}"
-            adjust.notes.append(ch_note)
-        return ch, None
-    adjust.notes = []
-    out = _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, "edit", adjust)
-    out.notes.extend(adjust.notes)
-    return out
-
-
-# --------------------------------------------------------------------------- library: visibility
-
-def set_visibility(ref, visibility, reason, via="cli", session_id=None, data_dir=None, commit=True,
-                   allow_dirty=False, db=None, expect_status=None):
-    """Raise-only (#31): 'private' appends a visibility revision; 'normal' is always refused here,
-    naming the privacy rule when one floors the fact. Lowering is the job of `set-visibility`."""
-    if visibility not in privacy.VALID_VISIBILITY:
-        return _fail(ref, f"visibility {visibility!r} must be one of {list(privacy.VALID_VISIBILITY)}")
-
-    def adjust(key, current, ch):
-        if visibility == "private":
-            if current["visibility"] == "private":
-                return ch, ReviseResult(True, "skipped", message="already private: nothing changed")
-            return ch, None
-        rules = _load_rules(data_dir, db)
-        subject = _subjects(revisions.default_data_dir() if data_dir is None else data_dir).get(key)
-        res = privacy.resolve_visibility(subject, current["statement"], "normal", rules)
-        if res.visibility == "private":
-            msg = f"refused: cannot be made normal; {res.explain()}"
-        else:
-            msg = "refused: the inbox only raises visibility to private; lowering is done with `set-visibility`"
-        return ch, ReviseResult(False, "refused", message=msg, errors=[msg])
-
-    return _revise(ref, {"visibility": "private"}, reason, via, session_id, data_dir, commit, allow_dirty, db,
-                   expect_status, "make-private", adjust)
-
-
 # --------------------------------------------------------------------------- view model
 
-def visibility_basis(subject, statement, visibility, rules):
-    """Which rule is behind a stored visibility, as one line."""
-    res = privacy.check(subject, statement, rules, requested="normal")
-    if res.visibility == "private":
-        return "private by rule: " + "; ".join(str(r) for r in res.raised_by)
-    if visibility == "private":
-        return "private by request or default (no privacy rule applies)"
-    return "normal: no privacy rule applies"
-
-
 def view_model(db_path, data_dir):
-    """Everything the page shows: {facts, snapshot_pending, hidden_reviewed, missing_from_snapshot, error}.
-    Pending rows come from the built db; each is overlaid with the current state from the data
-    files and revision log, and dropped when that says it is no longer pending."""
-    vm = {"facts": [], "hidden_reviewed": 0, "missing_from_snapshot": 0, "error": None}
-    if not os.path.exists(db_path):
-        vm["error"] = f"{db_path} does not exist: run `knowledge.py build` first"
-        return vm
-    try:
-        rows = review.list_pending(db_path)
-        states = review.current_states(data_dir)
-        rules = _db_context(privacy.load_rules(privacy.rules_path(data_dir)), db_path)
-    except (revisions.RevisionError, privacy.PrivacyRulesError) as e:
-        vm["error"] = str(e)
-        return vm
-    except Exception as e:  # noqa: BLE001 - e.g. sqlite3.Error on a half-built db: show it, don't crash
-        vm["error"] = f"could not read the database: {e}"
-        return vm
-    listed = set()
-    for r in rows:
-        key = r["source_key"]
-        listed.add(key)
-        cur = states.get(key)
-        if cur is not None and cur["status"] != "pending":
-            vm["hidden_reviewed"] += 1
-            continue
-        fact = dict(r)
-        if cur is not None:
-            fact.update(statement=cur["statement"], trust_level=cur["trust_level"], visibility=cur["visibility"],
-                        trust_rationale=cur["trust_rationale"], recheck_by=cur["recheck_by"], notes=cur["notes"])
-        else:
-            fact.update(trust_rationale=None, recheck_by=None, notes=None)
-        fact["ref"] = str(key if key else r["id"])
-        fact["basis"] = visibility_basis(r["subject"], fact["statement"], fact["visibility"], rules)
-        vm["facts"].append(fact)
-    vm["missing_from_snapshot"] = sum(1 for k, s in states.items() if s["status"] == "pending" and k not in listed)
-    return vm
+    """Everything the page shows: {facts, hidden_reviewed, missing_from_snapshot, error}. The
+    overlay of current state on the db snapshot lives in review.pending_view (a library, so the
+    rule behind each visibility is computed there, not here)."""
+    return review.pending_view(db_path, data_dir)
 
 
 # --------------------------------------------------------------------------- rendering
@@ -363,7 +108,7 @@ def _form(token, action, fields, label, extra=""):
 
 
 def _trust_options(selected):
-    return "".join(f'<option{" selected" if t == selected else ""}>{esc(t)}</option>' for t in sorted(revisions.VALID_TRUST))
+    return "".join(f'<option{" selected" if t == selected else ""}>{esc(t)}</option>' for t in sorted(review.TRUST_LEVELS))
 
 
 def render_fact(f, token):
@@ -437,7 +182,7 @@ def render_flash(result):
 def _item_message(it):
     if it.outcome == "skipped" and it.reason:
         m = re.search(r"'(active|retracted|superseded|pending)'", it.reason)
-        return f"already {_status_word(m.group(1))}" if m else it.reason
+        return f"already {review.status_word(m.group(1))}" if m else it.reason
     return it.reason or ""
 
 
@@ -450,6 +195,28 @@ def _from_review(action, res):
 def _from_revise(action, res):
     return {"action": action, "ok": res.ok, "errors": res.errors, "notes": res.notes, "commit": res.commit,
             "items": [{"ref": res.ref, "outcome": res.outcome, "source_key": res.source_key, "message": res.message}]}
+
+
+def _from_visibility(action, ref, res):
+    """A lifecycle.LifecycleResult (set_visibility) in the page's item shape."""
+    if res.outcome == "visibility_set":
+        outcome, message = "changed", "make-private: visibility"
+    elif res.outcome == "unchanged":
+        outcome = "skipped"
+        m = re.search(r"status is '(active|retracted|superseded)'", res.reason or "")
+        message = (f"already {review.status_word(m.group(1))}: nothing changed" if m
+                   else "already private: nothing changed")
+    elif res.outcome == "refused":
+        outcome, message = "refused", "refused: " + (res.reason or "")
+    else:
+        outcome, message = "error", res.reason or "; ".join(res.errors)
+    errors = list(res.errors)
+    if res.outcome in ("refused", "unknown", "error") and not errors:
+        errors.append(message)
+    if res.commit_error:
+        errors.append(res.commit_error)
+    return {"action": action, "ok": res.ok, "errors": errors, "notes": res.notes, "commit": res.commit,
+            "items": [{"ref": ref, "outcome": outcome, "source_key": res.source_key, "message": message}]}
 
 
 def run_action(server, form):
@@ -468,14 +235,15 @@ def run_action(server, form):
                 return {"action": action, "ok": False, "errors": ["no facts to approve"], "notes": [], "commit": None, "items": []}
             return _from_review(action, review.approve(refs, reason="bulk approved in inbox", **common))
         if action == "edit_fact":
-            res = edit_fact(ref, form.get("reason", ""), statement=form.get("statement"), trust_level=form.get("trust_level"),
+            res = lifecycle.edit_fact(ref, form.get("reason", ""), statement=form.get("statement"), trust_level=form.get("trust_level"),
                             trust_rationale=form.get("trust_rationale"), recheck_by=form.get("recheck_by"),
                             notes=form.get("notes"), expect_status="pending", **common)
             return _from_revise(action, res)
         if action == "make_private":
-            res = set_visibility(ref, form.get("visibility", "private"), form.get("reason", "").strip() or "made private in inbox",
-                                 expect_status="pending", **common)
-            return _from_revise(action, res)
+            res = lifecycle.set_visibility(ref, form.get("visibility", "private"),
+                                           form.get("reason", "").strip() or "made private in inbox",
+                                           expect_status="pending", raise_only=True, **common)
+            return _from_visibility(action, ref, res)
     return {"action": action or "(none)", "ok": False, "errors": [f"unknown action {action!r}"], "notes": [], "commit": None, "items": []}
 
 
@@ -500,7 +268,7 @@ class InboxServer(ThreadingHTTPServer):
 
 def make_server(db_path, data_dir=None, port=0, token=None):
     """An InboxServer bound to 127.0.0.1:port (0 = any free port). Not started."""
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = review.default_data_dir() if data_dir is None else data_dir
     return InboxServer(db_path, data_dir, port, token)
 
 

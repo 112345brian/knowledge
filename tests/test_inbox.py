@@ -24,14 +24,15 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture
 def ib(world, monkeypatch):
-    for m in ("review", "inbox", "cli_inbox"):
+    for m in ("review", "lifecycle", "inbox", "cli_inbox"):
         sys.modules.pop(m, None)
     for k, v in GIT_ENV.items():
         monkeypatch.setenv(k, v)
     import inbox
+    import lifecycle
     import review
     import privacy
-    world.inbox, world.review, world.privacy = inbox, review, privacy
+    world.inbox, world.lifecycle, world.review, world.privacy = inbox, lifecycle, review, privacy
     servers = []
 
     def rebuild_db():
@@ -408,14 +409,14 @@ def test_edit_does_not_overwrite_a_concurrent_change(ib, monkeypatch):
     w = ib
     seed(w)
     w.start()
-    real = w.inbox.revisions.append_revision
+    real = w.lifecycle.revisions.append_revision
 
     def sneaky(key, changes, *a, **kw):
-        monkeypatch.setattr(w.inbox.revisions, "append_revision", real)
+        monkeypatch.setattr(w.lifecycle.revisions, "append_revision", real)
         assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir).ok
         return real(key, changes, *a, **kw)
-    monkeypatch.setattr(w.inbox.revisions, "append_revision", sneaky)
-    res = w.inbox.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)
+    monkeypatch.setattr(w.lifecycle.revisions, "append_revision", sneaky)
+    res = w.lifecycle.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and res.outcome == "skipped" and "someone else" in res.message
     assert w.review.current_states(w.env.data_dir)["p1"]["statement"] == "Someone else."
 

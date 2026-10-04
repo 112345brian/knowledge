@@ -1,8 +1,13 @@
 """Typer commands for the inbox (#33): `inbox` (start the local server) and `edit`.
 
 Registered in knowledge.py by one line (`register(app, DB_PATH)`); this module does not import
-knowledge.py, so it works the same when knowledge.py runs as `__main__`. Logic lives in inbox.py
-(library first, #34): these commands only parse flags and print.
+knowledge.py, so it works the same when knowledge.py runs as `__main__`. Logic lives in the libraries
+(library first, #34): `edit` calls lifecycle.edit_fact; `inbox` starts the server in inbox.py.
+
+ARCHITECTURE (#36): this is the ONE CLI module allowed to import the serving layer (`inbox`), because
+the `inbox` command has to start the server. It is a launcher: it only calls inbox.serve. The
+exception is a single named edge in tach.toml / pyproject.toml; every other CLI module is still
+forbidden to import serving.
 """
 import json
 import sys
@@ -12,7 +17,10 @@ from typing import Optional
 
 import typer
 
-import inbox
+import lifecycle
+
+# THE one allowed CLI -> serving import (see the module docstring and tach.toml): this command starts the server.
+import inbox  # tach-ignore inbox
 
 
 def _fail(msg, code=1):
@@ -47,7 +55,7 @@ def register(app, db_path):
                  reason: str = typer.Option(..., "--reason", help="Why (recorded in history)."),
                  allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Commit even if the private repo has other uncommitted changes."),
                  as_json: bool = typer.Option(False, "--json")):
-        res = inbox.edit_fact(ref, reason, statement=statement, trust_level=trust, trust_rationale=trust_rationale,
+        res = lifecycle.edit_fact(ref, reason, statement=statement, trust_level=trust, trust_rationale=trust_rationale,
                               recheck_by=recheck_by, notes=notes, via="cli", allow_dirty=allow_dirty, db=db_path)
         if as_json:
             print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))

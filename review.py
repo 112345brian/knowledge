@@ -33,6 +33,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import privacy
 import revisions
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
@@ -97,14 +98,95 @@ def current_states(data_dir=None):
     return states
 
 
+def default_data_dir():
+    """The private data directory the revision log lives in (what `data_dir=None` means)."""
+    return revisions.default_data_dir()
+
+
+TRUST_LEVELS = revisions.VALID_TRUST
+
+
+def status_word(status):
+    """A revision status as the review UI words it: active -> approved, retracted -> rejected."""
+    return {"active": "approved", "retracted": "rejected", "pending": "pending"}.get(status, status)
+
+
 def _pending_keys(states, entries_order):
     return [k for k in entries_order if states[k]["status"] == "pending"]
 
 
+# --------------------------------------------------------------------------- display (the inbox page)
+
+def rules_with_db_context(data_dir, db):
+    """The privacy rules of `data_dir` plus the subject tree from the db (read-only), as
+    `privacy check` does. A missing or odd db only means less context, never a crash.
+    Raises privacy.PrivacyRulesError when the rules file is unusable."""
+    rules = privacy.load_rules(privacy.rules_path(data_dir))
+    if db is None:
+        return rules
+    try:
+        with revisions._connection(db) as con:
+            rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
+    except Exception:  # noqa: BLE001
+        return rules
+    parents = {n: p for n, p in rows}
+    return rules.with_context(parents=parents, known_subjects=set(parents))
+
+
+def visibility_basis(subject, statement, visibility, rules):
+    """Which rule is behind a stored visibility, as one line."""
+    res = privacy.check(subject, statement, rules, requested="normal")
+    if res.visibility == "private":
+        return "private by rule: " + "; ".join(str(r) for r in res.raised_by)
+    if visibility == "private":
+        return "private by request or default (no privacy rule applies)"
+    return "normal: no privacy rule applies"
+
+
+def pending_view(db_path, data_dir):
+    """Everything a review page shows: {facts, hidden_reviewed, missing_from_snapshot, error}.
+    Pending rows come from the built db; each is overlaid with the current state from the data
+    files and revision log, and dropped when that says it is no longer pending. Never raises."""
+    vm = {"facts": [], "hidden_reviewed": 0, "missing_from_snapshot": 0, "error": None}
+    if not os.path.exists(db_path):
+        vm["error"] = f"{db_path} does not exist: run `knowledge.py build` first"
+        return vm
+    try:
+        rows = list_pending(db_path)
+        states = current_states(data_dir)
+        rules = rules_with_db_context(data_dir, db_path)
+    except (revisions.RevisionError, privacy.PrivacyRulesError) as e:
+        vm["error"] = str(e)
+        return vm
+    except Exception as e:  # noqa: BLE001 - e.g. sqlite3.Error on a half-built db: show it, don't crash
+        vm["error"] = f"could not read the database: {e}"
+        return vm
+    listed = set()
+    for r in rows:
+        key = r["source_key"]
+        listed.add(key)
+        cur = states.get(key)
+        if cur is not None and cur["status"] != "pending":
+            vm["hidden_reviewed"] += 1
+            continue
+        fact = dict(r)
+        if cur is not None:
+            fact.update(statement=cur["statement"], trust_level=cur["trust_level"], visibility=cur["visibility"],
+                        trust_rationale=cur["trust_rationale"], recheck_by=cur["recheck_by"], notes=cur["notes"])
+        else:
+            fact.update(trust_rationale=None, recheck_by=None, notes=None)
+        fact["ref"] = str(key if key else r["id"])
+        fact["basis"] = visibility_basis(r["subject"], fact["statement"], fact["visibility"], rules)
+        vm["facts"].append(fact)
+    vm["missing_from_snapshot"] = sum(1 for k, s in states.items() if s["status"] == "pending" and k not in listed)
+    return vm
+
+
 # --------------------------------------------------------------------------- resolve
 
-def _resolve(ref, states, db):
-    """-> (source_key | None, problem | None)."""
+def resolve_ref(ref, states, db):
+    """-> (source_key | None, problem | None). A fact id needs `db` (a connection or a path);
+    a source_key resolves from `states` alone. May raise sqlite3.Error when the db is unreadable."""
     if isinstance(ref, bool) or not isinstance(ref, (int, str)):
         return None, "ref must be a fact id or a source_key"
     text = str(ref).strip()
@@ -162,7 +244,7 @@ def _transition(refs, to_status, outcome, reason, via, session_id, data_dir, com
             if not todo:
                 result.notes.append("no pending facts")
             continue
-        key, problem = _resolve(ref, states, db)
+        key, problem = resolve_ref(ref, states, db)
         if problem:
             add(pos, ItemResult(str(ref), "error" if "database" in problem else "unknown", None, problem))
             continue

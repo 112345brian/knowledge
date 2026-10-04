@@ -122,6 +122,8 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
 BASELINE_CODE = {
     "private_git": "import subprocess\n",
     "knowledge": "import subprocess\n",
+    # THE one CLI -> serving exception (launcher), exactly as written in the real cli_inbox.py.
+    "cli_inbox": "import inbox  # tach-ignore inbox\n",
 }
 
 
@@ -196,6 +198,94 @@ CASES = [
      [("import-linter", ["only through modes", "sqlite3"])]),
     ("serving-imports-revisions", "mcp_server", "import revisions",
      [("tach", ["mcp_server", "revisions"]), ("import-linter", ["kn.mcp_server", "kn.revisions"])]),
+    # ---- the inbox (real module, #36): it may import review and lifecycle and the stdlib, nothing else
+    ("inbox-imports-revisions", "inbox", "import revisions",
+     [("tach", ["inbox", "revisions"]), ("import-linter", ["only through modes", "kn.inbox", "kn.revisions"])]),
+    ("inbox-imports-revisions-lazily", "inbox", "def f():\n    import revisions",
+     [("tach", ["inbox", "revisions"]), ("import-linter", ["kn.inbox", "kn.revisions"])]),
+    ("inbox-from-imports-revisions", "inbox", "from revisions import parse_timestamp",
+     [("tach", ["inbox", "revisions"]), ("import-linter", ["kn.inbox", "kn.revisions"])]),
+    ("inbox-imports-privacy", "inbox", "import privacy",
+     [("tach", ["inbox", "privacy"]), ("import-linter", ["only through modes", "kn.inbox", "kn.privacy"])]),
+    ("inbox-imports-the-git-helper", "inbox", "from private_git import commit_private_change",
+     [("tach", ["inbox", "private_git"]), ("import-linter", ["only through modes", "kn.inbox", "kn.private_git"])]),
+    ("inbox-imports-add-fact", "inbox", "import add_fact",
+     [("tach", ["inbox", "add_fact"]), ("import-linter", ["kn.inbox", "kn.add_fact"])]),
+    ("inbox-imports-facts-batch", "inbox", "import facts_batch",
+     [("tach", ["inbox", "facts_batch"]), ("import-linter", ["kn.inbox", "kn.facts_batch"])]),
+    ("inbox-imports-migrate-memory", "inbox", "import migrate_memory",
+     [("tach", ["inbox", "migrate_memory"]), ("import-linter", ["kn.inbox", "kn.migrate_memory"])]),
+    ("inbox-imports-normal-db", "inbox", "import normal_db",
+     [("tach", ["inbox", "normal_db"]), ("import-linter", ["kn.inbox", "kn.normal_db"])]),
+    ("inbox-lazy-sqlite", "inbox", "def f():\n    import sqlite3",
+     [("import-linter", ["only through modes", "kn.inbox", "sqlite3"])]),
+    ("inbox-imports-typer", "inbox", "import typer",
+     [("import-linter", ["never import typer", "kn.inbox", "typer"])]),
+    ("inbox-imports-the-cli-app", "inbox", "import knowledge",
+     [("tach", ["inbox", "knowledge"]), ("import-linter", ["kn.inbox", "kn.knowledge"])]),
+    ("inbox-imports-a-cli-module", "inbox", "import cli_lifecycle",
+     [("tach", ["inbox", "cli_lifecycle"])]),
+    ("inbox-imports-cli-inbox", "inbox", "import cli_inbox",
+     [("tach", ["inbox", "cli_inbox"])]),
+    # ---- the CLI -> serving exception is exactly the one launcher edge
+    ("cli-lifecycle-imports-inbox", "cli_lifecycle", "import inbox",
+     [("tach", ["cli_lifecycle", "inbox"]), ("import-linter", ["never imports the serving layers", "kn.cli_lifecycle", "kn.inbox"])]),
+    ("cli-migrate-imports-inbox", "cli_migrate", "import inbox",
+     [("tach", ["cli_migrate", "inbox"]), ("import-linter", ["kn.cli_migrate", "kn.inbox"])]),
+    ("cli-facts-batch-imports-inbox-lazily", "cli_facts_batch", "def f():\n    import inbox",
+     [("tach", ["cli_facts_batch", "inbox"]), ("import-linter", ["kn.cli_facts_batch", "kn.inbox"])]),
+    ("cli-parity-imports-inbox", "cli_parity", "import inbox",
+     [("tach", ["cli_parity", "inbox"]), ("import-linter", ["kn.cli_parity", "kn.inbox"])]),
+    ("cli-inbox-imports-mcp-server", "cli_inbox", "import mcp_server",
+     [("tach", ["cli_inbox", "mcp_server"]), ("import-linter", ["kn.cli_inbox", "kn.mcp_server"])]),
+    ("cli-inbox-imports-the-pipeline", "cli_inbox", "import build",
+     [("tach", ["cli_inbox", "build"])]),
+    ("cli-inbox-imports-unlisted-library", "cli_inbox", "import revisions",
+     [("tach", ["cli_inbox", "revisions"])]),
+    # ---- libraries never import the new CLI / serving modules or each other upward
+    ("lib-imports-cli-lifecycle", "review", "import cli_lifecycle",
+     [("tach", ["review", "cli_lifecycle"]), ("import-linter", ["kn.review", "kn.cli_lifecycle", "BROKEN"])]),
+    ("lib-imports-cli-migrate", "migrate_memory", "import cli_migrate",
+     [("tach", ["migrate_memory", "cli_migrate"]), ("import-linter", ["kn.migrate_memory", "kn.cli_migrate"])]),
+    ("lib-imports-cli-facts-batch", "facts_batch", "import cli_facts_batch",
+     [("tach", ["facts_batch", "cli_facts_batch"]), ("import-linter", ["kn.facts_batch", "kn.cli_facts_batch"])]),
+    ("lib-imports-cli-inbox", "lifecycle", "def f():\n    import cli_inbox",
+     [("tach", ["lifecycle", "cli_inbox"]), ("import-linter", ["kn.lifecycle", "kn.cli_inbox"])]),
+    ("lifecycle-imports-inbox", "lifecycle", "import inbox",
+     [("tach", ["lifecycle", "inbox"]), ("import-linter", ["kn.lifecycle", "kn.inbox"])]),
+    ("lifecycle-imports-pipeline", "lifecycle", "import build",
+     [("tach", ["lifecycle", "build"]), ("import-linter", ["kn.lifecycle", "kn.build"])]),
+    ("lifecycle-imports-typer", "lifecycle", "import typer",
+     [("import-linter", ["kn.lifecycle", "typer"])]),
+    ("lifecycle-subprocess", "lifecycle", "import subprocess",
+     [("import-linter", ["kn.lifecycle", "subprocess"])]),
+    ("lifecycle-imports-paths", "lifecycle", "import paths",
+     [("tach", ["lifecycle", "paths"])]),
+    ("review-imports-lifecycle-cycle", "review", "import lifecycle",
+     [("tach", ["review", "lifecycle"]), ("import-linter", ["form a DAG", "kn.review", "kn.lifecycle"])]),
+    ("revisions-imports-lifecycle", "revisions", "import lifecycle",
+     [("tach", ["revisions", "lifecycle"]), ("import-linter", ["kn.revisions", "kn.lifecycle"])]),
+    ("lifecycle-imports-facts-batch-sibling", "lifecycle", "import facts_batch",
+     [("tach", ["lifecycle", "facts_batch"]), ("import-linter", ["kn.lifecycle", "kn.facts_batch"])]),
+    ("facts-batch-imports-lifecycle-sibling", "facts_batch", "import lifecycle",
+     [("tach", ["facts_batch", "lifecycle"]), ("import-linter", ["kn.facts_batch", "kn.lifecycle"])]),
+    ("migrate-memory-imports-facts-batch-sibling", "migrate_memory", "import facts_batch",
+     [("tach", ["migrate_memory", "facts_batch"]), ("import-linter", ["kn.migrate_memory", "kn.facts_batch"])]),
+    ("modes-imports-lifecycle", "modes", "import lifecycle",
+     [("tach", ["modes", "lifecycle"]), ("import-linter", ["kn.modes", "kn.lifecycle"])]),
+    ("facts-batch-imports-revisions-unlisted", "facts_batch", "import revisions",
+     [("tach", ["facts_batch", "revisions"])]),
+    ("migrate-memory-imports-privacy-unlisted", "migrate_memory", "import privacy",
+     [("tach", ["migrate_memory", "privacy"])]),
+    # ---- cli_* modules stay inside their allowlists
+    ("cli-lifecycle-imports-revisions", "cli_lifecycle", "import revisions",
+     [("tach", ["cli_lifecycle", "revisions"])]),
+    ("cli-migrate-imports-lifecycle", "cli_migrate", "import lifecycle",
+     [("tach", ["cli_migrate", "lifecycle"])]),
+    ("pipeline-imports-lifecycle", "build", "import lifecycle",
+     [("tach", ["build", "lifecycle"])]),
+    ("numbered-script-imports-inbox", "04_ingest_facts", "import inbox",
+     [("tach", ["04_ingest_facts", "inbox"])]),
     ("paths-from-non-allowlisted-lib", "modes", "import paths",
      [("tach", ["modes", "paths"])]),
     ("paths-lazy-from-import", "claims_audit", "def f():\n    from paths import PRIVATE_DATA_DIR",
@@ -236,6 +326,50 @@ def test_violation_is_reported(tree, case):
         assert rc != 0, f"{tool} did not fail for {_id}:\n{out}"
         for n in needles:
             assert n in out, f"{tool} output for {_id} lacks {n!r}:\n{out}"
+
+
+def _repo_py_files():
+    return [os.path.join(REPO, f) for f in sorted(os.listdir(REPO)) if f.endswith(".py")]
+
+
+def test_the_only_tach_ignore_is_the_cli_inbox_launcher_import():
+    """Inventory of source-level exceptions: tach's inline `# tach-ignore` is how the one
+    CLI -> serving edge is allowed, so there must be exactly that one, naming only `inbox`."""
+    found = []
+    for path in _repo_py_files():
+        for line in _read(path).splitlines():
+            if "tach-ignore" in line:
+                found.append((os.path.basename(path), line.strip()))
+    assert found == [("cli_inbox.py", "import inbox  # tach-ignore inbox")], found
+    assert "tach-ignore" not in _read(TACH_TOML).replace("`# tach-ignore`", "").replace("# tach-ignore inbox", "")
+
+
+def test_exception_lists_are_exactly_the_documented_ones():
+    """Every ignore_imports line is an exception someone has to justify; this pins the full list."""
+    contracts = _il_contracts(_read(PYPROJECT))
+    ignores = {cid: c.get("ignore_imports", []) for cid, c in contracts.items() if c.get("ignore_imports")}
+    assert ignores == {
+        "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
+        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess"],
+        "libraries-layered": ["kn.leak_test -> kn.normal_db"],
+    }, ignores
+    assert "ignore_imports" not in contracts["serving-reads-facts-through-modes"]
+    assert "ignore_imports" not in contracts["serving-never-imports-pipeline"]
+
+
+def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
+    """Direct check on the real file, independent of both tools: serving holds no write logic."""
+    import ast
+    tree = ast.parse(_read(os.path.join(REPO, "inbox.py")))
+    local = set(ac.importable_stems(REPO))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            imported.add(node.module.split(".")[0])
+    assert imported & local == {"lifecycle", "review"}, imported & local
+    assert "sqlite3" not in imported
 
 
 def test_unregistered_module_is_reported_by_tach(tree):

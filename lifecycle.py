@@ -9,6 +9,7 @@ cli_lifecycle.py; the inbox and the MCP server will be too):
     supersede(ref, by_ref, reason, ...)          -> LifecycleResult   status 'superseded', superseded_by = replacement
     retract(ref, reason, ...)                    -> LifecycleResult   status 'retracted' (clears superseded_by)
     set_visibility(ref, visibility, reason, ...) -> LifecycleResult   'private' always; 'normal' only if the privacy floor allows
+    edit_fact(ref, reason, statement=..., ...)   -> ReviseResult      one revision changing statement / trust / recheck / notes (#33)
 
 `ref` / `by_ref` are a fact id (int, or a string of digits; needs `db`, a sqlite connection or a
 path to the built db) or a source_key (works for facts from general_facts.json, pilot_facts.json and
@@ -44,6 +45,7 @@ Semantics (decided, tested):
     `commit_error` (CLI exit 3). Not in a repo: written, not committed, with a note.
 Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
 """
+import datetime
 import os
 import sqlite3
 from dataclasses import asdict, dataclass, field
@@ -139,6 +141,12 @@ def _decide_supersede(states, key, ctx):
 def _decide_visibility(states, key, ctx):
     want = ctx["visibility"]
     cur = states[key]
+    if ctx.get("raise_only") and want == "normal":
+        # A caller that never lowers (the inbox): still name the rule when one floors the fact.
+        floor = _floor_resolution(ctx, key, cur)
+        if not isinstance(floor, str) and floor.visibility == "private":
+            return _no("refused", "cannot be made normal; " + floor.explain())
+        return _no("refused", "this caller only raises visibility to private; lowering is done with `set-visibility`")
     if cur["visibility"] == want:
         return _no("unchanged", f"visibility is already {want!r}")
     if want == "normal":
@@ -176,7 +184,23 @@ def _floor_resolution(ctx, key, cur):
 
 # --------------------------------------------------------------------------- engine
 
-def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db, decide, ctx, message):
+def _gated(decide, states, key, ctx, expect_status):
+    """`decide`, preceded by the caller's status precondition (the inbox passes 'pending': a fact
+    reviewed elsewhere since it was listed is 'unchanged', never written). The status joins the
+    write's `expect`, so it is also re-checked under the revision log's lock."""
+    if expect_status is None:
+        return decide(states, key, ctx)
+    status = states[key]["status"]
+    if status != expect_status:
+        return _no("unchanged", f"status is {status!r}, not {expect_status!r}")
+    plan = decide(states, key, ctx)
+    if plan[0] == "write":
+        plan = _write(plan[1], {**plan[2], "status": expect_status}, plan[3])
+    return plan
+
+
+def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db, decide, ctx, message,
+         expect_status=None):
     result = LifecycleResult(verb, str(ref))
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
@@ -189,7 +213,7 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
     except revisions.RevisionError as e:
         result.errors.append(str(e))
         return result
-    key, problem = review._resolve(ref, states, db)
+    key, problem = review.resolve_ref(ref, states, db)
     if problem:
         result.outcome = "error" if "database" in problem else "unknown"
         result.reason = problem
@@ -197,7 +221,7 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
     result.source_key = key
     ctx = dict(ctx, db=db, data_dir=data_dir, entries=entries)
     if by_ref is not None:
-        by_key, problem = review._resolve(by_ref, states, db)
+        by_key, problem = review.resolve_ref(by_ref, states, db)
         if problem:
             result.outcome = "error" if "database" in problem else "unknown"
             result.reason = "replacement: " + problem
@@ -206,7 +230,7 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
         if states[by_key]["status"] == "superseded":
             result.notes.append(f"the replacement {by_key!r} is itself superseded")
 
-    plan = decide(states, key, ctx)
+    plan = _gated(decide, states, key, ctx, expect_status)
     if plan[0] != "write":
         result.outcome, result.reason = plan[0], plan[1]
         return result
@@ -236,7 +260,7 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
             except revisions.RevisionError as e:
                 result.errors.append(str(e))
                 return result
-            plan = decide(states, key, ctx)
+            plan = _gated(decide, states, key, ctx, expect_status)
             if plan[0] != "write":
                 result.outcome, result.reason = plan[0], "changed by another process: " + plan[1]
                 return result
@@ -270,10 +294,176 @@ def retract(ref, reason, via="cli", session_id=None, data_dir=None, commit=True,
 
 
 def set_visibility(ref, visibility, reason, via="cli", session_id=None, data_dir=None, commit=True,
-                   allow_dirty=False, db=None):
+                   allow_dirty=False, db=None, expect_status=None, raise_only=False):
     """Set `ref`'s visibility to 'normal' or 'private'. Lowering to normal needs `db` and is refused
-    when the privacy rules say private. `reason` is required."""
+    when the privacy rules say private. `reason` is required.
+    `expect_status` (the inbox passes 'pending'): a fact not in that status is 'unchanged', and the
+    status is part of the write's precondition. `raise_only`: any request for 'normal' is refused
+    (naming the privacy rule when one floors the fact); only raising to 'private' is allowed."""
     if visibility not in ("normal", "private"):
         return LifecycleResult("set-visibility", str(ref), errors=[f"visibility {visibility!r} must be 'normal' or 'private'"])
     return _run("set-visibility", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
-                _decide_visibility, {"visibility": visibility}, lambda key, _r: f"set-visibility: {key} {visibility}")
+                _decide_visibility, {"visibility": visibility, "raise_only": raise_only},
+                lambda key, _r: f"set-visibility: {key} {visibility}", expect_status)
+
+
+# --------------------------------------------------------------------------- edit (#33)
+# Moved from inbox.py so the serving layer holds no write logic; behavior unchanged. `edit` (the
+# CLI) and the inbox page both call edit_fact.
+
+@dataclass
+class ReviseResult:
+    ok: bool
+    outcome: str                       # 'changed' | 'skipped' | 'refused' | 'error'
+    ref: str = ""
+    source_key: Optional[str] = None
+    message: str = ""                  # one line for a person
+    errors: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+    revision: Optional[dict] = None
+    commit: Optional[str] = None
+    commit_error: Optional[str] = None
+    detached: bool = False
+
+    def to_dict(self):
+        return {"ok": self.ok, "outcome": self.outcome, "ref": self.ref, "source_key": self.source_key,
+                "message": self.message, "errors": self.errors, "notes": self.notes, "revision": self.revision,
+                "commit": self.commit, "commit_error": self.commit_error}
+
+
+def _fail(ref, message, outcome="error", source_key=None):
+    return ReviseResult(False, outcome, str(ref), source_key, message, errors=[message])
+
+
+def _subjects(data_dir):
+    return {e["key"]: e["entry"].get("subject") for e in revisions.load_entries(data_dir)}
+
+
+def _validate_edit(changes):
+    """Normalize and validate requested edits -> (changes, errors). A blank rationale / recheck /
+    notes clears the field; a blank statement is refused."""
+    errors, out = [], {}
+    for name, value in changes.items():
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            errors.append(f"{name} must be text")
+            continue
+        if name == "statement":
+            if not value.strip():
+                errors.append("statement must not be blank")
+                continue
+            out[name] = value.strip()
+        elif name == "trust_level":
+            if value not in revisions.VALID_TRUST:
+                errors.append(f"trust level {value!r} must be one of {sorted(revisions.VALID_TRUST)}")
+                continue
+            out[name] = value
+        elif name == "recheck_by":
+            text = value.strip()
+            if text:
+                try:
+                    datetime.date.fromisoformat(text)
+                except ValueError:
+                    errors.append(f"recheck-by {value!r} must be a date as YYYY-MM-DD")
+                    continue
+            out[name] = text or None
+        else:
+            out[name] = value.strip() or None
+    return out, errors
+
+
+def _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, verb, adjust=None):
+    """Resolve, check, one locked write, one commit.
+    `adjust(key, current, changes) -> (changes, ReviseResult | None)` may add fields or refuse."""
+    ref = str(ref)
+    if not isinstance(reason, str) or not reason.strip():
+        return _fail(ref, "reason is required")
+    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    try:
+        states = review.current_states(data_dir)
+    except revisions.RevisionError as e:
+        return _fail(ref, str(e))
+    try:
+        key, problem = review.resolve_ref(ref, states, db)
+    except sqlite3.Error as e:
+        return _fail(ref, f"could not read the database to resolve fact id {ref}: {e}")
+    if problem:
+        return _fail(ref, problem, "error")
+    current = states[key]
+    if expect_status is not None and current["status"] != expect_status:
+        return ReviseResult(True, "skipped", ref, key, f"already {review.status_word(current['status'])}: nothing changed")
+    if current["status"] == "retracted":
+        return ReviseResult(False, "skipped", ref, key, "already retracted: not edited")
+    notes = []
+    if adjust is not None:
+        try:
+            changes, early = adjust(key, current, dict(changes))
+        except privacy.PrivacyRulesError as e:
+            return _fail(ref, str(e), source_key=key)
+        if early is not None:
+            early.ref, early.source_key = ref, key
+            return early
+    if all(current[k] == v for k, v in changes.items()):
+        return _fail(ref, "no field would change", source_key=key)
+
+    repo, log_path = None, os.path.join(data_dir, revisions.REVISIONS_FILENAME)
+    if commit:
+        try:
+            repo = find_repo(data_dir)
+            if repo is None:
+                notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
+            elif not allow_dirty:
+                ensure_clean_tree(repo)
+        except PrivateGitError as e:
+            return _fail(ref, str(e), source_key=key)
+
+    expect = {"status": expect_status or current["status"], **{k: current[k] for k in changes}}
+    res = revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+    if not res.ok:
+        if any(e.startswith("precondition failed") for e in res.errors):
+            return ReviseResult(False, "skipped", ref, key,
+                                "changed by someone else since it was loaded; reload and try again", errors=res.errors)
+        return _fail(ref, "; ".join(res.errors), source_key=key)
+    out = ReviseResult(True, "changed", ref, key, f"{verb}: {', '.join(changes)}", notes=notes, revision=res.revision)
+    if repo is not None:
+        try:
+            out.commit = commit_private_change([log_path], f"{verb}: {key} ({', '.join(changes)})", repo)
+            out.detached = is_detached(repo)
+        except PrivateGitError as e:
+            out.ok = False
+            out.commit_error = f"the revision IS in {log_path} but is NOT committed: {e}"
+            out.errors.append(out.commit_error)
+    return out
+
+
+def edit_fact(ref, reason, statement=None, trust_level=None, trust_rationale=None, recheck_by=None, notes=None,
+              via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None,
+              expect_status=None):
+    """Append one revision changing the given fields (None = leave alone; "" clears trust_rationale,
+    recheck_by, notes). The subject is immutable and the visibility is never lowered: if the new
+    statement trips a privacy rule the revision also raises visibility to private. `expect_status`
+    (the inbox passes 'pending') makes a fact reviewed elsewhere since it was listed a clean
+    skip. The write carries an `expect` of every field it changes as it was read, so a concurrent
+    edit is never silently overwritten. ONE commit in the data repo, like review.approve."""
+    changes, errors = _validate_edit({"statement": statement, "trust_level": trust_level,
+                                      "trust_rationale": trust_rationale, "recheck_by": recheck_by, "notes": notes})
+    if errors:
+        return _fail(ref, "; ".join(errors))
+    if not changes:
+        return _fail(ref, "nothing to edit: give at least one field")
+
+    def adjust(key, current, ch):
+        if "statement" not in ch:
+            return ch, None
+        subject = _subjects(revisions.default_data_dir() if data_dir is None else data_dir).get(key)
+        rules = review.rules_with_db_context(data_dir, db)
+        res = privacy.resolve_visibility(subject, ch["statement"], current["visibility"], rules)
+        if res.visibility == "private" and current["visibility"] != "private":
+            ch["visibility"] = "private"
+            adjust.notes.append(f"visibility raised to private: {res.explain()}")
+        return ch, None
+    adjust.notes = []
+    out = _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, "edit", adjust)
+    out.notes.extend(adjust.notes)
+    return out
