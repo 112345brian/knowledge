@@ -94,11 +94,13 @@ def world(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- source keys
 
-def test_legacy_dates_match_the_ingest_scripts(world):
+def test_legacy_dates_are_what_backfill_dates_writes_and_no_longer_live_in_the_ingest_scripts(world):
     dates = dict(world.rv.ENTRY_FILES)
-    assert dates["pilot_facts.json"] == world.mod04.LEGACY_DATE_ADDED
-    assert dates["facts_batch3.json"] == world.mod04.LEGACY_DATE_ADDED
-    assert dates["general_facts.json"] == world.mod11.LEGACY_DATE_ADDED
+    assert dates["pilot_facts.json"] == dates["facts_batch3.json"] == "2026-09-11"
+    assert dates["general_facts.json"] == "2026-09-26"
+    import backfill_dates
+    assert backfill_dates.FILE_DATES == dates
+    assert not hasattr(world.mod04, "LEGACY_DATE_ADDED") and not hasattr(world.mod11, "LEGACY_DATE_ADDED")
 
 
 def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(world):
@@ -141,9 +143,11 @@ def test_ingest_stores_the_key_and_an_implicit_revision_1(world):
     assert (r["superseded_by"], r["recheck_by"], r["recheck_rationale"], r["volatility"], r["notes"]) == (None, "2027-01-01", "rr", None, "n")
 
 
-def test_legacy_entries_without_a_key_or_date_get_derived_key_and_legacy_date(world):
+def test_legacy_entries_without_a_key_get_a_derived_key_and_their_backfilled_date(world):
     legacy = {"subject": "alpha", "statement": "Old fact.", "trust_level": "high"}
     world.seed(pilot=[dict(legacy)], general=[dict(legacy)])
+    import backfill_dates
+    backfill_dates.backfill_dates(world.env.data_dir, apply=True)  # #35: the date lives in the data now
     con = world.build()
     rows = con.execute("SELECT f.source_key, r.changed_at, r.changed_via FROM facts f JOIN fact_revisions r ON r.fact_id = f.id ORDER BY f.id").fetchall()
     assert [r["source_key"][:7] for r in rows] == ["legacy-", "legacy-"]
@@ -167,6 +171,12 @@ def test_duplicate_source_keys_fail_the_build_with_the_key(world):
 def test_the_same_key_in_two_files_is_refused(world):
     world.seed(pilot=[entry("same")], general=[entry("same", statement="Z.")])
     with pytest.raises(ValueError, match="duplicate source_key 'same'"):
+        world.build()
+
+
+def test_an_undated_entry_fails_the_build_naming_file_and_entry(world):
+    world.seed(pilot=[{"subject": "a", "statement": "Old fact.", "trust_level": "high"}])
+    with pytest.raises(ValueError, match=r"pilot_facts\.json\[0\].*no `date_added`.*backfill_dates"):
         world.build()
 
 
@@ -563,8 +573,9 @@ def test_existing_keys_are_left_alone_even_when_others_are_added(world, tmp_path
 
 
 def test_the_derived_keys_equal_the_in_memory_keys_so_build_is_identical_before_and_after(world):
-    items = [{"subject": "a", "statement": "One.", "trust_level": "low"}, {"subject": "a", "statement": "One.", "trust_level": "low"},
-             {"subject": "b", "statement": "Two.", "trust_level": "high"}]
+    d = "2026-09-11"
+    items = [{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": d}, {"subject": "a", "statement": "One.", "trust_level": "low", "date_added": d},
+             {"subject": "b", "statement": "Two.", "trust_level": "high", "date_added": d}]
     world.seed(pilot=[dict(i) for i in items], general=[dict(items[2])])
     before = world.build()
     keys_before = [tuple(r) for r in before.execute("SELECT id, source_key FROM facts ORDER BY id")]
@@ -579,7 +590,7 @@ def test_the_derived_keys_equal_the_in_memory_keys_so_build_is_identical_before_
 
 
 def test_revisions_written_before_the_backfill_still_resolve_after_it(world):
-    world.seed(general=[{"subject": "a", "statement": "One.", "trust_level": "low"}])
+    world.seed(general=[{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "2026-09-26"}])
     (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
     assert key.startswith("legacy-")
     assert world.append(key, {"trust_level": "high"}, "r", at=T2).ok

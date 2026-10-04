@@ -11,14 +11,11 @@ Run after 01/02/03 (needs sources + subjects + measurements to exist).
 import sqlite3, json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shared import get_or_create_vault_file
+from _shared import get_or_create_vault_file, require_date_added
 import revisions
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 import privacy
 
-# Documented fallback for entries with no `date_added` of their own. It is the
-# date the original batch was loaded, kept so that rebuilds don't change those rows.
-LEGACY_DATE_ADDED = "2026-09-11"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 
@@ -93,14 +90,15 @@ def classify_is_personal(statement, notes, is_original_claim, measured_link):
 
 
 def load_items():
-    """All entries, each with `_is_pilot` and `_source_key` (its own, or the deterministic
+    """All entries, each with `_is_pilot`, `_where` (file, index) and `_source_key` (its own, or the deterministic
     legacy-... key from revisions.derive_keys until backfill_source_keys.py writes one)."""
     items = []
     for name, is_pilot in [("pilot_facts.json", True)] + [(f"facts_batch{i}.json", False) for i in range(1, 5)]:
         batch = json.load(open(os.path.join(DATA_DIR, name)))
-        for item, key in zip(batch, revisions.derive_keys(batch, name)):
+        for index, (item, key) in enumerate(zip(batch, revisions.derive_keys(batch, name))):
             item["_is_pilot"] = is_pilot
             item["_source_key"] = key
+            item["_where"] = (name, index)
         items.extend(batch)
     return items
 
@@ -164,7 +162,7 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
-        date_added = item.get("date_added") or LEGACY_DATE_ADDED
+        date_added = require_date_added(item, *item["_where"])
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
@@ -176,7 +174,7 @@ def run(con):
              status, key)
         )
         fact_id = cur.lastrowid
-        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, LEGACY_DATE_ADDED))
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added))
 
         citekey = item.get("source_citekey")
         if citekey:

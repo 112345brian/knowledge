@@ -57,7 +57,7 @@ def make_vault(path):
 def m03(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "snapshot_date"):
+    for m in ("paths", "local_paths", "_shared", "add_fact", "snapshot_date", "revisions", "backfill_source_keys", "backfill_dates"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
     spec = importlib.util.spec_from_file_location("ing_03", os.path.join(REPO, "03_ingest_measurements.py"))
@@ -92,14 +92,49 @@ def m03(tmp_path, monkeypatch):
     return Ctx
 
 
-# ------------------------------------------------ what the rows carry (pinned before #35 changes it)
+# ------------------------------------------------ the snapshot date comes from the data (#35)
 
-def test_measurement_rows_and_vault_sources_carry_the_snapshot_date(m03):
-    if os.path.exists(os.path.join(m03.env.data_dir, "measurements_snapshot.json")):
-        pytest.skip("snapshot file present")
+def test_rows_and_vault_sources_carry_the_snapshot_date_from_the_data(m03):
+    m03.write_snapshot('{"synced_at": "2026-09-11"}')
     con = m03.build()
     assert con.execute("SELECT COUNT(*) FROM measurements").fetchone()[0] > 20
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}
-    got = {r["retrieved_date"] for r in con.execute("SELECT retrieved_date FROM sources WHERE citekey LIKE 'vault-db-%'")}
-    assert got == {SNAPSHOT}
+    assert {r["retrieved_date"] for r in con.execute("SELECT retrieved_date FROM sources WHERE citekey LIKE 'vault-db-%'")} == {SNAPSHOT}
     assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%as of 2026-09-11%'").fetchone()[0] > 0
+
+
+def test_the_date_is_whatever_the_data_says_not_a_constant(m03):
+    m03.write_snapshot('{"synced_at": "2027-02-03T04:05:06+00:00"}')
+    con = m03.build()
+    assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {"2027-02-03T04:05:06+00:00"}
+    assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%as of 2027-02-03T04:05:06+00:00%'").fetchone()[0] > 0
+    assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%2026-09-11%'").fetchone()[0] == 0
+
+
+def test_measured_values_do_not_depend_on_the_snapshot_date(m03):
+    def rows(date):
+        m03.write_snapshot('{"synced_at": "%s"}' % date)
+        con = m03.build()
+        return [tuple(r) for r in con.execute(
+            "SELECT subject_id, metric_id, value, measured_at, source_id, trust_level, notes FROM measurements ORDER BY id")]
+    assert rows("2026-09-11") == rows("2030-01-01")
+
+
+@pytest.mark.parametrize("content, msg", [
+    (None, "is missing"), ("{nope", "not valid JSON"), ("[]", "synced_at"), ("{}", "synced_at"),
+    ('{"synced_at": null}', "synced_at"), ('{"synced_at": "soon"}', "synced_at"), ('{"synced_at": 20260911}', "synced_at")])
+def test_a_missing_or_bad_snapshot_file_fails_the_build_and_names_the_file(m03, content, msg):
+    if content is not None:
+        m03.write_snapshot(content)
+    with pytest.raises(RuntimeError, match=msg) as e:
+        m03.build()
+    assert "measurements_snapshot.json" in str(e.value)
+    if content is None:
+        assert "backfill_dates.py" in str(e.value)
+
+
+def test_backfill_dates_output_is_what_03_reads(m03, tmp_path):
+    import backfill_dates
+    backfill_dates.backfill_dates(m03.env.data_dir, apply=True)
+    con = m03.build()
+    assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}

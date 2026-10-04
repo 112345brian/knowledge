@@ -13,13 +13,10 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
+from _shared import require_date_added
 import privacy
 import revisions
 
-# Documented fallback for entries with no `date_added` of their own (add_fact.py
-# always writes one). It is the date the first batch was loaded, kept so rebuilds
-# don't change those rows.
-LEGACY_DATE_ADDED = "2026-09-26"
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
 
@@ -49,7 +46,7 @@ def run(con):
     bad_citekeys = set()
     derived = 0
 
-    for item, key in zip(items, revisions.derive_keys(items, "general_facts.json")):
+    for index, (item, key) in enumerate(zip(items, revisions.derive_keys(items, "general_facts.json"))):
         subj = (item.get("subject") or "").strip()
         stmt = (item.get("statement") or "").strip()
         trust = (item.get("trust_level") or "").strip()
@@ -78,7 +75,7 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
-        date_added = item.get("date_added") or LEGACY_DATE_ADDED
+        date_added = require_date_added(item, "general_facts.json", index)
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
@@ -91,7 +88,7 @@ def run(con):
              status, key)
         )
         fact_id = cur.lastrowid
-        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, LEGACY_DATE_ADDED))
+        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added))
 
         citekey = item.get("source_citekey")
         if citekey:
