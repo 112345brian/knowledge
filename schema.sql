@@ -214,7 +214,11 @@ CREATE TABLE claims (
     id          INTEGER PRIMARY KEY,
     statement   TEXT NOT NULL,
     date_added  TEXT NOT NULL DEFAULT (datetime('now')),
-    notes       TEXT
+    notes       TEXT,
+    -- How the cited facts (claim_facts) support the statement. Nullable and forward-only: set it on
+    -- new claims; the claims that existed before this column are deliberately NOT backfilled, and
+    -- NULL means "not classified", never a default type.
+    inference_type TEXT CHECK (inference_type IN ('deductive','inductive','abductive'))
 );
 
 CREATE TABLE claim_facts (
@@ -222,6 +226,19 @@ CREATE TABLE claim_facts (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
     PRIMARY KEY (claim_id, fact_id)
 );
+
+-- One row per (claim, cited fact) where the fact is superseded or retracted. Claims have no status of
+-- their own, so every claim counts as active. The "past recheck_by" case is NOT here: recheck_by is
+-- free text that is only sometimes a date, so claims_audit.audit_claims() does that part in Python.
+CREATE VIEW v_claims_with_stale_premises AS
+SELECT
+    c.id AS claim_id, c.statement AS claim_statement, c.inference_type,
+    f.id AS fact_id, f.statement AS fact_statement, f.status AS reason,
+    f.superseded_by_fact_id, f.trust_rationale, f.notes AS fact_notes
+FROM claims c
+JOIN claim_facts cf ON cf.claim_id = c.id
+JOIN facts f ON f.id = cf.fact_id
+WHERE f.status IN ('superseded','retracted');
 
 -- ============================================================
 -- Training sets, food log, meal log: each is one EVENT with several
