@@ -35,6 +35,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "STEPS", ["a_step.py", "b_step.py"])
     # the fake schema has none of the real tables report() counts
     monkeypatch.setattr(build, "report", lambda path: None)
+    # ...nor the facts tables the normal DB is built from; tests/test_normal_db.py covers that hook
+    monkeypatch.setattr(build, "build_normal", lambda full, directory, rules=None: None)
 
     class E:
         pass
