@@ -5,6 +5,7 @@ read-only connection.
 Everything runs against a small fixture DB built from the repo's real schema.sql
 in a temp dir, reached via KNOWLEDGE_PRIVATE_DIR, so the live db is never touched.
 """
+import json
 import os
 import sqlite3
 import subprocess
@@ -134,7 +135,7 @@ def test_search_leading_dash_is_a_cli_option_and_fts_column_filter(env):
 
 def test_show_full(env):
     assert ok(env.cli("show", "1")) == (
-        "Fact #1  [protein]  trust=high  personal=False  status=active\n"
+        "Fact #1  [protein]  trust=high  personal=False  visibility=private  status=active\n"
         "\nProtein intake of 1.6 g/kg maximizes hypertrophy\n\n"
         "Trust rationale: meta-analysis\n"
         "Notes: see review\n"
@@ -148,11 +149,11 @@ def test_show_full(env):
 
 def test_show_minimal_and_partial_recheck(env):
     assert ok(env.cli("show", "2")) == (
-        "Fact #2  [nutrition]  trust=verified  personal=False  status=active\n"
+        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=private  status=active\n"
         "\nCreatine monohydrate is effective\n\n"
     )
     assert ok(env.cli("show", "3")) == (
-        "Fact #3  [protein]  trust=low  personal=True  status=active\n"
+        "Fact #3  [protein]  trust=low  personal=True  visibility=private  status=active\n"
         "\nI feel best on 2 g/kg protein\n\n"
         "Trust rationale: self report\n"
         "Recheck by: 2027-02-02\n"
@@ -334,3 +335,31 @@ def test_help_works_for_app_and_every_command(env):
 
 def test_add_fact_help_is_forwarded_to_add_fact_py(env):
     assert "usage:" in ok(env.cli("add-fact", "--help")).lower()
+
+
+# ---------------------------------------------------------------- show: visibility + provenance (#24/#30/#31 wiring)
+
+def test_show_prints_visibility_source_key_and_provenance(env):
+    con = sqlite3.connect(env.db)
+    con.execute("UPDATE facts SET visibility='normal', source_key='f-abc123def456', captured_via='mcp', "
+                "session_id='sess-9', captured_at='2026-09-30T10:00:00+00:00', source_quote='he said 1.6' WHERE id=2")
+    con.commit()
+    con.close()
+    assert ok(env.cli("show", "2")) == (
+        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=normal  status=active\n"
+        "\nCreatine monohydrate is effective\n\n"
+        "Source key: f-abc123def456\n"
+        "Captured: via=mcp  session=sess-9  at=2026-09-30T10:00:00+00:00\n"
+        "Source quote: he said 1.6\n"
+    )
+    f = json.loads(ok(env.cli("show", "2", "--json")))
+    assert f["visibility"] == "normal" and f["source_key"] == "f-abc123def456" and f["session_id"] == "sess-9"
+
+
+def test_show_partial_provenance_prints_only_what_is_set(env):
+    con = sqlite3.connect(env.db)
+    con.execute("UPDATE facts SET captured_via='cli' WHERE id=2")
+    con.commit()
+    con.close()
+    out = ok(env.cli("show", "2"))
+    assert "Captured: via=cli\n" in out and "session=" not in out and "Source quote" not in out and "Source key" not in out

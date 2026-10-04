@@ -241,7 +241,7 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT):
         _emit_json(f)
         return
 
-    print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  status={f['status']}")
+    print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  visibility={f['visibility']}  status={f['status']}")
     print(f"\n{f['statement']}\n")
     if f["trust_rationale"]:
         print(f"Trust rationale: {f['trust_rationale']}")
@@ -251,6 +251,13 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT):
         print(f"Origin: {f['origin_path']}")
     if f["recheck_by"]:
         print(f"Recheck by: {f['recheck_by']}" + (f"  ({f['recheck_rationale']})" if f["recheck_rationale"] else ""))
+    if f["source_key"]:
+        print(f"Source key: {f['source_key']}")
+    if f["captured_via"] or f["session_id"] or f["captured_at"]:
+        parts = [f"{label}={f[col]}" for label, col in (("via", "captured_via"), ("session", "session_id"), ("at", "captured_at")) if f[col]]
+        print("Captured: " + "  ".join(parts))
+    if f["source_quote"]:
+        print(f"Source quote: {f['source_quote']}")
     if f["sources"]:
         print("\nSources:")
         for s in f["sources"]:
