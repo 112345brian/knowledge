@@ -136,6 +136,35 @@ A fact entry is never edited. The JSON entry is **revision 1**; every later chan
 - **Schema change**: edit `schema.sql` directly (it's the definition, not a migration diff), then rebuild.
 - **New external path an ingest script needs**: add it to `knowledge-private/local_paths.py`, never inline it in a script here.
 
+## Architecture enforcement (#36)
+
+The layering the program relies on is checked mechanically, by **tach** (`tach.toml`: per-module import allowlists and layers) and **import-linter** (contracts in `pyproject.toml`), and both run inside `uv run pytest` (`tests/test_architecture.py`). A violating import fails like a failing test.
+
+Run them directly:
+
+- `uv run tach check` : module boundaries (every top-level module and every numbered script is a tach module).
+- `uv run python tests/arch_check.py` : tach + import-linter + the git scan, the same as the test. **Plain `uv run lint-imports` does not work here**: import-linter only analyses packages and this repo is flat modules (`'x' is a module, not a package`). `tests/arch_check.py` copies each importable top-level module into a throwaway package `kn/` (rewriting only project-internal imports, `import privacy` -> `import kn.privacy`, lazy ones included) and runs `lint-imports --config pyproject.toml` on that, so contracts name `kn.<module>`. The copy is parsed, never executed.
+
+**Layers, top to bottom:** serving (`inbox`, `mcp_server`, planned) > CLI (`knowledge.py`, `cli_*.py`, `cli_parity.py`) > pipeline (`build.py`, numbered scripts, `backfill_*`, `clean_concerts_csv`, `export_music_taste`, `snapshot_date`, `_shared`) > libraries (`add_fact`, `revisions`, `review`, `privacy`, `modes`, `claims_audit`, `normal_db`, `leak_test`, `private_git`, `clock`, `paths`). The pipeline sits above the libraries because the ingest scripts and `build.py` call them (`revisions`, `privacy`, `normal_db`); the direction that is forbidden is library -> pipeline.
+
+| Rule | Why | Enforced by |
+|---|---|---|
+| Libraries never import the CLI, serving or pipeline | CLI/serving are thin wrappers over library functions (#34); a library importing them cannot be reused by the other callers | tach (`layer` + `depends_on`), import-linter `libraries-never-import-upward` |
+| Libraries and `cli_parity` never import `typer`/`click` | `build.py`/`add_fact.py` run standalone; the parity registry stays importable without Typer. `knowledge.py` (and later `cli_*.py`) is the only Typer entry point | import-linter `typer-only-in-knowledge` |
+| CLI never imports serving; serving never imports the pipeline (planned, needs `inbox`/`mcp_server`) | serving is the top layer; it must not be able to rebuild or ingest. `cli_inbox` has to start the server in a subprocess, not import it | import-linter + tach (planned entries) |
+| Serving reads facts only through `modes` (planned) | `modes` enforces off/normal/private (#22); importing `knowledge` queries, `claims_audit`, `add_fact`/`revisions`/`privacy` or raw `sqlite3` could bypass it. Exception list: `review` is allowed (the inbox approves/rejects); add others as `ignore_imports` with a reason | import-linter `serving-reads-facts-through-modes`, tach allowlist |
+| `paths` is imported only by an allowlist | it is the only module that knows personal paths | tach `depends_on` (only `add_fact`, `build`, `knowledge`, `privacy`, `revisions`, `clean_concerts_csv`, `export_music_taste` and the ingest scripts list it) |
+| `private_git` is the only module running git against knowledge-private | its lock, clean-tree and detached-HEAD checks must not be bypassed (#10) | tach (only `add_fact`, `review`, `knowledge` list it), import-linter `subprocess-allowlist` (only `private_git` and `knowledge` import `subprocess`), and an AST scan in the test for `"git"` command lists / `os.system` elsewhere |
+| No cycles among libraries, fixed order | a layers contract forbids any upward import, hence cycles | import-linter `libraries-layered` (one documented lazy exception: `leak_test.self_test` imports `normal_db`, which lazily imports `leak_test`) |
+
+tach settings that matter: `layers_explicit_depends_on = true` (otherwise a higher layer may import any lower layer without declaring it, switching the allowlists off), `root_module = "forbid"` (an unlisted `.py` that imports anything is an error), `exact = true` (an unused `depends_on` entry is an error), `ignore_type_checking_imports = false`. Lazy imports inside functions are checked by both tools.
+
+**Adding a module:** pick its layer. (1) `tach.toml`: add a `[[modules]]` block with `layer` and the exact `depends_on`; add it to `knowledge`'s `depends_on` if it is a `cli_*` module; add it to any allowlist that should list it (`paths`, `private_git` importers). (2) `pyproject.toml`: a library goes in the `source_modules` of `libraries-never-import-upward` and `typer-only-in-knowledge` and on a row of `libraries-layered` (a new row, or `|` beside an independent sibling); a CLI/pipeline module goes in the `forbidden_modules` of `libraries-never-import-upward`; a serving module goes in the serving contracts. `tests/test_architecture.py` fails if the configs disagree about what exists. A new numbered script: add it to `NUMBERED_SCRIPTS_EXCLUDED` in `tests/arch_check.py` and as a pipeline module in `tach.toml` (it is not importable, so only tach sees it).
+
+**Planned modules** (`lifecycle`, `facts_batch`, `migrate_memory`, `cli_lifecycle`, `cli_migrate`, `cli_facts_batch`, `cli_inbox`, `inbox`, `mcp_server`) have their entries in both configs on lines starting `#planned:`. When a module's file lands, delete the `#planned: ` prefix on its lines and set its `depends_on`/layer row to what it really imports; the test names the exact lines if you forget. The negative tests enable every planned line, so the planned layout itself is exercised.
+
+**What these tools cannot catch** (the regex scan tests in `tests/test_modes.py`, `test_privacy.py`, etc. remain the backstop): SQL read through a string (`SELECT ... FROM facts` in any module), dynamic imports (`importlib`/`__import__`/`exec`; `build.py` loads the numbered scripts this way), what a permitted `subprocess` user runs (the AST scan only catches literal `"git"`), a module reading the db file without importing a forbidden module, and anything about which functions of an allowed module are called (no tach `interfaces` are declared; e.g. `revisions` imports `add_fact`'s underscore helpers). The numbered scripts are invisible to import-linter and checked only by tach.
+
 ## Known caveats
 
 - `sqlite3` (the CLI) on this machine is not compiled with FTS5. Full-text search (`facts_fts`, `sources_fts`) works from Python's `sqlite3` module — use `python3 knowledge.py search "..."` — or a client like DB Browser for SQLite / Datasette, but not from the bare `sqlite3` command line.
