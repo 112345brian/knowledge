@@ -257,9 +257,7 @@ def build_fact(mf, today=None):
         notes.append("full text (statement is cut):\n" + mf.body)
     fact = NewFact(
         statement=statement, subject=subject_for(mf.type), trust_level="unverified",
-        # #7: a memory snapshot is a point-in-time copy of something that changes, and we always
-        # compute a recheck_by (modified + RECHECK_DAYS), so 'volatile' with that recheck.
-        volatility="volatile",
+        # #7: we always compute a recheck_by (modified + RECHECK_DAYS), so the fact is 'recheck'.
         is_personal=True, visibility="private", status="pending",
         notes="\n".join(notes), recheck_by=recheck,
         recheck_rationale="Claude Code memory snapshot; re-verify against the current state before relying on it",

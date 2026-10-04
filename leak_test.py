@@ -169,7 +169,7 @@ def build_fixture(directory):
 
     def fact(fid, subject, statement, vis, key, notes=None, quote=None, origin=None, personal=1):
         ex("INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, visibility, source_key, notes, "
-           "source_quote, origin_file_id, volatility) VALUES (?, ?, ?, ?, 'medium', ?, ?, ?, ?, ?, 'static')",
+           "source_quote, origin_file_id, freshness) VALUES (?, ?, ?, ?, 'medium', ?, ?, ?, ?, ?, 'unreviewed')",
            (fid, subject, statement, personal, vis, key, notes, quote, origin))
         ex("INSERT INTO fact_revisions (fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "
            "status, visibility, session_id, change_reason, notes) VALUES (?, ?, 1, '2026-01-01T00:00:00+00:00', 'ingest', ?, 'medium', "

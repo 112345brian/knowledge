@@ -76,18 +76,18 @@ def run(con):
         is_personal = 1 if item.get("is_personal", True) else 0
 
         date_added = require_date_added(item, "general_facts.json", index)
-        # #7: general_facts.json is never legacy; an entry without a valid volatility fails the build.
+        # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
-                                   captured_via, session_id, captured_at, source_quote, status, source_key, volatility)
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
                VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, item.get("notes"),
              item.get("recheck_by"), item.get("recheck_rationale"), visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["volatility"])
+             status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
         revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))

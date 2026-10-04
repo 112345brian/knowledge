@@ -286,7 +286,7 @@ def fact_as_of(con, fact_id, as_of):
 def _print_revision_state(r):
     print(f"\n{r['statement']}\n")
     for label, key in (("Trust rationale", "trust_rationale"), ("Notes", "notes"), ("Superseded by", "superseded_by"),
-                       ("Volatility", "volatility")):
+                       ("Freshness", "freshness")):
         if r[key]:
             print(f"{label}: {r[key]}")
     if r["recheck_by"]:

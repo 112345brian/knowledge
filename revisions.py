@@ -33,13 +33,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import clock
-from add_fact import (NEEDS_RECHECK_VOLATILITY, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VALID_VOLATILITY,
+from add_fact import (FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
                       VIA_RE, _file_lock, _lock_path)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
-                  "superseded_by", "recheck_by", "recheck_rationale", "volatility", "notes")
+                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
 # (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
@@ -52,13 +52,13 @@ ENTRY_FILES = (
 )
 
 
-# #7. A stored fact's volatility is one of the three a new fact may carry, or the legacy-only
-# 'unclassified' (keep in sync with the CHECK on facts.volatility in schema.sql).
-LEGACY_VOLATILITY = "unclassified"
-STORED_VOLATILITY = VALID_VOLATILITY + (LEGACY_VOLATILITY,)
+# #7. A stored fact's freshness is 'recheck', 'no-decay' or the legacy-only 'unreviewed' (keep in
+# sync with the CHECK on facts.freshness in schema.sql).
+UNREVIEWED = "unreviewed"
+STORED_FRESHNESS = FRESHNESS_VALUES
 LEGACY_FILES = tuple(name for name, _ in ENTRY_FILES if name != "general_facts.json")
-LEGACY_VOLATILITY_NOTE = ("volatility: unclassified -- this fact predates the volatility field (#7) and has not been "
-                          "individually classified; treat as stable until reviewed.")
+UNREVIEWED_NOTE = ("freshness: unreviewed -- this fact predates the freshness field (#7) and has not been "
+                   "individually reviewed; it has no recheck_by.")
 
 
 class RevisionError(Exception):
@@ -136,42 +136,53 @@ def load_entries(data_dir=None):
     return out
 
 
-def volatility_problem(volatility, recheck_by):
-    """Why (volatility, recheck_by) is not a state the facts CHECK allows, or None. A blank
-    recheck_by counts as missing (the schema only sees NULL; we are stricter on purpose)."""
-    if not isinstance(volatility, str) or volatility not in STORED_VOLATILITY:
-        return f"volatility {volatility!r} must be one of {list(STORED_VOLATILITY)}"
-    if volatility in NEEDS_RECHECK_VOLATILITY and not (isinstance(recheck_by, str) and recheck_by.strip()):
-        return f"volatility {volatility!r} requires recheck_by; only 'static' (or legacy 'unclassified') may omit it"
+def _present(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def freshness_problem(freshness, recheck_by, recheck_rationale):
+    """Why (freshness, recheck_by, recheck_rationale) is not a state the facts CHECKs allow, or
+    None. A blank string counts as missing (the schema only sees NULL, plus the trim check on the
+    rationale; we are stricter on recheck_by on purpose)."""
+    if not isinstance(freshness, str) or freshness not in STORED_FRESHNESS:
+        return f"freshness {freshness!r} must be one of {list(STORED_FRESHNESS)}"
+    if freshness == "recheck" and not _present(recheck_by):
+        return "freshness 'recheck' requires recheck_by"
+    if freshness == "no-decay" and not _present(recheck_rationale):
+        return "freshness 'no-decay' requires a non-blank recheck_rationale saying why the fact does not decay"
     return None
 
 
 def is_legacy_entry(entry, file):
-    """An entry that predates the volatility field: it sits in one of the original fact files and
+    """An entry that predates the freshness field: it sits in one of the original fact files and
     has no provenance (anything captured via add_fact/mcp/migrate carries `captured_via`)."""
     return file in LEGACY_FILES and not entry.get("captured_via")
 
 
 def effective_entry(entry, file=None):
-    """The entry as it enters the db. A legacy entry with no `volatility` becomes 'unclassified'
-    plus the 'predates this field' note appended to its notes; every other entry must already
-    carry a valid volatility. Raises RevisionError (loudly, never a silent default)."""
+    """The entry as it enters the db. A legacy entry with no `freshness` becomes 'recheck' if it
+    has a recheck_by, otherwise 'unreviewed' plus the 'predates this field' note appended to its
+    notes; every other entry must already carry a valid freshness. Raises RevisionError (loudly,
+    never a silent default). The returned dict always has `freshness`."""
     legacy = is_legacy_entry(entry, file)
-    vol = entry.get("volatility")
-    if vol is None:
+    fresh = entry.get("freshness")
+    where = f"{file or 'entry'}: fact {(entry.get('statement') or '')[:60]!r}"
+    if fresh is None:
         if not legacy:
-            raise RevisionError(f"{file or 'entry'}: fact {(entry.get('statement') or '')[:60]!r} has no `volatility` and is "
-                                f"not a legacy entry; every new fact must carry one of {list(VALID_VOLATILITY)}")
+            raise RevisionError(f"{where} has no `freshness` and is not a legacy entry; every new fact must carry "
+                                f"one of {[v for v in STORED_FRESHNESS if v != UNREVIEWED]}")
         eff = dict(entry)
-        eff["volatility"] = LEGACY_VOLATILITY
-        eff["notes"] = (entry["notes"] + "\n" if entry.get("notes") else "") + LEGACY_VOLATILITY_NOTE
+        if _present(entry.get("recheck_by")):
+            eff["freshness"] = "recheck"
+        else:
+            eff["freshness"] = UNREVIEWED
+            eff["notes"] = (entry["notes"] + "\n" if entry.get("notes") else "") + UNREVIEWED_NOTE
         return eff
-    if vol == LEGACY_VOLATILITY and not legacy:
-        raise RevisionError(f"{file or 'entry'}: 'unclassified' is legacy-only and not allowed on fact "
-                            f"{(entry.get('statement') or '')[:60]!r}")
-    problem = volatility_problem(vol, entry.get("recheck_by"))
+    if fresh == UNREVIEWED and not legacy:
+        raise RevisionError(f"{where}: 'unreviewed' is legacy-only and not allowed here")
+    problem = freshness_problem(fresh, entry.get("recheck_by"), entry.get("recheck_rationale"))
     if problem:
-        raise RevisionError(f"{file or 'entry'}: fact {(entry.get('statement') or '')[:60]!r}: {problem}")
+        raise RevisionError(f"{where}: {problem}")
     return entry
 
 
@@ -186,7 +197,7 @@ def entry_snapshot(entry):
 
 def implicit_revision(key, entry, legacy_date, file=None):
     """Revision 1 as a full revision dict (what 04/11 insert into fact_revisions). `file` is the
-    entry's data file; it decides whether a missing volatility is legacy (see effective_entry).
+    entry's data file; it decides whether a missing freshness is legacy (see effective_entry).
     Raises RevisionError for an entry the facts CHECK would reject."""
     entry = effective_entry(entry, file)
     rev = {"source_key": key, "revision": 1,
@@ -266,10 +277,10 @@ def validate_record_shape(rec):
         errs.append(f"superseded_by {rec['superseded_by']!r} must be null or a source_key")
     if rec["superseded_by"] is not None and rec["superseded_by"] == rec["source_key"]:
         errs.append("superseded_by points at the fact itself")
-    for k in ("trust_rationale", "recheck_by", "recheck_rationale", "volatility", "notes"):
+    for k in ("trust_rationale", "recheck_by", "recheck_rationale", "freshness", "notes"):
         if rec[k] is not None and not isinstance(rec[k], str):
             errs.append(f"{k} must be null or a string")
-    problem = volatility_problem(rec["volatility"], rec["recheck_by"])
+    problem = freshness_problem(rec["freshness"], rec["recheck_by"], rec["recheck_rationale"])
     if problem:
         errs.append(problem + " (a revision is a full snapshot; the facts table would reject this combination)")
     return errs
@@ -296,13 +307,14 @@ def read_log(path):
     return out
 
 
-def validate_sequence(path, records, first_revisions, known_keys, first_volatility=None):
+def validate_sequence(path, records, first_revisions, known_keys, first_freshness=None):
     """Cross-line rules. `first_revisions` maps source_key -> revision-1 changed_at;
-    `known_keys` is every existing source_key; `first_volatility` (optional) maps source_key ->
-    revision-1 volatility, so 'unclassified' can be refused where the fact never had it (it is a
-    legacy marker, not a value a revision may choose). Raises RevisionError naming path:line."""
+    `known_keys` is every existing source_key; `first_freshness` (optional) maps source_key ->
+    revision-1 freshness, so a revision cannot go back to 'unreviewed' once a fact has been
+    reviewed (it is a legacy marker, not a value a revision may choose). Raises RevisionError
+    naming path:line."""
     last = {}
-    vol = dict(first_volatility or {})
+    fresh = dict(first_freshness or {})
     for k, v in first_revisions.items():
         try:
             last[k] = (1, parse_timestamp(v))
@@ -323,9 +335,9 @@ def validate_sequence(path, records, first_revisions, known_keys, first_volatili
                                 f"revision ({prev_at.isoformat()}); timestamps must not go backwards")
         if rec["superseded_by"] is not None and rec["superseded_by"] not in known_keys:
             raise RevisionError(f"{where}: superseded_by {rec['superseded_by']!r} is not an existing source_key")
-        if first_volatility is not None and rec["volatility"] == LEGACY_VOLATILITY and vol.get(key) != LEGACY_VOLATILITY:
-            raise RevisionError(f"{where}: volatility 'unclassified' is legacy-only; {key!r} was never unclassified")
-        vol[key] = rec["volatility"]
+        if first_freshness is not None and rec["freshness"] == UNREVIEWED and fresh.get(key) != UNREVIEWED:
+            raise RevisionError(f"{where}: freshness 'unreviewed' cannot be chosen by a revision; {key!r} was already reviewed")
+        fresh[key] = rec["freshness"]
         last[key] = (rec["revision"], at)
 
 
@@ -404,7 +416,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
             records = read_log(revisions_path)
             first = {e["key"]: e["entry"].get("date_added") or e["legacy_date"] for e in entries}
             validate_sequence(revisions_path, records, first, set(by_key),
-                              {e["key"]: implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])["volatility"]
+                              {e["key"]: implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])["freshness"]
                                for e in entries})
             mine = [r for _, r in records if r["source_key"] == source_key]
             current = mine[-1] if mine else implicit_revision(source_key, by_key[source_key]["entry"],
@@ -424,8 +436,8 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
                    "changed_via": via, "session_id": session_id, "change_reason": reason.strip(), **snapshot}
             rev = {k: rev[k] for k in REVISION_KEYS}
             errs = validate_record_shape(rev)
-            if rev["volatility"] == LEGACY_VOLATILITY and current["volatility"] != LEGACY_VOLATILITY:
-                errs.append("volatility 'unclassified' is legacy-only; choose static, stable or volatile")
+            if rev["freshness"] == UNREVIEWED and current["freshness"] != UNREVIEWED:
+                errs.append("freshness 'unreviewed' cannot be chosen by a revision; choose recheck or no-decay")
             if not errs and rev["superseded_by"] is not None and rev["superseded_by"] not in by_key:
                 errs.append(f"superseded_by {rev['superseded_by']!r} is not an existing source_key")
             if not errs and parse_timestamp(rev["changed_at"]) < parse_timestamp(current["changed_at"]):
@@ -457,9 +469,9 @@ def apply_revisions(con, revisions_path):
     cur = con.cursor()
     fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
     first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
-    first_vol = {k: v for k, v in cur.execute("SELECT source_key, volatility FROM fact_revisions WHERE revision = 1")}
+    first_fresh = {k: v for k, v in cur.execute("SELECT source_key, freshness FROM fact_revisions WHERE revision = 1")}
     records = read_log(revisions_path)
-    validate_sequence(revisions_path, records, first, set(fact_ids), first_vol)
+    validate_sequence(revisions_path, records, first, set(fact_ids), first_fresh)
     latest = {}
     for _, rec in records:
         insert_revision_row(cur, fact_ids[rec["source_key"]], rec)
@@ -468,10 +480,10 @@ def apply_revisions(con, revisions_path):
         sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
         cur.execute(
             """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
-                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, volatility = ?, notes = ?
+                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, freshness = ?, notes = ?
                WHERE id = ?""",
             (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
-             rec["recheck_by"], rec["recheck_rationale"], rec["volatility"], rec["notes"], fact_ids[key]))
+             rec["recheck_by"], rec["recheck_rationale"], rec["freshness"], rec["notes"], fact_ids[key]))
     con.commit()
     return len(records)
 
