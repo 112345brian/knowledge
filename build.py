@@ -8,6 +8,10 @@ Usage:
     python3 build.py            # rebuilds knowledge.db (backs up the old one first)
     python3 build.py --check    # builds into a temp file and reports counts, doesn't touch the live DB
 
+After the swap, knowledge-normal.db (#21: only visibility='normal' facts and what hangs off them, see
+normal_db.py) is built the same atomic way into the same directory and leak-checked. If that fails the
+main build stays in place, a stale knowledge-normal.db is removed, and the exit code is non-zero.
+
 The rebuild goes into a temp file next to the live DB and is os.replace()d onto
 it only after every step succeeds, so a failing step (exit 1, naming the step)
 leaves the previous knowledge.db byte-identical, and a reader holding the old
@@ -115,6 +119,19 @@ def prune_backups(keep=KEEP_BACKUPS):
         print(f"  pruned old backup {old}")
 
 
+def build_normal(full_path, directory, rules=None):
+    """Build + leak-check knowledge-normal.db in `directory` from the freshly built `full_path`.
+    Privacy rules come from the private data dir (a bad rules file raises: fail closed)."""
+    import normal_db
+    if rules is None:
+        import privacy
+        rules = privacy.load_rules()
+    path, counts = normal_db.build_normal_atomic(full_path, directory, rules)
+    print(f"Built {path} (leak test passed)")
+    print(normal_db.format_counts(counts))
+    return path
+
+
 def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
@@ -138,6 +155,12 @@ def main():
             tmp = build_to_temp(tempfile.gettempdir())
             try:
                 report(tmp)
+                with tempfile.TemporaryDirectory() as nd:
+                    print("Normal-only DB (temp):")
+                    build_normal(tmp, nd)
+            except Exception as e:
+                print(f"error: normal DB build failed: {e}", file=sys.stderr)
+                sys.exit(1)
             finally:
                 remove_db_files(tmp)
             return
@@ -161,6 +184,14 @@ def main():
         remove_db_files(tmp)
         raise
     report(LIVE_DB)
+
+    # The main build is done and stays in place whatever happens here.
+    try:
+        build_normal(LIVE_DB, DB_DIR)
+    except Exception as e:
+        print(f"error: knowledge.db was rebuilt, but the normal-only DB failed: {e}; "
+              f"any previous knowledge-normal.db was removed", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
