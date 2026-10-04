@@ -66,6 +66,8 @@ uv run python knowledge.py review-pending [--json]                     # the pen
 uv run python knowledge.py approve REF... | --all [--reason TEXT] [--allow-dirty] [--json]   # REF = fact id or source_key
 uv run python knowledge.py reject REF... --reason TEXT [--allow-dirty] [--json]
 uv run python knowledge.py migrate-memory [--memory-root DIR] [--dry-run] [--json] [--allow-dirty] [--verbose]   # Claude Code memory -> private pending facts (see below)
+uv run python knowledge.py edit <fact_id|source_key> [--statement T] [--trust L] [--trust-rationale T] [--recheck-by YYYY-MM-DD] [--notes T] --reason R [--allow-dirty] [--json]   # appends a revision; "" clears rationale/recheck-by/notes
+uv run python knowledge.py inbox [--port N] [--no-open]                # local review page for pending facts (127.0.0.1 only; see "Inbox")
 ```
 
 `--json` on a read command prints the same rows the library function returns (`search_facts`, `get_fact`, `list_subjects`, `list_facts`, `revisions.get_history`, `revisions.get_fact_as_of`; `audit-claims --json` prints `{"stale_premises": [...], "unparseable_rechecks": [...]}`). An invalid full-text query (unbalanced quote, empty string) prints `error: search failed: ...` and exits 1.
@@ -85,6 +87,16 @@ uv run python knowledge.py migrate-memory [--memory-root DIR] [--dry-run] [--jso
 7. `06_seed_subject_hierarchy.py` — arranges `aas-*` subjects under `anabolic-steroids` and `training-*` subjects under a new `training` umbrella.
 8. `11_seed_general_facts.py` — loads `knowledge-private/data/general_facts.json`: ad hoc facts with no project or vault behind them, added one at a time via `add_fact.py` rather than in a batch. Defaults new subjects to `domain='general'` instead of `health-and-fitness`.
 9. `12_apply_fact_revisions.py` — reads `knowledge-private/data/fact_revisions.jsonl` (the revision log, see below), validates it and writes `fact_revisions` plus each fact's current state into `facts`. Runs last among the fact steps; a missing or empty log is fine.
+
+## Inbox (#33)
+
+`knowledge.py inbox` serves a review page for `pending` facts (statement, subject, visibility and the privacy rule behind it, provenance, source quote, date added, a pending count) with Approve, Edit, Reject, Make private and "Approve all N shown". No JavaScript: every button is a plain form. Standard library only (`inbox.py` is the library and server, `cli_inbox.py` the two Typer commands `inbox` and `edit`).
+
+- **Local only.** It binds `127.0.0.1` (there is no `--host`) and shows private facts, so never put it behind a proxy, tunnel or port forward, and never run it in the remote normal-tier process (#26). It refuses non-loopback peers (403) and any `Host` header other than `127.0.0.1:PORT` / `localhost:PORT` (421, DNS rebinding). Mutations are POST-only to `/action`, need the per-run random token that is embedded in the page (403 otherwise), a form content type, and, if sent, a same-origin `Origin`. No CORS headers; a CSP forbids scripts; every field is HTML-escaped.
+- **Snapshot.** The list comes from the built db, so rebuild (`knowledge.py build`) to see new pending facts. Each fact's current state is read from the data files and revision log, so a fact approved, rejected or edited since the rebuild is shown as it is now (or hidden, with a count).
+- **Every action is a library call, appending a revision.** Approve/Reject: `review.approve` / `review.reject`; Edit: `inbox.edit_fact` (= `knowledge.py edit`; statement, trust level and rationale, recheck-by, notes; the subject is immutable and an edit whose statement trips a privacy rule also raises visibility); Make private: `inbox.set_visibility` (raise-only: a request for `normal` is refused, naming the privacy rule when one floors the fact). Each is one locked append and one commit in the private repo, refused up front on a dirty tree. A fact reviewed elsewhere since the page loaded gives a clean "already approved/rejected" message, never a second write.
+- **Bulk approve** approves exactly the facts shown (like `approve KEY...`), not `approve --all`: `--all` would also approve facts added after the last rebuild that nobody has seen.
+- Parity (#34): `inbox.PARITY_ACTIONS` maps each button to its CLI command (`review-pending`, `approve`, `reject`, `edit`, `set-visibility`). `cli_parity.PENDING_COMMANDS` holds the entries whose command is built by another change; `tests/test_inbox.py` skips only those entries until the command exists.
 
 ## Fact revisions (#30)
 

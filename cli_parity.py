@@ -40,6 +40,21 @@ ACTIONS = {
     "privacy_untag": ("privacy", "untag"),
     "privacy_add_keyword": ("privacy", "add-keyword"),
     "privacy_remove_keyword": ("privacy", "remove-keyword"),
+    "serve_inbox": ("inbox",),
+    "edit_fact": ("edit",),
+}
+
+# Actions the inbox (#33) exposes whose CLI command is being built by another change (#6
+# `review-pending`/`approve`/`reject`, #23 `set-visibility`). They count as registered for the
+# PARITY_ACTIONS check; tests/test_inbox.py asserts each resolves and skips ONLY the entries whose
+# command does not exist yet. When a command lands, move its entry into ACTIONS (the entry here
+# then becomes redundant and may be deleted).
+PENDING_COMMANDS = {
+    "list_pending": ("review-pending",),
+    "approve": ("approve",),
+    "reject": ("reject",),
+    "make_private": ("set-visibility",),
+    "approve_shown": ("approve",),
 }
 
 # Optional future layers that must declare PARITY_ACTIONS.
@@ -63,5 +78,5 @@ def actions_without_command(actions, group):
 
 
 def declared_without_entry(declared, actions):
-    """Names a layer declares that have no registry entry."""
-    return sorted(set(declared) - set(actions))
+    """Names a layer declares that have no registry entry (ACTIONS or PENDING_COMMANDS)."""
+    return sorted(set(declared) - set(actions) - set(PENDING_COMMANDS))

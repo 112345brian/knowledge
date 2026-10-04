@@ -720,6 +720,9 @@ import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, se
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
 
+from cli_inbox import register as _register_inbox; _register_inbox(app, DB_PATH)  # inbox, edit (#33)
+
+
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:
