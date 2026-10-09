@@ -23,7 +23,7 @@ import platform
 import sqlite3
 
 import clock
-import fixity
+import fixity_store
 import private_git
 
 KEY_PREFIX = "input:"
@@ -63,7 +63,7 @@ def collect_inputs(con, paths_module):
     """[(key, {state, sha256, size_bytes, file_mtime})] sorted by key."""
     out = []
     for key, path in input_paths(paths_module):
-        fp = fixity.fingerprint(path)
+        fp = fixity_store.fingerprint(path)
         out.append((key, {"state": fp["file_state"], "sha256": fp["content_sha256"],
                           "size_bytes": fp["size_bytes"], "file_mtime": fp["file_mtime"]}))
     out.append((NOTES_KEY, _notes_manifest(con)))

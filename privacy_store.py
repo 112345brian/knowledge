@@ -12,7 +12,7 @@ import stat
 import uuid
 from dataclasses import replace
 
-import entities as entities_lib
+import entities_store as entities_lib
 from privacy import PrivacyRulesError, Rules, RULES_FILENAME, VERSION, parse_rules, resolve_visibility, subject_chain
 
 

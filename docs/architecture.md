@@ -52,7 +52,7 @@ Rules (each one is a failing test or contract if broken):
 | `13_link_entities` | ETL adapter (driving, batch) |  |
 | `14_link_source_relations` | ETL adapter (driving, batch) |  |
 | `_shared` | ETL adapter (driving, batch) |  |
-| `acquisition` | driven adapter | custodial history from macOS file attributes (read-only xattr) |
+| `acquisition_store` | driven adapter | custodial history from macOS file attributes (read-only xattr) |
 | `add_fact` | facade (composition root) | binds add_fact_service; also the add_fact.py script |
 | `add_fact_service` | use case | add one fact |
 | `add_fact_store` | driven adapter | locked JSON file, citekey/subject lookups |
@@ -62,7 +62,7 @@ Rules (each one is a failing test or contract if broken):
 | `backfill_rules` | domain | key insertion into JSON text |
 | `backfill_source_keys` | ETL adapter (driving, batch) |  |
 | `build` | ETL adapter (driving, batch) | runs the steps, swaps the db |
-| `build_info` | driven adapter | which inputs and code produced the db |
+| `build_info_store` | driven adapter | which inputs and code produced the db |
 | `build_rules` | domain | step order, backups |
 | `claims_audit` | domain | staleness rules |
 | `claims_store` | driven adapter | claims audit SQL + clock |
@@ -76,8 +76,8 @@ Rules (each one is a failing test or contract if broken):
 | `cli_sources` | driving adapter | source ids (#48) |
 | `cli_subjects` | driving adapter | subject commands (#43) |
 | `clock` | driven adapter | time |
-| `entities` | driven adapter | entities.json: validation, linking, edits |
-| `entity_tools` | driven adapter | keywords to private entities (two files at once) |
+| `entities_store` | driven adapter | entities.json: validation, linking, edits |
+| `entity_migration_store` | driven adapter | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) |  |
 | `export_subjects` | ETL adapter (driving, batch) | writes subjects.json from the seed hierarchy |
 | `fact_ingest_rules` | domain | fact-file ingest rules |
@@ -86,7 +86,7 @@ Rules (each one is a failing test or contract if broken):
 | `facts_batch` | facade (composition root) | binds facts_batch_service |
 | `facts_batch_rules` | domain | batch item rules |
 | `facts_batch_service` | use case | batch add |
-| `fixity` | driven adapter | file fingerprints and the changed-since-extraction audit |
+| `fixity_store` | driven adapter | file fingerprints and the changed-since-extraction audit |
 | `identifiers` | domain | DOI / ISBN / ISSN / PMID / arXiv normalization (pure) |
 | `ids` | driven adapter | random source keys |
 | `inbox` | driving adapter | HTTP review page |
@@ -112,7 +112,7 @@ Rules (each one is a failing test or contract if broken):
 | `ports` | domain | port protocols the use cases depend on (pure); counted as domain |
 | `privacy` | domain | visibility rules + resolver |
 | `privacy_store` | driven adapter | rules file, db apply |
-| `private_edit` | driven adapter | load-edit-write-commit flow for hand-curated files |
+| `private_edit_store` | driven adapter | load-edit-write-commit flow for hand-curated files |
 | `private_git` | driven adapter | git around knowledge-private |
 | `review` | facade (composition root) | binds review_service |
 | `review_rules` | domain | review decisions |
@@ -127,7 +127,7 @@ Rules (each one is a failing test or contract if broken):
 | `source_ingest_rules` | domain | citation notes |
 | `source_status` | domain | source status, relation checks, replacement chains |
 | `source_status_store` | driven adapter | the fact-to-source audit SQL |
-| `subjects` | driven adapter | subjects.json: hierarchy as data, aliases, edits |
+| `subjects_store` | driven adapter | subjects.json: hierarchy as data, aliases, edits |
 | `textmatch` | domain | whole-word term matching |
 | `timestamps` | domain | revision-time parsing |
 | `validtime` | domain | valid-time dates: parsing, ordering, containment |

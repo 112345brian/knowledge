@@ -15,7 +15,7 @@ import tempfile
 
 import pytest
 
-import acquisition as aq
+import acquisition_store as aq
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 
@@ -142,7 +142,7 @@ def test_it_only_ever_runs_read_only_xattr_argv_shapes(tmp_path):
     aq.read_attributes(str(tmp_path / "f"), run=fake_run({aq.WHERE_FROMS: plist_hex(["https://a.example"]), aq.QUARANTINE: QUARANTINE_5F3E1C2A}, calls), platform_ok=True)
     f = str(tmp_path / "f")
     assert calls == [["xattr", f], ["xattr", "-px", aq.WHERE_FROMS, f], ["xattr", "-p", aq.QUARANTINE, f]]
-    source = open(os.path.join(REPO, "acquisition.py")).read()
+    source = open(os.path.join(REPO, "acquisition_store.py")).read()
     assert not re.search(r'"-(w|wx|d|c|r|s)"', source)                            # no write / delete / clear flag anywhere
     assert source.count("subprocess.run") == 1 and "shell=True" not in source
 
@@ -229,8 +229,8 @@ def run02(ingest, tmp_path, monkeypatch, notes, attrs=None):
     d.mkdir(parents=True)
     for name, extra in notes.items():
         (d / f"{name}.md").write_text(note_text(extra))
-    import acquisition
-    monkeypatch.setattr(acquisition, "read_attributes", lambda path, run=None, platform_ok=None: dict(attrs.get(os.path.basename(path), {})) if attrs else {})
+    import acquisition_store
+    monkeypatch.setattr(acquisition_store, "read_attributes", lambda path, run=None, platform_ok=None: dict(attrs.get(os.path.basename(path), {})) if attrs else {})
     spec = __import__("importlib.util").util.spec_from_file_location("m02", os.path.join(REPO, "02_ingest_literature_sources.py"))
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -265,8 +265,8 @@ def test_02_a_bad_value_in_frontmatter_fails_the_build_naming_the_note(ingest, t
 
 
 def test_01_manual_sources_take_data_first(ingest, monkeypatch):
-    import acquisition
-    monkeypatch.setattr(acquisition, "read_attributes", lambda path, run=None, platform_ok=None: {"where_from": "https://attrs.example", "acquired_at": WHEN} if path else {})
+    import acquisition_store
+    monkeypatch.setattr(acquisition_store, "read_attributes", lambda path, run=None, platform_ok=None: {"where_from": "https://attrs.example", "acquired_at": WHEN} if path else {})
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m1", "name": "M", "source_type": "primary", "origin_path": "/x/m1.pdf", "where_from": "https://data.example", "acquired_via": "export"},
                    {"citekey": "m2", "name": "M2", "source_type": "primary"}], f)
@@ -282,9 +282,9 @@ def test_01_manual_sources_take_data_first(ingest, monkeypatch):
 
 
 def test_vault_files_get_attributes_only_and_counts_are_unchanged(ingest, tmp_path, monkeypatch):
-    import acquisition
+    import acquisition_store
     seen = []
-    monkeypatch.setattr(acquisition, "read_attributes", lambda path, run=None, platform_ok=None: seen.append(path) or {"where_from": "https://example.org/v", "acquired_at": WHEN})
+    monkeypatch.setattr(acquisition_store, "read_attributes", lambda path, run=None, platform_ok=None: seen.append(path) or {"where_from": "https://example.org/v", "acquired_at": WHEN})
     note = tmp_path / "n.md"
     note.write_text("x")
     con = ingest.run04([F(origin_path=str(note)), F(statement="Second.", origin_path=str(note)), F(statement="None.")])

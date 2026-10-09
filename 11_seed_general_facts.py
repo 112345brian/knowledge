@@ -15,7 +15,7 @@ import sqlite3, json, os
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 from _shared import get_or_create_vault_file
 import fact_ingest_rules
-import fixity
+import fixity_store
 import privacy
 import privacy_store
 import revisions
@@ -66,7 +66,7 @@ def run(con):
         is_personal = 1 if item.get("is_personal", True) else 0
 
         baseline = item.get("extracted_from_sha256")
-        if baseline is not None and not fixity.valid_sha256(baseline):
+        if baseline is not None and not fixity_store.valid_sha256(baseline):
             raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
         origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"))  # #38: optional origin file
         date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)

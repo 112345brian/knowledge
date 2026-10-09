@@ -14,48 +14,48 @@ existing private entity just disappear from the keyword list; one that matches a
 import os
 from dataclasses import replace
 
-import entities
-import private_edit
+import entities_store
+import private_edit_store
 import privacy
 import privacy_store
 
 
 def migrate_keywords(allow_dirty=False, dry_run=False, keep_keywords=False, data_dir=None):
     """Convert every keyword in the rules file to a private entity (type 'other'). `keep_keywords` leaves the
-    keyword list in place (only adds entities). Returns a private_edit.EditResult; never prints or exits."""
+    keyword list in place (only adds entities). Returns a private_edit_store.EditResult; never prints or exits."""
     rules_file = privacy_store.rules_path(data_dir)
-    entities_file = entities.data_path(os.path.dirname(rules_file))
+    entities_file = entities_store.data_path(os.path.dirname(rules_file))
 
     def compute():
         rules = privacy_store.load_rules(rules_file)
-        current = entities.read_file(entities_file) or []
+        current = entities_store.read_file(entities_file) or []
         new = [dict(e, aliases=list(e["aliases"])) for e in current]
         added = []
         for kw in rules.keywords:
-            owner = entities.find(new, kw)
+            owner = entities_store.find(new, kw)
             if owner is not None:
                 if not owner["private"]:
-                    raise entities.EntitiesError(
+                    raise entities_store.EntitiesError(
                         f"keyword {kw!r} is a name of the non-private entity {owner['id']!r}; tag it private first "
                         "(`entity tag`), otherwise removing the keyword would make its facts less private")
                 continue
-            new, _ = entities.add_entity(new, kw, "other", private=True)
+            new, _ = entities_store.add_entity(new, kw, "other", private=True)
             added.append(kw)
         new_rules = rules if keep_keywords else replace(rules, keywords=())
         # Prove nothing got less private: every old keyword still raises a mentioning statement.
-        after = replace(new_rules, entities=entities.private_terms(new))
+        after = replace(new_rules, entities=entities_store.private_terms(new))
         for kw in rules.keywords:
             if privacy.resolve_visibility("any-subject", f"a statement that mentions {kw} somewhere", "normal", after).visibility != "private":
-                raise entities.EntitiesError(f"keyword {kw!r} would no longer make a statement private after the migration; nothing was written")
+                raise entities_store.EntitiesError(f"keyword {kw!r} would no longer make a statement private after the migration; nothing was written")
         changed = bool(added) or (not keep_keywords and bool(rules.keywords))
         return changed, (new, new_rules, added)
 
     def write(state):
         new, new_rules, _ = state
-        entities.save(new, entities_file)       # entities first: never a moment with neither
+        entities_store.save(new, entities_file)       # entities first: never a moment with neither
         privacy_store.save_rules(new_rules, rules_file)
 
-    result = private_edit.edit_files([entities_file, rules_file], compute, write,
+    result = private_edit_store.edit_files([entities_file, rules_file], compute, write,
                                      "migrate keywords to private entities", "entities: migrate privacy keywords to private entities",
-                                     allow_dirty, dry_run, error_types=(entities.EntitiesError, privacy.PrivacyRulesError))
+                                     allow_dirty, dry_run, error_types=(entities_store.EntitiesError, privacy.PrivacyRulesError))
     return result

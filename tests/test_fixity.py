@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-import fixity
+import fixity_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 
@@ -61,27 +61,27 @@ def add_fact(con, fid, path, baseline):
 
 def test_fingerprint_of_a_present_file(tmp_path):
     p = write(tmp_path / "note.md", b"hello\n")
-    fp = fixity.fingerprint(p)
+    fp = fixity_store.fingerprint(p)
     assert fp["content_sha256"] == sha(b"hello\n") and fp["size_bytes"] == 6
     assert fp["mime_type"] == "text/markdown" and fp["file_state"] == "present"
     assert fp["file_mtime"].endswith("+00:00") and "." not in fp["file_mtime"]
 
 
 def test_empty_file_has_the_empty_hash_and_is_present(tmp_path):
-    fp = fixity.fingerprint(write(tmp_path / "e.md", b""))
+    fp = fixity_store.fingerprint(write(tmp_path / "e.md", b""))
     assert (fp["content_sha256"], fp["size_bytes"], fp["file_state"]) == (EMPTY_SHA, 0, "present")
 
 
 def test_file_larger_than_the_read_buffer_hashes_correctly(tmp_path, monkeypatch):
     data = os.urandom(5000)
     p = write(tmp_path / "big.md", data)
-    monkeypatch.setattr(fixity, "HASH_BUFFER", 64)  # many chunks, last one partial
-    assert fixity.fingerprint(p)["content_sha256"] == sha(data)
+    monkeypatch.setattr(fixity_store, "HASH_BUFFER", 64)  # many chunks, last one partial
+    assert fixity_store.fingerprint(p)["content_sha256"] == sha(data)
 
 
 @pytest.mark.parametrize("make", [lambda t: str(t / "nope.md"), lambda t: str(t), lambda t: "", lambda t: None])
 def test_missing_directory_blank_and_none_paths_are_missing_without_a_hash(tmp_path, make):
-    fp = fixity.fingerprint(make(tmp_path))
+    fp = fixity_store.fingerprint(make(tmp_path))
     assert fp["file_state"] == "missing"
     assert (fp["content_sha256"], fp["size_bytes"], fp["file_mtime"]) == (None, None, None)
 
@@ -92,7 +92,7 @@ def test_unreadable_file_is_missing_not_a_crash(tmp_path):
     try:
         if os.access(p, os.R_OK):
             pytest.skip("running as a user that can read mode-000 files")
-        assert fixity.fingerprint(p)["file_state"] == "missing"
+        assert fixity_store.fingerprint(p)["file_state"] == "missing"
     finally:
         os.chmod(p, 0o600)
 
@@ -100,13 +100,13 @@ def test_unreadable_file_is_missing_not_a_crash(tmp_path):
 def test_tilde_paths_are_expanded(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write(tmp_path / "v" / "n.md", b"abc")
-    assert fixity.fingerprint("~/v/n.md")["content_sha256"] == sha(b"abc")
+    assert fixity_store.fingerprint("~/v/n.md")["content_sha256"] == sha(b"abc")
 
 
 def test_valid_sha256():
-    assert fixity.valid_sha256(EMPTY_SHA)
+    assert fixity_store.valid_sha256(EMPTY_SHA)
     for bad in (None, "", "abc", EMPTY_SHA.upper(), EMPTY_SHA + "0", 5):
-        assert not fixity.valid_sha256(bad)
+        assert not fixity_store.valid_sha256(bad)
 
 
 # ------------------------------------------------------------------ audit
@@ -115,7 +115,7 @@ def test_audit_unchanged_file_has_no_row(tmp_path):
     con = make_db()
     p = write(tmp_path / "a.md", b"one")
     add_fact(con, 1, p, sha(b"one"))
-    assert fixity.audit_sources(con) == []
+    assert fixity_store.audit_sources(con) == []
 
 
 def test_audit_edited_file_is_a_changed_row(tmp_path):
@@ -123,7 +123,7 @@ def test_audit_edited_file_is_a_changed_row(tmp_path):
     p = write(tmp_path / "a.md", b"one")
     add_fact(con, 1, p, sha(b"one"))
     write(p, b"one, edited")
-    (row,) = fixity.audit_sources(con)
+    (row,) = fixity_store.audit_sources(con)
     assert (row["fact_id"], row["reason"], row["path"]) == (1, "changed", p)
     assert row["baseline_sha256"] == sha(b"one") and row["current_sha256"] == sha(b"one, edited")
     assert row["moved_to"] is None and row["source_key"] == "k-1"
@@ -134,7 +134,7 @@ def test_audit_deleted_file_is_missing(tmp_path):
     p = write(tmp_path / "a.md", b"one")
     add_fact(con, 1, p, sha(b"one"))
     os.remove(p)
-    (row,) = fixity.audit_sources(con)
+    (row,) = fixity_store.audit_sources(con)
     assert (row["reason"], row["current_sha256"], row["moved_to"]) == ("missing", None, None)
 
 
@@ -145,10 +145,10 @@ def test_audit_renamed_file_found_under_a_search_root_is_moved(tmp_path):
     new = str(tmp_path / "vault" / "sub" / "renamed.md")
     os.makedirs(os.path.dirname(new))
     os.rename(old, new)
-    (row,) = fixity.audit_sources(con, search_roots=[str(tmp_path / "vault")])
+    (row,) = fixity_store.audit_sources(con, search_roots=[str(tmp_path / "vault")])
     assert (row["reason"], row["moved_to"]) == ("moved", new)
     # without a place to look, a disappeared path stays "missing"
-    assert fixity.audit_sources(con)[0]["reason"] == "missing"
+    assert fixity_store.audit_sources(con)[0]["reason"] == "missing"
 
 
 def test_audit_moved_to_another_known_vault_file(tmp_path):
@@ -159,7 +159,7 @@ def test_audit_moved_to_another_known_vault_file(tmp_path):
     add_fact(con, 2, other, sha(b"x"))
     os.rename(old, str(tmp_path / "c.md"))
     con.execute("INSERT INTO vault_files (path) VALUES (?)", (str(tmp_path / "c.md"),))
-    (row,) = fixity.audit_sources(con)
+    (row,) = fixity_store.audit_sources(con)
     assert (row["fact_id"], row["reason"], row["moved_to"]) == (1, "moved", str(tmp_path / "c.md"))
 
 
@@ -168,23 +168,23 @@ def test_fact_with_no_baseline_is_reported_separately_not_as_a_change(tmp_path):
     p = write(tmp_path / "a.md", b"one")
     add_fact(con, 1, p, None)
     write(p, b"edited")
-    assert fixity.audit_sources(con) == []
-    assert fixity.unbaselined_facts(con) == [{"fact_id": 1, "source_key": "k-1", "path": p}]
+    assert fixity_store.audit_sources(con) == []
+    assert fixity_store.unbaselined_facts(con) == [{"fact_id": 1, "source_key": "k-1", "path": p}]
 
 
 def test_audit_empty_file_baseline_and_large_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(fixity, "HASH_BUFFER", 16)
+    monkeypatch.setattr(fixity_store, "HASH_BUFFER", 16)
     con = make_db()
     e = write(tmp_path / "e.md", b"")
     big_data = b"y" * 1000
     b = write(tmp_path / "b.md", big_data)
     add_fact(con, 1, e, EMPTY_SHA)
     add_fact(con, 2, b, sha(big_data))
-    assert fixity.audit_sources(con) == []
+    assert fixity_store.audit_sources(con) == []
     write(b, big_data + b"!")
-    assert [r["fact_id"] for r in fixity.audit_sources(con)] == [2]
+    assert [r["fact_id"] for r in fixity_store.audit_sources(con)] == [2]
     write(e, b"now not empty")
-    assert [r["fact_id"] for r in fixity.audit_sources(con)] == [1, 2]
+    assert [r["fact_id"] for r in fixity_store.audit_sources(con)] == [1, 2]
 
 
 def test_audit_never_writes(tmp_path):
@@ -193,7 +193,7 @@ def test_audit_never_writes(tmp_path):
     add_fact(con, 1, p, sha(b"one"))
     write(p, b"two")
     before = con.total_changes
-    fixity.audit_sources(con)
+    fixity_store.audit_sources(con)
     assert con.total_changes == before
 
 

@@ -5,8 +5,8 @@ risk of misreading. Run after 01_seed_sources.py.
 import sqlite3, os, glob, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import acquisition
-import fixity
+import acquisition_store
+import fixity_store
 import source_ingest_rules
 from _shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 from paths import BODYBUILDING_VAULT as VAULT
@@ -23,8 +23,8 @@ def parse_all():
         row = source_ingest_rules.note_to_source_row(base, text, VAULT)
         where = row.pop("where")
         row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
-        row.update(acquisition.resolve(acquisition.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
-        row.update(fixity.fingerprint(fp))  # #38
+        row.update(acquisition_store.resolve(acquisition_store.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
+        row.update(fixity_store.fingerprint(fp))  # #38
         rows.append(row)
     return rows
 

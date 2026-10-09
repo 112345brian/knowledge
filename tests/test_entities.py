@@ -14,7 +14,7 @@ import unicodedata
 
 import pytest
 
-import entities
+import entities_store
 import textmatch
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
@@ -41,7 +41,7 @@ def ent(id, name, type="person", aliases=(), private=False, **kw):
 
 
 def parse(*es):
-    return entities.parse({"entities": list(es)})
+    return entities_store.parse({"entities": list(es)})
 
 
 def new_db():
@@ -97,11 +97,11 @@ def test_keywords_and_entity_aliases_agree_on_a_corpus():
 def test_round_trip_and_defaults():
     es = parse(ent("zed", "Zed Name", aliases=["Zeddy", "ZN"], private=True, external_id="wikidata:Q1", notes="n"),
                ent("acme", "Acme", type="organization"))
-    data = entities.to_json(es)
+    data = entities_store.to_json(es)
     assert [e["id"] for e in data["entities"]] == ["acme", "zed"]
     assert data["entities"][0] == {"id": "acme", "canonical_name": "Acme", "type": "organization"}
     assert data["entities"][1]["private"] is True and data["entities"][1]["aliases"] == ["Zeddy", "ZN"]
-    assert entities.parse(json.loads(json.dumps(data))) == entities.parse(data)
+    assert entities_store.parse(json.loads(json.dumps(data))) == entities_store.parse(data)
 
 
 @pytest.mark.parametrize("bad, msg", [
@@ -125,76 +125,76 @@ def test_round_trip_and_defaults():
     ({"entities": [ent("a", "Mary", aliases=["MJ", "mj"])]}, "same alias is listed twice"),
 ])
 def test_invalid_files_are_refused(bad, msg):
-    with pytest.raises(entities.EntitiesError, match=msg):
-        entities.parse(bad)
+    with pytest.raises(entities_store.EntitiesError, match=msg):
+        entities_store.parse(bad)
 
 
 def test_read_file_absent_corrupt_and_save_refuses_invalid(tmp_path):
-    assert entities.read_file(str(tmp_path / "e.json")) is None
+    assert entities_store.read_file(str(tmp_path / "e.json")) is None
     p = tmp_path / "e.json"
     p.write_text("{nope")
-    with pytest.raises(entities.EntitiesError, match="not valid JSON"):
-        entities.read_file(str(p))
+    with pytest.raises(entities_store.EntitiesError, match="not valid JSON"):
+        entities_store.read_file(str(p))
     good = parse(ent("a", "A"))
-    entities.save(good, str(p))
+    entities_store.save(good, str(p))
     assert os.listdir(tmp_path) == ["e.json"]
-    bad = [entities.make_entity("a", "Same", "person"), entities.make_entity("b", "SAME", "person")]
-    with pytest.raises(entities.EntitiesError):
-        entities.save(bad, str(p))
-    assert entities.read_file(str(p)) == good
+    bad = [entities_store.make_entity("a", "Same", "person"), entities_store.make_entity("b", "SAME", "person")]
+    with pytest.raises(entities_store.EntitiesError):
+        entities_store.save(bad, str(p))
+    assert entities_store.read_file(str(p)) == good
 
 
 # ------------------------------------------------------------------ matching
 
 def test_mentions_whole_word_and_aliases():
     e = parse(ent("bro", "Brother", aliases=["bro", "Big B"]))[0]
-    assert entities.mentions("my brother said hi", e) == ["brother"]
-    assert entities.mentions("the brotherhood", e) == []
-    assert entities.mentions("BIG   b arrived", e) == ["big b"]
-    assert entities.mentions("", e) == [] and entities.mentions(None, e) == []
-    assert entities.terms(e) == ("brother", "bro", "big b")
+    assert entities_store.mentions("my brother said hi", e) == ["brother"]
+    assert entities_store.mentions("the brotherhood", e) == []
+    assert entities_store.mentions("BIG   b arrived", e) == ["big b"]
+    assert entities_store.mentions("", e) == [] and entities_store.mentions(None, e) == []
+    assert entities_store.terms(e) == ("brother", "bro", "big b")
 
 
 def test_match_all_scans_every_text_and_ignores_none():
     es = parse(ent("a", "Alice"), ent("b", "Bob"), ent("c", "Carol"))
-    hits = entities.match_all(["met alice", None, "", "Bob's note"], es)
+    hits = entities_store.match_all(["met alice", None, "", "Bob's note"], es)
     assert hits == {"a": ["alice"], "b": ["bob"]}
-    assert entities.match_all([], es) == {} and entities.match_all([None], es) == {}
+    assert entities_store.match_all([], es) == {} and entities_store.match_all([None], es) == {}
 
 
 def test_find_by_id_name_or_alias():
     es = parse(ent("zed", "Zed Name", aliases=["Zeddy"]))
     for ref in ("zed", "Zed Name", "zed  NAME", "zeddy", "ZEDDY"):
-        assert entities.find(es, ref)["id"] == "zed", ref
+        assert entities_store.find(es, ref)["id"] == "zed", ref
     for ref in ("nobody", "", "  ", None, 5):
-        assert entities.find(es, ref) is None, ref
+        assert entities_store.find(es, ref) is None, ref
 
 
 def test_edits():
     es = parse(ent("a", "Alice"))
-    new, changed = entities.add_entity(es, "Bob Builder", "person", ["Bobby"], private=True, notes="n")
+    new, changed = entities_store.add_entity(es, "Bob Builder", "person", ["Bobby"], private=True, notes="n")
     assert changed and [e["id"] for e in new] == ["a", "bob-builder"] and new[1]["private"] and len(es) == 1
-    assert entities.add_entity(new, "Bob Builder 2", "person")[0][2]["id"] == "bob-builder-2"
-    assert entities.unique_id("Zoë!", set()) == "zoe" and entities.unique_id("???", set()) == "entity"
-    assert entities.unique_id("Alice", {"alice"}) == "alice-2"
-    with pytest.raises(entities.EntitiesError, match="claimed twice"):
-        entities.add_entity(new, "bobby")                                        # collides with an alias
-    with pytest.raises(entities.EntitiesError):
-        entities.add_entity(new, "   ")
-    with pytest.raises(entities.EntitiesError, match="type"):
-        entities.add_entity(new, "Zed", "alien")
-    n2, c2 = entities.add_alias(new, "alice", "Al")
+    assert entities_store.add_entity(new, "Bob Builder 2", "person")[0][2]["id"] == "bob-builder-2"
+    assert entities_store.unique_id("Zoë!", set()) == "zoe" and entities_store.unique_id("???", set()) == "entity"
+    assert entities_store.unique_id("Alice", {"alice"}) == "alice-2"
+    with pytest.raises(entities_store.EntitiesError, match="claimed twice"):
+        entities_store.add_entity(new, "bobby")                                        # collides with an alias
+    with pytest.raises(entities_store.EntitiesError):
+        entities_store.add_entity(new, "   ")
+    with pytest.raises(entities_store.EntitiesError, match="type"):
+        entities_store.add_entity(new, "Zed", "alien")
+    n2, c2 = entities_store.add_alias(new, "alice", "Al")
     assert c2 and n2[0]["aliases"] == ["Al"] and new[0]["aliases"] == []
-    assert entities.add_alias(n2, "alice", "AL")[1] is False                      # already there (normalized)
-    with pytest.raises(entities.EntitiesError, match="claimed twice"):
-        entities.add_alias(n2, "alice", "Bobby")
-    with pytest.raises(entities.EntitiesError, match="unknown entity"):
-        entities.add_alias(n2, "ghost", "x")
-    t, ct = entities.set_private(es, "Alice", True)
-    assert ct and t[0]["private"] and entities.set_private(t, "alice", True)[1] is False
-    assert entities.set_private(t, "alice", False)[0][0]["private"] is False
-    with pytest.raises(entities.EntitiesError):
-        entities.set_private(es, "ghost", True)
+    assert entities_store.add_alias(n2, "alice", "AL")[1] is False                      # already there (normalized)
+    with pytest.raises(entities_store.EntitiesError, match="claimed twice"):
+        entities_store.add_alias(n2, "alice", "Bobby")
+    with pytest.raises(entities_store.EntitiesError, match="unknown entity"):
+        entities_store.add_alias(n2, "ghost", "x")
+    t, ct = entities_store.set_private(es, "Alice", True)
+    assert ct and t[0]["private"] and entities_store.set_private(t, "alice", True)[1] is False
+    assert entities_store.set_private(t, "alice", False)[0][0]["private"] is False
+    with pytest.raises(entities_store.EntitiesError):
+        entities_store.set_private(es, "ghost", True)
 
 
 # ------------------------------------------------------------------ privacy integration

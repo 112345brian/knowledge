@@ -104,7 +104,7 @@ layer = "adapter"
 depends_on = [
     "paths",            # lazy import of PRIVATE_DATA_DIR, so the module imports without a private repo
     "privacy",
-    "entities",
+    "entities_store",
 ]
 
 [[modules]]
@@ -122,8 +122,8 @@ path = "add_fact_store" # ADAPTER for add_fact: the locked JSON array file, cite
 layer = "adapter"
 depends_on = [
     "new_fact",
-    "fixity",
-    "subjects",
+    "fixity_store",
+    "subjects_store",
 ]
 
 [[modules]]
@@ -183,9 +183,9 @@ depends_on = [
     "new_fact",
     "paths",
     "revisions_store",
-    "build_info",
-    "entities",
-    "fixity",
+    "build_info_store",
+    "entities_store",
+    "fixity_store",
     "identifiers",
     "source_status_store",
     "validtime",
@@ -296,7 +296,7 @@ layer = "adapter"
 depends_on = [
     "modes",
     "timestamps",
-    "entities",
+    "entities_store",
     "identifiers",
     "validtime",
 ]
@@ -484,58 +484,58 @@ depends_on = [
 ]
 
 [[modules]]
-path = "fixity"   # ADAPTER #38 file fingerprints (reads files) and the changed-since-extraction audit
+path = "fixity_store"   # ADAPTER #38 file fingerprints (reads files) and the changed-since-extraction audit
 layer = "adapter"
 depends_on = []
 
 [[modules]]
-path = "build_info"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
+path = "build_info_store"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
 layer = "adapter"
 depends_on = [
     "clock",
-    "fixity",
+    "fixity_store",
     "private_git",
 ]
 
 [[modules]]
-path = "acquisition"   # ADAPTER #46 custodial history: data first, macOS file attributes fill gaps (read-only xattr)
+path = "acquisition_store"   # ADAPTER #46 custodial history: data first, macOS file attributes fill gaps (read-only xattr)
 layer = "adapter"
 depends_on = [
     "validtime",
 ]
 
 [[modules]]
-path = "private_edit"   # ADAPTER #43/#42 the shared load-edit-write-commit flow for hand-curated files in knowledge-private
+path = "private_edit_store"   # ADAPTER #43/#42 the shared load-edit-write-commit flow for hand-curated files in knowledge-private
 layer = "adapter"
 depends_on = [
     "private_git",
 ]
 
 [[modules]]
-path = "entities"   # ADAPTER #42 entities.json: validation, term matching, edits, linking
+path = "entities_store"   # ADAPTER #42 entities.json: validation, term matching, edits, linking
 layer = "adapter"
 depends_on = [
     "paths",
-    "private_edit",
+    "private_edit_store",
     "textmatch",
 ]
 
 [[modules]]
-path = "entity_tools"   # ADAPTER #42 keywords -> private entities (touches privacy_rules.json and entities.json together)
+path = "entity_migration_store"   # ADAPTER #42 keywords -> private entities (touches privacy_rules.json and entities.json together)
 layer = "adapter"
 depends_on = [
-    "entities",
+    "entities_store",
     "privacy",
-    "private_edit",
+    "private_edit_store",
     "privacy_store",
 ]
 
 [[modules]]
-path = "subjects"   # ADAPTER #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
+path = "subjects_store"   # ADAPTER #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
 layer = "adapter"
 depends_on = [
     "paths",
-    "private_edit",
+    "private_edit_store",
 ]
 
 # ===================================================================== CLI
@@ -613,8 +613,8 @@ depends_on = [
 path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
 layer = "cli"
 depends_on = [
-    "entities",
-    "entity_tools",
+    "entities_store",
+    "entity_migration_store",
     "knowledge",
 ]
 
@@ -630,7 +630,7 @@ path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
 layer = "cli"
 depends_on = [
     "knowledge",
-    "subjects",
+    "subjects_store",
 ]
 
 # ===================================================================== serving (highest)
@@ -666,8 +666,8 @@ depends_on = [
     "artist_rules",
     "fact_ingest_rules",
     "source_ingest_rules",
-    "acquisition",
-    "fixity",
+    "acquisition_store",
+    "fixity_store",
     "identifiers",
 ]
 
@@ -686,7 +686,7 @@ depends_on = [
     "normal_db",
     "paths",
     "privacy_store",
-    "build_info",
+    "build_info_store",
 ]
 
 [[modules]]
@@ -733,7 +733,7 @@ depends_on = [
     "_shared",
     "paths",
     "source_ingest_rules",
-    "acquisition",
+    "acquisition_store",
     "source_status",
 ]
 
@@ -744,8 +744,8 @@ depends_on = [
     "_shared",
     "paths",
     "source_ingest_rules",
-    "acquisition",
-    "fixity",
+    "acquisition_store",
+    "fixity_store",
 ]
 
 [[modules]]
@@ -768,7 +768,7 @@ depends_on = [
     "privacy_store",
     "revisions",
     "revisions_store",
-    "fixity",
+    "fixity_store",
 ]
 
 [[modules]]
@@ -784,7 +784,7 @@ path = "06_seed_subject_hierarchy"
 layer = "pipeline"
 depends_on = [
     "seed_rules",
-    "subjects",
+    "subjects_store",
 ]
 
 [[modules]]
@@ -832,7 +832,7 @@ depends_on = [
     "revisions",
     "revisions_store",
     "_shared",
-    "fixity",
+    "fixity_store",
 ]
 
 [[modules]]
@@ -851,7 +851,7 @@ path = "backfill_extracted_hashes"
 layer = "pipeline"
 depends_on = [
     "backfill_source_keys",
-    "fixity",
+    "fixity_store",
     "revisions",
     "revisions_store",
 ]
@@ -860,14 +860,14 @@ depends_on = [
 path = "export_subjects"
 layer = "pipeline"
 depends_on = [
-    "subjects",
+    "subjects_store",
 ]
 
 [[modules]]
 path = "13_link_entities"
 layer = "pipeline"
 depends_on = [
-    "entities",
+    "entities_store",
     "paths",
 ]
 

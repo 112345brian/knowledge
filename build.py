@@ -49,8 +49,8 @@ class BuildError(Exception):
 
 def record_build_info(con):
     """#47: which inputs and code produced this db (build_info / build_inputs)."""
-    import build_info, paths
-    build_info.record(con, paths, HERE, paths.PRIVATE_DATA_DIR)
+    import build_info_store, paths
+    build_info_store.record(con, paths, HERE, paths.PRIVATE_DATA_DIR)
     con.commit()
 
 

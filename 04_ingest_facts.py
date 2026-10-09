@@ -12,7 +12,7 @@ import sqlite3, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fact_ingest_rules
-import fixity
+import fixity_store
 from _shared import get_or_create_vault_file
 import revisions
 import revisions_store
@@ -81,7 +81,7 @@ def run(con):
         is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
         baseline = item.get("extracted_from_sha256")
-        if baseline is not None and not fixity.valid_sha256(baseline):
+        if baseline is not None and not fixity_store.valid_sha256(baseline):
             raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
         date_added = fact_ingest_rules.require_date_added(item, *item["_where"])
         # #7: the entry's own freshness, or for a legacy entry (original files, no provenance)

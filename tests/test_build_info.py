@@ -16,7 +16,7 @@ import types
 
 import pytest
 
-import build_info as bi
+import build_info_store as bi
 import private_git
 from test_add_fact import REPO
 
@@ -289,7 +289,7 @@ def test_hashing_a_scrobbles_sized_input_is_fast(tmp_path, capsys):
         for _ in range(64):
             f.write(chunk)
     start = time.perf_counter()
-    fp = bi.fixity.fingerprint(str(p))
+    fp = bi.fixity_store.fingerprint(str(p))
     took = time.perf_counter() - start
     with capsys.disabled():
         print(f"\n[#47] hashed a {fp['size_bytes'] / 1e6:.0f} MB input in {took:.2f} s")

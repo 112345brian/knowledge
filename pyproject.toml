@@ -103,16 +103,16 @@ source_modules = [
     "kn.seed_rules",
     "kn.source_ingest_rules",
     "kn.timestamps",
-    "kn.acquisition",
-    "kn.build_info",
-    "kn.entities",
-    "kn.entity_tools",
-    "kn.fixity",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.fixity_store",
     "kn.identifiers",
-    "kn.private_edit",
+    "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
-    "kn.subjects",
+    "kn.subjects_store",
     "kn.textmatch",
     "kn.validtime",
 ]
@@ -201,16 +201,16 @@ source_modules = [
     "kn.seed_rules",
     "kn.source_ingest_rules",
     "kn.timestamps",
-    "kn.acquisition",
-    "kn.build_info",
-    "kn.entities",
-    "kn.entity_tools",
-    "kn.fixity",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.fixity_store",
     "kn.identifiers",
-    "kn.private_edit",
+    "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
-    "kn.subjects",
+    "kn.subjects_store",
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
@@ -329,7 +329,7 @@ allow_indirect_imports = true   # add_fact -> private_git -> subprocess is the i
 ignore_imports = [
     "kn.private_git -> subprocess",
     "kn.script_runner -> subprocess",
-    "kn.acquisition -> subprocess",
+    "kn.acquisition_store -> subprocess",
 ]
 
 [[tool.importlinter.contracts]]
@@ -391,14 +391,14 @@ forbidden_modules = [
     "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.add_fact", "kn.lifecycle",
     "kn.review", "kn.facts_batch", "kn.migrate_memory", "kn.normal_db", "kn.leak_test", "kn.private_git",
     "kn.paths", "kn.clock",
-    "kn.acquisition",
-    "kn.build_info",
-    "kn.entities",
-    "kn.entity_tools",
-    "kn.fixity",
-    "kn.private_edit",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
     "kn.source_status_store",
-    "kn.subjects",
+    "kn.subjects_store",
 ]
 allow_indirect_imports = true
 
@@ -426,14 +426,14 @@ forbidden_modules = [
     "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.ids", "kn.private_git",
     "kn.paths", "kn.clock", "kn.normal_db", "kn.leak_test",
     "kn.add_fact", "kn.lifecycle", "kn.review", "kn.facts_batch", "kn.migrate_memory",
-    "kn.acquisition",
-    "kn.build_info",
-    "kn.entities",
-    "kn.entity_tools",
-    "kn.fixity",
-    "kn.private_edit",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
     "kn.source_status_store",
-    "kn.subjects",
+    "kn.subjects_store",
 ]
 allow_indirect_imports = true
 
@@ -460,11 +460,11 @@ source_modules = [
 forbidden_modules = [
     "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
     "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids",
-    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.entities", "kn.entity_tools", "kn.subjects",
-    "kn.acquisition",
-    "kn.build_info",
-    "kn.fixity",
-    "kn.private_edit",
+    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
     "kn.source_status_store",
 ]
 allow_indirect_imports = true
@@ -473,9 +473,9 @@ allow_indirect_imports = true
 # These three edges are the whole debt; they need an entities/subjects use case plus a store (as review and
 # lifecycle have) before they can go. No other CLI or inbox module may add one.
 ignore_imports = [
-    "kn.cli_entities -> kn.entities",
-    "kn.cli_entities -> kn.entity_tools",
-    "kn.cli_subjects -> kn.subjects",
+    "kn.cli_entities -> kn.entities_store",
+    "kn.cli_entities -> kn.entity_migration_store",
+    "kn.cli_subjects -> kn.subjects_store",
 ]
 
 [[tool.importlinter.contracts]]
@@ -489,21 +489,21 @@ name = "Libraries form a DAG (no cycles) in a fixed order"
 type = "layers"
 containers = ["kn"]
 layers = [
-    "facts_batch | lifecycle | migrate_memory | entity_tools",
+    "facts_batch | lifecycle | migrate_memory | entity_migration_store",
     "modes_store | claims_store | facts_batch_service",
     "review | modes | claims_audit | normal_db",
     "leak_test | lifecycle_service | migrate_memory_service",
     "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
-    "revisions_store | build_info | source_status_store",
+    "revisions_store | build_info_store | source_status_store",
     "add_fact",
     "privacy_store | add_fact_service | fact_ingest_rules | backfill_rules",
     "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules | source_ingest_rules",
     "new_fact",
-    "subjects",
-    "entities",
-    "privacy | source_status | acquisition",
-    "private_edit",
-    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | rules_edit_service | artist_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules | fixity | validtime | textmatch | identifiers",
+    "subjects_store",
+    "entities_store",
+    "privacy | source_status | acquisition_store",
+    "private_edit_store",
+    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | rules_edit_service | artist_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

@@ -9,7 +9,7 @@ in `modes`; this module only builds the queries and shapes the rows.
 A fact that is not visible answers exactly like a fact that does not exist (None / [] / no row),
 never "forbidden", so ids and source_keys cannot be probed. `con` needs `row_factory = sqlite3.Row`.
 """
-import entities
+import entities_store
 import identifiers
 import modes
 import validtime
@@ -44,7 +44,7 @@ def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=
         sql += clause
         params.extend(extra)
     if entity is not None:
-        clause, extra = entities.filter_clause(entity)
+        clause, extra = entities_store.filter_clause(entity)
         sql += clause
         params.extend(extra)
     if valid_at is not None:

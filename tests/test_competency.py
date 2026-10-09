@@ -115,10 +115,10 @@ def test_cq_03_capture_provenance(world):
 
 
 def test_cq_04_source_file_changed_since_extraction(world):
-    import fixity
-    assert fixity.audit_sources(world) == []
+    import fixity_store
+    assert fixity_store.audit_sources(world) == []
     world.note.write_bytes(b"edited later")
-    (row,) = fixity.audit_sources(world)
+    (row,) = fixity_store.audit_sources(world)
     assert (row["fact_id"], row["reason"]) == (1, "changed") and row["baseline_sha256"] != row["current_sha256"]
 
 
@@ -262,8 +262,8 @@ def test_cq_22_facts_of_a_kind(world):
 # ------------------------------------------------------------------ build and data
 
 def test_cq_23_which_inputs_produced_this_db(world):
-    import build_info
-    got = build_info.latest(world)
+    import build_info_store
+    got = build_info_store.latest(world)
     assert got["build"]["schema_version"] == 2 and got["build"]["code_commit"] == "a" * 40
     assert [i["input_key"] for i in got["inputs"]] == ["input:concerts-csv"]
 

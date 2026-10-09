@@ -7,9 +7,9 @@ import pathlib
 import sqlite3
 
 import add_fact_store
-import build_info
-import entities
-import fixity
+import build_info_store
+import entities_store
+import fixity_store
 import identifiers
 import revisions_store
 import source_status_store
@@ -89,7 +89,7 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
         sql += clause
         params.extend(extra)
     if entity is not None:
-        clause, extra = entities.filter_clause(entity)
+        clause, extra = entities_store.filter_clause(entity)
         sql += clause
         params.extend(extra)
     if valid_at is not None:
@@ -194,7 +194,7 @@ QueryError = sqlite3.OperationalError  # raised for FTS syntax errors and for a 
 
 def audit_sources(con):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):
@@ -203,8 +203,8 @@ def audit_source_status(con):
 
 
 def latest_build_info(con):
-    """The latest build row and its input manifest (#47), or None; see build_info.latest."""
-    return build_info.latest(con)
+    """The latest build row and its input manifest (#47), or None; see build_info_store.latest."""
+    return build_info_store.latest(con)
 
 
-compare_build_info = build_info.compare
+compare_build_info = build_info_store.compare

@@ -20,7 +20,7 @@ import importlib.util
 import os
 import sys
 
-import subjects
+import subjects_store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,7 +40,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    path = os.path.join(args.data_dir, subjects.SUBJECTS_FILENAME) if args.data_dir else subjects.data_path()
+    path = os.path.join(args.data_dir, subjects_store.SUBJECTS_FILENAME) if args.data_dir else subjects_store.data_path()
     entries = builtin_entries()
     if os.path.exists(path):
         print(f"error: {path} already exists; refusing to overwrite it", file=sys.stderr)
@@ -50,7 +50,7 @@ def main(argv=None):
         print("dry run: nothing written. Re-run with --apply.")
         return 0
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    subjects.save(entries, path)
+    subjects_store.save(entries, path)
     print(f"wrote {path}. Review and commit it in knowledge-private.")
     return 0
 

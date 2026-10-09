@@ -14,7 +14,7 @@ import sys
 
 import typer
 
-import subjects
+import subjects_store
 
 app = typer.Typer(help="The subject hierarchy: relation types, descriptions, aliases, deprecation. "
                        "Edits go to subjects.json in knowledge-private (rebuild to apply).",
@@ -151,7 +151,7 @@ def _report(res, as_json):
 @app.command("alias", help="Give a subject another name. New facts filed under the alias are stored under the subject.")
 def cmd_alias(name: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects.edit_file(lambda e: subjects.add_alias(e, name, alias, known=set(known), domain=known.get(name)),
+    res = subjects_store.edit_file(lambda e: subjects_store.add_alias(e, name, alias, known=set(known), domain=known.get(name)),
                              f"add alias {alias} to {name}", f"subjects: alias {alias} -> {name}", allow_dirty, dry_run)
     _report(res, as_json)
 
@@ -159,7 +159,7 @@ def cmd_alias(name: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_ru
 @app.command("describe", help="Set a subject's scope note (blank text clears it).")
 def cmd_describe(name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects.edit_file(lambda e: subjects.describe(e, name, text, known=set(known), domain=known.get(name)),
+    res = subjects_store.edit_file(lambda e: subjects_store.describe(e, name, text, known=set(known), domain=known.get(name)),
                              f"set description of {name}", f"subjects: describe {name}", allow_dirty, dry_run)
     _report(res, as_json)
 
@@ -168,7 +168,7 @@ def cmd_describe(name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_
 def cmd_deprecate(name: str, replaced_by: str = typer.Option(None, "--replaced-by", help="The subject to use instead."),
                   allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects.edit_file(lambda e: subjects.deprecate(e, name, replaced_by, known=set(known), domain=known.get(name)),
+    res = subjects_store.edit_file(lambda e: subjects_store.deprecate(e, name, replaced_by, known=set(known), domain=known.get(name)),
                              f"deprecate {name}" + (f" (use {replaced_by})" if replaced_by else ""),
                              f"subjects: deprecate {name}", allow_dirty, dry_run)
     _report(res, as_json)

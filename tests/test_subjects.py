@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-import subjects
+import subjects_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 
@@ -90,7 +90,7 @@ def test_exported_file_and_builtin_table_give_identical_subject_rows(tmp_path):
     seed_ingested(a)
     seed_ingested(b)
     mod.run_builtin(a)
-    mod.run_entries(b, subjects.parse(subjects.to_json(mod.builtin_entries())))
+    mod.run_entries(b, subjects_store.parse(subjects_store.to_json(mod.builtin_entries())))
     assert tree(a) == tree(b)
     cols = "name, domain, parent_relation, deprecated, description, replaced_by_subject_id"
     assert sorted(map(tuple, a.execute(f"SELECT {cols} FROM subjects"))) == sorted(map(tuple, b.execute(f"SELECT {cols} FROM subjects")))
@@ -99,14 +99,14 @@ def test_exported_file_and_builtin_table_give_identical_subject_rows(tmp_path):
 # ------------------------------------------------------------------ the library rules
 
 def test_to_json_parse_round_trip_and_omits_defaults():
-    entries = subjects.parse({"subjects": [
+    entries = subjects_store.parse({"subjects": [
         entry("a"), entry("b", parent="a", relation="part-of", description="  note  ", aliases=["bee", "b2"]),
         entry("c", deprecated=True, replaced_by="a")]})
-    data = subjects.to_json(entries)
+    data = subjects_store.to_json(entries)
     assert data["version"] == 1 and [e["name"] for e in data["subjects"]] == ["a", "b", "c"]
     assert data["subjects"][0] == {"name": "a"}
     assert data["subjects"][1] == {"name": "b", "parent": "a", "relation": "part-of", "description": "note", "aliases": ["b2", "bee"]}
-    assert subjects.parse(data) == subjects.parse(json.loads(json.dumps(data)))
+    assert subjects_store.parse(data) == subjects_store.parse(json.loads(json.dumps(data)))
 
 
 @pytest.mark.parametrize("bad, msg", [
@@ -138,90 +138,90 @@ def test_to_json_parse_round_trip_and_omits_defaults():
     ({"subjects": [entry("a", aliases=["x"]), entry("b", parent="x")]}, "it is an alias"),
 ])
 def test_invalid_files_are_refused_naming_the_problem(bad, msg):
-    with pytest.raises(subjects.SubjectsError, match=msg):
-        subjects.parse(bad)
+    with pytest.raises(subjects_store.SubjectsError, match=msg):
+        subjects_store.parse(bad)
 
 
 def test_every_relation_type_is_accepted():
-    for rel in subjects.RELATIONS:
-        e = subjects.parse({"subjects": [entry("a"), entry("b", parent="a", relation=rel)]})
+    for rel in subjects_store.RELATIONS:
+        e = subjects_store.parse({"subjects": [entry("a"), entry("b", parent="a", relation=rel)]})
         assert e[1]["relation"] == rel
-    assert subjects.RELATIONS == ("broader", "part-of", "subtype-of", "member-of")
+    assert subjects_store.RELATIONS == ("broader", "part-of", "subtype-of", "member-of")
 
 
 def test_read_file_absent_corrupt_and_unreadable(tmp_path):
-    assert subjects.read_file(str(tmp_path / "nope.json")) is None
+    assert subjects_store.read_file(str(tmp_path / "nope.json")) is None
     bad = tmp_path / "s.json"
     bad.write_text("{not json")
-    with pytest.raises(subjects.SubjectsError, match="not valid JSON"):
-        subjects.read_file(str(bad))
+    with pytest.raises(subjects_store.SubjectsError, match="not valid JSON"):
+        subjects_store.read_file(str(bad))
     bad.write_bytes(b"\xff\xfe\x00")
-    with pytest.raises(subjects.SubjectsError):
-        subjects.read_file(str(bad))
+    with pytest.raises(subjects_store.SubjectsError):
+        subjects_store.read_file(str(bad))
 
 
 def test_canonical_and_check_new_fact():
-    entries = subjects.parse({"subjects": [
+    entries = subjects_store.parse({"subjects": [
         entry("steroids", aliases=["aas", "juice"]), entry("old-topic", deprecated=True, replaced_by="steroids", aliases=["ancient"]),
         entry("dead-end", deprecated=True)]})
-    assert subjects.canonical("steroids", entries) == ("steroids", "name")
-    assert subjects.canonical("aas", entries) == ("steroids", "alias")
-    assert subjects.canonical("brand-new", entries) == ("brand-new", "unknown")
-    assert subjects.canonical("aas", []) == ("aas", "unknown") and subjects.canonical("aas", None) == ("aas", "unknown")
-    canon, notes, err = subjects.check_new_fact("juice", entries)
+    assert subjects_store.canonical("steroids", entries) == ("steroids", "name")
+    assert subjects_store.canonical("aas", entries) == ("steroids", "alias")
+    assert subjects_store.canonical("brand-new", entries) == ("brand-new", "unknown")
+    assert subjects_store.canonical("aas", []) == ("aas", "unknown") and subjects_store.canonical("aas", None) == ("aas", "unknown")
+    canon, notes, err = subjects_store.check_new_fact("juice", entries)
     assert (canon, err) == ("steroids", None) and "alias of 'steroids'" in notes[0]
-    assert subjects.check_new_fact("steroids", entries) == ("steroids", [], None)
-    canon, _, err = subjects.check_new_fact("old-topic", entries)
+    assert subjects_store.check_new_fact("steroids", entries) == ("steroids", [], None)
+    canon, _, err = subjects_store.check_new_fact("old-topic", entries)
     assert canon == "old-topic" and "deprecated" in err and "'steroids'" in err
-    assert "'steroids'" in subjects.check_new_fact("ancient", entries)[2]            # alias of a deprecated subject
-    assert "no replacement" in subjects.check_new_fact("dead-end", entries)[2]
+    assert "'steroids'" in subjects_store.check_new_fact("ancient", entries)[2]            # alias of a deprecated subject
+    assert "no replacement" in subjects_store.check_new_fact("dead-end", entries)[2]
 
 
 def test_edit_functions():
-    base = subjects.parse({"subjects": [entry("a"), entry("b", aliases=["bee"])]})
-    new, changed = subjects.add_alias(base, "a", "ay")
+    base = subjects_store.parse({"subjects": [entry("a"), entry("b", aliases=["bee"])]})
+    new, changed = subjects_store.add_alias(base, "a", "ay")
     assert changed and {e["name"]: e["aliases"] for e in new}["a"] == ["ay"] and base[0]["aliases"] == []   # input untouched
-    assert subjects.add_alias(new, "a", "ay") == (new, False)
-    with pytest.raises(subjects.SubjectsError, match="already belongs to 'b'"):
-        subjects.add_alias(new, "a", "bee")
-    with pytest.raises(subjects.SubjectsError, match="already a subject name"):
-        subjects.add_alias(new, "a", "b")
-    with pytest.raises(subjects.SubjectsError, match="unknown subject"):
-        subjects.add_alias(new, "ghost", "x")
-    with pytest.raises(subjects.SubjectsError, match="kebab-case"):
-        subjects.add_alias(new, "a", "Bad Alias")
+    assert subjects_store.add_alias(new, "a", "ay") == (new, False)
+    with pytest.raises(subjects_store.SubjectsError, match="already belongs to 'b'"):
+        subjects_store.add_alias(new, "a", "bee")
+    with pytest.raises(subjects_store.SubjectsError, match="already a subject name"):
+        subjects_store.add_alias(new, "a", "b")
+    with pytest.raises(subjects_store.SubjectsError, match="unknown subject"):
+        subjects_store.add_alias(new, "ghost", "x")
+    with pytest.raises(subjects_store.SubjectsError, match="kebab-case"):
+        subjects_store.add_alias(new, "a", "Bad Alias")
     # a subject that exists only in the db gets a minimal entry
-    new2, changed = subjects.add_alias(base, "dbonly", "dbo", known={"dbonly"}, domain="music")
+    new2, changed = subjects_store.add_alias(base, "dbonly", "dbo", known={"dbonly"}, domain="music")
     assert changed and {e["name"]: e for e in new2}["dbonly"]["domain"] == "music"
-    with pytest.raises(subjects.SubjectsError, match="already a subject name"):
-        subjects.add_alias(base, "a", "dbonly", known={"dbonly"})
+    with pytest.raises(subjects_store.SubjectsError, match="already a subject name"):
+        subjects_store.add_alias(base, "a", "dbonly", known={"dbonly"})
     # describe
-    d, changed = subjects.describe(base, "a", "  Scope note ")
+    d, changed = subjects_store.describe(base, "a", "  Scope note ")
     assert changed and {e["name"]: e for e in d}["a"]["description"] == "Scope note"
-    assert subjects.describe(d, "a", "Scope note")[1] is False
-    cleared, changed = subjects.describe(d, "a", "   ")
+    assert subjects_store.describe(d, "a", "Scope note")[1] is False
+    cleared, changed = subjects_store.describe(d, "a", "   ")
     assert changed and {e["name"]: e for e in cleared}["a"]["description"] is None
-    assert subjects.describe(base, "a", " ")[1] is False
+    assert subjects_store.describe(base, "a", " ")[1] is False
     # deprecate
-    dep, changed = subjects.deprecate(base, "a", "b")
+    dep, changed = subjects_store.deprecate(base, "a", "b")
     assert changed and {e["name"]: e for e in dep}["a"]["replaced_by"] == "b"
-    assert subjects.deprecate(dep, "a", "b")[1] is False
-    with pytest.raises(subjects.SubjectsError, match="cannot replace itself"):
-        subjects.deprecate(base, "a", "a")
-    with pytest.raises(subjects.SubjectsError, match="unknown replacement"):
-        subjects.deprecate(base, "a", "ghost")
-    with pytest.raises(subjects.SubjectsError, match="replaced_by cycle"):
-        subjects.deprecate(dep, "b", "a")
+    assert subjects_store.deprecate(dep, "a", "b")[1] is False
+    with pytest.raises(subjects_store.SubjectsError, match="cannot replace itself"):
+        subjects_store.deprecate(base, "a", "a")
+    with pytest.raises(subjects_store.SubjectsError, match="unknown replacement"):
+        subjects_store.deprecate(base, "a", "ghost")
+    with pytest.raises(subjects_store.SubjectsError, match="replaced_by cycle"):
+        subjects_store.deprecate(dep, "b", "a")
 
 
 def test_save_is_atomic_sorted_and_refuses_an_invalid_set(tmp_path):
     p = str(tmp_path / "subjects.json")
-    subjects.save(subjects.parse({"subjects": [entry("zeta"), entry("alpha")]}), p)
+    subjects_store.save(subjects_store.parse({"subjects": [entry("zeta"), entry("alpha")]}), p)
     assert [e["name"] for e in json.load(open(p))["subjects"]] == ["alpha", "zeta"]
     assert os.listdir(tmp_path) == ["subjects.json"]
-    bad = [subjects._entry("a", aliases=["a"])]
-    with pytest.raises(subjects.SubjectsError):
-        subjects.save(bad, p)
+    bad = [subjects_store._entry("a", aliases=["a"])]
+    with pytest.raises(subjects_store.SubjectsError):
+        subjects_store.save(bad, p)
     assert [e["name"] for e in json.load(open(p))["subjects"]] == ["alpha", "zeta"]    # untouched
 
 
@@ -503,7 +503,7 @@ def test_export_subjects_dry_run_default_apply_and_no_overwrite(tmp_path):
     d = str(tmp_path / "out")
     assert export_subjects.main(["--data-dir", d]) == 0 and not os.path.exists(d)
     assert export_subjects.main(["--data-dir", d, "--apply"]) == 0
-    entries = subjects.read_file(os.path.join(d, "subjects.json"))
+    entries = subjects_store.read_file(os.path.join(d, "subjects.json"))
     assert len(entries) == 26 and sum(1 for e in entries if e["parent"]) == 24
     assert export_subjects.main(["--data-dir", d, "--apply"]) == 1                    # refuses to overwrite
     with pytest.raises(SystemExit):

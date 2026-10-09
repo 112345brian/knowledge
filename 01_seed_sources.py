@@ -15,7 +15,7 @@ Run after schema.sql, before 02/03/04.
 import sqlite3, os, sys, json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import acquisition
+import acquisition_store
 import source_ingest_rules
 import source_status
 from _shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
@@ -42,7 +42,7 @@ def run(con):
         row = {k: s.get(k) for k in FIELDS if k not in ("author", "publisher")}
         row["publisher_id"] = publisher_id
         row.update(source_status.normalize_fields(s, f"manual_sources.json: source {s.get('citekey')!r}"))  # #41
-        row.update(acquisition.resolve(acquisition.normalize_data(s, f"manual_sources.json: source {s.get('citekey')!r}"),
+        row.update(acquisition_store.resolve(acquisition_store.normalize_data(s, f"manual_sources.json: source {s.get('citekey')!r}"),
                                        s.get("origin_path")))  # #46: data first, file attributes fill gaps
         cur.execute(
             """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,

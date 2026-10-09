@@ -25,7 +25,7 @@ import os
 import sys
 
 import backfill_source_keys
-import fixity
+import fixity_store
 import revisions
 import revisions_store
 
@@ -46,7 +46,7 @@ def make_adder(resolve, unresolved):
         path = entry.get("origin_path") or resolve(entry.get("notes"))
         if not path:
             return {}
-        sha = fixity.fingerprint(path)["content_sha256"]
+        sha = fixity_store.fingerprint(path)["content_sha256"]
         if sha is None:
             unresolved.append((filename, index, path))
             return {}

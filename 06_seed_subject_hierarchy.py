@@ -14,16 +14,16 @@ the table is dead code and can be deleted (the export tool and its test are the 
 import sqlite3, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import subjects
+import subjects_store
 
 from seed_rules import AAS_CHILDREN, TRAINING_CHILDREN
 
 
 def builtin_entries():
     """The hierarchy as it was hardcoded before #43, as subjects.json entries (what export_subjects.py writes)."""
-    parents = [subjects._entry("anabolic-steroids"), subjects._entry("training", domain="health-and-fitness")]
-    kids = [subjects._entry(n, parent="anabolic-steroids") for n in AAS_CHILDREN]
-    kids += [subjects._entry(n, parent="training") for n in TRAINING_CHILDREN]
+    parents = [subjects_store._entry("anabolic-steroids"), subjects_store._entry("training", domain="health-and-fitness")]
+    kids = [subjects_store._entry(n, parent="anabolic-steroids") for n in AAS_CHILDREN]
+    kids += [subjects_store._entry(n, parent="training") for n in TRAINING_CHILDREN]
     return parents + kids
 
 
@@ -44,13 +44,13 @@ def run_builtin(con):
 def run_entries(con, entries):
     cur = con.cursor()
     for e in entries:
-        cur.execute("INSERT OR IGNORE INTO subjects (name, domain) VALUES (?, ?)", (e["name"], e["domain"] or subjects.DEFAULT_DOMAIN))
+        cur.execute("INSERT OR IGNORE INTO subjects (name, domain) VALUES (?, ?)", (e["name"], e["domain"] or subjects_store.DEFAULT_DOMAIN))
     ids = {name: i for i, name in cur.execute("SELECT id, name FROM subjects")}
     for e in entries:
         parent = ids[e["parent"]] if e["parent"] else None
         cur.execute(
             "UPDATE subjects SET parent_id = ?, parent_relation = ?, description = ?, deprecated = ? WHERE id = ?",
-            (parent, (e["relation"] or subjects.DEFAULT_RELATION) if parent else subjects.DEFAULT_RELATION,
+            (parent, (e["relation"] or subjects_store.DEFAULT_RELATION) if parent else subjects_store.DEFAULT_RELATION,
              e["description"], 1 if e["deprecated"] else 0, ids[e["name"]]))
     for e in entries:  # second pass: the replacement may be listed after the subject
         if e["replaced_by"]:
@@ -64,7 +64,7 @@ def run_entries(con, entries):
 
 
 def run(con):
-    entries = subjects.read_file()  # raises SubjectsError on a bad file: the build fails loudly
+    entries = subjects_store.read_file()  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
         run_builtin(con)
         source = "built-in table; subjects.json not found"

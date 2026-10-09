@@ -30,7 +30,7 @@ import re
 import stat
 import uuid
 
-import private_edit
+import private_edit_store
 
 SUBJECTS_FILENAME = "subjects.json"
 VERSION = 1
@@ -300,12 +300,12 @@ def deprecate(entries, subject, replaced_by=None, known=(), domain=None):
 
 # ------------------------------------------------------------------ the git flow (like the privacy rules)
 
-EditResult = private_edit.EditResult
+EditResult = private_edit_store.EditResult
 
 
 def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None):
     """Load subjects.json (an absent file starts empty), apply `edit(entries) -> (new_entries, changed)`,
-    refuse on a dirty private repo, write atomically and commit only that file (private_edit.edit_files).
+    refuse on a dirty private repo, write atomically and commit only that file (private_edit_store.edit_files).
     Never prints or exits. `what` / `message` describe the change for the report / commit."""
     path = data_path() if path is None else path
 
@@ -313,5 +313,5 @@ def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None):
         new, changed = edit(read_file(path) or [])
         return changed, new
 
-    return private_edit.edit_files([path], compute, lambda new: save(new, path), what, message,
+    return private_edit_store.edit_files([path], compute, lambda new: save(new, path), what, message,
                                    allow_dirty, dry_run, error_types=(SubjectsError,))
