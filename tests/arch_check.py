@@ -29,13 +29,13 @@ SHADOW_PKG = "kn"
 # The ETL steps and helpers live in ingest/ (a plain directory on the source path, not a package), so their
 # names are bare module names like every other module. Everything below treats the repo root and ingest/ as one
 # flat namespace.
-INGEST_DIR = "ingest"
+PACKAGE_DIRS = ("ingest", "client")   # the sub-packages whose modules are flattened into the shadow
 
 
 def _source_files(src_dir):
     """{module stem: path} for the root directory and ingest/."""
     found = {}
-    for d in (src_dir, os.path.join(src_dir, INGEST_DIR)):
+    for d in (src_dir, *(os.path.join(src_dir, p) for p in PACKAGE_DIRS)):
         if os.path.isdir(d):
             for f in os.listdir(d):
                 if f.endswith(".py") and f != "__init__.py":
@@ -79,7 +79,10 @@ def planned_modules(text):
 
 def _shadow_name(name, pkg):
     """The shadow name of an imported module: `ingest.x` and `x` are both `kn.x` (the shadow is flat)."""
-    return f"{pkg}.{name[len('ingest.'):] if name.startswith('ingest.') else name}"
+    for package in PACKAGE_DIRS:
+        if name.startswith(package + "."):
+            return f"{pkg}.{name[len(package) + 1:]}"
+    return f"{pkg}.{name}"
 
 
 def _rewrite_internal_imports(source, names, pkg=SHADOW_PKG):
@@ -89,12 +92,12 @@ def _rewrite_internal_imports(source, names, pkg=SHADOW_PKG):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
-                if a.name.split(".")[0] in names or a.name.startswith("ingest."):
+                if a.name.split(".")[0] in names or a.name.split(".")[0] in PACKAGE_DIRS:
                     edits.append((a.lineno - 1, a.col_offset, a.name, _shadow_name(a.name, pkg)))
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            if node.module == "ingest":
+            if node.module in PACKAGE_DIRS:
                 edits.append((node.lineno - 1, node.col_offset, node.module, pkg))  # from ingest import x -> from kn import x
-            elif node.module.split(".")[0] in names or node.module.startswith("ingest."):
+            elif node.module.split(".")[0] in names or node.module.split(".")[0] in PACKAGE_DIRS:
                 edits.append((node.lineno - 1, node.col_offset, node.module, _shadow_name(node.module, pkg)))
     for ln, col, old, new in sorted(edits, reverse=True):
         line = lines[ln]

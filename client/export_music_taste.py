@@ -10,8 +10,8 @@ doesn't build it) -- run anytime after music_ratings.py has
 populated `albums`.
 
 Usage:
-    python3 -m ingest.export_music_taste                    # JSON to stdout
-    python3 -m ingest.export_music_taste -o taste.json       # JSON to a file
+    python3 -m client.export_music_taste                    # JSON to stdout
+    python3 -m client.export_music_taste -o taste.json       # JSON to a file
 """
 import sqlite3, os, sys, json, argparse
 

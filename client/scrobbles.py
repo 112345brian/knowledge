@@ -21,7 +21,7 @@ Sweatshirt") or a duo alongside its own members ("Madvillain, Madlib, MF
 DOOM") -- there's no safe general rule for splitting that, so each such
 string just becomes its own artist row like any other, and real membership
 facts ("Madvillain's members are Madlib and MF DOOM") are curated separately
-in artist_members (see ARTIST_MEMBERS in shared.py), not derived here.
+in artist_members (see ARTIST_MEMBERS in artist_rules.py), not derived here.
 
 NOTE: iter_scrobbles() and the artist-cache helpers are duplicated (not
 imported) in a sibling personal project's import_scrobbles.py, which
@@ -30,8 +30,9 @@ the two repos are independent on purpose -- but it means a parsing fix here
 (e.g. if Last.fm changes its export shape) needs to be made there too.
 """
 import sqlite3, json, os
-from ingest.shared import load_artist_cache, get_or_create_artist, get_or_create
-from ingest import music_ingest_rules
+from client.music_shared import load_artist_cache, get_or_create_artist
+from ingest.shared import get_or_create
+from client import music_ingest_rules
 from paths import SCROBBLES_JSON
 
 SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)

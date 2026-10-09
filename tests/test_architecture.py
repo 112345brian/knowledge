@@ -28,10 +28,16 @@ def _read(path):
         return f.read()
 
 
+PACKAGES = ("ingest", "client")   # the sub-packages: ETL core, optional client sources
+
+
 def _bare(name):
-    """`ingest.shared` -> `shared`: tach names the ingest package's modules with the package, the import-linter
-    shadow, the architecture map and the tests use the bare module name (they are unique across the repo)."""
-    return name[len("ingest."):] if name.startswith("ingest.") else name
+    """`ingest.shared` / `client.concerts` -> `shared` / `concerts`: tach names a package's modules with the package,
+    the import-linter shadow, the architecture map and the tests use the bare module name (unique across the repo)."""
+    for package in PACKAGES:
+        if name.startswith(package + "."):
+            return name[len(package) + 1:]
+    return name
 
 
 def _tach_modules(text):
@@ -63,14 +69,30 @@ def test_git_only_runs_inside_private_git():
 HEXAGON_LAYERS = ("facade", "adapter", "use_case", "domain")  # the library side of tach.toml, outermost first
 
 
-def test_ingest_package_holds_only_modules_tach_knows_under_their_package_name():
-    """ingest/ is a package of ETL steps, helpers and their rules. Each module is classified in tach.toml as
-    `ingest.<name>`, and a bare name exists in only one of the repo root and the package."""
+def _package_modules():
+    return {p: {f[:-3] for f in os.listdir(os.path.join(REPO, p)) if f.endswith(".py") and f != "__init__.py"} for p in PACKAGES}
+
+
+def test_packages_hold_only_modules_tach_knows_under_their_package_name():
+    """ingest/ (the core ETL) and client/ (optional sources) are packages. Each module is classified in tach.toml as
+    `<package>.<name>`, and a bare name exists in only one place (the import-linter shadow is flat)."""
     raw = {m["path"] for m in tomllib.loads(_read(TACH_TOML))["modules"]}
-    modules = _tach_modules(_read(TACH_TOML))
-    in_ingest = {f[:-3] for f in os.listdir(os.path.join(REPO, "ingest")) if f.endswith(".py") and f != "__init__.py"}
-    assert in_ingest and {f"ingest.{n}" for n in in_ingest} <= raw, sorted(in_ingest)
-    assert not {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")} & in_ingest, "a module exists in both places"
+    seen = {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")}
+    for package, names in _package_modules().items():
+        assert names, package
+        assert {f"{package}.{n}" for n in names} <= raw, sorted(f"{package}.{n}" for n in names - {m.split('.', 1)[1] for m in raw if m.startswith(package + '.')})
+        assert not seen & names, f"a module exists in both the repo root and {package}/: {sorted(seen & names)}"
+        seen |= names
+
+
+def test_nothing_in_ingest_imports_the_client_package():
+    """The core builds a complete knowledge.db without any client source: it must not depend on one."""
+    import ast
+    for name in _package_modules()["ingest"]:
+        tree = ast.parse(_read(os.path.join(REPO, "ingest", name + ".py")))
+        for node in ast.walk(tree):
+            mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""] if isinstance(node, ast.ImportFrom) else []
+            assert not any(m == "client" or m.startswith("client.") for m in mods), f"ingest/{name}.py imports {mods}"
 
 
 def test_every_module_is_classified_in_both_configs():
@@ -148,8 +170,9 @@ def tree(tmp_path):
     # Baseline = the maximal legal graph: every module imports exactly what tach.toml lets it
     # import (tach `exact = true` also rejects declared-but-unused dependencies), plus the
     # documented subprocess / lazy-cycle exceptions.
-    (d / "ingest").mkdir()
-    (d / "ingest" / "__init__.py").write_text("")
+    for package in PACKAGES:
+        (d / package).mkdir()
+        (d / package / "__init__.py").write_text("")
     for name, mod in _tach_modules(tach_text).items():
         lines = [f"import {dep}" for dep in mod["depends_on"]]
         lines.append(BASELINE_CODE.get(name, ""))
@@ -163,12 +186,12 @@ def _check(tree, tool):
     return ac.run_import_linter(str(tree), str(tree / "pyproject.toml"))
 
 
-_INGEST_MODULES = {f[:-3] for f in os.listdir(os.path.join(REPO, "ingest")) if f.endswith(".py") and f != "__init__.py"}
+_MODULE_DIR = {name: package for package, names in _package_modules().items() for name in names}
 
 
 def _module_path(tree, module):
-    """Where a synthetic module lives: ingest/ for the ETL modules, the root for the rest."""
-    return tree / ("ingest" if module in _INGEST_MODULES else ".") / f"{module}.py"
+    """Where a synthetic module lives: in its package directory, or the root."""
+    return tree / _MODULE_DIR.get(module, ".") / f"{module}.py"
 
 
 def _offend(tree, module, code):

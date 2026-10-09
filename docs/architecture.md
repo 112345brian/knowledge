@@ -105,6 +105,7 @@ Rules (each one is a failing test or contract if broken):
 | `migrate_memory_store` | driven adapter | memory files, run lock |
 | `modes` | domain | mode policy, write gating |
 | `modes_store` | driven adapter | mode-filtered fact queries |
+| `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
 | `music_ingest_rules` | domain | concerts / RYM / Last.fm rules |
 | `new_fact` | domain | NewFact + validation + build_entry |
 | `normal_db` | driven adapter | SQL copy + file swap (also a script) |

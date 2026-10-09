@@ -13,8 +13,8 @@ festivals become orphaned only if nothing else references them, which is
 fine -- they're just not re-created if already present).
 """
 import sqlite3, csv, os
-from ingest.shared import load_artist_cache, get_or_create_artist
-from ingest import music_ingest_rules
+from client.music_shared import load_artist_cache, get_or_create_artist
+from client import music_ingest_rules
 from paths import CONCERTS_CSV
 
 CSV_PATH = os.path.expanduser(CONCERTS_CSV)

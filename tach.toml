@@ -255,7 +255,7 @@ layer = "domain"
 depends_on = []
 
 [[modules]]
-path = "ingest.artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
+path = "client.artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
 layer = "domain"
 depends_on = []
 
@@ -275,7 +275,7 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
+path = "client.music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
 layer = "domain"
 depends_on = []
 
@@ -679,7 +679,6 @@ depends_on = [
 path = "ingest.shared"
 layer = "pipeline"
 depends_on = [
-    "ingest.artist_rules",
     "ingest.fact_ingest_rules",
     "ingest.source_ingest_rules",
     "acquisition_store",
@@ -728,15 +727,15 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.clean_concerts_csv"
+path = "client.clean_concerts_csv"
 layer = "pipeline"
 depends_on = [
-    "ingest.music_ingest_rules",
+    "client.music_ingest_rules",
     "paths",
 ]
 
 [[modules]]
-path = "ingest.export_music_taste"
+path = "client.export_music_taste"
 layer = "pipeline"
 depends_on = [
     "paths",
@@ -804,37 +803,39 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.concerts"
+path = "client.concerts"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
-    "ingest.music_ingest_rules",
+    "client.music_ingest_rules",
     "paths",
+    "client.music_shared",
 ]
 
 [[modules]]
-path = "ingest.music_ratings"
+path = "client.music_ratings"
 layer = "pipeline"
 depends_on = [
     "ingest.shared",
-    "ingest.music_ingest_rules",
+    "client.music_ingest_rules",
     "paths",
+    "client.music_shared",
 ]
 
 [[modules]]
-path = "ingest.scrobbles"
+path = "client.scrobbles"
 layer = "pipeline"
 depends_on = [
     "ingest.shared",
-    "ingest.music_ingest_rules",
+    "client.music_ingest_rules",
     "paths",
+    "client.music_shared",
 ]
 
 [[modules]]
-path = "ingest.seed_artist_members"
+path = "client.seed_artist_members"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
+    "client.music_shared",
 ]
 
 [[modules]]
@@ -896,3 +897,9 @@ depends_on = [
     "source_status",
 ]
 
+[[modules]]
+path = "client.music_shared"
+layer = "pipeline"
+depends_on = [
+    "client.artist_rules",
+]
