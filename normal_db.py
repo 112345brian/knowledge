@@ -96,6 +96,7 @@ CREATE TABLE facts (
     visibility             TEXT NOT NULL CHECK (visibility = 'normal'),
     source_key             TEXT UNIQUE,
     freshness              TEXT NOT NULL CHECK (freshness IN ('recheck','no-decay','unreviewed')),
+    kind                   TEXT NOT NULL CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
     CHECK (freshness <> 'recheck' OR recheck_by IS NOT NULL),
     CHECK (freshness <> 'no-decay' OR COALESCE(length(trim(recheck_rationale, char(32, 9, 10, 11, 12, 13))), 0) > 0)
 );
@@ -116,6 +117,7 @@ CREATE TABLE fact_revisions (
     recheck_by         TEXT,
     recheck_rationale  TEXT,
     freshness          TEXT,
+    kind               TEXT NOT NULL CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
     UNIQUE (source_key, revision)
 );
 CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
@@ -189,7 +191,7 @@ def populate(out, full, rules):
     fact_keys, subject_ids = set(), set()
     cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
             "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
-            "visibility, source_key, freshness")
+            "visibility, source_key, freshness, kind")
     # cols: r[5] trust_rationale, r[11] recheck_rationale (both copied)
     facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
              if passes(r[1], r[2], r[12], extra=(r[5], r[11], *cite_text.get(r[0], ())))]
@@ -201,7 +203,7 @@ def populate(out, full, rules):
         subject_ids.update(_chain_ids(r[1], parents))
         if r[13] is not None:
             fact_keys.add(r[13])
-        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(15)})", r)
+        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(16)})", r)
 
     # 2. subjects (used + ancestors), parents first is not required (FKs are checked at commit)
     for sid in sorted(subject_ids):
@@ -211,7 +213,7 @@ def populate(out, full, rules):
 
     # 3. revisions: of an included fact, only revisions that are themselves normal and pass the rules
     rcols = ("id, fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "
-             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness")
+             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness, kind")
     subject_of = {r[0]: r[1] for r in facts}
     for r in full.execute(f"SELECT {rcols} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"):
         # rcols: r[8] trust_rationale, r[13] recheck_rationale
@@ -220,7 +222,7 @@ def populate(out, full, rules):
         r = list(r)
         if r[11] not in fact_keys:
             r[11] = None
-        out.execute(f"INSERT INTO fact_revisions ({rcols}) VALUES ({_qmarks(15)})", r)
+        out.execute(f"INSERT INTO fact_revisions ({rcols}) VALUES ({_qmarks(16)})", r)
 
     # 4. citations of included facts, and only the sources they cite
     source_ids = set()

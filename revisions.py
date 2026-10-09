@@ -33,13 +33,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import clock
-from add_fact import (FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
+from add_fact import (FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
                       VIA_RE, _file_lock, _lock_path)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
-                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "notes")
+                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
 # (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
@@ -186,12 +186,24 @@ def effective_entry(entry, file=None):
     return entry
 
 
+def entry_kind(entry):
+    """The entry's `kind` (#39); an entry without the key (every legacy entry) is 'unclassified'.
+    Raises RevisionError for a present-but-invalid value (null and blank included): never a silent default."""
+    if "kind" not in entry:
+        return "unclassified"
+    kind = entry["kind"]
+    if not isinstance(kind, str) or kind not in KIND_VALUES:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: kind {kind!r} must be one of {list(KIND_VALUES)}")
+    return kind
+
+
 def entry_snapshot(entry):
     """The mutable fields of a JSON entry: what revision 1 says."""
     snap = {f: entry.get(f) for f in MUTABLE_FIELDS}
     snap["statement"] = (entry.get("statement") or "").strip()
     snap["status"] = entry.get("status") or "active"
     snap["visibility"] = entry.get("visibility") or "private"
+    snap["kind"] = entry_kind(entry)
     return snap
 
 
@@ -277,6 +289,8 @@ def validate_record_shape(rec):
         errs.append(f"superseded_by {rec['superseded_by']!r} must be null or a source_key")
     if rec["superseded_by"] is not None and rec["superseded_by"] == rec["source_key"]:
         errs.append("superseded_by points at the fact itself")
+    if rec["kind"] not in KIND_VALUES:
+        errs.append(f"kind {rec['kind']!r} must be one of {list(KIND_VALUES)}")
     for k in ("trust_rationale", "recheck_by", "recheck_rationale", "freshness", "notes"):
         if rec[k] is not None and not isinstance(rec[k], str):
             errs.append(f"{k} must be null or a string")

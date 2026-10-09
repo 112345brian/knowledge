@@ -63,6 +63,10 @@ class Trust(str, enum.Enum):
     disputed = "disputed"
 
 
+Kind = enum.Enum("Kind", {k: k for k in add_fact.KIND_VALUES}, type=str)  # #39; one source of truth: add_fact.KIND_VALUES
+KIND_OPT = typer.Option(None, "--kind", help="Only facts of this kind: " + ", ".join(add_fact.KIND_VALUES) + ".")
+
+
 class Status(str, enum.Enum):
     pending = "pending"
     active = "active"
@@ -95,7 +99,7 @@ def _visible_statuses(include_pending):
     return ("active", "pending") if include_pending else ("active",)
 
 
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False):
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None):
     """Append the shared fact filters. `personal` is True / False / None (no filter).
     An explicit `status` wins and `include_pending` is then ignored; without one only
     active facts (and pending ones when `include_pending`) match."""
@@ -105,6 +109,9 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     if trust:
         sql += " AND f.trust_level = ?"
         params.append(trust)
+    if kind:
+        sql += " AND f.kind = ?"
+        params.append(kind)
     if status:
         sql += " AND f.status = ?"
         params.append(status)
@@ -119,10 +126,10 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     return sql
 
 
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False):
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -130,19 +137,19 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
     """
     params = [terms]
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
+                   include_pending=include_pending, kind=kind)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False):
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
+                   include_pending=include_pending, kind=kind)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -262,13 +269,14 @@ def cmd_search(
     not_personal: bool = typer.Option(False, "--not-personal"),
     status: Optional[Status] = typer.Option(None, "--status", help="Only facts with this status (overrides the active-only default and --include-pending)."),
     include_pending: bool = INCLUDE_PENDING_OPT,
+    kind: Optional[Kind] = KIND_OPT,
     as_json: bool = JSON_OPT,
 ):
     personal = _personal(personal_only, not_personal)
     try:
         rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
-                      include_pending=include_pending)
+                      include_pending=include_pending, kind=kind.value if kind else None)
     except sqlite3.OperationalError as e:
         _fail(f"search failed: {e}")
     _emit_json(rows) if as_json else _print_fact_lines(rows)
@@ -288,7 +296,7 @@ def fact_as_of(con, fact_id, as_of):
 def _print_revision_state(r):
     print(f"\n{r['statement']}\n")
     for label, key in (("Trust rationale", "trust_rationale"), ("Notes", "notes"), ("Superseded by", "superseded_by"),
-                       ("Freshness", "freshness")):
+                       ("Freshness", "freshness"), ("Kind", "kind")):
         if r[key]:
             print(f"{label}: {r[key]}")
     if r["recheck_by"]:
@@ -329,7 +337,7 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
         _emit_json(f)
         return
 
-    print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  visibility={f['visibility']}  status={f['status']}")
+    print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  visibility={f['visibility']}  status={f['status']}  kind={f['kind']}")
     print(f"\n{f['statement']}\n")
     if f["trust_rationale"]:
         print(f"Trust rationale: {f['trust_rationale']}")
@@ -464,11 +472,13 @@ def cmd_facts(
     personal_only: bool = typer.Option(False, "--personal-only"),
     not_personal: bool = typer.Option(False, "--not-personal"),
     include_pending: bool = INCLUDE_PENDING_OPT,
+    kind: Optional[Kind] = KIND_OPT,
     as_json: bool = JSON_OPT,
 ):
     rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
                   status=status.value if status else None, include_pending=include_pending,
-                  personal=_personal(personal_only, not_personal), limit=limit)
+                  personal=_personal(personal_only, not_personal), limit=limit,
+                  kind=kind.value if kind else None)
     _emit_json(rows) if as_json else _print_fact_lines(rows)
 
 

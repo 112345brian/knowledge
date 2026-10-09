@@ -19,7 +19,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 
-ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness",
+ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind",
                      "domain", "trust_rationale", "notes", "recheck_by", "recheck_rationale",
                      "source_citekey", "source_locator", "source_quote"]
 
@@ -85,6 +85,7 @@ def test_minimal_add_shape_and_defaults(env):
     assert entry == {
         "subject": "car-maintenance", "statement": "Hello world.", "trust_level": "medium",
         "is_original_claim": False, "is_personal": True, "freshness": "no-decay", "recheck_rationale": "no decay",
+        "kind": "unclassified",  # #39
     }
     assert "Added to " in r.stdout and "general_facts.json" in r.stdout and "(1 facts total)" in r.stdout
     assert "python3 build.py" in r.stdout
@@ -305,7 +306,7 @@ def test_failed_replace_leaves_original_intact_and_no_temp_files(af, tmp_path, m
 
 def test_build_entry_matches_cli_shape(af):
     entry = af.build_entry(fact(af, domain="health", notes="n"))
-    assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "domain", "notes", "recheck_rationale"]
+    assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind", "domain", "notes", "recheck_rationale"]
 
 
 def test_a_successful_add_leaves_only_the_facts_file_in_the_data_dir(env):

@@ -48,6 +48,12 @@ FRESHNESS_VALUES = ("recheck", "no-decay", "unreviewed")  # keep in sync with th
 # A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
 # ('active', e.g. `register facts`, #32). superseded/retracted only arise through revisions.
 VALID_NEW_STATUS = ("pending", "active")
+# #39: what kind of assertion a fact is. Self-reported guidance (the schema only enforces the vocabulary,
+# it cannot judge whether a fact really is a decision or an observation). 'unclassified' is the honest
+# marker for a fact nobody classified (every legacy fact, and the default for a new one).
+# Keep in sync with the CHECKs on facts.kind / fact_revisions.kind in schema.sql and normal_db.py.
+KIND_VALUES = ("observation", "measurement", "decision", "preference", "plan", "definition",
+               "inference", "rule", "lesson", "unclassified")
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -70,6 +76,8 @@ def parse_args(argv):
     p.add_argument("--no-decay", action="store_true", dest="no_decay",
                    help="Assert this fact does not decay (a birthdate, a completed purchase); requires --recheck-rationale "
                         "and excludes --recheck-by. It does NOT justify --trust verified.")
+    p.add_argument("--kind", default="unclassified", choices=KIND_VALUES,
+                   help="What kind of assertion this is (default: unclassified). Self-reported guidance.")
     p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
@@ -100,6 +108,7 @@ class NewFact:
     is_original_claim: bool = False
     is_personal: bool = True
     visibility: str = "private"
+    kind: str = "unclassified"   # #39, one of KIND_VALUES
     trust_rationale: Optional[str] = None
     notes: Optional[str] = None
     recheck_by: Optional[str] = None
@@ -153,6 +162,8 @@ def validate_fact(fact, db_path=None):
     errors, notes = [], []
     if fact.trust_level not in VALID_TRUST:
         errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
+    if not isinstance(fact.kind, str) or fact.kind not in KIND_VALUES:
+        errors.append(f"kind {fact.kind!r} must be one of {list(KIND_VALUES)}")
     if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
@@ -228,6 +239,7 @@ def build_entry(fact, visibility=None):
         "visibility": fact.visibility if visibility is None else visibility,
         "status": fact.status,
         "freshness": "no-decay" if fact.no_decay else "recheck",
+        "kind": fact.kind,
     }
     if fact.domain != "general":
         entry["domain"] = fact.domain
@@ -405,7 +417,7 @@ def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
         statement=args.statement, subject=args.subject, trust_level=args.trust_level, no_decay=args.no_decay, domain=args.domain,
-        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote, origin_path=args.origin_path,

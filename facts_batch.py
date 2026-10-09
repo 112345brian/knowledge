@@ -59,7 +59,7 @@ MAX_BATCH = 1000
 DEFAULT_TRUST = "unverified"   # a fact the user stated in chat: not independently verified
 DEFAULT_CAPTURED_VIA = "register-facts"
 
-_STR_KEYS = ("statement", "subject", "trust_level", "domain", "visibility", "trust_rationale", "notes",
+_STR_KEYS = ("statement", "subject", "trust_level", "domain", "visibility", "kind", "trust_rationale", "notes",
              "recheck_by", "recheck_rationale", "source_citekey", "source_locator", "source_quote")
 _BOOL_KEYS = ("is_original_claim", "is_personal", "no_decay")
 ITEM_KEYS = frozenset(_STR_KEYS + _BOOL_KEYS)
@@ -189,6 +189,7 @@ def add_facts(items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session
                 is_original_claim=bool(fields.get("is_original_claim", False)),
                 is_personal=bool(fields.get("is_personal", True)),
                 visibility=fields.get("visibility") or requested_default,
+                kind=fields.get("kind") or "unclassified",
                 trust_rationale=fields.get("trust_rationale"), notes=fields.get("notes"),
                 recheck_by=fields.get("recheck_by"), recheck_rationale=fields.get("recheck_rationale"),
                 source_citekey=fields.get("source_citekey"), source_locator=fields.get("source_locator"),

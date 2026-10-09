@@ -182,6 +182,10 @@ CREATE TABLE facts (
     source_key              TEXT UNIQUE,
     -- Fixity baseline (#38): the SHA-256 the origin file had when this fact was extracted (see
     -- fixity.audit_sources). NULL = no baseline recorded. Not part of the revision snapshot.
+    -- Kind (#39): what sort of assertion this is. The CHECK enforces the vocabulary only; which kind a
+    -- fact gets is self-reported guidance, not something the database can verify. 'unclassified' is the
+    -- honest marker for every legacy fact and the default for a new one. Mutable via a revision (#30).
+    kind                    TEXT NOT NULL DEFAULT 'unclassified' CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
     extracted_from_sha256   TEXT CHECK (extracted_from_sha256 IS NULL OR length(extracted_from_sha256) = 64),
     -- Freshness (#7): every fact either has a recheck_by or explicitly asserts it does not decay.
     --   recheck     the fact may go stale; recheck_by is required (first CHECK below).
@@ -233,6 +237,7 @@ CREATE TABLE fact_revisions (
     recheck_by       TEXT,
     recheck_rationale TEXT,
     freshness        TEXT,
+    kind             TEXT NOT NULL DEFAULT 'unclassified' CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
     notes            TEXT,
     UNIQUE (source_key, revision)
 );
@@ -634,7 +639,7 @@ LEFT JOIN subjects p ON p.id = s.parent_id;
 CREATE VIEW v_facts AS
 SELECT
     f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
-    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness, f.kind,
     vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
 FROM facts f
 JOIN subjects sub ON sub.id = f.subject_id

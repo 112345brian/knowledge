@@ -196,13 +196,16 @@ def _limit(limit):
     return limit
 
 
-def _filters(sql, params, subject, trust, status, personal):
+def _filters(sql, params, subject, trust, status, personal, kind=None):
     if subject:
         sql += " AND sub.name = ?"
         params.append(subject)
     if trust:
         sql += " AND f.trust_level = ?"
         params.append(trust)
+    if kind:
+        sql += " AND f.kind = ?"
+        params.append(kind)
     if status:
         sql += " AND f.status = ?"
         params.append(status)
@@ -214,7 +217,7 @@ def _filters(sql, params, subject, trust, status, personal):
 
 
 def search_facts(session, con, terms, subject=None, trust=None, personal=None, limit=20,
-                 include_pending=False):
+                 include_pending=False, kind=None):
     """Full-text search, best match first, visible facts only. Same row shape as
     knowledge.search_facts. An empty/blank query or invalid FTS syntax (unbalanced quote, ...)
     raises InvalidQuery with a generic message; the sqlite error text is not passed on."""
@@ -224,13 +227,13 @@ def search_facts(session, con, terms, subject=None, trust=None, personal=None, l
     limit = _limit(limit)
     gate, gparams = _gate(mode, include_pending)
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
         WHERE facts_fts MATCH ?""" + gate
     params = [terms] + gparams
-    sql, params = _filters(sql, params, subject, trust, None, personal)
+    sql, params = _filters(sql, params, subject, trust, None, personal, kind)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     try:
@@ -243,15 +246,15 @@ def search_facts(session, con, terms, subject=None, trust=None, personal=None, l
 
 
 def list_facts(session, con, subject=None, trust=None, status=None, personal=None, limit=50,
-               include_pending=False):
+               include_pending=False, kind=None):
     """Same row shape as knowledge.list_facts. A `status` filter can only narrow the visible set
     (normal mode asking for status 'superseded' gets [])."""
     mode = _readable(session, "listing facts")
     limit = _limit(limit)
     gate, gparams = _gate(mode, include_pending)
-    sql = ("""SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+    sql = ("""SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
               FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1""" + gate)
-    sql, params = _filters(sql, list(gparams), subject, trust, status, personal)
+    sql, params = _filters(sql, list(gparams), subject, trust, status, personal, kind)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
