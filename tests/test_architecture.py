@@ -332,7 +332,7 @@ CASES = [
     ("domain-modes-imports-its-adapter", "modes", "import modes_store",
      [("tach", ["modes", "modes_store"]), ("import-linter", ["kn.modes", "kn.modes_store"])]),
     ("domain-modes-imports-revisions", "modes", "import revisions",
-     [("tach", ["modes", "revisions"]), ("import-linter", ["kn.modes", "kn.revisions"])]),
+     [("tach", ["modes", "revisions"])]),   # revisions is a domain module now: only the tach allowlist stops it
     ("domain-claims-audit-imports-clock", "claims_audit", "import clock",
      [("tach", ["claims_audit", "clock"]), ("import-linter", ["kn.claims_audit", "kn.clock"])]),
     ("domain-claims-audit-imports-sqlite", "claims_audit", "import sqlite3",
@@ -343,6 +343,28 @@ CASES = [
      [("tach", ["modes_store", "lifecycle"]), ("import-linter", ["kn.modes_store", "kn.lifecycle"])]),
     ("serving-imports-claims-store", "inbox", "import claims_store",
      [("tach", ["inbox", "claims_store"]), ("import-linter", ["only through modes", "kn.claims_store"])]),
+    ("domain-revisions-imports-sqlite", "revisions", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.revisions", "sqlite3"])]),
+    ("domain-revisions-imports-os", "revisions", "def f():\n    import os",
+     [("import-linter", ["kn.revisions", "os"])]),
+    ("domain-revisions-imports-add-fact", "revisions", "import add_fact",
+     [("tach", ["revisions", "add_fact"]), ("import-linter", ["kn.revisions", "kn.add_fact"])]),
+    ("domain-revisions-imports-clock", "revisions", "import clock",
+     [("tach", ["revisions", "clock"]), ("import-linter", ["kn.revisions", "kn.clock"])]),
+    ("domain-revisions-imports-its-adapter", "revisions", "import revisions_store",
+     [("tach", ["revisions", "revisions_store"]), ("import-linter", ["kn.revisions", "kn.revisions_store"])]),
+    ("domain-review-rules-imports-review-store", "review_rules", "import review_store",
+     [("tach", ["review_rules", "review_store"]), ("import-linter", ["kn.review_rules", "kn.review_store"])]),
+    ("domain-review-rules-imports-subprocess", "review_rules", "import subprocess",
+     [("import-linter", ["kn.review_rules", "subprocess"])]),
+    ("domain-fact-rules-imports-sqlite", "fact_rules", "import sqlite3",
+     [("import-linter", ["kn.fact_rules", "sqlite3"])]),
+    ("adapter-revisions-store-imports-review", "revisions_store", "import review",
+     [("tach", ["revisions_store", "review"]), ("import-linter", ["kn.revisions_store", "kn.review"])]),
+    ("serving-imports-revisions-store", "inbox", "import revisions_store",
+     [("tach", ["inbox", "revisions_store"]), ("import-linter", ["only through modes", "kn.revisions_store"])]),
+    ("serving-imports-review-store", "inbox", "import review_store",
+     [("tach", ["inbox", "review_store"]), ("import-linter", ["only through modes", "kn.review_store"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -397,7 +419,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
-    assert {"privacy", "modes", "claims_audit", "timestamps"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):

@@ -18,7 +18,7 @@ SNAP = "measurements_snapshot.json"
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "revisions", "backfill_source_keys",
+    for m in ("paths", "local_paths", "_shared", "add_fact", "revisions", "revisions_store", "backfill_source_keys",
               "backfill_dates", "snapshot_date"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)

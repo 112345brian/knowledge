@@ -18,6 +18,7 @@ import modes
 import modes_store
 import privacy
 import revisions
+import revisions_store
 from test_add_fact import REPO
 
 T1 = "2026-10-01T08:00:00+00:00"
@@ -284,10 +285,10 @@ def test_compat_list_search_subjects_row_shapes(db):
 
 
 def test_compat_history_and_as_of_match_revisions_for_visible_fact(db):
-    assert modes_store.get_history(S("normal"), db, 1) == revisions.get_history(db, 1)
-    assert modes_store.get_fact_as_of(S("normal"), db, 1, "2026-12-31") == revisions.get_fact_as_of(db, 1, "2026-12-31")
-    assert modes_store.get_history(S("private"), db, 8) == revisions.get_history(db, 8)
-    assert modes_store.get_fact_as_of(S("private"), db, 8, T1) == revisions.get_fact_as_of(db, 8, T1)
+    assert modes_store.get_history(S("normal"), db, 1) == revisions_store.get_history(db, 1)
+    assert modes_store.get_fact_as_of(S("normal"), db, 1, "2026-12-31") == revisions_store.get_fact_as_of(db, 1, "2026-12-31")
+    assert modes_store.get_history(S("private"), db, 8) == revisions_store.get_history(db, 8)
+    assert modes_store.get_fact_as_of(S("private"), db, 8, T1) == revisions_store.get_fact_as_of(db, 8, T1)
 
 
 # ---------------------------------------------------------------- normal mode: what is visible
@@ -569,7 +570,7 @@ def _py_files():
 # Modules allowed to read facts directly: the query layers and the build pipeline (which creates
 # them). Anything else that wants fact rows must go through modes.py.
 FACT_READERS_ALLOWED = {
-    "modes.py", "modes_store.py", "knowledge.py", "normal_db.py", "revisions.py", "privacy_store.py", "claims_store.py", "review.py",
+    "modes.py", "modes_store.py", "knowledge.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # build/ingest pipeline: writes the tables, never serves tool results
     "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",

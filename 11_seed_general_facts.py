@@ -17,6 +17,7 @@ from _shared import require_date_added
 import privacy
 import privacy_store
 import revisions
+import revisions_store
 
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
 VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
@@ -91,7 +92,7 @@ def run(con):
              status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
-        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
+        revisions_store.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
 
         citekey = item.get("source_citekey")
         if citekey:

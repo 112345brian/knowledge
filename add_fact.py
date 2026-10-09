@@ -33,26 +33,18 @@ from typing import List, Optional
 import clock
 import privacy
 import privacy_store
+from fact_rules import FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE  # noqa: F401  (re-exported: callers use add_fact.VALID_TRUST etc.)
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
-VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
-# #7: every fact has a freshness (facts.freshness). A NEW fact derives 'recheck' (it has a
-# recheck_by) or 'no-decay' (explicit assertion plus a written recheck_rationale); 'unreviewed' is
-# legacy-only (facts that predate the column and were never reviewed) and is never accepted here.
-FRESHNESS_VALUES = ("recheck", "no-decay", "unreviewed")  # keep in sync with the CHECK in schema.sql
 # A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
 # ('active', e.g. `register facts`, #32). superseded/retracted only arise through revisions.
 VALID_NEW_STATUS = ("pending", "active")
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
-# Stable identity of a fact across rebuilds (#30): revisions in fact_revisions.jsonl point at it.
-SOURCE_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 def new_source_key():

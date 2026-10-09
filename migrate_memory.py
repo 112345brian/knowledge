@@ -52,6 +52,7 @@ import add_fact
 import clock
 import private_git
 import revisions
+import revisions_store
 from add_fact import NewFact
 from paths import PRIVATE_DATA_DIR
 
@@ -384,7 +385,7 @@ def existing_entries(data_dir):
         path = os.path.join(data_dir, name)
         if not os.path.exists(path):
             continue
-        for item in revisions._read_array(path):
+        for item in revisions_store.read_array(path):
             key = item.get("source_key")
             if isinstance(key, str):
                 out[key] = item.get("notes") if isinstance(item.get("notes"), str) else ""

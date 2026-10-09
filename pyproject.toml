@@ -58,6 +58,7 @@ source_modules = [
     "kn.claims_audit",
     "kn.claims_store",
     "kn.clock",
+    "kn.fact_rules",
     "kn.facts_batch",
     "kn.leak_test",
     "kn.lifecycle",
@@ -70,7 +71,10 @@ source_modules = [
     "kn.privacy_store",
     "kn.private_git",
     "kn.review",
+    "kn.review_rules",
+    "kn.review_store",
     "kn.revisions",
+    "kn.revisions_store",
     "kn.timestamps",
 ]
 forbidden_modules = [
@@ -107,6 +111,7 @@ source_modules = [
     "kn.claims_store",
     "kn.cli_parity",
     "kn.clock",
+    "kn.fact_rules",
     "kn.facts_batch",
     "kn.inbox",
     "kn.leak_test",
@@ -120,7 +125,10 @@ source_modules = [
     "kn.privacy_store",
     "kn.private_git",
     "kn.review",
+    "kn.review_rules",
+    "kn.review_store",
     "kn.revisions",
+    "kn.revisions_store",
     "kn.timestamps",
 #planned:     "kn.mcp_server",
 ]
@@ -203,7 +211,9 @@ forbidden_modules = [
     "kn.privacy",
     "kn.privacy_store",
     "kn.private_git",
+    "kn.review_store",
     "kn.revisions",
+    "kn.revisions_store",
     "sqlite3",
 ]
 allow_indirect_imports = true
@@ -241,8 +251,11 @@ name = "Domain modules never touch the file system, the database, processes or a
 type = "forbidden"
 source_modules = [
     "kn.claims_audit",
+    "kn.fact_rules",
     "kn.modes",
     "kn.privacy",
+    "kn.review_rules",
+    "kn.revisions",
     "kn.timestamps",
 ]
 forbidden_modules = [
@@ -250,7 +263,8 @@ forbidden_modules = [
     "sqlite3", "os", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt",
     "subprocess", "socket", "http", "urllib", "uuid",
     # adapters and the modules that wrap infrastructure
-    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions", "kn.private_git",
+    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
+    "kn.add_fact", "kn.private_git",
     "kn.paths", "kn.clock",
 ]
 allow_indirect_imports = true
@@ -270,11 +284,13 @@ layers = [
     "modes_store | claims_store",
     "review | modes | claims_audit | normal_db",
     "leak_test",
-    "revisions",
+    "review_store",
+    "revisions_store",
     "add_fact",
     "privacy_store",
+    "revisions | review_rules",
     "privacy | private_git",
-    "clock | paths | timestamps",
+    "clock | paths | timestamps | fact_rules",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

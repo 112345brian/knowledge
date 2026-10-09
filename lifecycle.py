@@ -37,7 +37,7 @@ Semantics (decided, tested):
     revision would be a silent no-op that misleads `history`. Lowering needs the built db for the
     subject tree and is refused without one (fail closed). Same visibility -> unchanged.
   * There is no un-supersede / un-retract command. Reversal is another revision, appended through
-    the library: revisions.append_revision(key, {"status": "active", "superseded_by": None}, reason,
+    the library: revisions_store.append_revision(key, {"status": "active", "superseded_by": None}, reason,
     via). The history keeps every step; nothing is deleted.
   * Git (#10): same as review.approve. If the data dir is in a git repo and commit=True, a dirty
     tree is refused up front (nothing written) unless allow_dirty; after the write ONE commit
@@ -55,6 +55,7 @@ import privacy
 import privacy_store
 import review
 import revisions
+import revisions_store
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
 CHANGED_OUTCOMES = ("superseded", "retracted", "visibility_set")
@@ -119,7 +120,7 @@ def _decide_supersede(states, key, ctx):
         return _no("refused", "the fact is pending; approve or reject it first")
     if cur["status"] == "retracted":
         return _no("refused", "the fact is retracted; reverse that with an 'active' revision first "
-                              "(revisions.append_revision) if it should be superseded instead")
+                              "(revisions_store.append_revision) if it should be superseded instead")
     if by == key:
         return _no("refused", "a fact cannot supersede itself")
     rep = states[by]
@@ -170,7 +171,7 @@ def _floor_resolution(ctx, key, cur):
     subject = entry.get("subject")
     try:
         rules = privacy_store.load_rules(privacy_store.rules_path(ctx["data_dir"]))
-        with revisions._connection(db) as con:
+        with revisions_store.connection(db) as con:
             rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
     except privacy.PrivacyRulesError as e:
         return f"cannot check the privacy rules: {e}"
@@ -206,11 +207,11 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = revisions_store.default_data_dir() if data_dir is None else data_dir
     log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
     try:
         states = review.current_states(data_dir)
-        entries = {e["key"]: e for e in revisions.load_entries(data_dir)}
+        entries = {e["key"]: e for e in revisions_store.load_entries(data_dir)}
     except revisions.RevisionError as e:
         result.errors.append(str(e))
         return result
@@ -250,7 +251,7 @@ def _run(verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dir
 
     for attempt in (1, 2):
         _, changes, expect, outcome = plan
-        res = revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+        res = revisions_store.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
         if res.ok:
             result.outcome, result.revision = outcome, res.revision
             break
@@ -337,7 +338,7 @@ def _fail(ref, message, outcome="error", source_key=None):
 
 
 def _subjects(data_dir):
-    return {e["key"]: e["entry"].get("subject") for e in revisions.load_entries(data_dir)}
+    return {e["key"]: e["entry"].get("subject") for e in revisions_store.load_entries(data_dir)}
 
 
 def _validate_edit(changes):
@@ -380,7 +381,7 @@ def _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty
     ref = str(ref)
     if not isinstance(reason, str) or not reason.strip():
         return _fail(ref, "reason is required")
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = revisions_store.default_data_dir() if data_dir is None else data_dir
     try:
         states = review.current_states(data_dir)
     except revisions.RevisionError as e:
@@ -420,7 +421,7 @@ def _revise(ref, changes, reason, via, session_id, data_dir, commit, allow_dirty
             return _fail(ref, str(e), source_key=key)
 
     expect = {"status": expect_status or current["status"], **{k: current[k] for k in changes}}
-    res = revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+    res = revisions_store.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
     if not res.ok:
         if any(e.startswith("precondition failed") for e in res.errors):
             return ReviseResult(False, "skipped", ref, key,
@@ -459,7 +460,7 @@ def edit_fact(ref, reason, statement=None, trust_level=None, trust_rationale=Non
         # fact as it will stand, so adding a listed name in `notes` raises visibility like a new statement.
         if not any(k in ch for k in ("statement", "notes", "trust_rationale")):
             return ch, None
-        subject = _subjects(revisions.default_data_dir() if data_dir is None else data_dir).get(key)
+        subject = _subjects(revisions_store.default_data_dir() if data_dir is None else data_dir).get(key)
         rules = review.rules_with_db_context(data_dir, db)
         merged = {**current, **ch}
         res = privacy.resolve_visibility(subject, merged["statement"], current["visibility"], rules,

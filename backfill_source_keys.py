@@ -32,6 +32,7 @@ import os
 import sys
 
 import revisions
+import revisions_store
 from add_fact import _file_lock, _lock_path
 
 
@@ -115,7 +116,7 @@ def _backfill_file(path, name, adders, apply):
     with _file_lock(_lock_path(path)):
         with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
-        items = revisions._read_array(path)
+        items = revisions_store.read_array(path)
         keys = revisions.derive_keys(items, name)
         context = {name: keys}
         additions = []
@@ -129,7 +130,7 @@ def _backfill_file(path, name, adders, apply):
         changed = sum(1 for p in additions if p)
         if changed and apply:
             new, _ = rewrite_text(text, path, additions)
-            revisions._atomic_write_text(path, new)
+            revisions_store.atomic_write_text(path, new)
         elif changed:
             rewrite_text(text, path, additions)  # dry run still proves the rewrite would verify
     return changed
@@ -139,7 +140,7 @@ def backfill(data_dir, apply=False, extra_adders=(), source_keys=True):
     """Backfill source_key (when `source_keys`) and whatever `extra_adders` return across the
     legacy files. Returns {filename: entries_changed}. Nothing is written unless apply=True."""
     # All keys must be unique across files before we write anything.
-    revisions.load_entries(data_dir)
+    revisions_store.load_entries(data_dir)
     result = {}
     for name, _ in revisions.ENTRY_FILES:
         path = os.path.join(data_dir, name)
@@ -158,7 +159,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions.default_data_dir()
+    data_dir = args.data_dir or revisions_store.default_data_dir()
     try:
         result = backfill(data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:

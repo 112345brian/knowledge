@@ -34,6 +34,7 @@ import sys
 
 import backfill_source_keys
 import revisions
+import revisions_store
 from add_fact import _file_lock, _lock_path
 from snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
 
@@ -54,7 +55,7 @@ def find_problems(data_dir):
         path = os.path.join(data_dir, name)
         if not os.path.exists(path):
             continue
-        for i, item in enumerate(revisions._read_array(path)):
+        for i, item in enumerate(revisions_store.read_array(path)):
             if "date_added" not in item:
                 continue
             v = item["date_added"]
@@ -78,7 +79,7 @@ def _write_snapshot(data_dir, apply):
         if os.path.exists(path):
             return 0
         if apply:
-            revisions._atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
+            revisions_store.atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
     return 1
 
 
@@ -101,7 +102,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions.default_data_dir()
+    data_dir = args.data_dir or revisions_store.default_data_dir()
     try:
         result = backfill_dates(data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:

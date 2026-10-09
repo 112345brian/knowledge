@@ -1,4 +1,6 @@
-"""Review of pending facts (#6): list the queue, approve or reject items.
+"""Review of pending facts (#6): list the queue, approve or reject items. The use case: it orchestrates
+the adapters (`review_store`, `revisions_store`, `privacy_store`, `private_git`) and applies the rules
+in `review_rules` (domain).
 
 New ad hoc facts are written with status 'pending' (add_fact.NewFact.status). Approving one
 never edits its entry in the JSON data files; it appends a revision (#30) that carries the whole
@@ -30,93 +32,21 @@ Batch semantics (decided, tested):
 Library code never prints or exits.
 """
 import os
-from dataclasses import dataclass, field
-from typing import List, Optional
 
 import privacy
 import privacy_store
 import revisions
+import revisions_store
+import review_rules
+import review_store
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
+from review_rules import ItemResult, OUTCOMES, ReviewResult, status_word, visibility_basis  # noqa: F401  (the public API)
 
-OUTCOMES = ("approved", "rejected", "skipped", "unknown", "error")
-
-
-@dataclass
-class ItemResult:
-    ref: str
-    outcome: str                      # one of OUTCOMES
-    source_key: Optional[str] = None
-    reason: Optional[str] = None      # why skipped / unknown / failed
-    revision: Optional[dict] = None   # the appended revision for approved / rejected
-
-
-@dataclass
-class ReviewResult:
-    items: List[ItemResult] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)   # batch-level failure (dirty tree, bad input)
-    notes: List[str] = field(default_factory=list)
-    commit: Optional[str] = None                      # short hash when a commit was made
-    commit_error: Optional[str] = None                # revisions written but NOT committed
-    detached: bool = False
-
-    @property
-    def changed(self):
-        return [i for i in self.items if i.outcome in ("approved", "rejected")]
-
-    @property
-    def ok(self):
-        """True when nothing went wrong: no batch error, failed commit, unknown ref or failed item.
-        A skipped item (already reviewed) is not a failure."""
-        return not self.errors and self.commit_error is None and all(
-            i.outcome in ("approved", "rejected", "skipped") for i in self.items)
-
-
-# --------------------------------------------------------------------------- reads
-
-def list_pending(db):
-    """Pending facts of a built db, oldest first (date_added, then id). `db` is a sqlite connection
-    or a path (opened read-only). Each row: id, source_key, subject, statement, visibility,
-    trust_level, captured_via, session_id, captured_at, source_quote, date_added."""
-    with revisions._connection(db) as con:
-        cur = con.execute(
-            """SELECT f.id, f.source_key, s.name AS subject, f.statement, f.visibility, f.trust_level,
-                      f.captured_via, f.session_id, f.captured_at, f.source_quote, f.date_added
-               FROM facts f JOIN subjects s ON s.id = f.subject_id
-               WHERE f.status = 'pending' ORDER BY f.date_added, f.id""")
-        names = [d[0] for d in cur.description]
-        return [dict(zip(names, r)) for r in cur.fetchall()]
-
-
-def current_states(data_dir=None):
-    """{source_key: current mutable snapshot incl. revision} from the entry files and revision
-    log, in entry order (dict order). Raises revisions.RevisionError if either is unusable."""
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
-    entries = revisions.load_entries(data_dir)
-    # The file name matters: it is what marks an entry in pilot_facts.json / facts_batch*.json that
-    # has no `freshness` as legacy ('unreviewed'/'recheck') instead of an error.
-    states = {e["key"]: revisions.implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])
-              for e in entries}
-    for _, rec in revisions.read_log(os.path.join(data_dir, revisions.REVISIONS_FILENAME)):
-        if rec["source_key"] in states:
-            states[rec["source_key"]] = rec
-    return states
-
-
-def default_data_dir():
-    """The private data directory the revision log lives in (what `data_dir=None` means)."""
-    return revisions.default_data_dir()
-
+list_pending = review_store.list_pending
+current_states = review_store.current_states
+default_data_dir = review_store.default_data_dir
 
 TRUST_LEVELS = revisions.VALID_TRUST
-
-
-def status_word(status):
-    """A revision status as the review UI words it: active -> approved, retracted -> rejected."""
-    return {"active": "approved", "retracted": "rejected", "pending": "pending"}.get(status, status)
-
-
-def _pending_keys(states, entries_order):
-    return [k for k in entries_order if states[k]["status"] == "pending"]
 
 
 # --------------------------------------------------------------------------- display (the inbox page)
@@ -129,22 +59,10 @@ def rules_with_db_context(data_dir, db):
     if db is None:
         return rules
     try:
-        with revisions._connection(db) as con:
-            rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
+        parents = review_store.subject_parents(db)
     except Exception:  # noqa: BLE001
         return rules
-    parents = {n: p for n, p in rows}
     return rules.with_context(parents=parents, known_subjects=set(parents))
-
-
-def visibility_basis(subject, statement, visibility, rules):
-    """Which rule is behind a stored visibility, as one line."""
-    res = privacy.check(subject, statement, rules, requested="normal")
-    if res.visibility == "private":
-        return "private by rule: " + "; ".join(str(r) for r in res.raised_by)
-    if visibility == "private":
-        return "private by request or default (no privacy rule applies)"
-    return "normal: no privacy rule applies"
 
 
 def pending_view(db_path, data_dir):
@@ -173,15 +91,7 @@ def pending_view(db_path, data_dir):
         if cur is not None and cur["status"] != "pending":
             vm["hidden_reviewed"] += 1
             continue
-        fact = dict(r)
-        if cur is not None:
-            fact.update(statement=cur["statement"], trust_level=cur["trust_level"], visibility=cur["visibility"],
-                        trust_rationale=cur["trust_rationale"], recheck_by=cur["recheck_by"], notes=cur["notes"])
-        else:
-            fact.update(trust_rationale=None, recheck_by=None, notes=None)
-        fact["ref"] = str(key if key else r["id"])
-        fact["basis"] = visibility_basis(r["subject"], fact["statement"], fact["visibility"], rules)
-        vm["facts"].append(fact)
+        vm["facts"].append(review_rules.overlay_pending(r, cur, rules))
     vm["missing_from_snapshot"] = sum(1 for k, s in states.items() if s["status"] == "pending" and k not in listed)
     return vm
 
@@ -199,7 +109,7 @@ def resolve_ref(ref, states, db):
     if text.isdigit():
         if db is None:
             return None, "fact ids need a database to resolve; pass the source_key instead"
-        with revisions._connection(db) as con:
+        with revisions_store.connection(db) as con:
             row = con.execute("SELECT source_key FROM facts WHERE id = ?", (int(text),)).fetchone()
         if row is None:
             return None, f"no fact with id {text}"
@@ -221,7 +131,7 @@ def _transition(refs, to_status, outcome, reason, via, session_id, data_dir, com
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = revisions_store.default_data_dir() if data_dir is None else data_dir
     log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
     try:
         states = current_states(data_dir)
@@ -240,7 +150,7 @@ def _transition(refs, to_status, outcome, reason, via, session_id, data_dir, com
     plan, seen = [], set()
     for pos, ref in enumerate(refs):
         if isinstance(ref, str) and ref.strip().lower() == "all":
-            todo = _pending_keys(states, order)
+            todo = review_rules.pending_keys(states, order)
             for key in todo:
                 if key not in seen:
                     seen.add(key)
@@ -280,7 +190,7 @@ def _transition(refs, to_status, outcome, reason, via, session_id, data_dir, com
             return result
 
     for ref, key, pos in todo:
-        res = revisions.append_revision(key, {"status": to_status}, reason, via, session_id,
+        res = revisions_store.append_revision(key, {"status": to_status}, reason, via, session_id,
                                         data_dir=data_dir, expect={"status": "pending"})
         if res.ok:
             add(pos, ItemResult(ref, outcome, key, revision=res.revision))

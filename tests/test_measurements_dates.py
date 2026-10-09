@@ -57,7 +57,7 @@ def make_vault(path):
 def m03(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "snapshot_date", "revisions", "backfill_source_keys", "backfill_dates"):
+    for m in ("paths", "local_paths", "_shared", "add_fact", "snapshot_date", "revisions", "revisions_store", "backfill_source_keys", "backfill_dates"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
     spec = importlib.util.spec_from_file_location("ing_03", os.path.join(REPO, "03_ingest_measurements.py"))

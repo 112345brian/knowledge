@@ -76,6 +76,7 @@ path = "add_fact"
 layer = "library"
 depends_on = [
     "clock",
+    "fact_rules",
     "paths",
     "privacy",
     "privacy_store",
@@ -83,23 +84,55 @@ depends_on = [
 ]
 
 [[modules]]
-path = "revisions"
+path = "fact_rules"     # DOMAIN: pure vocabulary (allowed values, key shapes) shared by add_fact and revisions
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "revisions"      # DOMAIN: entries, keys, freshness, log format, the next revision (pure)
 layer = "library"
 depends_on = [
-    "add_fact",
-    "clock",
-    "paths",            # lazy
+    "fact_rules",
     "timestamps",
 ]
 
 [[modules]]
-path = "review"
+path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and its lock, the clock, the db
 layer = "library"
 depends_on = [
-    "privacy",          # the rule behind a fact's visibility, for the review page (pending_view)
+    "add_fact",         # the inter-process file lock
+    "clock",
+    "paths",            # lazy
+    "revisions",
+]
+
+[[modules]]
+path = "review_rules"   # DOMAIN: review result types and the pure decisions behind the queue
+layer = "library"
+depends_on = [
+    "privacy",
+]
+
+[[modules]]
+path = "review_store"   # ADAPTER for review: pending rows, subject tree, current states
+layer = "library"
+depends_on = [
+    "review_rules",
+    "revisions",
+    "revisions_store",
+]
+
+[[modules]]
+path = "review"         # USE CASE: orchestrates the adapters and applies review_rules
+layer = "library"
+depends_on = [
+    "privacy",
     "privacy_store",
     "private_git",
+    "review_rules",
+    "review_store",
     "revisions",
+    "revisions_store",
 ]
 
 [[modules]]
@@ -163,6 +196,7 @@ depends_on = [
     "private_git",
     "review",
     "revisions",
+    "revisions_store",
 ]
 
 [[modules]]
@@ -184,6 +218,7 @@ depends_on = [
     "paths",
     "private_git",
     "revisions",
+    "revisions_store",
 ]
 
 # ===================================================================== CLI
@@ -209,6 +244,7 @@ depends_on = [
     "private_git",
     "review",
     "revisions",
+    "revisions_store",
 ]
 
 [[modules]]
@@ -293,12 +329,12 @@ depends_on = [
 [[modules]]
 path = "backfill_source_keys"
 layer = "pipeline"
-depends_on = ["add_fact", "revisions"]
+depends_on = ["add_fact", "revisions", "revisions_store"]
 
 [[modules]]
 path = "backfill_dates"
 layer = "pipeline"
-depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date"]
+depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date", "revisions_store"]
 
 [[modules]]
 path = "clean_concerts_csv"
@@ -328,7 +364,7 @@ depends_on = ["paths", "snapshot_date"]
 [[modules]]
 path = "04_ingest_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store"]
+depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store", "revisions_store"]
 
 [[modules]]
 path = "05_seed_claims"
@@ -363,9 +399,9 @@ depends_on = ["_shared"]
 [[modules]]
 path = "11_seed_general_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store"]
+depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store", "revisions_store"]
 
 [[modules]]
 path = "12_apply_fact_revisions"
 layer = "pipeline"
-depends_on = ["paths", "privacy", "revisions", "privacy_store"]
+depends_on = ["paths", "privacy", "revisions", "privacy_store", "revisions_store"]

@@ -148,14 +148,14 @@ def _revisions(session, con, ref, include_pending, what):
 
 
 def get_history(session, con, ref, include_pending=False):
-    """Every revision in order (shape of revisions.get_history). Normal mode: [] unless the fact
+    """Every revision in order (shape of revisions_store.get_history). Normal mode: [] unless the fact
     is currently visible, and revisions stored private are left out. Unknown/hidden -> []."""
     rows, mode = _revisions(session, con, ref, include_pending, "reading history")
     return modes.visible_revisions(rows, mode)
 
 
 def get_fact_as_of(session, con, ref, as_of, include_pending=False):
-    """The revision in force at `as_of` (shape of revisions.get_fact_as_of), or None; see
+    """The revision in force at `as_of` (shape of revisions_store.get_fact_as_of), or None; see
     modes.revision_in_force for the normal-mode rule. Raises ValueError on a bad date."""
     parse_as_of(as_of)  # a bad date raises before any query
     rows, mode = _revisions(session, con, ref, include_pending, "reading history")

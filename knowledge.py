@@ -47,6 +47,7 @@ import privacy
 import privacy_store
 import review
 import revisions
+import revisions_store
 from paths import KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -275,13 +276,13 @@ def cmd_search(
 
 def fact_as_of(con, fact_id, as_of):
     """('ok', revision) | ('no-fact', None) | ('no-history', None) | ('not-yet', None).
-    Raises ValueError for a bad `as_of` (from revisions.get_fact_as_of)."""
-    rev = revisions.get_fact_as_of(con, fact_id, as_of)
+    Raises ValueError for a bad `as_of` (from revisions_store.get_fact_as_of)."""
+    rev = revisions_store.get_fact_as_of(con, fact_id, as_of)
     if rev is not None:
         return "ok", rev
     if get_fact(con, fact_id) is None:
         return "no-fact", None
-    return ("not-yet", None) if revisions.get_history(con, fact_id) else ("no-history", None)
+    return ("not-yet", None) if revisions_store.get_history(con, fact_id) else ("no-history", None)
 
 
 def _print_revision_state(r):
@@ -362,7 +363,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
     if not ref:
         _fail("give a fact id or a source_key")
     key = int(ref) if ref.isascii() and ref.isdigit() else ref
-    rows = _query(revisions.get_history, key)
+    rows = _query(revisions_store.get_history, key)
     if not rows:
         _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
     if as_json:

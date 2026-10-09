@@ -31,7 +31,7 @@ def entry(key="k1", statement="Original statement.", **kw):
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "revisions"):
+    for m in ("paths", "local_paths", "_shared", "add_fact", "revisions", "revisions_store", "fact_rules"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
 
@@ -42,11 +42,13 @@ def world(tmp_path, monkeypatch):
         return mod
 
     import revisions
+    import revisions_store
     import add_fact
 
     class W:
         env = e
         rv = revisions
+        rs = revisions_store
         af = add_fact
         mod04 = load("04_ingest_facts.py")
         mod11 = load("11_seed_general_facts.py")
@@ -81,9 +83,9 @@ def world(tmp_path, monkeypatch):
         @classmethod
         def append(cls, key, changes, reason="because", via="cli", session_id=None, at=None):
             if at is None:
-                return cls.rv.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
+                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
             with clock.frozen(at):
-                return cls.rv.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
+                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
 
         @classmethod
         def log_lines(cls):
@@ -189,7 +191,7 @@ def test_three_revisions_give_ordered_history_and_facts_shows_the_latest(world):
     assert world.append("k1", {"statement": "Reworded statement."}, "clearer", via="mcp", session_id="s9", at=T3).ok
     assert world.append("k1", {"status": "retracted"}, "was wrong", at=T4).ok
     con = world.build()
-    hist = world.rv.get_history(con, "k1")
+    hist = world.rs.get_history(con, "k1")
     assert [h["revision"] for h in hist] == [1, 2, 3, 4]
     assert [h["trust_level"] for h in hist] == ["low", "high", "high", "high"]
     assert [h["statement"] for h in hist] == ["Original statement."] * 2 + ["Reworded statement."] * 2
@@ -198,7 +200,7 @@ def test_three_revisions_give_ordered_history_and_facts_shows_the_latest(world):
     assert hist[2]["session_id"] == "s9" and hist[3]["change_reason"] == "was wrong"
     f = con.execute("SELECT statement, trust_level, status FROM facts").fetchone()
     assert tuple(f) == ("Reworded statement.", "high", "retracted")
-    assert [h["revision"] for h in world.rv.get_history(con, 1)] == [1, 2, 3, 4]  # by fact id too
+    assert [h["revision"] for h in world.rs.get_history(con, 1)] == [1, 2, 3, 4]  # by fact id too
 
 
 def test_facts_fts_follows_the_latest_revision(world):
@@ -214,7 +216,7 @@ def test_as_of_between_revisions_returns_the_intermediate_state(world):
     world.append("k1", {"trust_level": "high"}, "r", at=T2)
     world.append("k1", {"status": "retracted"}, "r", at=T4)
     con = world.build()
-    asof = lambda d: world.rv.get_fact_as_of(con, "k1", d)
+    asof = lambda d: world.rs.get_fact_as_of(con, "k1", d)
     assert asof("2026-09-30") is None                                  # before the fact existed
     assert asof("2026-10-01")["revision"] == 1                          # a date means the end of that day
     assert (asof("2026-10-02")["revision"], asof("2026-10-02")["trust_level"]) == (2, "high")
@@ -222,14 +224,14 @@ def test_as_of_between_revisions_returns_the_intermediate_state(world):
     assert asof("2026-10-04")["status"] == "retracted"
     assert asof("2026-10-04T10:59:59+00:00")["revision"] == 2          # a full timestamp is exact
     assert asof("2099-01-01")["revision"] == 3
-    assert world.rv.get_fact_as_of(con, 1, "2026-10-03")["revision"] == 2
-    assert world.rv.get_fact_as_of(con, "nope", "2026-10-03") is None
-    assert world.rv.get_history(con, "nope") == [] and world.rv.get_history(con, 999) == []
+    assert world.rs.get_fact_as_of(con, 1, "2026-10-03")["revision"] == 2
+    assert world.rs.get_fact_as_of(con, "nope", "2026-10-03") is None
+    assert world.rs.get_history(con, "nope") == [] and world.rs.get_history(con, 999) == []
     for bad in ("yesterday", "2026-13-40", None):
         with pytest.raises(ValueError):
             asof(bad)
     with pytest.raises(TypeError):
-        world.rv.get_history(con, 1.5)
+        world.rs.get_history(con, 1.5)
 
 
 def test_history_and_as_of_accept_a_db_path(world, tmp_path):
@@ -239,8 +241,8 @@ def test_history_and_as_of_accept_a_db_path(world, tmp_path):
     disk = sqlite3.connect(path)
     con.backup(disk)
     disk.close()
-    assert [h["revision"] for h in world.rv.get_history(path, "k1")] == [1]
-    assert world.rv.get_fact_as_of(path, "k1", "2026-12-01")["revision"] == 1
+    assert [h["revision"] for h in world.rs.get_history(path, "k1")] == [1]
+    assert world.rs.get_fact_as_of(path, "k1", "2026-12-01")["revision"] == 1
 
 
 def test_original_entry_bytes_are_unchanged_by_any_append(world):
@@ -269,7 +271,7 @@ def test_a_revision_line_is_a_full_snapshot_with_fixed_key_order(world):
 def test_append_uses_the_clock_helper(world):
     world.seed(general=[entry("k1")])
     with clock.frozen("2026-10-05T01:02:03+00:00"):
-        r = world.rv.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir)
+        r = world.rs.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir)
     assert r.revision["changed_at"] == "2026-10-05T01:02:03+00:00"
 
 
@@ -294,7 +296,7 @@ def test_append_uses_the_clock_helper(world):
 ])
 def test_bad_appends_are_refused_with_a_message_and_write_nothing(world, changes, reason, via, session, needle):
     world.seed(general=[entry("k1"), entry("k2", statement="Other.")])
-    r = world.rv.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir)
+    r = world.rs.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir)
     assert not r.ok and any(needle in e for e in r.errors), r.errors
     assert not os.path.exists(world.log)
 
@@ -384,8 +386,8 @@ def test_a_log_without_a_trailing_newline_gets_one_before_the_next_line(world):
 def test_concurrent_appends_from_several_processes_lose_nothing(world):
     world.seed(general=[entry("k1")])
     n = 8
-    script = ("import sys, revisions; "
-              "r = revisions.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1]); "
+    script = ("import sys, revisions_store; "
+              "r = revisions_store.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1]); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "KNOWLEDGE_FROZEN_NOW": T3, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, world.env.data_dir, f"note-{i}"], env=env, cwd=REPO,
@@ -592,12 +594,12 @@ def test_the_derived_keys_equal_the_in_memory_keys_so_build_is_identical_before_
 
 def test_revisions_written_before_the_backfill_still_resolve_after_it(world):
     world.seed(general=[{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "2026-09-26", "freshness": "no-decay", "recheck_rationale": "no decay"}])
-    (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
+    (key,) = [e["key"] for e in world.rs.load_entries(world.env.data_dir)]
     assert key.startswith("legacy-")
     assert world.append(key, {"trust_level": "high"}, "r", at=T2).ok
     run_backfill(world, world.env.data_dir, "--apply")
     con = world.build()
-    assert [h["trust_level"] for h in world.rv.get_history(con, key)] == ["low", "high"]
+    assert [h["trust_level"] for h in world.rs.get_history(con, key)] == ["low", "high"]
 
 
 def test_backfill_refuses_bad_input_without_writing(world, tmp_path):

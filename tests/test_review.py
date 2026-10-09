@@ -19,7 +19,8 @@ GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 @pytest.fixture
 def rw(world, monkeypatch):
     """The world fixture plus the review module, imported after it so both share `revisions`."""
-    sys.modules.pop("review", None)
+    for _m in ("review", "review_store", "review_rules"):
+        sys.modules.pop(_m, None)
     import review
     world.review = review
     for k, v in GIT_ENV.items():
@@ -120,7 +121,7 @@ def test_approve_appends_one_revision_per_fact_and_never_edits_the_entries(rw):
     assert [(r["source_key"], r["revision"], r["status"], r["change_reason"], r["changed_via"], r["session_id"]) for r in recs] == \
         [("p1", 2, "active", "looks right", "cli", "sess"), ("p2", 2, "active", "looks right", "cli", "sess")]
     con = w.build()
-    hist = w.rv.get_history(con, "p1")
+    hist = w.rs.get_history(con, "p1")
     assert [(h["revision"], h["status"]) for h in hist] == [(1, "pending"), (2, "active")]
     assert [r[0] for r in con.execute("SELECT status FROM facts ORDER BY source_key")] == ["active"] * 3
     assert w.review.list_pending(con) == []
@@ -224,13 +225,13 @@ def test_approve_validates_reason_and_via(rw):
 def test_a_failing_item_does_not_roll_back_earlier_items_and_the_rest_still_run(rw, monkeypatch):
     w = rw
     w.seed(general=[pend("p1"), pend("p2"), pend("p3")])
-    real = w.rv.append_revision
+    real = w.rs.append_revision
 
     def flaky(key, *a, **kw):
         if key == "p2":
             return w.rv.RevisionResult(False, ["disk on fire"])
         return real(key, *a, **kw)
-    monkeypatch.setattr(w.review.revisions, "append_revision", flaky)
+    monkeypatch.setattr(w.review.revisions_store, "append_revision", flaky)
     d = make_repo(w)
     res = w.review.approve(["p1", "p2", "p3"], data_dir=d)
     assert [(i.source_key, i.outcome) for i in res.items] == [("p1", "approved"), ("p2", "error"), ("p3", "approved")]
@@ -243,12 +244,12 @@ def test_a_failing_item_does_not_roll_back_earlier_items_and_the_rest_still_run(
 def test_fact_retracted_by_another_process_after_the_check_is_not_reactivated(rw, monkeypatch):
     w = rw
     w.seed(general=[pend("p1")])
-    real = w.rv.append_revision
+    real = w.rs.append_revision
 
     def racing(key, *a, **kw):
         assert real("p1", {"status": "retracted"}, "x", "cli", data_dir=w.env.data_dir).ok  # someone else gets in first
         return real(key, *a, **kw)
-    monkeypatch.setattr(w.review.revisions, "append_revision", racing)
+    monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
     res = w.review.approve("p1", data_dir=w.env.data_dir, commit=False)
     assert res.items[0].outcome == "skipped" and "no longer pending" in res.items[0].reason
     assert [json.loads(l)["status"] for l in w.log_lines()] == ["retracted"]
@@ -257,12 +258,12 @@ def test_fact_retracted_by_another_process_after_the_check_is_not_reactivated(rw
 def test_fact_edited_by_another_process_keeps_its_edit_when_approved(rw, monkeypatch):
     w = rw
     w.seed(general=[pend("p1", "Original.")])
-    real = w.rv.append_revision
+    real = w.rs.append_revision
 
     def racing(key, *a, **kw):
         assert real("p1", {"statement": "Reworded."}, "x", "cli", data_dir=w.env.data_dir).ok  # still pending, new text
         return real(key, *a, **kw)
-    monkeypatch.setattr(w.review.revisions, "append_revision", racing)
+    monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
     assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "approved"
     last = json.loads(w.log_lines()[-1])
     assert (last["revision"], last["status"], last["statement"]) == (3, "active", "Reworded.")
@@ -361,7 +362,7 @@ def test_reject_appends_a_retracted_revision_and_requires_a_reason(rw):
     res = w.review.reject(["p1", "a1", "zzz"], "wrong", data_dir=w.env.data_dir, commit=False)
     assert [(i.ref, i.outcome) for i in res.items] == [("p1", "rejected"), ("a1", "skipped"), ("zzz", "unknown")]
     con = w.build()
-    assert [(h["revision"], h["status"]) for h in w.rv.get_history(con, "p1")] == [(1, "pending"), (2, "retracted")]
+    assert [(h["revision"], h["status"]) for h in w.rs.get_history(con, "p1")] == [(1, "pending"), (2, "retracted")]
     assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "skipped"
 
 
@@ -393,7 +394,7 @@ def test_no_caller_discards_the_result_of_approve_or_reject():
 def test_append_revision_expect_precondition(rw):
     w = rw
     w.seed(general=[pend("p1")])
-    bad = w.rv.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "active"})
+    bad = w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "active"})
     assert not bad.ok and bad.errors[0].startswith("precondition failed") and not os.path.exists(w.log)
-    assert not w.rv.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"bogus": 1}).ok
-    assert w.rv.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "pending"}).ok
+    assert not w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"bogus": 1}).ok
+    assert w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "pending"}).ok

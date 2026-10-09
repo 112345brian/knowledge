@@ -13,6 +13,7 @@ import sqlite3, json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import get_or_create_vault_file, require_date_added
 import revisions
+import revisions_store
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 import privacy
 import privacy_store
@@ -179,7 +180,7 @@ def run(con):
              status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
-        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))
+        revisions_store.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))
 
         citekey = item.get("source_citekey")
         if citekey:
