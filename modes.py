@@ -198,9 +198,9 @@ def _limit(limit):
 
 
 def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=None):
-    if subject:
-        sql += " AND sub.name = ?"
-        params.append(subject)
+    if subject:  # a subject's alias (#43) selects the same facts as its name
+        sql += " AND (sub.name = ? OR sub.id IN (SELECT subject_id FROM subject_aliases WHERE alias = ?))"
+        params.extend([subject, subject])
     if trust:
         sql += " AND f.trust_level = ?"
         params.append(trust)

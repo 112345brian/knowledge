@@ -33,6 +33,9 @@ What goes in (everything else is absent, not empty):
   facts_fts, sources_fts, authors_fts   rebuilt over the copied rows.
   v_subjects       view: subjects having at least one included fact, with a count of INCLUDED
                    facts only (never stored, so it cannot go stale or count private facts).
+subjects        also description, parent_relation, deprecated, replaced_by_subject_id (only if that subject is
+                   included) and subject_aliases (#43); a description or alias that contains a listed keyword
+                   is dropped, the subject stays.
 Never copied: claims (and their fact links), vault_files, metrics, measurements, fact_measurements,
 exercises, training_sets, foods, food/meal logs, muscles, import_sources, artists, venues,
 festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and the views/triggers
@@ -48,7 +51,7 @@ import privacy
 NORMAL_DB_NAME = "knowledge-normal.db"
 
 # Every table the normal DB may contain (FTS shadow tables are the 'fts' siblings below).
-TABLES = ("subjects", "publishers", "authors", "sources", "source_authors", "facts",
+TABLES = ("subjects", "subject_aliases", "publishers", "authors", "sources", "source_authors", "facts",
           "fact_revisions", "fact_sources")
 FTS_TABLES = ("facts_fts", "sources_fts", "authors_fts")
 VIEWS = ("v_subjects",)
@@ -58,7 +61,17 @@ CREATE TABLE subjects (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL UNIQUE,
     domain     TEXT NOT NULL,
-    parent_id  INTEGER REFERENCES subjects(id)
+    parent_id  INTEGER REFERENCES subjects(id),
+    description            TEXT,
+    parent_relation        TEXT NOT NULL DEFAULT 'broader' CHECK (parent_relation IN ('broader','part-of','subtype-of','member-of')),
+    deprecated             INTEGER NOT NULL DEFAULT 0 CHECK (deprecated IN (0,1)),
+    replaced_by_subject_id INTEGER REFERENCES subjects(id),
+    CHECK (replaced_by_subject_id IS NULL OR deprecated = 1)
+);
+CREATE TABLE subject_aliases (
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id),
+    alias       TEXT NOT NULL UNIQUE,
+    PRIMARY KEY (subject_id, alias)
 );
 CREATE TABLE publishers (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
@@ -214,10 +227,23 @@ def populate(out, full, rules):
         out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(19)})", r)
 
     # 2. subjects (used + ancestors), parents first is not required (FKs are checked at commit)
+    # #43: description, relation label, deprecation and aliases come along, but the free text (description,
+    # aliases) must pass the keyword rules like every other copied text: a listed name in either drops
+    # that text (the subject itself stays). A replacement that is not in this DB is dropped, not dangled.
+    def clean_text(text):
+        return text if text and not privacy.match_keywords(text, rules.keywords) else None
+
     for sid in sorted(subject_ids):
-        domain, parent_id = full.execute("SELECT domain, parent_id FROM subjects WHERE id = ?", (sid,)).fetchone()
-        out.execute("INSERT INTO subjects (id, name, domain, parent_id) VALUES (?, ?, ?, ?)",
-                    (sid, names[sid], domain, parent_id))
+        domain, parent_id, desc, relation, deprecated, replaced = full.execute(
+            "SELECT domain, parent_id, description, parent_relation, deprecated, replaced_by_subject_id "
+            "FROM subjects WHERE id = ?", (sid,)).fetchone()
+        out.execute("INSERT INTO subjects (id, name, domain, parent_id, description, parent_relation, deprecated, "
+                    "replaced_by_subject_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (sid, names[sid], domain, parent_id, clean_text(desc), relation, deprecated,
+                     replaced if replaced in subject_ids else None))
+        for (alias,) in full.execute("SELECT alias FROM subject_aliases WHERE subject_id = ? ORDER BY alias", (sid,)):
+            if clean_text(alias):
+                out.execute("INSERT INTO subject_aliases (subject_id, alias) VALUES (?, ?)", (sid, alias))
 
     # 3. revisions: of an included fact, only revisions that are themselves normal and pass the rules
     rcols = ("id, fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "

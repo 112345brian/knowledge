@@ -9,6 +9,7 @@
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
     knowledge.py audit-sources [--json]
+    knowledge.py subject list|show|alias|describe|deprecate ...  [--json]  (subjects.json; see cli_subjects.py)
     knowledge.py privacy check "statement" --subject s [--requested normal|private] [--json]
     knowledge.py privacy rules [--json]
     knowledge.py privacy tag|untag <subject> / add-keyword|remove-keyword <word>  [--allow-dirty] [--dry-run]
@@ -105,9 +106,9 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     """Append the shared fact filters. `personal` is True / False / None (no filter).
     An explicit `status` wins and `include_pending` is then ignored; without one only
     active facts (and pending ones when `include_pending`) match."""
-    if subject:
-        sql += " AND sub.name = ?"
-        params.append(subject)
+    if subject:  # a subject's alias (#43) selects the same facts as its name
+        sql += " AND (sub.name = ? OR sub.id IN (SELECT subject_id FROM subject_aliases WHERE alias = ?))"
+        params.extend([subject, subject])
     if trust:
         sql += " AND f.trust_level = ?"
         params.append(trust)
@@ -793,6 +794,7 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
         return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
+import cli_subjects; app.add_typer(cli_subjects.app, name="subject")  # subject list|show|alias|describe|deprecate (#43)
 import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, set-visibility (#8, #23)
 
 

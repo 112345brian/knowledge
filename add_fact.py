@@ -33,6 +33,7 @@ from typing import List, Optional
 import clock
 import fixity
 import privacy
+import subjects
 import validtime
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
@@ -408,6 +409,23 @@ def resolve_privacy(fact, data_path, db_path):
                                                   fact.source_quote, fact.source_locator, fact.applies_to))
 
 
+def canonicalize_subject(fact, data_path):
+    """#43: file the fact under its canonical subject. An alias is rewritten in place (`fact.subject`) and
+    reported in the returned notes; a deprecated subject is refused with the replacement named. With no
+    subjects.json beside the data file nothing changes. Returns (notes, error_or_None); never raises."""
+    path = os.path.join(os.path.dirname(os.path.abspath(data_path)), subjects.SUBJECTS_FILENAME)
+    try:
+        entries = subjects.read_file(path)
+    except subjects.SubjectsError as e:
+        return [], str(e)
+    if not entries:
+        return [], None
+    canon, notes, error = subjects.check_new_fact(fact.subject, entries)
+    if error is None:
+        fact.subject = canon
+    return notes, error
+
+
 def append_fact(fact, data_path=None, db_path=None):
     """Validate and append one fact. Returns an AddResult; never prints or exits. The stored
     visibility is the most restrictive of the request, the subject tag and the keyword list (#31)."""
@@ -416,6 +434,10 @@ def append_fact(fact, data_path=None, db_path=None):
     errors, notes = validate_fact(fact, db_path)
     if errors:
         return AddResult(ok=False, errors=errors, notes=notes)
+    subject_notes, subject_error = canonicalize_subject(fact, data_path)
+    notes = notes + subject_notes
+    if subject_error:
+        return AddResult(ok=False, errors=[subject_error], notes=notes)
     try:
         resolution = resolve_privacy(fact, data_path, db_path)
     except (privacy.PrivacyRulesError, DataFileError) as e:

@@ -120,6 +120,11 @@ def derive_markers(full_path):
             add("file hash", h)
         for (n,) in full.execute("SELECT name FROM subjects WHERE private = 1"):
             add("private subject name", n)
+        # #43: a private subject's description and aliases are as private as its name
+        for (d,) in full.execute("SELECT description FROM subjects WHERE private = 1"):
+            add("private subject description", d)
+        for (a,) in full.execute("SELECT a.alias FROM subject_aliases a JOIN subjects s ON s.id = a.subject_id WHERE s.private = 1"):
+            add("private subject alias", a)
         return markers
     finally:
         full.close()
@@ -136,6 +141,8 @@ MARKERS = {
     "rules-file name in untagged subject": "Marnoq Fothergill",
     "private fact source quote": "quenchwhistle verbatim private quote",
     "private subject name": "zephyr-family-matters",
+    "private subject description": "quillfeather-secret-description of the family topic",
+    "private subject alias": "zephyr-secret-alias",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
     "claim text": "Therefore Grumbleton should change his life",
@@ -162,6 +169,10 @@ def build_fixture(directory):
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (3, ?, 'life', NULL, 1)", (M["private subject name"],))
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (4, 'underchild', 'life', 3, 1)")
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (5, 'untagged-topic', 'health', NULL, 0)")
+    ex("UPDATE subjects SET description = ? WHERE id = 3", (M["private subject description"],))
+    ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (3, ?)", (M["private subject alias"],))
+    ex("UPDATE subjects SET description = 'Sleep habits and duration', parent_relation = 'part-of' WHERE id = 2")
+    ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (2, 'rest')")
     ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state) VALUES (1, ?, ?, 10, 'present')",
        (M["vault path"], M["file hash"]))
     ex("INSERT INTO publishers (id, name) VALUES (1, 'Journal of Fixtures')")

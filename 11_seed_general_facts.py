@@ -26,6 +26,8 @@ def get_or_create_subject(cur, name, domain, cache):
     if name in cache:
         return cache[name]
     row = cur.execute("SELECT id FROM subjects WHERE name = ?", (name,)).fetchone()
+    if row is None:  # #43: an entry filed under an alias belongs to the canonical subject
+        row = cur.execute("SELECT subject_id FROM subject_aliases WHERE alias = ?", (name,)).fetchone()
     if row:
         sid = row[0]
     else:

@@ -198,6 +198,13 @@ def add_facts(items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session
                 source_quote=fields.get("source_quote"),
                 captured_via=captured_via, session_id=session_id, status=status)
             errors, notes = add_fact.validate_fact(fact, db_path)
+            if not errors:
+                subject_notes, subject_error = add_fact.canonicalize_subject(fact, data_path)
+                notes = notes + subject_notes
+                if subject_error:
+                    errors = [subject_error]
+                else:
+                    item.subject = fact.subject
             result.notes.extend(n for n in notes if n not in result.notes)
         item.errors = errors
         facts.append(fact if not errors else None)

@@ -69,6 +69,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.subjects",
     "kn.validtime",
 ]
 forbidden_modules = [
@@ -78,6 +79,7 @@ forbidden_modules = [
     "kn.cli_lifecycle",
     "kn.cli_migrate",
     "kn.cli_parity",
+    "kn.cli_subjects",
     "kn.knowledge",
     # serving
     "kn.inbox",
@@ -90,6 +92,7 @@ forbidden_modules = [
     "kn.build",
     "kn.clean_concerts_csv",
     "kn.export_music_taste",
+    "kn.export_subjects",
     "kn.snapshot_date",
 ]
 
@@ -118,6 +121,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.subjects",
     "kn.validtime",
 #planned:     "kn.mcp_server",
 ]
@@ -167,6 +171,7 @@ forbidden_modules = [
     "kn.build",
     "kn.clean_concerts_csv",
     "kn.export_music_taste",
+    "kn.export_subjects",
     "kn.snapshot_date",
 ]
 
@@ -237,6 +242,7 @@ layers = [
     "leak_test",
     "revisions",
     "add_fact",
+    "subjects",
     "privacy | private_git",
     "clock | paths | fixity | validtime",
 ]

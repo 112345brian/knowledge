@@ -21,8 +21,32 @@ CREATE TABLE subjects (
     parent_id   INTEGER REFERENCES subjects(id),
     -- #31 privacy: 1 when this subject or an ancestor is tagged private in privacy_rules.json
     -- (set by privacy.apply_rules_to_db at the end of 04/11; the rules file is the source of truth).
-    private     INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1))
+    private     INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1)),
+    -- #43, all loaded from subjects.json by step 06. `parent_id` stays the SINGLE inheritance path for
+    -- privacy tags (#31); `parent_relation` only labels what that edge means (broader | part-of |
+    -- subtype-of | member-of). A deprecated subject is refused for new facts (existing facts keep it);
+    -- `replaced_by_subject_id` names the subject to use instead.
+    description            TEXT,
+    parent_relation        TEXT NOT NULL DEFAULT 'broader' CHECK (parent_relation IN ('broader','part-of','subtype-of','member-of')),
+    deprecated             INTEGER NOT NULL DEFAULT 0 CHECK (deprecated IN (0,1)),
+    replaced_by_subject_id INTEGER REFERENCES subjects(id),
+    CHECK (replaced_by_subject_id IS NULL OR deprecated = 1),
+    CHECK (replaced_by_subject_id IS NULL OR replaced_by_subject_id <> id)
 );
+
+-- Alternative names for a subject (#43). A fact filed under an alias is stored under the canonical
+-- subject. An alias may never equal a subject name, in either direction (the triggers below).
+CREATE TABLE subject_aliases (
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    alias       TEXT NOT NULL UNIQUE,
+    PRIMARY KEY (subject_id, alias)
+);
+CREATE TRIGGER subject_aliases_not_a_subject BEFORE INSERT ON subject_aliases
+WHEN EXISTS (SELECT 1 FROM subjects WHERE name = NEW.alias)
+BEGIN SELECT RAISE(ABORT, 'alias collides with a subject name'); END;
+CREATE TRIGGER subjects_not_an_alias BEFORE INSERT ON subjects
+WHEN EXISTS (SELECT 1 FROM subject_aliases WHERE alias = NEW.name)
+BEGIN SELECT RAISE(ABORT, 'subject name collides with an alias'); END;
 
 -- ============================================================
 -- Authors: people/orgs credited on a source. Many-to-many via source_authors

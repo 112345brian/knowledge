@@ -54,6 +54,14 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "subjects"       # #43 the subject hierarchy as data: validation, alias resolution, edits through private_git
+layer = "library"
+depends_on = [
+    "paths",            # lazy
+    "private_git",
+]
+
+[[modules]]
 path = "validtime"      # #40 valid-time dates: parsing, ordering, containment (Python and SQL)
 layer = "library"
 depends_on = []
@@ -84,6 +92,7 @@ depends_on = [
     "paths",
     "privacy",
     "private_git",
+    "subjects",
     "validtime",
 ]
 
@@ -187,6 +196,7 @@ depends_on = [
     "cli_inbox",
     "cli_lifecycle",
     "cli_migrate",
+    "cli_subjects",
     "fixity",
     "paths",
     "privacy",
@@ -194,6 +204,14 @@ depends_on = [
     "review",
     "revisions",
     "validtime",
+]
+
+[[modules]]
+path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
+layer = "cli"
+depends_on = [
+    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
+    "subjects",
 ]
 
 [[modules]]
@@ -290,6 +308,11 @@ layer = "pipeline"
 depends_on = ["backfill_source_keys", "fixity", "revisions"]
 
 [[modules]]
+path = "export_subjects"
+layer = "pipeline"
+depends_on = ["subjects"]
+
+[[modules]]
 path = "clean_concerts_csv"
 layer = "pipeline"
 depends_on = ["paths"]
@@ -327,7 +350,7 @@ depends_on = []
 [[modules]]
 path = "06_seed_subject_hierarchy"
 layer = "pipeline"
-depends_on = []
+depends_on = ["subjects"]
 
 [[modules]]
 path = "07_ingest_concerts"
