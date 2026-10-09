@@ -327,6 +327,22 @@ CASES = [
      [("tach", ["privacy", "privacy_store"]), ("import-linter", ["kn.privacy", "kn.privacy_store"])]),
     ("domain-imports-clock", "privacy", "import clock",
      [("tach", ["privacy", "clock"]), ("import-linter", ["kn.privacy", "kn.clock"])]),
+    ("domain-modes-imports-sqlite", "modes", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.modes", "sqlite3"])]),
+    ("domain-modes-imports-its-adapter", "modes", "import modes_store",
+     [("tach", ["modes", "modes_store"]), ("import-linter", ["kn.modes", "kn.modes_store"])]),
+    ("domain-modes-imports-revisions", "modes", "import revisions",
+     [("tach", ["modes", "revisions"]), ("import-linter", ["kn.modes", "kn.revisions"])]),
+    ("domain-claims-audit-imports-clock", "claims_audit", "import clock",
+     [("tach", ["claims_audit", "clock"]), ("import-linter", ["kn.claims_audit", "kn.clock"])]),
+    ("domain-claims-audit-imports-sqlite", "claims_audit", "import sqlite3",
+     [("import-linter", ["kn.claims_audit", "sqlite3"])]),
+    ("domain-timestamps-imports-os", "timestamps", "import os",
+     [("import-linter", ["kn.timestamps", "os"])]),
+    ("adapter-modes-store-imports-upward", "modes_store", "import lifecycle",
+     [("tach", ["modes_store", "lifecycle"]), ("import-linter", ["kn.modes_store", "kn.lifecycle"])]),
+    ("serving-imports-claims-store", "inbox", "import claims_store",
+     [("tach", ["inbox", "claims_store"]), ("import-linter", ["only through modes", "kn.claims_store"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -381,7 +397,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
-    assert {"privacy"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    assert {"privacy", "modes", "claims_audit", "timestamps"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):

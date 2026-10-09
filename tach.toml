@@ -89,6 +89,7 @@ depends_on = [
     "add_fact",
     "clock",
     "paths",            # lazy
+    "timestamps",
 ]
 
 [[modules]]
@@ -102,17 +103,36 @@ depends_on = [
 ]
 
 [[modules]]
-path = "modes"          # the only serving-side reader of facts
+path = "timestamps"     # DOMAIN: pure revision-time parsing, shared by revisions (storage) and modes (policy)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "modes"          # DOMAIN: mode rules and write gating, pure (the SQL is in modes_store)
 layer = "library"
 depends_on = [
     "privacy",
-    "revisions",
+    "timestamps",
 ]
 
 [[modules]]
-path = "claims_audit"
+path = "modes_store"    # ADAPTER for modes: the only serving-side reader of facts
 layer = "library"
 depends_on = [
+    "modes",
+    "timestamps",
+]
+
+[[modules]]
+path = "claims_audit"   # DOMAIN: the staleness rules, pure (no clock, no db)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "claims_store"   # ADAPTER for claims_audit: reads claims/facts and the clock
+layer = "library"
+depends_on = [
+    "claims_audit",
     "clock",
 ]
 
@@ -178,7 +198,7 @@ path = "knowledge"      # the Typer app; the only module that imports typer besi
 layer = "cli"
 depends_on = [
     "add_fact",
-    "claims_audit",
+    "claims_store",
     "cli_facts_batch",  # registration lines (CLI-internal)
     "cli_inbox",
     "cli_lifecycle",
@@ -243,6 +263,7 @@ depends_on = [
 #planned: depends_on = [
 #planned:     "cli_parity",
 #planned:     "modes",
+#planned:     "modes_store",
 #planned:     "review",
 #planned: ]
 

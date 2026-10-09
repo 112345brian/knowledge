@@ -15,6 +15,7 @@ import pytest
 
 import knowledge
 import modes
+import modes_store
 import privacy
 import revisions
 from test_add_fact import REPO
@@ -154,7 +155,7 @@ def test_sessions_do_not_share_mode_across_threads(db):
 
 def test_non_session_is_a_type_error(db):
     with pytest.raises(TypeError):
-        modes.get_fact("private", db, 1)
+        modes_store.get_fact("private", db, 1)
 
 
 def test_with_mode_stamps_the_mode():
@@ -167,12 +168,12 @@ def test_with_mode_stamps_the_mode():
 # ---------------------------------------------------------------- off
 
 READS = [
-    lambda s, c: modes.search_facts(s, c, "banana"),
-    lambda s, c: modes.get_fact(s, c, 1),
-    lambda s, c: modes.list_facts(s, c),
-    lambda s, c: modes.list_subjects(s, c),
-    lambda s, c: modes.get_history(s, c, 1),
-    lambda s, c: modes.get_fact_as_of(s, c, 1, "2026-12-31"),
+    lambda s, c: modes_store.search_facts(s, c, "banana"),
+    lambda s, c: modes_store.get_fact(s, c, 1),
+    lambda s, c: modes_store.list_facts(s, c),
+    lambda s, c: modes_store.list_subjects(s, c),
+    lambda s, c: modes_store.get_history(s, c, 1),
+    lambda s, c: modes_store.get_fact_as_of(s, c, 1, "2026-12-31"),
 ]
 
 
@@ -187,9 +188,9 @@ def test_off_then_reads_then_back_on(db):
     s = modes.Session()
     modes.set_mode(s, "off")
     with pytest.raises(modes.ModeOff):
-        modes.list_facts(s, db)
+        modes_store.list_facts(s, db)
     modes.set_mode(s, "normal")
-    assert modes.list_facts(s, db)
+    assert modes_store.list_facts(s, db)
 
 
 def test_off_refuses_writes():
@@ -202,11 +203,12 @@ def test_off_refuses_writes():
 
 def test_every_public_session_function_is_gated_when_off(db):
     """A new public read added to modes.py without a gate fails here."""
-    skip = {"get_mode", "set_mode", "with_mode"}
-    for name in modes.__all__:
-        fn = getattr(modes, name)
-        if not inspect.isfunction(fn) or name in skip:
-            continue
+    # the reads live in the adapter; the write gates stay in the domain. The domain's other public
+    # names are pure policy helpers (they take a mode or rows, not a session) and cannot leak.
+    public = [(modes_store, n) for n in modes_store.__all__] + [(modes, "check_write"), (modes, "prepare_write")]
+    assert len(public) >= 8
+    for mod, name in public:
+        fn = getattr(mod, name)
         params = list(inspect.signature(fn).parameters)
         assert params[0] == "session", f"{name} must take the session first"
         args = {"session": S("off"), "con": db, "terms": "banana", "ref": 1, "as_of": "2026-12-31",
@@ -228,10 +230,10 @@ def test_compat_get_fact_matches_knowledge(db):
     # minus NORMAL_HIDDEN_FIELDS (the columns normal_db.py also leaves out).
     for fid in (1, 4, 9, 10):
         full = knowledge.get_fact(db, fid)
-        assert modes.get_fact(S("private"), db, fid) == full
+        assert modes_store.get_fact(S("private"), db, fid) == full
         trimmed = {k: v for k, v in full.items() if k not in modes.NORMAL_HIDDEN_FIELDS}
-        assert modes.get_fact(S("normal"), db, fid) == trimmed
-    assert modes.get_fact(S("private"), db, 1)["sources"] == [{"name": "A paper", "locator": "p. 3"}]
+        assert modes_store.get_fact(S("normal"), db, fid) == trimmed
+    assert modes_store.get_fact(S("private"), db, 1)["sources"] == [{"name": "A paper", "locator": "p. 3"}]
 
 
 def test_normal_mode_get_fact_hides_notes_provenance_and_the_vault_path(db):
@@ -241,12 +243,12 @@ def test_normal_mode_get_fact_hides_notes_provenance_and_the_vault_path(db):
                  captured_via = 'mcp', is_personal = 1 WHERE id = 1""")
     w.commit()
     w.close()
-    normal = modes.get_fact(S("normal"), db, 1)
+    normal = modes_store.get_fact(S("normal"), db, 1)
     assert normal is not None and normal["statement"]
     for hidden in modes.NORMAL_HIDDEN_FIELDS:
         assert hidden not in normal, hidden
     assert "a private aside" not in repr(normal) and "my own words" not in repr(normal)
-    private = modes.get_fact(S("private"), db, 1)
+    private = modes_store.get_fact(S("private"), db, 1)
     assert private["notes"] == "a private aside" and private["session_id"] == "s-1"
     assert set(modes.NORMAL_HIDDEN_FIELDS) <= set(private) | {"origin_path"}
 
@@ -261,98 +263,98 @@ def _all_statuses(fn, db, *a, **kw):
 
 
 def test_compat_list_search_subjects_row_shapes(db):
-    got = {r["id"]: r for r in modes.list_facts(S("normal"), db)}
+    got = {r["id"]: r for r in modes_store.list_facts(S("normal"), db)}
     ref = {r["id"]: r for r in knowledge.list_facts(db)}
     for fid, row in got.items():
         assert row == ref[fid]
-    s_got = {r["id"]: r for r in modes.search_facts(S("normal"), db, "banana")}
+    s_got = {r["id"]: r for r in modes_store.search_facts(S("normal"), db, "banana")}
     s_ref = {r["id"]: r for r in knowledge.search_facts(db, "banana")}
     for fid, row in s_got.items():
         assert row == s_ref[fid]
     assert set(s_got) == {1, 4, 9, 10, 11}
-    priv = {r["id"]: r for r in modes.list_facts(S("private"), db, limit=1000)}
+    priv = {r["id"]: r for r in modes_store.list_facts(S("private"), db, limit=1000)}
     assert priv == _all_statuses(knowledge.list_facts, db, limit=1000)
-    priv_s = {r["id"]: r for r in modes.search_facts(S("private"), db, "banana")}
+    priv_s = {r["id"]: r for r in modes_store.search_facts(S("private"), db, "banana")}
     assert priv_s == _all_statuses(knowledge.search_facts, db, "banana")
     # Subjects: same rows; private mode counts every status, knowledge.list_subjects only active ones.
-    p_sub, k_sub = modes.list_subjects(S("private"), db), knowledge.list_subjects(db)
+    p_sub, k_sub = modes_store.list_subjects(S("private"), db), knowledge.list_subjects(db)
     names = lambda rows: [{k: v for k, v in r.items() if k in ("name", "domain", "parent")} for r in rows]
     assert names(p_sub) == names(k_sub)
     assert all(p["n_facts"] >= k["n_facts"] for p, k in zip(p_sub, k_sub))
 
 
 def test_compat_history_and_as_of_match_revisions_for_visible_fact(db):
-    assert modes.get_history(S("normal"), db, 1) == revisions.get_history(db, 1)
-    assert modes.get_fact_as_of(S("normal"), db, 1, "2026-12-31") == revisions.get_fact_as_of(db, 1, "2026-12-31")
-    assert modes.get_history(S("private"), db, 8) == revisions.get_history(db, 8)
-    assert modes.get_fact_as_of(S("private"), db, 8, T1) == revisions.get_fact_as_of(db, 8, T1)
+    assert modes_store.get_history(S("normal"), db, 1) == revisions.get_history(db, 1)
+    assert modes_store.get_fact_as_of(S("normal"), db, 1, "2026-12-31") == revisions.get_fact_as_of(db, 1, "2026-12-31")
+    assert modes_store.get_history(S("private"), db, 8) == revisions.get_history(db, 8)
+    assert modes_store.get_fact_as_of(S("private"), db, 8, T1) == revisions.get_fact_as_of(db, 8, T1)
 
 
 # ---------------------------------------------------------------- normal mode: what is visible
 
 def test_normal_lists_only_active_normal_facts_on_non_private_subjects(db):
-    assert ids(modes.list_facts(S("normal"), db)) == [1, 4, 9, 10, 11]
+    assert ids(modes_store.list_facts(S("normal"), db)) == [1, 4, 9, 10, 11]
 
 
 def test_normal_include_pending(db):
-    assert ids(modes.list_facts(S("normal"), db, include_pending=True)) == [1, 2, 4, 9, 10, 11]
-    assert ids(modes.search_facts(S("normal"), db, "banana", include_pending=True)) == [1, 2, 4, 9, 10, 11]
-    assert modes.get_fact(S("normal"), db, 2) is None
-    assert modes.get_fact(S("normal"), db, 2, include_pending=True)["id"] == 2
+    assert ids(modes_store.list_facts(S("normal"), db, include_pending=True)) == [1, 2, 4, 9, 10, 11]
+    assert ids(modes_store.search_facts(S("normal"), db, "banana", include_pending=True)) == [1, 2, 4, 9, 10, 11]
+    assert modes_store.get_fact(S("normal"), db, 2) is None
+    assert modes_store.get_fact(S("normal"), db, 2, include_pending=True)["id"] == 2
 
 
 def test_normal_status_filter_only_narrows(db):
-    assert modes.list_facts(S("normal"), db, status="superseded") == []
-    assert modes.list_facts(S("normal"), db, status="pending") == []
-    assert ids(modes.list_facts(S("normal"), db, status="active")) == [1, 4, 9, 10, 11]
+    assert modes_store.list_facts(S("normal"), db, status="superseded") == []
+    assert modes_store.list_facts(S("normal"), db, status="pending") == []
+    assert ids(modes_store.list_facts(S("normal"), db, status="active")) == [1, 4, 9, 10, 11]
 
 
 def test_private_sees_everything(db):
-    assert ids(modes.list_facts(S("private"), db)) == list(range(1, 12))
-    assert modes.get_fact(S("private"), db, 3)["id"] == 3
+    assert ids(modes_store.list_facts(S("private"), db)) == list(range(1, 12))
+    assert modes_store.get_fact(S("private"), db, 3)["id"] == 3
 
 
 def test_direct_id_of_private_fact_is_indistinguishable_from_missing(db):
     s = S("normal")
     for private_id in (3, 6, 7, 8, 2, 5):
-        assert modes.get_fact(s, db, private_id) is None
-        assert modes.get_history(s, db, private_id) == []
-        assert modes.get_fact_as_of(s, db, private_id, "2027-01-01") is None
-    assert modes.get_fact(s, db, 99999) is None
-    assert modes.get_history(s, db, 99999) == []
-    assert modes.get_fact_as_of(s, db, 99999, "2027-01-01") is None
+        assert modes_store.get_fact(s, db, private_id) is None
+        assert modes_store.get_history(s, db, private_id) == []
+        assert modes_store.get_fact_as_of(s, db, private_id, "2027-01-01") is None
+    assert modes_store.get_fact(s, db, 99999) is None
+    assert modes_store.get_history(s, db, 99999) == []
+    assert modes_store.get_fact_as_of(s, db, 99999, "2027-01-01") is None
 
 
 def test_source_key_lookup_of_private_fact_is_not_found(db):
     s = S("normal")
-    assert modes.get_fact(s, db, "k3") is None
-    assert modes.get_history(s, db, "k8") == []
-    assert modes.get_fact(s, db, "k1")["id"] == 1
-    assert modes.get_fact(s, db, "nope") is None
+    assert modes_store.get_fact(s, db, "k3") is None
+    assert modes_store.get_history(s, db, "k8") == []
+    assert modes_store.get_fact(s, db, "k1")["id"] == 1
+    assert modes_store.get_fact(s, db, "nope") is None
 
 
 def test_ref_type_errors(db):
     for bad in (True, 1.5, None, b"k1"):
         with pytest.raises(TypeError):
-            modes.get_fact(S("normal"), db, bad)
+            modes_store.get_fact(S("normal"), db, bad)
 
 
 def test_fts_matching_private_text_returns_nothing(db):
     s = S("normal")
     for term in ("zebrafinch", "quokka", "narwhal", "wombat", "zebrafinch notes"):
-        assert modes.search_facts(s, db, term) == []
-    assert ids(modes.search_facts(S("private"), db, "zebrafinch")) == [3]
+        assert modes_store.search_facts(s, db, term) == []
+    assert ids(modes_store.search_facts(S("private"), db, "zebrafinch")) == [3]
 
 
 def test_fts_limit_applies_after_the_filter(db):
     # 'banana' matches private facts too; limit=1 must still return a visible one.
     for _ in range(3):
-        rows = modes.search_facts(S("normal"), db, "banana", limit=1)
+        rows = modes_store.search_facts(S("normal"), db, "banana", limit=1)
         assert len(rows) == 1 and rows[0]["id"] in {1, 4, 9, 10, 11}
 
 
 def test_subjects_normal_hides_private_and_counts_visible_only(db):
-    rows = {r["name"]: r for r in modes.list_subjects(S("normal"), db)}
+    rows = {r["name"]: r for r in modes_store.list_subjects(S("normal"), db)}
     assert "hush" not in rows          # private-tagged subject
     assert "solo" not in rows          # only private facts
     assert "empty" not in rows         # nothing visible
@@ -366,60 +368,60 @@ def test_subjects_normal_hides_private_and_counts_visible_only(db):
 
 
 def test_subjects_private_shows_all_with_full_counts(db):
-    rows = {r["name"]: r for r in modes.list_subjects(S("private"), db)}
+    rows = {r["name"]: r for r in modes_store.list_subjects(S("private"), db)}
     assert rows["alpha"]["n_facts"] == 5 and rows["solo"]["n_facts"] == 1 and rows["empty"]["n_facts"] == 0
 
 
 def test_subject_filter_on_hidden_subject_looks_like_unknown(db):
-    assert modes.list_facts(S("normal"), db, subject="hush") == []
-    assert modes.list_facts(S("normal"), db, subject="no-such") == []
-    assert modes.search_facts(S("normal"), db, "wombat", subject="hush") == []
+    assert modes_store.list_facts(S("normal"), db, subject="hush") == []
+    assert modes_store.list_facts(S("normal"), db, subject="no-such") == []
+    assert modes_store.search_facts(S("normal"), db, "wombat", subject="hush") == []
 
 
 def test_history_drops_private_revisions_and_hides_demoted_fact(db):
     s = S("normal")
-    assert modes.get_history(s, db, 8) == []   # now private: nothing, even its normal revision 1
-    hist = modes.get_history(s, db, 9)         # now normal, revision 1 was private
+    assert modes_store.get_history(s, db, 8) == []   # now private: nothing, even its normal revision 1
+    hist = modes_store.get_history(s, db, 9)         # now normal, revision 1 was private
     assert [r["revision"] for r in hist] == [2]
     assert_no_marker(hist)
-    assert [r["revision"] for r in modes.get_history(S("private"), db, 9)] == [1, 2]
+    assert [r["revision"] for r in modes_store.get_history(S("private"), db, 9)] == [1, 2]
 
 
 def test_as_of_before_a_demotion_does_not_reveal_the_old_normal_revision(db):
     s = S("normal")
     for when in (T1, T2, T3, "2027-01-01"):
-        assert modes.get_fact_as_of(s, db, 8, when) is None
-    assert modes.get_fact_as_of(S("private"), db, 8, T1)["statement"].startswith("Demoted banana fact")
+        assert modes_store.get_fact_as_of(s, db, 8, when) is None
+    assert modes_store.get_fact_as_of(S("private"), db, 8, T1)["statement"].startswith("Demoted banana fact")
 
 
 def test_as_of_when_private_revision_was_in_force_is_none_not_the_old_one(db):
     s = S("normal")
-    assert modes.get_fact_as_of(s, db, 9, T2) is None          # rev 1 (private) was in force
-    assert modes.get_fact_as_of(s, db, 9, T3)["revision"] == 2
-    assert modes.get_fact_as_of(S("private"), db, 9, T2)["revision"] == 1
+    assert modes_store.get_fact_as_of(s, db, 9, T2) is None          # rev 1 (private) was in force
+    assert modes_store.get_fact_as_of(s, db, 9, T3)["revision"] == 2
+    assert modes_store.get_fact_as_of(S("private"), db, 9, T2)["revision"] == 1
 
 
 def test_as_of_bad_date_is_value_error(db):
     with pytest.raises(ValueError):
-        modes.get_fact_as_of(S("normal"), db, 1, "yesterday")
+        modes_store.get_fact_as_of(S("normal"), db, 1, "yesterday")
 
 
 def test_claims_and_other_tables_are_not_reachable_through_results(db):
-    assert modes.search_facts(S("private"), db, "ocelot") == []    # claim text is not searchable here
-    fact = modes.get_fact(S("private"), db, 3)
+    assert modes_store.search_facts(S("private"), db, "ocelot") == []    # claim text is not searchable here
+    fact = modes_store.get_fact(S("private"), db, 3)
     assert not any(k.startswith("claim") for k in fact)
     assert not any("ocelot" in repr(v) for v in fact.values())
-    assert_no_marker(modes.get_fact(S("normal"), db, 1))
+    assert_no_marker(modes_store.get_fact(S("normal"), db, 1))
 
 
 def test_no_private_marker_in_any_normal_answer(db):
     s = S("normal")
-    out = [modes.list_facts(s, db, limit=1000, include_pending=True),
-           modes.list_subjects(s, db),
-           modes.search_facts(s, db, "banana", include_pending=True, limit=1000),
-           [modes.get_fact(s, db, i, include_pending=True) for i in range(1, 15)],
-           [modes.get_history(s, db, i, include_pending=True) for i in range(1, 15)],
-           [modes.get_fact_as_of(s, db, i, "2027-01-01", include_pending=True) for i in range(1, 15)]]
+    out = [modes_store.list_facts(s, db, limit=1000, include_pending=True),
+           modes_store.list_subjects(s, db),
+           modes_store.search_facts(s, db, "banana", include_pending=True, limit=1000),
+           [modes_store.get_fact(s, db, i, include_pending=True) for i in range(1, 15)],
+           [modes_store.get_history(s, db, i, include_pending=True) for i in range(1, 15)],
+           [modes_store.get_fact_as_of(s, db, i, "2027-01-01", include_pending=True) for i in range(1, 15)]]
     assert_no_marker(out)
 
 
@@ -429,21 +431,21 @@ def test_no_private_marker_in_any_normal_answer(db):
 def test_bad_search_text_is_a_clean_error(db, q):
     for mode in ("normal", "private"):
         with pytest.raises(modes.InvalidQuery) as e:
-            modes.search_facts(S(mode), db, q)
+            modes_store.search_facts(S(mode), db, q)
         assert "sqlite" not in str(e.value).lower() and "fts5" not in str(e.value).lower()
 
 
 def test_non_string_search_text(db):
     for bad in (None, 5, b"banana"):
         with pytest.raises(modes.InvalidQuery):
-            modes.search_facts(S("normal"), db, bad)
+            modes_store.search_facts(S("normal"), db, bad)
 
 
 @pytest.mark.parametrize("q", ["banana'; DROP TABLE facts; --", "' OR '1'='1", "banana\" OR visibility:private",
                                "visibility:private", "notes:zebrafinch", "statement:zebrafinch"])
 def test_injection_looking_text_never_leaks_and_never_modifies(db, q):
     try:
-        rows = modes.search_facts(S("normal"), db, q)
+        rows = modes_store.search_facts(S("normal"), db, q)
     except modes.InvalidQuery:
         rows = []
     assert_no_marker(rows)
@@ -451,17 +453,17 @@ def test_injection_looking_text_never_leaks_and_never_modifies(db, q):
 
 
 def test_injection_in_filter_arguments_is_parameterized(db):
-    assert modes.list_facts(S("normal"), db, subject="x' OR 1=1 --") == []
-    assert modes.list_facts(S("normal"), db, trust="medium' OR '1'='1") == []
-    assert modes.get_fact(S("normal"), db, "k3' OR '1'='1") is None
+    assert modes_store.list_facts(S("normal"), db, subject="x' OR 1=1 --") == []
+    assert modes_store.list_facts(S("normal"), db, trust="medium' OR '1'='1") == []
+    assert modes_store.get_fact(S("normal"), db, "k3' OR '1'='1") is None
 
 
 @pytest.mark.parametrize("limit", [0, -1, 1001, True, "5", None, 2.5])
 def test_bad_limits_rejected(db, limit):
     with pytest.raises(ValueError):
-        modes.list_facts(S("normal"), db, limit=limit)
+        modes_store.list_facts(S("normal"), db, limit=limit)
     with pytest.raises(ValueError):
-        modes.search_facts(S("normal"), db, "banana", limit=limit)
+        modes_store.search_facts(S("normal"), db, "banana", limit=limit)
 
 
 def test_read_only_connection_is_not_written_through_modes(db):
@@ -567,7 +569,7 @@ def _py_files():
 # Modules allowed to read facts directly: the query layers and the build pipeline (which creates
 # them). Anything else that wants fact rows must go through modes.py.
 FACT_READERS_ALLOWED = {
-    "modes.py", "knowledge.py", "normal_db.py", "revisions.py", "privacy_store.py", "claims_audit.py", "review.py",
+    "modes.py", "modes_store.py", "knowledge.py", "normal_db.py", "revisions.py", "privacy_store.py", "claims_store.py", "review.py",
     # build/ingest pipeline: writes the tables, never serves tool results
     "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",

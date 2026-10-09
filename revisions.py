@@ -24,15 +24,14 @@ import contextlib
 import hashlib
 import json
 import os
-import re
 import sqlite3
 import stat
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import clock
+from timestamps import has_offset, parse_as_of, parse_timestamp  # noqa: F401  (re-exported: callers use revisions.parse_*)
 from add_fact import (FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
                       VIA_RE, _file_lock, _lock_path)
 
@@ -219,25 +218,6 @@ def insert_revision_row(cur, fact_id, rev):
     cur.execute(INSERT_REVISION_SQL, (fact_id, *[rev[k] for k in REVISION_KEYS]))
 
 
-# --------------------------------------------------------------------------- time
-
-def parse_timestamp(value):
-    """ISO date or timestamp -> aware UTC datetime. A bare date is midnight UTC."""
-    if not isinstance(value, str):
-        raise ValueError(f"{value!r} is not a string")
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _has_offset(value):
-    try:
-        return isinstance(value, str) and datetime.fromisoformat(value).utcoffset() is not None
-    except ValueError:
-        return False
-
-
 # --------------------------------------------------------------------------- log format
 
 def validate_record_shape(rec):
@@ -257,7 +237,7 @@ def validate_record_shape(rec):
         errs.append(f"source_key {rec['source_key']!r} is not a valid key")
     if type(rec["revision"]) is not int or rec["revision"] < 2:
         errs.append(f"revision {rec['revision']!r} must be an integer >= 2 (revision 1 is the original entry)")
-    if not _has_offset(rec["changed_at"]):
+    if not has_offset(rec["changed_at"]):
         errs.append(f"changed_at {rec['changed_at']!r} must be an ISO-8601 timestamp with a UTC offset")
     if not isinstance(rec["changed_via"], str) or not VIA_RE.match(rec["changed_via"]):
         errs.append(f"changed_via {rec['changed_via']!r} must be a lowercase kebab-case token")
@@ -522,16 +502,6 @@ def get_history(db, ref):
     `ref` is a fact id (int) or a source_key (str). Unknown fact -> []."""
     with _connection(db) as con:
         return _revision_rows(con, ref)
-
-
-def parse_as_of(value):
-    """'YYYY-MM-DD' means the end of that day (UTC); a full timestamp is taken as is."""
-    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        return parse_timestamp(value) + timedelta(days=1) - timedelta(microseconds=1)
-    try:
-        return parse_timestamp(value)
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"as-of {value!r} must be YYYY-MM-DD or an ISO-8601 timestamp") from e
 
 
 def get_fact_as_of(db, ref, as_of):

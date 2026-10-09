@@ -41,7 +41,7 @@ from typing import List, Optional
 import typer
 
 import add_fact
-import claims_audit
+import claims_store
 import private_git
 import privacy
 import privacy_store
@@ -391,7 +391,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
 @app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when any are found.")
 def cmd_audit_claims(as_json: bool = JSON_OPT):
     def run(con):
-        return claims_audit.audit_claims(con), claims_audit.unparseable_rechecks(con)
+        return claims_store.audit_claims(con), claims_store.unparseable_rechecks(con)
     try:
         rows, unparsed = _query(run)
     except sqlite3.OperationalError as e:

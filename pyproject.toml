@@ -56,12 +56,14 @@ type = "forbidden"
 source_modules = [
     "kn.add_fact",
     "kn.claims_audit",
+    "kn.claims_store",
     "kn.clock",
     "kn.facts_batch",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.migrate_memory",
     "kn.modes",
+    "kn.modes_store",
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
@@ -69,6 +71,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.timestamps",
 ]
 forbidden_modules = [
     # CLI
@@ -101,14 +104,16 @@ type = "forbidden"
 source_modules = [
     "kn.add_fact",
     "kn.claims_audit",
-    "kn.clock",
+    "kn.claims_store",
     "kn.cli_parity",
+    "kn.clock",
     "kn.facts_batch",
     "kn.inbox",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.migrate_memory",
     "kn.modes",
+    "kn.modes_store",
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
@@ -116,6 +121,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.timestamps",
 #planned:     "kn.mcp_server",
 ]
 forbidden_modules = ["typer", "click"]
@@ -188,6 +194,7 @@ source_modules = [
 forbidden_modules = [
     "kn.add_fact",
     "kn.claims_audit",
+    "kn.claims_store",
     "kn.facts_batch",
     "kn.knowledge",
     "kn.leak_test",
@@ -233,14 +240,18 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.claims_audit",
+    "kn.modes",
     "kn.privacy",
+    "kn.timestamps",
 ]
 forbidden_modules = [
     # infrastructure the domain must not touch
     "sqlite3", "os", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt",
     "subprocess", "socket", "http", "urllib", "uuid",
     # adapters and the modules that wrap infrastructure
-    "kn.privacy_store", "kn.private_git", "kn.paths", "kn.clock",
+    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions", "kn.private_git",
+    "kn.paths", "kn.clock",
 ]
 allow_indirect_imports = true
 
@@ -256,13 +267,14 @@ type = "layers"
 containers = ["kn"]
 layers = [
     "facts_batch | lifecycle | migrate_memory",
+    "modes_store | claims_store",
     "review | modes | claims_audit | normal_db",
     "leak_test",
     "revisions",
     "add_fact",
     "privacy_store",
     "privacy | private_git",
-    "clock | paths",
+    "clock | paths | timestamps",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-import claims_audit
+import claims_store
 import clock
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, file_hashes, GIT_ENV  # noqa: F401  (rw is a fixture)
@@ -222,7 +222,7 @@ def test_audit_claims_flags_a_claim_citing_the_fact_after_a_rebuild(lw, how):
     fid = con.execute("SELECT id FROM facts WHERE source_key='a'").fetchone()[0]
     con.execute("INSERT INTO claims (id, statement) VALUES (1, 'A claim resting on fact a')")
     con.execute("INSERT INTO claim_facts (claim_id, fact_id) VALUES (1, ?)", (fid,))
-    rows = claims_audit.audit_claims(con)
+    rows = claims_store.audit_claims(con)
     assert [(r["claim_id"], r["fact_id"], r["reason"]) for r in rows] == [(1, fid, "retracted" if how == "retract" else "superseded")]
 
 
