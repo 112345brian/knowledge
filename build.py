@@ -19,6 +19,7 @@ file open keeps a consistent snapshot.
 """
 import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile
 
+import build_rules
 from paths import KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,22 +27,9 @@ DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
 LIVE_DB = os.path.join(DB_DIR, "knowledge.db")
 SCHEMA = os.path.join(HERE, "schema.sql")
 BACKUP_DIR = os.path.join(DB_DIR, "backups")
-KEEP_BACKUPS = 5
+KEEP_BACKUPS = build_rules.KEEP_BACKUPS
 
-STEPS = [
-    "01_seed_sources.py",
-    "02_ingest_literature_sources.py",
-    "03_ingest_measurements.py",
-    "04_ingest_facts.py",
-    "05_seed_claims.py",
-    "06_seed_subject_hierarchy.py",
-    "07_ingest_concerts.py",
-    "08_ingest_music_ratings.py",
-    "09_ingest_scrobbles.py",
-    "10_seed_artist_members.py",
-    "11_seed_general_facts.py",
-    "12_apply_fact_revisions.py",
-]
+STEPS = list(build_rules.STEPS)
 
 
 def load_module(path):
@@ -107,14 +95,8 @@ def remove_db_files(path):
 
 
 def prune_backups(keep=KEEP_BACKUPS):
-    """Keep only the `keep` most recent backups -- scrobbles pushed a
-    routine backup from a few hundred KB to 20-45MB, so leaving these
-    unpruned turns every rebuild into unbounded disk growth."""
-    backups = sorted(
-        (f for f in os.listdir(BACKUP_DIR) if f.startswith("knowledge.db.bak-")),
-        reverse=True,
-    )
-    for old in backups[keep:]:
+    """Keep only the `keep` most recent backups (see build_rules.backups_to_prune)."""
+    for old in build_rules.backups_to_prune(os.listdir(BACKUP_DIR), keep):
         os.remove(os.path.join(BACKUP_DIR, old))
         print(f"  pruned old backup {old}")
 
@@ -135,12 +117,7 @@ def build_normal(full_path, directory, rules=None):
 def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
-    for table in ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                  "vault_files", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
-                  "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
-                  "muscles", "muscle_volume_weekly",
-                  "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",
-                  "tracks", "import_sources", "scrobbles"):
+    for table in build_rules.REPORT_TABLES:
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
     con.close()
@@ -175,7 +152,7 @@ def main():
     try:
         if os.path.exists(LIVE_DB):
             os.makedirs(BACKUP_DIR, exist_ok=True)
-            backup = os.path.join(BACKUP_DIR, f"knowledge.db.bak-{datetime.datetime.now():%Y%m%dT%H%M%S}")
+            backup = os.path.join(BACKUP_DIR, build_rules.backup_name(datetime.datetime.now()))
             shutil.copy2(LIVE_DB, backup)
             print(f"Backed up existing DB to {backup}")
             prune_backups()

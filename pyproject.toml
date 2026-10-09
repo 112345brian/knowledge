@@ -57,9 +57,13 @@ source_modules = [
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
     "kn.claims_audit",
     "kn.claims_store",
     "kn.clock",
+    "kn.fact_ingest_rules",
     "kn.fact_queries",
     "kn.fact_rules",
     "kn.facts_batch",
@@ -72,12 +76,14 @@ source_modules = [
     "kn.lifecycle_rules",
     "kn.lifecycle_service",
     "kn.lifecycle_store",
+    "kn.measurement_rules",
     "kn.migrate_memory",
     "kn.migrate_memory_rules",
     "kn.migrate_memory_service",
     "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
+    "kn.music_ingest_rules",
     "kn.new_fact",
     "kn.normal_db",
     "kn.normal_rules",
@@ -94,6 +100,8 @@ source_modules = [
     "kn.revisions_store",
     "kn.rules_edit_service",
     "kn.script_runner",
+    "kn.seed_rules",
+    "kn.source_ingest_rules",
     "kn.timestamps",
 ]
 forbidden_modules = [
@@ -128,10 +136,14 @@ source_modules = [
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
     "kn.claims_audit",
     "kn.claims_store",
     "kn.cli_parity",
     "kn.clock",
+    "kn.fact_ingest_rules",
     "kn.fact_queries",
     "kn.fact_rules",
     "kn.facts_batch",
@@ -145,12 +157,14 @@ source_modules = [
     "kn.lifecycle_rules",
     "kn.lifecycle_service",
     "kn.lifecycle_store",
+    "kn.measurement_rules",
     "kn.migrate_memory",
     "kn.migrate_memory_rules",
     "kn.migrate_memory_service",
     "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
+    "kn.music_ingest_rules",
     "kn.new_fact",
     "kn.normal_db",
     "kn.normal_rules",
@@ -167,6 +181,8 @@ source_modules = [
     "kn.revisions_store",
     "kn.rules_edit_service",
     "kn.script_runner",
+    "kn.seed_rules",
+    "kn.source_ingest_rules",
     "kn.timestamps",
 #planned:     "kn.mcp_server",
 ]
@@ -288,7 +304,9 @@ name = "Domain modules never touch the file system, the database, processes or a
 # the other way round (the layered contract below already forbids the upward import).
 # DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
 # revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
-# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules and timestamps. Their
+# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps, ports and the
+# pipeline's rules (artist_rules, fact_ingest_rules, source_ingest_rules, music_ingest_rules, seed_rules,
+# measurement_rules, build_rules, backfill_rules; the numbered scripts and build.py are the ETL adapters). Their
 # adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
 # add_fact_store, migrate_memory_store (normal_db and leak_test are the adapters for their rules).
 # `review`, `lifecycle`, `add_fact`, `facts_batch` and `migrate_memory` are the use cases that wire the
@@ -299,19 +317,27 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
     "kn.claims_audit",
+    "kn.fact_ingest_rules",
     "kn.fact_rules",
     "kn.facts_batch_rules",
     "kn.leak_rules",
     "kn.lifecycle_rules",
+    "kn.measurement_rules",
     "kn.migrate_memory_rules",
     "kn.modes",
+    "kn.music_ingest_rules",
     "kn.new_fact",
     "kn.normal_rules",
     "kn.ports",
     "kn.privacy",
     "kn.review_rules",
     "kn.revisions",
+    "kn.seed_rules",
+    "kn.source_ingest_rules",
     "kn.timestamps",
 ]
 forbidden_modules = [
@@ -395,11 +421,11 @@ layers = [
     "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
     "revisions_store",
     "add_fact",
-    "privacy_store | add_fact_service",
+    "privacy_store | add_fact_service | fact_ingest_rules | backfill_rules",
     "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules",
     "new_fact",
     "privacy | private_git",
-    "clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | rules_edit_service",
+    "clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | rules_edit_service | artist_rules | source_ingest_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

@@ -210,6 +210,51 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
+layer = "library"
+depends_on = [
+    "fact_rules",
+    "revisions",
+]
+
+[[modules]]
+path = "source_ingest_rules"  # DOMAIN: citation-note parsing to a sources row, byline split (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "seed_rules"         # DOMAIN: hand-authored claims and the subject tree (pure data)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "backfill_rules"     # DOMAIN: byte-preserving key insertion into JSON array text (pure)
+layer = "library"
+depends_on = [
+    "revisions",
+]
+
+[[modules]]
 path = "modes"          # DOMAIN: mode rules and write gating, pure (the SQL is in modes_store)
 layer = "library"
 depends_on = [
@@ -469,36 +514,32 @@ depends_on = [
 [[modules]]
 path = "_shared"
 layer = "pipeline"
-depends_on = []
+depends_on = ["artist_rules", "fact_ingest_rules", "source_ingest_rules"]
 
 [[modules]]
 path = "snapshot_date"
 layer = "pipeline"
-depends_on = []
+depends_on = ["measurement_rules"]
 
 [[modules]]
 path = "build"
 layer = "pipeline"
-depends_on = [
-    "normal_db",        # lazy
-    "paths",
-    "privacy_store",
-]
+depends_on = ["build_rules", "normal_db", "paths", "privacy_store"]
 
 [[modules]]
 path = "backfill_source_keys"
 layer = "pipeline"
-depends_on = ["add_fact_store", "revisions", "revisions_store"]
+depends_on = ["add_fact_store", "backfill_rules", "revisions", "revisions_store"]
 
 [[modules]]
 path = "backfill_dates"
 layer = "pipeline"
-depends_on = ["add_fact_store", "backfill_source_keys", "revisions", "snapshot_date", "revisions_store"]
+depends_on = ["add_fact_store", "backfill_rules", "backfill_source_keys", "revisions", "revisions_store", "snapshot_date"]
 
 [[modules]]
 path = "clean_concerts_csv"
 layer = "pipeline"
-depends_on = ["paths"]
+depends_on = ["music_ingest_rules", "paths"]
 
 [[modules]]
 path = "export_music_taste"
@@ -508,47 +549,47 @@ depends_on = ["paths"]
 [[modules]]
 path = "01_seed_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "paths", "source_ingest_rules"]
 
 [[modules]]
 path = "02_ingest_literature_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "paths", "source_ingest_rules"]
 
 [[modules]]
 path = "03_ingest_measurements"
 layer = "pipeline"
-depends_on = ["paths", "snapshot_date"]
+depends_on = ["measurement_rules", "paths", "snapshot_date"]
 
 [[modules]]
 path = "04_ingest_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store", "revisions_store"]
+depends_on = ["_shared", "fact_ingest_rules", "paths", "privacy", "privacy_store", "revisions", "revisions_store"]
 
 [[modules]]
 path = "05_seed_claims"
 layer = "pipeline"
-depends_on = []
+depends_on = ["seed_rules"]
 
 [[modules]]
 path = "06_seed_subject_hierarchy"
 layer = "pipeline"
-depends_on = []
+depends_on = ["seed_rules"]
 
 [[modules]]
 path = "07_ingest_concerts"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "music_ingest_rules", "paths"]
 
 [[modules]]
 path = "08_ingest_music_ratings"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "music_ingest_rules", "paths"]
 
 [[modules]]
 path = "09_ingest_scrobbles"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "music_ingest_rules", "paths"]
 
 [[modules]]
 path = "10_seed_artist_members"
@@ -558,7 +599,7 @@ depends_on = ["_shared"]
 [[modules]]
 path = "11_seed_general_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions", "privacy_store", "revisions_store"]
+depends_on = ["fact_ingest_rules", "paths", "privacy", "privacy_store", "revisions", "revisions_store"]
 
 [[modules]]
 path = "12_apply_fact_revisions"

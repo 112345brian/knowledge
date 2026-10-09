@@ -580,6 +580,8 @@ FACT_READERS_ALLOWED = {
     "normal_rules.py",
     # the CLI's read-only query adapter (search, facts, show, subjects): the full db, not a tool surface
     "fact_queries.py",
+    # names the tables the build report counts, reads none
+    "build_rules.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

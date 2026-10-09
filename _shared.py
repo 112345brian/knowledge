@@ -1,6 +1,8 @@
 """Small helpers shared across ingest scripts -- author/publisher/vault-file
 normalization (get-or-create against a dimension table, never repeated text)."""
-import html
+from fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
+from source_ingest_rules import split_authors
+from artist_rules import ARTIST_ALIASES, ARTIST_MEMBERS, artist_key, canonical_artist_name  # noqa: F401  (re-exported for the ingest scripts)
 
 
 def get_or_create(cur, table, name_col, name):
@@ -35,87 +37,20 @@ def load_artist_cache(cur):
     own NOCASE collation only folds ASCII, so the fold happens in Python."""
     cache = {}
     for id_, name in cur.execute("SELECT id, name FROM artists"):
-        cache.setdefault(name.lower(), id_)
+        cache.setdefault(artist_key(name), id_)
     return cache
 
 
-# Same-artist spelling variants that case-folding alone doesn't catch --
-# punctuation/spacing/stylization differences across RYM, Last.fm, and
-# hand-typed concert names ("TR/ST" vs "TRST", "Bri" vs "Brian Powers").
-# Found by normalizing every artists.name to lower+alnum-only and grouping.
-# A joint credit like "Freddie Gibbs & Madlib" stays its OWN artist row --
-# see ARTIST_MEMBERS below for how its real members get recorded without
-# decomposing every track/album it's credited on.
-# Keys are lowercased; values are the canonical name to store instead.
-ARTIST_ALIASES = {
-    "ahn dayoung": "Ahn Da-young",
-    "black eyed peas": "The Black Eyed Peas",
-    "body": "The Body",
-    "brave little abacus": "The Brave Little Abacus",
-    "chaoschaos": "Chaos Chaos",
-    "combatwoundedveteran": "Combat Wounded Veteran",
-    "the destroyer": "Destroyer",
-    "e l u c i d": "Elucid",
-    "フィッシュマンズ [fishmans]": "Fishmans",
-    "freddie gibbs, madlib": "Freddie Gibbs & Madlib",
-    "harunemuri": "Haru Nemuri",
-    "jay z": "JAY-Z",
-    "j.i.d": "JID",
-    "lil' wayne": "Lil Wayne",
-    "(liv).e": "Liv.e",
-    "locust": "The Locust",
-    "l’rain": "L'Rain",
-    "マクロスmacross 82-99": "Macross 82-99",
-    "microphones": "The Microphones",
-    "the misfits": "Misfits",
-    "n*e*r*d": "N.E.R.D",
-    "parrygripp": "Parry Gripp",
-    "the peace": "Peace",
-    "rah band": "The Rah Band",
-    "the ramones": "Ramones",
-    "ratboy": "RAT BOY",
-    "seeyouspacecowboy...": "SeeYouSpaceCowboy",
-    "smashing pumpkins": "The Smashing Pumpkins",
-    "the spirit of the beehive": "Spirit of the Beehive",
-    "spiritualized®": "Spiritualized",
-    "スティーブ・ハイェット [steve hiett]": "Steve Hiett",
-    "落日飛車 sunset rollercoaster": "Sunset Rollercoaster",
-    "three-6 mafia": "Three 6 Mafia",
-    "three 6 mafia": "Three 6 Mafia",
-    "t. p. orchestre poly-rythmo": "T.P. Orchestre Poly-Rythmo",
-    "trst": "TR/ST",
-    "tyler  the creator": "Tyler, The Creator",
-    "tyler the creator": "Tyler, The Creator",
-    "x-marks the pedwalk": "X Marks the Pedwalk",
-    "bri": "Brian Powers",
-}
-
-
 def get_or_create_artist(cur, cache, name):
-    # RYM's export HTML-escapes special characters (stored literally as
-    # "Gibbs &amp; Madlib") and never gets decoded before this -- same class
-    # of bug the sibling rave-recommender project already found and fixed
-    # in its own v1->v2 migration ("Fred again.. &amp; Skrillex").
-    name = html.unescape(name)
-    name = ARTIST_ALIASES.get(name.lower(), name)
-    key = name.lower()
+    # (RYM's HTML-escaping and the alias table are applied by artist_rules.canonical_artist_name.)
+    name = canonical_artist_name(name)
+    key = artist_key(name)
     if key in cache:
         return cache[key]
     cur.execute("INSERT INTO artists (name) VALUES (?)", (name,))
     id_ = cur.lastrowid
     cache[key] = id_
     return id_
-
-
-# Group/collab credits and their real members -- an artist-to-artist fact,
-# not tied to any specific track/album (see the artist_members comment in
-# schema.sql for why decomposing per-credit was tried and reverted). Curated
-# by hand, same spirit as ARTIST_ALIASES: add an entry when you notice one.
-ARTIST_MEMBERS = {
-    "Freddie Gibbs & Madlib": ["Freddie Gibbs", "Madlib"],
-    "Madvillain": ["Madlib", "MF DOOM"],
-    "We Needed This and Brian Powers": ["We Needed This", "Brian Powers"],
-}
 
 
 def seed_artist_members(cur, cache):
@@ -149,21 +84,3 @@ def link_authors(cur, source_id, author_string):
             "INSERT OR IGNORE INTO source_authors (source_id, author_id, author_order) VALUES (?, ?, ?)",
             (source_id, author_id, i),
         )
-
-
-def require_date_added(item, filename, index):
-    """The entry's own `date_added`, validated. A missing, null, blank or non-ISO value is a
-    build error naming the file and entry -- never a made-up date (#35). Fix the data, or run
-    backfill_dates.py for the original entries."""
-    from datetime import datetime
-    value = item.get("date_added")
-    try:
-        if not isinstance(value, str):
-            raise ValueError
-        datetime.fromisoformat(value)
-    except ValueError:
-        what = "has no `date_added`" if "date_added" not in item else f"has an invalid `date_added` {value!r}"
-        raise ValueError(
-            f"{filename}[{index}] ({str(item.get('statement') or '')[:60]!r}) {what}. A date is never invented: "
-            f"set it by hand, or for the original entries run `python3 backfill_dates.py --apply`.") from None
-    return value

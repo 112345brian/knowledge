@@ -32,6 +32,7 @@ import json
 import os
 import sys
 
+import backfill_rules
 import backfill_source_keys
 import revisions
 import revisions_store
@@ -55,15 +56,7 @@ def find_problems(data_dir):
         path = os.path.join(data_dir, name)
         if not os.path.exists(path):
             continue
-        for i, item in enumerate(revisions_store.read_array(path)):
-            if "date_added" not in item:
-                continue
-            v = item["date_added"]
-            try:
-                revisions.parse_timestamp(v)
-            except (TypeError, ValueError):
-                problems.append((f"{name}[{i}]", f"date_added is {v!r}, not an ISO date or timestamp; fix it by hand "
-                                                 f"(the backfill never overwrites an existing value)"))
+        problems.extend(backfill_rules.date_problems(name, revisions_store.read_array(path)))
     if os.path.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
             read_snapshot_date(data_dir)

@@ -13,15 +13,11 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
-from _shared import require_date_added
+import fact_ingest_rules
 import privacy
 import privacy_store
 import revisions
 import revisions_store
-
-VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
-VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
-
 
 def get_or_create_subject(cur, name, domain, cache):
     if name in cache:
@@ -49,26 +45,14 @@ def run(con):
     derived = 0
 
     for index, (item, key) in enumerate(zip(items, revisions.derive_keys(items, "general_facts.json"))):
-        subj = (item.get("subject") or "").strip()
-        stmt = (item.get("statement") or "").strip()
-        trust = (item.get("trust_level") or "").strip()
-        if not subj or not stmt or trust not in VALID_TRUST:
+        try:
+            subj, stmt, trust, visibility, status = fact_ingest_rules.screen_item(item)
+        except fact_ingest_rules.Skip as skip:
+            if skip.warning:
+                print(skip.warning)
             skipped += 1
             continue
-        visibility = item.get("visibility")
-        if visibility is None:
-            visibility = "private"  # unmarked facts are private; never derived from is_personal
-        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
-            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        status = item.get("status") or "active"
-        if status not in revisions.VALID_STATUS:
-            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        if not revisions.SOURCE_KEY_RE.match(key):
-            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        fact_ingest_rules.check_source_key(key, stmt)
         if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
             raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
         derived += 0 if item.get("source_key") else 1
@@ -77,7 +61,7 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
-        date_added = require_date_added(item, "general_facts.json", index)
+        date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)
         # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")
         cur.execute(

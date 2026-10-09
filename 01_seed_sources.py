@@ -16,6 +16,7 @@ import sqlite3, os, sys, json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shared import link_authors, get_or_create_publisher
+import source_ingest_rules
 from paths import BODYBUILDING_VAULT as VAULT, HEALTH_DIR as HEALTH, PRIVATE_DATA_DIR
 
 FIELDS = ("citekey", "name", "source_type", "author", "publisher", "url",
@@ -26,7 +27,7 @@ def load_sources():
     items = json.load(open(os.path.join(PRIVATE_DATA_DIR, "manual_sources.json")))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = s["origin_path"].format(VAULT=VAULT, HEALTH=HEALTH)
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], VAULT, HEALTH)
     return items
 
 

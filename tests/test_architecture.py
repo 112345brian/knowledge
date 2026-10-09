@@ -455,6 +455,32 @@ CASES = [
      [("tach", ["rules_edit_service", "privacy_store"]), ("import-linter", ["never an adapter", "kn.rules_edit_service", "kn.privacy_store"])]),
     ("script-runner-imports-upward", "script_runner", "import knowledge",
      [("tach", ["script_runner", "knowledge"]), ("import-linter", ["kn.script_runner", "kn.knowledge"])]),
+    ("domain-artist-rules-imports-sqlite", "artist_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.artist_rules", "sqlite3"])]),
+    ("domain-fact-ingest-rules-imports-os", "fact_ingest_rules", "import os",
+     [("import-linter", ["kn.fact_ingest_rules", "os"])]),
+    ("domain-fact-ingest-rules-imports-add-fact", "fact_ingest_rules", "import add_fact",
+     [("tach", ["fact_ingest_rules", "add_fact"]), ("import-linter", ["kn.fact_ingest_rules", "kn.add_fact"])]),
+    ("domain-source-ingest-rules-imports-glob", "source_ingest_rules", "import glob",
+     [("import-linter", ["kn.source_ingest_rules", "glob"])]),
+    ("domain-music-ingest-rules-imports-pathlib", "music_ingest_rules", "from pathlib import Path",
+     [("import-linter", ["kn.music_ingest_rules", "pathlib"])]),
+    ("domain-measurement-rules-imports-sqlite", "measurement_rules", "import sqlite3",
+     [("import-linter", ["kn.measurement_rules", "sqlite3"])]),
+    ("domain-measurement-rules-imports-paths", "measurement_rules", "import paths",
+     [("tach", ["measurement_rules", "paths"]), ("import-linter", ["kn.measurement_rules", "kn.paths"])]),
+    ("domain-build-rules-imports-shutil", "build_rules", "import shutil",
+     [("import-linter", ["kn.build_rules", "shutil"])]),
+    ("domain-build-rules-imports-clock", "build_rules", "import clock",
+     [("tach", ["build_rules", "clock"]), ("import-linter", ["kn.build_rules", "kn.clock"])]),
+    ("domain-backfill-rules-imports-lock", "backfill_rules", "import add_fact_store",
+     [("tach", ["backfill_rules", "add_fact_store"]), ("import-linter", ["kn.backfill_rules", "kn.add_fact_store"])]),
+    ("domain-seed-rules-imports-subprocess", "seed_rules", "import subprocess",
+     [("import-linter", ["kn.seed_rules", "subprocess"])]),
+    ("ingest-script-imports-a-store", "07_ingest_concerts", "import revisions_store",
+     [("tach", ["07_ingest_concerts", "revisions_store"])]),
+    ("build-imports-a-use-case", "build", "import review_service",
+     [("tach", ["build", "review_service"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -511,7 +537,9 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
     assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules",
-               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules", "ports"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules", "ports",
+               "artist_rules", "fact_ingest_rules", "source_ingest_rules", "music_ingest_rules", "seed_rules",
+               "measurement_rules", "build_rules", "backfill_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):

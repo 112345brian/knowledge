@@ -8,88 +8,16 @@ this is a best-effort first pass, not hand-verified per fact.
 
 Run after 01/02/03 (needs sources + subjects + measurements to exist).
 """
-import sqlite3, json, os, re, sys
+import sqlite3, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shared import get_or_create_vault_file, require_date_added
+from _shared import get_or_create_vault_file
+import fact_ingest_rules
 import revisions
 import revisions_store
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
 import privacy
 import privacy_store
-
-VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
-VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
-
-PRONOUN_RE = re.compile(r'\b(he|his|him|the vault owner|vault owner)\b', re.IGNORECASE)
-FINGERPRINT_RE = re.compile(
-    r'(26-year-old|26 years old|FFMI 15\.75|156\.4|163\.6|2025-11-15|2026-06-17|2025-01-24|'
-    r'ankylosing spondylitis|Humira|BodySpec|adherence|13 lb weight loss)',
-    re.IGNORECASE
-)
-TOP_LEVEL_PERSONAL_FILES = [
-    "Current Recommendations", "Current State", "Goal Progress", "DEXA Decision Rules",
-    "Body Measurement Tracker", "Restarting After a Gap", "Starting Sequence",
-    "Strength Progression Baselines", "Where Sessions Break Down", "Where the Surplus Actually Comes From",
-    "Rebalancing the Split", "Making the Calls", "Six-Month Test Protocol", "Program Design Constraints",
-    "The Actual Decision", "Your First Cycle", "Cycle Preconditions", "The Case For",
-    "Fitting It Into 45 Minutes", "Personal Trainer App Spec", "Fixing Ankle Dorsiflexion",
-    "Loaded vs Static Ankle", "The Attractiveness Target", "The Exercise Screen", "The Program",
-    "What the Physique Can and Cannot Buy", "Why Hasn't Mass Followed Strength",
-    "Two-Year Body Composition Plan", "When To Train", "Volume Is the Variable", "What Muscle Actually Buys",
-]
-
-# Known-good vault-relative filename fixups for extraction-agent notes text that
-# omitted the harm-reduction/ subfolder or abbreviated a filename. Applied to
-# facts_batch*.json in the data/ directory before this script ever runs --
-# this dict exists only so future extraction batches can reuse the same fixups
-# without re-deriving them.
-HARM_REDUCTION_FILES = {
-    "AAS Cardiovascular Risk.md", "AAS Decision Framework.md", "AAS Emergency Red Flags.md",
-    "AAS Endocrine Management.md", "AAS Liver and Kidney.md", "AAS Mental Health and Dependence.md",
-    "AAS Myths Checked Against Evidence.md", "AAS Supply Testing and Legal Exposure.md",
-    "AAS and Ankylosing Spondylitis.md", "AAS and the Law.md", "Ancillary Compounds Reference.md",
-    "Bloodwork and Health Markers.md", "Cumulative Cycle Risk.md",
-}
-
-
-def resolve_origin_path(notes_text):
-    """Extract the vault .md file a batch-extracted fact's `notes` references."""
-    if not notes_text:
-        return None
-    m = re.search(r"(" + re.escape(VAULT) + r"/[^,]+?\.md)", notes_text)
-    if m:
-        return m.group(1)
-    if notes_text.startswith("harm-reduction/"):
-        m = re.match(r"^(harm-reduction/[^,]+?\.md)", notes_text)
-        if m:
-            return f"{VAULT}/{m.group(1)}"
-    m = re.match(r'^([A-Za-z0-9][^,]*?\.md)', notes_text)
-    if m:
-        fname = m.group(1)
-        if fname in HARM_REDUCTION_FILES:
-            return f"{VAULT}/harm-reduction/{fname}"
-        return f"{VAULT}/{fname}"
-    # filenames containing a comma (e.g. "Volume Is the Variable, Not Frequency.md")
-    # defeat the comma-terminated regex above -- fall back to a known list.
-    for known in ["Volume Is the Variable, Not Frequency.md"]:
-        if notes_text.startswith(known):
-            return f"{VAULT}/{known}"
-    return None
-
-
-def classify_is_personal(statement, notes, is_original_claim, measured_link):
-    text = f"{statement or ''} {notes or ''}"
-    if measured_link:
-        return 1
-    if PRONOUN_RE.search(text):
-        return 1
-    if FINGERPRINT_RE.search(text):
-        return 1
-    if is_original_claim and any(f in (notes or "") for f in TOP_LEVEL_PERSONAL_FILES):
-        return 1
-    return 0
-
 
 def load_items():
     """All entries, each with `_is_pilot`, `_where` (file, index) and `_source_key` (its own, or the deterministic
@@ -131,40 +59,27 @@ def run(con):
     derived = 0
 
     for item in items:
-        subj = (item.get("subject") or "").strip()
-        stmt = (item.get("statement") or "").strip()
-        trust = (item.get("trust_level") or "").strip()
-        if not subj or not stmt or trust not in VALID_TRUST:
+        try:
+            subj, stmt, trust, visibility, status = fact_ingest_rules.screen_item(item)
+        except fact_ingest_rules.Skip as skip:
+            if skip.warning:
+                print(skip.warning)
             skipped += 1
             continue
-        visibility = item.get("visibility")
-        if visibility is None:
-            visibility = "private"  # unmarked facts are private; never derived from is_personal
-        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
-            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        status = item.get("status") or "active"
-        if status not in revisions.VALID_STATUS:
-            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        key = item["_source_key"]
-        if not revisions.SOURCE_KEY_RE.match(key):
-            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        key = fact_ingest_rules.check_source_key(item["_source_key"], stmt)
         if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
             raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
         derived += 0 if item.get("source_key") else 1
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
-        origin_path = item.get("origin_path") or resolve_origin_path(item.get("notes"))
+        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), VAULT)
         origin_file_id = get_or_create_vault_file(cur, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
-        is_personal = classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
+        is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
-        date_added = require_date_added(item, *item["_where"])
+        date_added = fact_ingest_rules.require_date_added(item, *item["_where"])
         # #7: the entry's own freshness, or for a legacy entry (original files, no provenance)
         # 'recheck' if it has a recheck_by, else 'unreviewed' plus the "predates this field" note.
         # Anything else fails the build.
