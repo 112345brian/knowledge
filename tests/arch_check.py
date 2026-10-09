@@ -150,7 +150,9 @@ def _is_git_word(v):
 def scan_git_usage(src_dir, allowed=("private_git",)):
     """AST scan of every .py in the repo root and ingest/: a command list starting with
     "git", a "git ..." string passed to a process-spawning call, or any os.system/os.popen/
-    os.exec*/os.spawn* call outside the allowed modules. Returns a list of 'file:line: why'.
+    os.exec*/os.spawn* call outside the allowed modules. Also rejects direct calls to the
+    private_git adapter API outside its implementation, so application code must use PrivateGit.
+    Returns a list of 'file:line: why'.
     Import-linter already limits who may import `subprocess`; this covers what that cannot,
     i.e. a permitted subprocess user (knowledge.py) quietly running git."""
     problems = []
@@ -160,7 +162,27 @@ def scan_git_usage(src_dir, allowed=("private_git",)):
             continue
         path = sources[stem]
         tree = ast.parse(open(path, encoding="utf-8").read())
+        git_module_aliases = {"private_git"}
+        git_function_aliases = set()
         for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "private_git":
+                        git_module_aliases.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module == "private_git":
+                for alias in node.names:
+                    if alias.name in {"find_repo", "ensure_clean_tree", "commit_private_change", "is_detached", "describe_repo"}:
+                        git_function_aliases.add(alias.asname or alias.name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                direct_adapter_call = (
+                    isinstance(func, ast.Attribute) and func.attr in {
+                        "find_repo", "ensure_clean_tree", "commit_private_change", "is_detached", "describe_repo"
+                    } and isinstance(func.value, ast.Name) and func.value.id in git_module_aliases
+                ) or (isinstance(func, ast.Name) and func.id in git_function_aliases)
+                if direct_adapter_call:
+                    problems.append(f"{stem}.py:{node.lineno}: direct private_git call (use the injected PrivateGit protocol)")
             if isinstance(node, (ast.List, ast.Tuple)) and node.elts:
                 first = node.elts[0]
                 if isinstance(first, ast.Constant) and first.value == "git":

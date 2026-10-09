@@ -5,7 +5,7 @@ them with `CLIENT_SOURCES` in local_paths.py; see the README). Module names are 
 uses the bare name; `ingest/` never imports `client/`.
 
 The repo is a hexagon in flat modules. The domain is pure; use cases reach the world only through the port
-protocols in `ports.py`; adapters implement the ports; the facades are the composition roots that bind a use
+protocols in individual `*_port.py` modules; `ports.py` bundles their concrete adapters; the facades are the composition roots that bind a use
 case to its adapters; the CLI, the inbox and the ingest scripts are driving adapters. The boundaries are
 enforced mechanically (`tach.toml`, the import-linter contracts in `pyproject.toml`, and
 `tests/test_architecture.py` / `tests/test_ports.py`), and `tests/test_pipeline_golden.py` pins what the
@@ -21,13 +21,18 @@ driving adapters (knowledge, cli_*, inbox, build + the `ingest` package)
 facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit) <- composition roots: pick the adapters
         |  bind
         v
-use cases (*_service)  --uses-->  ports (ports.py)  <--implemented by--  driven adapters (*_store, clock, paths, private_git, ...)
+use cases (*_service)  --uses-->  port contracts (*_port.py)  <--implemented by--  driven adapters (*_store, clock, paths, private_git, ...)
         |  apply
         v
 domain (pure rules: privacy, modes, revisions, new_fact, ... *_rules)
 ```
 
 Rules (each one is a failing test or contract if broken):
+
+Port adapters are checked at runtime for member names and parameter order (`tests/test_ports.py`),
+and statically for structural type compatibility (`tests/port_types.py`, `uv run mypy`).
+The Git operations are declared by `PrivateGit`; composition roots inject `private_git`, and shared
+private-file editing receives that port rather than importing the Git adapter.
 
 1. Domain modules import no `sqlite3`/`os`/`pathlib`/`subprocess`/`uuid`/..., no adapter, no `clock`/`paths`/`private_git`
    (contract `domain-has-no-infrastructure`; the list can grow, never shrink).
@@ -81,11 +86,21 @@ Rules (each one is a failing test or contract if broken):
 | `cli_sources` | driving adapter | source ids (#48) |
 | `cli_subjects` | driving adapter | subject commands (#43) |
 | `clock` | driven adapter | time |
+| `clock_port` | domain | interface for time required by use cases |
+| `add_fact_port` | domain | interface exposing single-fact operations to batch callers |
+| `entities` | facade (composition root) | binds entity use cases to file, migration and query adapters |
+| `entity_files_port` | domain | interface for persisted entity data |
+| `entity_migration_port` | domain | interface for keyword migration |
+| `entity_queries_port` | domain | interface for entity and subject read queries |
+| `entities_service` | use case | entity command operations |
+| `entity_queries_store` | driven adapter | entity/subject CLI read queries |
 | `entities_store` | driven adapter | entities.json: validation, linking, edits |
 | `entity_migration_store` | driven adapter | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) |  |
 | `export_subjects` | ETL adapter (driving, batch) | writes subjects.json from the seed hierarchy |
 | `fact_ingest_rules` | domain | fact-file ingest rules |
+| `fact_defaults_port` | domain | interface for configured fact and database paths |
+| `facts_file_port` | domain | interface for the persisted fact file and its lookups |
 | `fact_queries` | driven adapter | CLI read-only SQL |
 | `fact_rules` | domain | allowed values |
 | `facts_batch` | facade (composition root) | binds facts_batch_service |
@@ -94,14 +109,17 @@ Rules (each one is a failing test or contract if broken):
 | `fixity_store` | driven adapter | file fingerprints and the changed-since-extraction audit |
 | `identifiers` | domain | DOI / ISBN / ISSN / PMID / arXiv normalization (pure) |
 | `ids` | driven adapter | random source keys |
+| `ids_port` | domain | interface for creating source identifiers |
 | `inbox` | driving adapter | HTTP review page |
 | `knowledge` | driving adapter | Typer app |
 | `leak_rules` | domain | marker matching |
-| `leak_test` | driven adapter | reads db files (also a script) |
+| `leak_scan_store` | driven adapter | scans normal DB files and derives private markers |
+| `leak_test` | driven adapter | runs the scanner and fixture self-test (also a script) |
 | `lifecycle` | facade (composition root) | binds lifecycle_service |
 | `lifecycle_rules` | domain | supersede/retract/visibility/edit decisions |
 | `lifecycle_service` | use case | supersede / retract / set-visibility / edit |
 | `lifecycle_store` | driven adapter | rules + subject tree for the floor |
+| `lifecycle_reads_port` | domain | interface for inputs used by lifecycle decisions |
 | `measurement_rules` | domain | vault rows to measurements |
 | `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | driven adapter | inter-process file lock for the data-file writers |
@@ -109,6 +127,7 @@ Rules (each one is a failing test or contract if broken):
 | `migrate_memory_rules` | domain | memory-file rules |
 | `migrate_memory_service` | use case | memory migration |
 | `migrate_memory_store` | driven adapter | memory files, run lock |
+| `memory_files_port` | domain | interface for memory-file operations |
 | `modes` | domain | mode policy, write gating |
 | `modes_store` | driven adapter | mode-filtered fact queries |
 | `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
@@ -117,11 +136,16 @@ Rules (each one is a failing test or contract if broken):
 | `normal_db` | driven adapter | SQL copy + file swap (also a script) |
 | `normal_rules` | domain | normal-tier whitelist |
 | `paths` | driven adapter | personal paths |
-| `ports` | domain | port protocols the use cases depend on (pure); counted as domain |
+| `ports` | domain | dependency bundle and binding helper for the separate port contracts |
 | `privacy` | domain | visibility rules + resolver |
 | `privacy_store` | driven adapter | rules file, db apply |
+| `privacy_rules_port` | domain | interface for reading and editing privacy rules |
 | `private_edit_store` | driven adapter | load-edit-write-commit flow for hand-curated files |
 | `private_git` | driven adapter | git around knowledge-private |
+| `private_git_port` | domain | protocol for operations application code needs from the private-data Git adapter |
+| `revisions_port` | domain | interface for entries and the revision log |
+| `review_reads_port` | domain | interface for review queue and fact-state reads |
+| `reviews_port` | domain | interface exposing review operations to lifecycle |
 | `review` | facade (composition root) | binds review_service |
 | `review_rules` | domain | review decisions |
 | `review_service` | use case | approve / reject |
@@ -137,7 +161,10 @@ Rules (each one is a failing test or contract if broken):
 | `source_ingest_rules` | domain | citation notes |
 | `source_status` | domain | source status, relation checks, replacement chains |
 | `source_status_store` | driven adapter | the fact-to-source audit SQL |
+| `subjects` | facade (composition root) | binds subject use cases to file and query adapters |
+| `subjects_service` | use case | subject command operations |
 | `subjects_store` | driven adapter | subjects.json: hierarchy as data, aliases, edits |
+| `subject_files_port` | domain | interface for persisted subject data |
 | `textmatch` | domain | whole-word term matching |
 | `timestamps` | domain | revision-time parsing |
 | `validtime` | domain | valid-time dates: parsing, ordering, containment |

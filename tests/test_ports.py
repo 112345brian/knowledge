@@ -15,7 +15,7 @@ import ports  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service")
+            "rules_edit_service", "entities_service", "subjects_service")
 
 
 def test_every_facade_binds_adapters_that_satisfy_the_protocols():

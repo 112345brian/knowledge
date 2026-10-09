@@ -410,7 +410,7 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
     fact entry must reference `privacy`."""
     offenders = []
     for name in sorted(os.listdir(REPO)):
-        if not name.endswith(".py") or name in ("privacy.py", "ports.py"):  # ports.py only declares the AddFact protocol
+        if not name.endswith(".py") or name in ("privacy.py", "ports.py", "add_fact_port.py"):  # protocols declare, but do not implement, fact entry creation
             continue
         src = open(os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)).read()
         if ("INSERT INTO facts" in src or "def build_entry" in src) and "privacy." not in src:

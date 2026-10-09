@@ -10,6 +10,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "import-linter>=2.15",
+    "mypy>=1.11",
     "pytest>=8",
     "pytest-xdist>=3.8.0",
     "tach>=0.35.2",
@@ -25,6 +26,14 @@ pythonpath = ["."]
 # subprocess- or temp-git-repo-heavy). Nothing is skipped or marked slow: the architecture tests
 # run every time. Serial run if you need it: `uv run pytest -n 0`.
 addopts = "-n auto"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["ports.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "fact_defaults_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+no_implicit_optional = true
+follow_imports = "silent"
 
 # --------------------------------------------------------------------------------------------
 # import-linter contracts (#36). See README "Architecture enforcement".
@@ -83,6 +92,7 @@ source_modules = [
     "kn.locks",
     "kn.leak_rules",
     "kn.leak_test",
+    "kn.leak_scan_store",
     "kn.lifecycle",
     "kn.lifecycle_rules",
     "kn.lifecycle_service",
@@ -100,6 +110,22 @@ source_modules = [
     "kn.normal_rules",
     "kn.paths",
     "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
     "kn.privacy",
     "kn.privacy_store",
     "kn.private_git",
@@ -119,12 +145,17 @@ source_modules = [
     "kn.build_info_store",
     "kn.entities_store",
     "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
     "kn.fixity_store",
     "kn.identifiers",
     "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
     "kn.textmatch",
     "kn.validtime",
 ]
@@ -201,6 +232,7 @@ source_modules = [
     "kn.inbox",
     "kn.leak_rules",
     "kn.leak_test",
+    "kn.leak_scan_store",
     "kn.lifecycle",
     "kn.lifecycle_rules",
     "kn.lifecycle_service",
@@ -218,6 +250,22 @@ source_modules = [
     "kn.normal_rules",
     "kn.paths",
     "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
     "kn.privacy",
     "kn.privacy_store",
     "kn.private_git",
@@ -237,12 +285,17 @@ source_modules = [
     "kn.build_info_store",
     "kn.entities_store",
     "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
     "kn.fixity_store",
     "kn.identifiers",
     "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
@@ -345,6 +398,7 @@ forbidden_modules = [
     "kn.facts_batch",
     "kn.knowledge",
     "kn.leak_test",
+    "kn.leak_scan_store",
     "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.migrate_memory_store",
@@ -398,7 +452,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # measurement_rules, build_rules, backfill_rules; the ingest steps and build.py are the ETL adapters). Their
 # adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
 # add_fact_store, migrate_memory_store (normal_db and leak_test are the adapters for their rules).
-# `review`, `lifecycle`, `add_fact`, `facts_batch`, `migrate_memory` and `rules_edit` are the facades
+# `review`, `lifecycle`, `add_fact`, `facts_batch`, `migrate_memory`, `rules_edit`, `entities` and `subjects` are facades
 # (composition roots) that bind a use case (a *_service) to its adapters.
 # The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
 # module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
@@ -422,6 +476,22 @@ source_modules = [
     "kn.new_fact",
     "kn.normal_rules",
     "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
     "kn.privacy",
     "kn.review_rules",
     "kn.revisions",
@@ -446,10 +516,15 @@ forbidden_modules = [
     "kn.build_info_store",
     "kn.entities_store",
     "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
 ]
 allow_indirect_imports = true
 
@@ -469,6 +544,8 @@ source_modules = [
     "kn.migrate_memory_service",
     "kn.review_service",
     "kn.rules_edit_service",
+    "kn.entities_service",
+    "kn.subjects_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -481,10 +558,15 @@ forbidden_modules = [
     "kn.build_info_store",
     "kn.entities_store",
     "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
 ]
 allow_indirect_imports = true
 
@@ -497,8 +579,7 @@ name = "The CLI and the inbox reach infrastructure only through use cases and re
 # through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit), and reads
 # through the read adapters (fact_queries, which also serves the revision history, claims_store, modes_store).
 # The forbidden list names every store that writes (or is both): privacy_store, private_git, revisions_store,
-# add_fact_store, lifecycle_store, review_store, migrate_memory_store, locks, ... Only the three named
-# exceptions below remain.
+# add_fact_store, lifecycle_store, review_store, migrate_memory_store, locks, ...
 type = "forbidden"
 source_modules = [
     "kn.cli_facts_batch",
@@ -522,33 +603,23 @@ forbidden_modules = [
     "kn.source_status_store",
 ]
 allow_indirect_imports = true
-# KNOWN GAP, ratcheted: the #42/#43 commands edit entities.json / subjects.json through the entities, entity_tools
-# and subjects modules directly, because those modules still mix their rules with file access and the commit flow.
-# These three edges are the whole debt; they need an entities/subjects use case plus a store (as review and
-# lifecycle have) before they can go. No other CLI or inbox module may add one.
-ignore_imports = [
-    "kn.cli_entities -> kn.entities_store",
-    "kn.cli_entities -> kn.entity_migration_store",
-    "kn.cli_subjects -> kn.subjects_store",
-]
-
 [[tool.importlinter.contracts]]
 id = "libraries-layered"
 name = "Libraries form a DAG (no cycles) in a fixed order"
 # Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
 # Higher entries may import lower ones; entries joined with `|` are independent of each other.
-# Adding a library means choosing its row. Exactly one cycle exists today and is accepted:
-# normal_db lazily imports leak_test (to leak-check what it built) and leak_test.self_test lazily
-# imports normal_db (to build a fixture). Both imports are inside functions; the upward one is ignored below.
+# Adding a library means choosing its row. The normal DB builder uses leak_scan_store for scans;
+# the leak-test runner calls the normal DB builder, so the dependency is one-way.
 type = "layers"
 containers = ["kn"]
 layers = [
-    "facts_batch | lifecycle | migrate_memory | rules_edit | entity_migration_store",
+    "facts_batch | lifecycle | migrate_memory | rules_edit | entities | subjects",
     "modes_store | claims_store | facts_batch_service",
-    "review | modes | claims_audit | normal_db",
-    "leak_test | lifecycle_service | migrate_memory_service | rules_edit_service",
+    "review | modes | claims_audit | leak_test",
+    "normal_db | lifecycle_service | migrate_memory_service | rules_edit_service | entities_service | subjects_service",
+    "entity_migration_store | entity_queries_store",
     "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
-    "revisions_store | build_info_store | source_status_store",
+    "revisions_store | build_info_store | source_status_store | leak_scan_store",
     "add_fact",
     "privacy_store | add_fact_service | fact_ingest_rules | backfill_rules",
     "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules | source_ingest_rules",
@@ -558,7 +629,7 @@ layers = [
     "privacy | source_status | acquisition_store",
     "private_edit_store",
     "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | locks | artist_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers",
-]
-ignore_imports = [
-    "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above
+    "entity_files_port | entity_migration_port | subject_files_port",
+    "private_git_port",
+    "facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",
 ]

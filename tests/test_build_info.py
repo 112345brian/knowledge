@@ -86,7 +86,7 @@ def inputs(con):
 def test_record_writes_one_info_row_and_a_manifest_with_stable_keys(tmp_path):
     paths = fake_paths(tmp_path)
     con = new_db()
-    info_id = bi.record(con, paths, str(tmp_path), str(tmp_path))
+    info_id = bi.record(con, paths, str(tmp_path), str(tmp_path), private_git)
     row = con.execute("SELECT * FROM build_info").fetchone()
     assert row["id"] == info_id and row["schema_version"] == EXPECTED_SCHEMA_VERSION
     assert row["python_version"] == sys.version.split()[0] and row["sqlite_version"] == sqlite3.sqlite_version
@@ -100,7 +100,7 @@ def test_record_writes_one_info_row_and_a_manifest_with_stable_keys(tmp_path):
 def test_present_inputs_are_hashed_and_missing_ones_are_recorded_not_errors(tmp_path):
     paths = fake_paths(tmp_path)
     con = new_db()
-    bi.record(con, paths, str(tmp_path), str(tmp_path))
+    bi.record(con, paths, str(tmp_path), str(tmp_path), private_git)
     got = inputs(con)
     state, sha, size, mtime, _ = got["input:vault-db"]
     assert (state, sha, size) == ("present", hashlib.sha256(b"vault-db-bytes").hexdigest(), 14) and mtime
@@ -114,16 +114,16 @@ def test_a_missing_vault_directory_is_a_missing_input_too(tmp_path):
     paths = fake_paths(tmp_path, present=())
     paths.BODYBUILDING_VAULT = str(tmp_path / "does" / "not" / "exist")
     con = new_db()
-    bi.record(con, paths, str(tmp_path), str(tmp_path))
+    bi.record(con, paths, str(tmp_path), str(tmp_path), private_git)
     assert inputs(con)["input:vault-db"][0] == "missing"
 
 
 def test_two_records_over_identical_inputs_give_identical_manifests(tmp_path):
     paths = fake_paths(tmp_path)
     a, b = new_db(), new_db()
-    bi.record(a, paths, str(tmp_path), str(tmp_path))
+    bi.record(a, paths, str(tmp_path), str(tmp_path), private_git)
     time.sleep(0.01)
-    bi.record(b, paths, str(tmp_path), str(tmp_path))
+    bi.record(b, paths, str(tmp_path), str(tmp_path), private_git)
     strip = lambda con: [tuple(r)[1:6] for r in con.execute("SELECT * FROM build_inputs ORDER BY input_key")]   # noqa: E731
     assert strip(a) == strip(b) and len(strip(a)) == len(bi.DATA_FILES) + 5
 
@@ -131,9 +131,9 @@ def test_two_records_over_identical_inputs_give_identical_manifests(tmp_path):
 def test_changing_an_input_changes_only_its_row(tmp_path):
     paths = fake_paths(tmp_path)
     a, b = new_db(), new_db()
-    bi.record(a, paths, str(tmp_path), str(tmp_path))
+    bi.record(a, paths, str(tmp_path), str(tmp_path), private_git)
     (tmp_path / "in" / "concerts.csv").write_text("a,b\n1,3\n")
-    bi.record(b, paths, str(tmp_path), str(tmp_path))
+    bi.record(b, paths, str(tmp_path), str(tmp_path), private_git)
     assert bi.compare(bi.latest(a), bi.latest(b)) == [
         {"key": "input:concerts-csv", "change": "changed", "a_sha256": inputs(a)["input:concerts-csv"][1], "b_sha256": inputs(b)["input:concerts-csv"][1]}]
 
@@ -187,7 +187,7 @@ def test_record_stores_the_commits(tmp_path):
     git(str(repo), "add", "-A")
     git(str(repo), "commit", "-q", "-m", "m")
     con = new_db()
-    bi.record(con, fake_paths(tmp_path), str(repo), str(tmp_path / "in"))
+    bi.record(con, fake_paths(tmp_path), str(repo), str(tmp_path / "in"), private_git)
     r = con.execute("SELECT * FROM build_info").fetchone()
     assert re.fullmatch(r"[0-9a-f]{40}", r["code_commit"]) and r["code_dirty"] == 0 and r["private_commit"] is None and r["private_dirty"] is None
 

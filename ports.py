@@ -1,139 +1,41 @@
-"""The ports: what the use cases need from the outside world (domain side: no I/O).
+"""Shared dependency bundle and binding helper for use-case ports.
 
 A use case (`review_service`, `lifecycle_service`, `add_fact_service`, `facts_batch_service`,
-`migrate_memory_service`) takes a `Ports` bundle and calls only what is declared here. The adapters
-(`revisions_store`, `review_store`, `private_git`, ...) implement these protocols; the facade modules
-(`review`, `lifecycle`, `add_fact`, ...) are the composition roots that pick the adapters. A use case
+`migrate_memory_service`, `entities_service`, `subjects_service`) takes a `Ports` bundle. Each protocol lives in its own
+`*_port.py` module; this module gathers the concrete adapters selected by a composition root. The facade modules
+(`review`, `lifecycle`, `add_fact`, `entities`, `subjects`, ...) are the composition roots that pick the adapters. A use case
 therefore never imports an adapter, `sqlite3`, `subprocess` or `clock`, and a test can hand it fakes.
 
 Adapters are plain modules: a module whose functions have these names and parameters satisfies the
-protocol, which `tests/test_ports.py` checks, so a renamed adapter function fails a test and not a
-caller at run time.
+protocol: `tests/test_ports.py` checks member names and parameter order, while `tests/port_types.py`
+assigns adapters to protocols for static checking with mypy.
 """
 import functools
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, ContextManager, Dict, List, Optional, Protocol, Tuple
-
-
-class Git(Protocol):
-    """The git safety net around knowledge-private (#10). Implemented by `private_git`."""
-    PrivateGitError: type
-
-    def find_repo(self, directory) -> Optional[str]: ...
-    def ensure_clean_tree(self, repo_dir) -> None: ...
-    def commit_private_change(self, paths, message, repo_dir) -> str: ...
-    def is_detached(self, repo_dir) -> bool: ...
-
-
-class Revisions(Protocol):
-    """The entry files and the append-only revision log. Implemented by `revisions_store`."""
-
-    def default_data_dir(self) -> str: ...
-    def load_entries(self, data_dir=None) -> List[dict]: ...
-    def read_log(self, path, base=None) -> List[Tuple[int, dict]]: ...
-    def append_revision(self, source_key, changes, reason, via, session_id=None, data_dir=None,
-                        revisions_path=None, expect=None) -> Any: ...
-
-
-class Rules(Protocol):
-    """The privacy rules file. Implemented by `privacy_store`."""
-
-    def load_rules(self, path=None) -> Any: ...
-    def save_rules(self, rules, path) -> None: ...
-    def rules_path(self, data_dir=None) -> str: ...
-    def data_dir_of(self, path) -> str: ...
-    def existing_ancestor(self, directory) -> str: ...
-    def make_dirs(self, directory) -> None: ...
-
-
-class ReviewReads(Protocol):
-    """Reads behind the review queue. Implemented by `review_store`."""
-
-    def default_data_dir(self) -> str: ...
-    def db_exists(self, db_path) -> bool: ...
-    def list_pending(self, db) -> List[dict]: ...
-    def current_states(self, data_dir=None) -> Dict[str, dict]: ...
-    def subject_parents(self, db) -> Dict[str, Optional[str]]: ...
-    def source_key_for_id(self, db, fact_id) -> Tuple[bool, Optional[str]]: ...
-
-
-class Reviews(Protocol):
-    """What the lifecycle use case takes from the review use case. Implemented by the `review` facade."""
-
-    def current_states(self, data_dir=None) -> Dict[str, dict]: ...
-    def resolve_ref(self, ref, states, db) -> Tuple[Optional[str], Optional[str]]: ...
-    def rules_with_db_context(self, data_dir, db) -> Any: ...
-    def status_word(self, status) -> str: ...
-
-
-class LifecycleReads(Protocol):
-    """Reads behind the lifecycle decisions. Implemented by `lifecycle_store`."""
-    DB_ERRORS: tuple
-
-    def floor_inputs(self, data_dir, db) -> Any: ...
-    def subjects(self, data_dir) -> Dict[str, Optional[str]]: ...
-
-
-class FactsFile(Protocol):
-    """The locked JSON array of new facts, plus the two db lookups. Implemented by `add_fact_store`."""
-
-    def read_array(self, path) -> list: ...
-    def append_record(self, path, record) -> int: ...
-    def append_records(self, path, records, reject=None) -> Tuple[int, list]: ...
-    def citekey_problem(self, db_path, citekey) -> Tuple[Optional[str], Optional[str]]: ...
-    def subject_tree(self, db_path) -> Tuple[dict, Optional[set]]: ...
-    def file_subjects(self, data_path) -> set: ...
-    def data_dir_of(self, data_path) -> str: ...
-    def file_sha256(self, path) -> Optional[str]: ...
-    def canonical_subject(self, data_path, subject) -> Tuple[str, list, Optional[str]]: ...
-
-
-class Clock(Protocol):
-    """Implemented by `clock`."""
-
-    def now(self) -> Any: ...
-    def now_iso(self) -> str: ...
-
-
-class Ids(Protocol):
-    """Fresh identifiers (a source_key for a new fact)."""
-
-    def new_source_key(self) -> str: ...
-
-
-class FactDefaults(Protocol):
-    """Where the facts file and the built db live (config, read on every call)."""
-    data_path: str
-    db_path: str
-
-
-class MemoryFiles(Protocol):
-    """Claude Code memory files on disk. Implemented by `migrate_memory_store`."""
-
-    def root_exists(self, root) -> bool: ...
-    def absolute_root(self, root) -> str: ...
-    def discover(self, root) -> tuple: ...
-    def read_memory_file(self, path, project, filename) -> Any: ...
-    def existing_entries(self, data_dir) -> Dict[str, str]: ...
-    def run_lock(self, data_path) -> ContextManager: ...
-    def data_dir_of(self, data_path) -> str: ...
-
-
-class AddFact(Protocol):
-    """What batch / migrate take from the add-one-fact use case. Implemented by the `add_fact` facade."""
-
-    def validate_fact(self, fact, db_path=None) -> Tuple[list, list]: ...
-    def build_entry(self, fact, visibility=None) -> dict: ...
-    def resolve_privacy(self, fact, data_path, db_path) -> Any: ...
-    def canonicalize_subject(self, fact, data_path) -> Tuple[list, Optional[str]]: ...
-    def append_fact(self, fact, data_path=None, db_path=None) -> Any: ...
+from typing import Any, Callable, List, Optional
+from add_fact_port import AddFact
+from clock_port import Clock
+from entity_files_port import EntityFiles
+from entity_migration_port import EntityMigration
+from entity_queries_port import EntityQueries
+from fact_defaults_port import FactDefaults
+from facts_file_port import FactsFile
+from ids_port import Ids
+from lifecycle_reads_port import LifecycleReads
+from memory_files_port import MemoryFiles
+from private_git_port import PrivateGit
+from privacy_rules_port import Rules
+from revisions_port import Revisions
+from review_reads_port import ReviewReads
+from reviews_port import Reviews
+from subject_files_port import SubjectFiles
 
 
 @dataclass
 class Ports:
     """A bundle of the ports a use case needs; unused ones stay None."""
-    git: Optional[Git] = None
+    git: Optional[PrivateGit] = None
     revisions: Optional[Revisions] = None
     rules: Optional[Rules] = None
     reads: Optional[ReviewReads] = None
@@ -145,6 +47,10 @@ class Ports:
     defaults: Optional[FactDefaults] = None
     memory: Optional[MemoryFiles] = None
     add_fact: Optional[AddFact] = None
+    entity_files: Optional[EntityFiles] = None
+    entity_migration: Optional[EntityMigration] = None
+    subject_files: Optional[SubjectFiles] = None
+    entity_queries: Optional[EntityQueries] = None
 
 
 def bind(fn: Callable, ports: Ports) -> Callable:
@@ -155,14 +61,16 @@ def bind(fn: Callable, ports: Ports) -> Callable:
         return fn(ports, *args, **kwargs)
 
     params = list(inspect.signature(fn).parameters.values())[1:]
-    bound.__signature__ = inspect.Signature(params, return_annotation=inspect.signature(fn).return_annotation)
+    setattr(bound, "__signature__", inspect.Signature(params, return_annotation=inspect.signature(fn).return_annotation))
     return bound
 
 
 PORT_PROTOCOLS = {
-    "git": Git, "revisions": Revisions, "rules": Rules, "reads": ReviewReads, "reviews": Reviews,
+    "git": PrivateGit, "revisions": Revisions, "rules": Rules, "reads": ReviewReads, "reviews": Reviews,
     "lifecycle_reads": LifecycleReads, "facts_file": FactsFile, "clock": Clock, "ids": Ids,
     "memory": MemoryFiles, "add_fact": AddFact,
+    "entity_files": EntityFiles, "entity_migration": EntityMigration,
+    "subject_files": SubjectFiles, "entity_queries": EntityQueries,
 }
 
 

@@ -39,7 +39,7 @@ from fact_rules import FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST
 from new_fact import (AddResult, DATE_RE, DataFileError, NewFact, SUBJECT_RE, VALID_NEW_STATUS)  # noqa: F401  (re-exported)
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from ports import Ports, bind
-from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
+import private_git
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
@@ -52,7 +52,7 @@ class _Defaults:
     db_path = property(lambda self: DB_PATH)
 
 
-PORTS = Ports(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids, defaults=_Defaults())
+PORTS = Ports(git=private_git, facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids, defaults=_Defaults())
 
 
 def new_source_key():
@@ -112,12 +112,12 @@ def main(argv=None):
     # e.g. a throwaway test layout, is written without committing, with a note). append_fact
     # itself stays free of git side effects.
     try:
-        repo = find_repo(os.path.dirname(DATA_PATH))
+        repo = PORTS.git.find_repo(os.path.dirname(DATA_PATH))
         if repo is None:
             print(f"note: {os.path.dirname(DATA_PATH)} is not inside a git repository; the change will not be committed.", file=sys.stderr)
         elif not args.allow_dirty:
-            ensure_clean_tree(repo)
-    except PrivateGitError as e:
+            PORTS.git.ensure_clean_tree(repo)
+    except PORTS.git.PrivateGitError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     result = append_fact(fact)
@@ -133,9 +133,9 @@ def main(argv=None):
     if repo is not None:
         message = f"add-fact: {fact.subject} ({fact.trust_level})"
         try:
-            commit = commit_private_change([DATA_PATH], message, repo)
-            detached = is_detached(repo)
-        except PrivateGitError as e:
+            commit = PORTS.git.commit_private_change([DATA_PATH], message, repo)
+            detached = PORTS.git.is_detached(repo)
+        except PORTS.git.PrivateGitError as e:
             print(f"error: the fact IS in {DATA_PATH} but is NOT committed: {e}", file=sys.stderr)
             return 3
         print(f"Committed {commit} in {repo}: {message}")

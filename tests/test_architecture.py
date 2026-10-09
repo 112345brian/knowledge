@@ -169,7 +169,7 @@ def tree(tmp_path):
     (d / "pyproject.toml").write_text(ac.enable_planned(_read(PYPROJECT)))
     # Baseline = the maximal legal graph: every module imports exactly what tach.toml lets it
     # import (tach `exact = true` also rejects declared-but-unused dependencies), plus the
-    # documented subprocess / lazy-cycle exceptions.
+    # documented subprocess exceptions.
     for package in PACKAGES:
         (d / package).mkdir()
         (d / package / "__init__.py").write_text("")
@@ -585,10 +585,6 @@ def test_exception_lists_are_exactly_the_documented_ones():
     assert ignores == {
         "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
         "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.script_runner -> subprocess", "kn.acquisition_store -> subprocess"],
-        # the #42/#43 commands still edit entities.json / subjects.json through the mixed modules (see pyproject.toml)
-        "driving-adapters-no-infrastructure": ["kn.cli_entities -> kn.entities_store", "kn.cli_entities -> kn.entity_migration_store",
-                                               "kn.cli_subjects -> kn.subjects_store"],
-        "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
     assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
     assert "ignore_imports" not in contracts["use-cases-depend-on-ports"]
@@ -623,7 +619,7 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service"}
 
 
 def _architecture_roles():
@@ -646,7 +642,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
     assert {n for n, r in roles.items() if r == "domain"} == domain
     assert {n for n, r in roles.items() if r == "use case"} == services
-    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit"}
+    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}
@@ -718,6 +714,17 @@ def test_git_scan_flags_variants(tree, code):
 def test_git_scan_allows_private_git(tree):
     _offend(tree, "private_git", 'import subprocess\nsubprocess.run(["git", "status"])')
     assert ac.scan_git_usage(str(tree)) == []
+
+
+@pytest.mark.parametrize("code", [
+    'import private_git\nprivate_git.ensure_clean_tree("repo")',
+    'from private_git import commit_private_change as commit\ncommit([], "message", "repo")',
+    'import private_git as pg\npg.describe_repo("repo")',
+])
+def test_git_scan_requires_the_private_git_port(tree, code):
+    _offend(tree, "cli_entities", code)
+    problems = ac.scan_git_usage(str(tree))
+    assert any("direct private_git call" in p for p in problems), problems
 
 
 def test_shadow_rewrites_lazy_and_aliased_imports(tmp_path):

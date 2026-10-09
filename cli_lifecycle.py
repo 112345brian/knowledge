@@ -14,6 +14,7 @@ import sys
 
 import typer
 
+import fact_queries
 import lifecycle
 
 app = typer.Typer(pretty_exceptions_enable=False, rich_markup_mode=None)
@@ -30,10 +31,9 @@ class Visibility(str, enum.Enum):
 
 def _open_db():
     """Read-only connection to the built db, or None when there is none (source_keys still resolve)."""
-    import knowledge
     try:
-        return knowledge.connect()
-    except knowledge.DatabaseNotFound:
+        return fact_queries.connect()
+    except fact_queries.DatabaseNotFound:
         return None
 
 

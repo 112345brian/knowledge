@@ -24,7 +24,7 @@ import sqlite3
 
 import clock
 import fixity_store
-import private_git
+from private_git_port import PrivateGit
 
 KEY_PREFIX = "input:"
 # (stable key, how to find it). Data files live in the private data dir; the others come from paths.py.
@@ -71,11 +71,11 @@ def collect_inputs(con, paths_module):
     return sorted(out, key=lambda kv: kv[0])
 
 
-def record(con, paths_module, code_dir, private_dir):
+def record(con, paths_module, code_dir, private_dir, git: PrivateGit):
     """Write the build_info row and the build_inputs manifest into `con` (a freshly built db). Does not commit.
     Returns the build_info id."""
-    code = private_git.describe_repo(code_dir)
-    private = private_git.describe_repo(private_dir)
+    code = git.describe_repo(code_dir)
+    private = git.describe_repo(private_dir)
     version = con.execute("PRAGMA user_version").fetchone()[0]
     cur = con.execute(
         "INSERT INTO build_info (built_at, schema_version, code_commit, code_dirty, private_commit, private_dirty, "

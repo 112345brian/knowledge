@@ -575,6 +575,8 @@ FACT_READERS_ALLOWED = {
     "fixity_store.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
+    "entity_queries_store.py",
+    "leak_scan_store.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
     "entities_store.py", "link_entities.py",
     # links facts to the measurements they cite at build time (the `measurements` client source)

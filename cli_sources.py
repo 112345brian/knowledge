@@ -8,6 +8,7 @@ import json
 import sys
 
 import typer
+import fact_queries
 
 app = typer.Typer(help="Sources: their persistent identifiers.", pretty_exceptions_enable=False, rich_markup_mode=None)
 
@@ -34,10 +35,9 @@ def source_ids(con, citekey):
 
 @app.command("ids", help="Show a source's identifiers (DOI, ISBN, ISSN, PMID, arXiv, other) and any it shares with another source.")
 def cmd_ids(citekey: str, as_json: bool = JSON_OPT):
-    import knowledge
     try:
-        con = knowledge.connect()
-    except knowledge.DatabaseNotFound as e:
+        con = fact_queries.connect()
+    except fact_queries.DatabaseNotFound as e:
         _fail(e)
     try:
         info = source_ids(con, citekey)

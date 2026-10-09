@@ -31,6 +31,7 @@ import unicodedata
 import uuid
 
 import private_edit_store
+from private_git_port import PrivateGit
 import textmatch
 
 ENTITIES_FILENAME = "entities.json"
@@ -302,7 +303,7 @@ def set_private(entities, ref, private):
 EditResult = private_edit_store.EditResult
 
 
-def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None):
+def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None, *, git: PrivateGit):
     """Load entities.json (an absent file starts empty), apply `edit(entities) -> (new, changed)`, and write
     and commit it through private_edit_store.edit_files (clean tree required unless allow_dirty)."""
     path = data_path() if path is None else path
@@ -311,7 +312,7 @@ def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None):
         new, changed = edit(read_file(path) or [])
         return changed, new
 
-    return private_edit_store.edit_files([path], compute, lambda new: save(new, path), what, message,
+    return private_edit_store.edit_files([path], compute, lambda new: save(new, path), what, message, git,
                                    allow_dirty, dry_run, error_types=(EntitiesError,))
 
 

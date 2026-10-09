@@ -17,10 +17,11 @@ from dataclasses import replace
 import entities_store
 import private_edit_store
 import privacy
+from private_git_port import PrivateGit
 import privacy_store
 
 
-def migrate_keywords(allow_dirty=False, dry_run=False, keep_keywords=False, data_dir=None):
+def migrate_keywords(allow_dirty=False, dry_run=False, keep_keywords=False, *, git: PrivateGit, data_dir=None):
     """Convert every keyword in the rules file to a private entity (type 'other'). `keep_keywords` leaves the
     keyword list in place (only adds entities). Returns a private_edit_store.EditResult; never prints or exits."""
     rules_file = privacy_store.rules_path(data_dir)
@@ -57,5 +58,5 @@ def migrate_keywords(allow_dirty=False, dry_run=False, keep_keywords=False, data
 
     result = private_edit_store.edit_files([entities_file, rules_file], compute, write,
                                      "migrate keywords to private entities", "entities: migrate privacy keywords to private entities",
-                                     allow_dirty, dry_run, error_types=(entities_store.EntitiesError, privacy.PrivacyRulesError))
+                                     git, allow_dirty, dry_run, error_types=(entities_store.EntitiesError, privacy.PrivacyRulesError))
     return result

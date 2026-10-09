@@ -4,7 +4,7 @@
 #   * Every top-level module, and every module of the `ingest` package (as `ingest.<name>`), is one tach module.
 #   * `depends_on` is a deny-by-default ALLOWLIST: an import not listed here fails
 #     `uv run tach check`. That is how "`paths` is imported only by an allowlist" and
-#     "`private_git` is imported only by add_fact / review / knowledge" are enforced.
+#     "`private_git` is imported only by composition roots and build metadata" are enforced.
 #   * `layer` adds the direction rule on top. The layers are the hexagon, outermost first, and a module
 #     may only import from its own layer or a lower one:
 #
@@ -48,12 +48,8 @@ layers_explicit_depends_on = true
 ignore_type_checking_imports = false
 # Report depends_on entries that are no longer used, so the allowlists cannot silently grow stale.
 exact = true
-# Cycles among libraries are checked by import-linter (pyproject.toml, "libraries-layered"),
-# because there is one documented, lazy exception (normal_db <-> leak_test) and tach has no per-edge cycle
-# exception. A second, unchecked family exists on the CLI side: cli_lifecycle / cli_entities / cli_sources /
-# cli_subjects lazily `import knowledge` for connect() and DatabaseNotFound, and knowledge registers them.
-# Turn this on once both are gone (see the cycle notes in the review of this config).
-forbid_circular_dependencies = false
+# Import-linter and tach both enforce acyclic library and CLI graphs.
+forbid_circular_dependencies = true
 
 # ===================================================================== the hexagon: domain, use cases, adapters, facades
 # Importable modules that return data. No typer, no CLI, no serving, no pipeline.
@@ -65,6 +61,86 @@ depends_on = []
 
 [[modules]]
 path = "ports"  # DOMAIN: the port protocols the use cases depend on, and bind() (pure)
+layer = "domain"
+depends_on = ["private_git_port", "facts_file_port", "clock_port", "ids_port", "fact_defaults_port", "add_fact_port", "privacy_rules_port", "revisions_port", "review_reads_port", "reviews_port", "lifecycle_reads_port", "memory_files_port", "entity_files_port", "entity_migration_port", "subject_files_port", "entity_queries_port"]
+
+[[modules]]
+path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "facts_file_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "clock_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "ids_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "fact_defaults_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "add_fact_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "privacy_rules_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "revisions_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "review_reads_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "reviews_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "lifecycle_reads_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "memory_files_port"
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "entity_files_port"
+layer = "domain"
+depends_on = ["private_git_port"]
+
+[[modules]]
+path = "entity_migration_port"
+layer = "domain"
+depends_on = ["private_git_port"]
+
+[[modules]]
+path = "subject_files_port"
+layer = "domain"
+depends_on = ["private_git_port"]
+
+[[modules]]
+path = "entity_queries_port"
 layer = "domain"
 depends_on = []
 
@@ -90,9 +166,29 @@ depends_on = [
 ]
 
 [[modules]]
+path = "entities"  # FACADE: binds entity use cases to their file, migration and query adapters
+layer = "facade"
+depends_on = ["entities_service", "entities_store", "entity_migration_store", "entity_queries_store", "private_git", "ports"]
+
+[[modules]]
+path = "subjects"  # FACADE: binds subject use cases to their file and query adapters
+layer = "facade"
+depends_on = ["subjects_service", "subjects_store", "entity_queries_store", "private_git", "ports"]
+
+[[modules]]
 path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
 layer = "use_case"
 depends_on = []
+
+[[modules]]
+path = "entities_service"  # USE CASE: entity commands through ports
+layer = "use_case"
+depends_on = ["ports"]
+
+[[modules]]
+path = "subjects_service"  # USE CASE: subject commands through ports
+layer = "use_case"
+depends_on = ["ports"]
 
 [[modules]]
 path = "paths"          # the only module that knows personal paths
@@ -209,6 +305,11 @@ depends_on = [
     "source_status_store",
     "validtime",
 ]
+
+[[modules]]
+path = "entity_queries_store" # ADAPTER: entity/subject CLI read queries
+layer = "adapter"
+depends_on = ["fact_queries"]
 
 [[modules]]
 path = "review_rules"   # DOMAIN: review result types and the pure decisions behind the queue
@@ -344,7 +445,8 @@ depends_on = [
 path = "normal_db"      # ADAPTER (and script): the SQL copy and the file swap for knowledge-normal.db
 layer = "adapter"
 depends_on = [
-    "leak_test",        # lazy, to leak-check the DB it just built
+    "leak_scan_store",
+    "leak_rules",
     "normal_rules",
     "privacy_store",
 ]
@@ -359,11 +461,16 @@ path = "leak_test"      # ADAPTER (and script): reads the db files, derives mark
 layer = "adapter"
 depends_on = [
     "leak_rules",
-    "normal_db",        # lazy, self_test() builds a fixture normal DB. The one documented
-                        # library cycle (see import-linter "libraries-layered" ignore_imports).
+    "leak_scan_store",
+    "normal_db",        # self_test builds a fixture normal db; the dependency is one-way now.
     "privacy",          # lazy
     "build_rules",
 ]
+
+[[modules]]
+path = "leak_scan_store"  # ADAPTER: scans a normal DB and derives private markers
+layer = "adapter"
+depends_on = ["leak_rules"]
 
 [[modules]]
 path = "lifecycle_rules" # DOMAIN: lifecycle result types and the supersede/retract/set-visibility/edit decisions (pure)
@@ -514,7 +621,7 @@ layer = "adapter"
 depends_on = [
     "clock",
     "fixity_store",
-    "private_git",
+    "private_git_port",
 ]
 
 [[modules]]
@@ -527,9 +634,7 @@ depends_on = [
 [[modules]]
 path = "private_edit_store"   # ADAPTER #43/#42 the shared load-edit-write-commit flow for hand-curated files in knowledge-private
 layer = "adapter"
-depends_on = [
-    "private_git",
-]
+depends_on = ["private_git_port"]
 
 [[modules]]
 path = "entities_store"   # ADAPTER #42 entities.json: validation, term matching, edits, linking
@@ -537,6 +642,7 @@ layer = "adapter"
 depends_on = [
     "paths",
     "private_edit_store",
+    "private_git_port",
     "textmatch",
 ]
 
@@ -547,6 +653,7 @@ depends_on = [
     "entities_store",
     "privacy",
     "private_edit_store",
+    "private_git_port",
     "privacy_store",
 ]
 
@@ -556,6 +663,7 @@ layer = "adapter"
 depends_on = [
     "paths",
     "private_edit_store",
+    "private_git_port",
 ]
 
 # ===================================================================== CLI
@@ -591,8 +699,8 @@ depends_on = [
 path = "cli_lifecycle"  # supersede, retract, set-visibility
 layer = "cli"
 depends_on = [
-    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
     "lifecycle",
+    "fact_queries",
 ]
 
 [[modules]]
@@ -629,24 +737,22 @@ depends_on = [
 path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
 layer = "cli"
 depends_on = [
-    "entities_store",
-    "entity_migration_store",
-    "knowledge",
+    "entities",
 ]
 
 [[modules]]
 path = "cli_sources"   # source ids (#48)
 layer = "cli"
 depends_on = [
-    "knowledge",
+    "fact_queries",
 ]
 
 [[modules]]
 path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
 layer = "cli"
 depends_on = [
-    "knowledge",
-    "subjects_store",
+    "fact_queries",
+    "subjects",
 ]
 
 # ===================================================================== serving (highest)
@@ -700,6 +806,7 @@ layer = "pipeline"
 depends_on = [
     "build_rules",
     "normal_db",
+    "private_git",
     "paths",
     "privacy_store",
     "build_info_store",
@@ -928,4 +1035,3 @@ depends_on = [
     "client.seed_rules",
     "subjects_store",
 ]
-

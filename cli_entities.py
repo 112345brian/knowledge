@@ -17,8 +17,7 @@ from typing import List, Optional
 
 import typer
 
-import entities_store
-import entity_migration_store
+import entities as entity_usecases
 
 app = typer.Typer(help="Entities: the people, organizations, places, projects and substances facts are about. "
                        "A private entity makes every fact that mentions it private. Edits go to entities.json "
@@ -29,7 +28,7 @@ JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON inste
 ALLOW_DIRTY_OPT = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (the commit still holds only the files touched).")
 DRY_RUN_OPT = typer.Option(False, "--dry-run", help="Report what would change and commit; write nothing.")
 
-EType = enum.Enum("EType", {t: t for t in entities_store.ENTITY_TYPES}, type=str)
+EType = enum.Enum("EType", {t: t for t in entity_usecases.ENTITY_TYPES}, type=str)
 
 
 def _fail(msg, code=1):
@@ -39,25 +38,14 @@ def _fail(msg, code=1):
 
 def _load():
     try:
-        return entities_store.read_file() or []
-    except entities_store.EntitiesError as e:
+        return entity_usecases.read_file()
+    except entity_usecases.EntitiesError as e:
         _fail(e)
 
 
 def _link_counts():
     """{entity_key: n facts} from the built db; {} when there is none (or it predates entities)."""
-    import knowledge
-    try:
-        con = knowledge.connect()
-    except knowledge.DatabaseNotFound:
-        return {}
-    try:
-        return {k: n for k, n in con.execute(
-            "SELECT e.entity_key, COUNT(fe.fact_id) FROM entities e LEFT JOIN fact_entities fe ON fe.entity_id = e.id GROUP BY e.id")}
-    except Exception:
-        return {}
-    finally:
-        con.close()
+    return entity_usecases.link_counts()
 
 
 def _row(e, counts):
@@ -85,7 +73,7 @@ def cmd_list(as_json: bool = JSON_OPT):
 @app.command("show", help="One entity in full. REF is its id, canonical name or an alias.")
 def cmd_show(ref: str, as_json: bool = JSON_OPT):
     es = _load()
-    e = entities_store.find(es, ref)
+    e = entity_usecases.find(es, ref)
     if e is None:
         _fail(f"unknown entity {ref!r}")
     row = _row(e, _link_counts())
@@ -135,33 +123,29 @@ def cmd_add(name: str, type: EType = typer.Option(EType.other, "--type", help="p
             external_id: Optional[str] = typer.Option(None, "--external-id", help="Optional outside identifier, e.g. wikidata:Q42."),
             notes: Optional[str] = typer.Option(None, "--notes"),
             allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    res = entities_store.edit_file(lambda es: entities_store.add_entity(es, name, type.value, alias or (), private, external_id, notes),
-                             f"add entity {name!r}" + (" (private)" if private else ""), f"entities: add {name}", allow_dirty, dry_run)
+    res = entity_usecases.add(name, type.value, alias or (), private, external_id, notes, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("alias", help="Add another name for an entity. Its facts are found by every name.")
 def cmd_alias(ref: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    res = entities_store.edit_file(lambda es: entities_store.add_alias(es, ref, alias),
-                             f"add alias {alias!r} to {ref}", f"entities: alias {alias} -> {ref}", allow_dirty, dry_run)
+    res = entity_usecases.alias(ref, alias, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("tag", help="Make an entity private: every fact that mentions it becomes private (after a rebuild).")
 def cmd_tag(ref: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    res = entities_store.edit_file(lambda es: entities_store.set_private(es, ref, True), f"tag entity {ref} private",
-                             f"entities: tag {ref} private", allow_dirty, dry_run)
+    res = entity_usecases.tag(ref, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("untag", help="Make an entity non-private again. Facts already stored private stay private.")
 def cmd_untag(ref: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    res = entities_store.edit_file(lambda es: entities_store.set_private(es, ref, False), f"untag entity {ref}",
-                             f"entities: untag {ref}", allow_dirty, dry_run)
+    res = entity_usecases.untag(ref, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("migrate-keywords", help="Convert every privacy keyword into a private entity (type other) and clear the keyword list, in one commit. Checked first: nothing becomes less private.")
 def cmd_migrate(keep_keywords: bool = typer.Option(False, "--keep-keywords", help="Only add the entities; leave the keyword list as it is."),
                 allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    _report(entity_migration_store.migrate_keywords(allow_dirty=allow_dirty, dry_run=dry_run, keep_keywords=keep_keywords), as_json)
+    _report(entity_usecases.migrate_keywords(allow_dirty=allow_dirty, dry_run=dry_run, keep_keywords=keep_keywords), as_json)

@@ -14,7 +14,8 @@ import sys
 
 import typer
 
-import subjects_store
+import fact_queries
+import subjects as subject_usecases
 
 app = typer.Typer(help="The subject hierarchy: relation types, descriptions, aliases, deprecation. "
                        "Edits go to subjects.json in knowledge-private (rebuild to apply).",
@@ -30,54 +31,22 @@ def _fail(msg, code=1):
     raise typer.Exit(code)
 
 
-def _connect():
-    import knowledge
-    try:
-        return knowledge.connect()
-    except knowledge.DatabaseNotFound as e:
-        _fail(e)
-
-
 def _known():
     """{subject name: domain} from the built db, or {} when there is none."""
-    import knowledge
-    try:
-        con = knowledge.connect()
-    except knowledge.DatabaseNotFound:
-        return {}
-    try:
-        return {n: d for n, d in con.execute("SELECT name, domain FROM subjects")}
-    except Exception:
-        return {}
-    finally:
-        con.close()
+    return subject_usecases.known()
 
 
-def _rows(con):
-    rows = [dict(r) for r in con.execute(
-        """SELECT s.id, s.name, s.domain, p.name AS parent, s.parent_relation AS relation, s.description,
-                  s.deprecated, r.name AS replaced_by,
-                  (SELECT COUNT(*) FROM facts f WHERE f.subject_id = s.id) AS n_facts
-           FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id LEFT JOIN subjects r ON r.id = s.replaced_by_subject_id
-           ORDER BY s.name""")]
-    aliases = {}
-    for sid, alias in con.execute("SELECT subject_id, alias FROM subject_aliases ORDER BY alias"):
-        aliases.setdefault(sid, []).append(alias)
-    for r in rows:
-        r["aliases"] = aliases.get(r["id"], [])
-        r["deprecated"] = bool(r["deprecated"])
-        if not r["parent"]:
-            r["relation"] = None
-    return rows
+def _rows(db):
+    """Query subject rows using an already-open connection (also used by fixture tests)."""
+    return subject_usecases.rows(db)
 
 
 @app.command("list", help="List subjects with parent, relation type, deprecation, aliases and fact counts (from the built db).")
 def cmd_list(as_json: bool = JSON_OPT):
-    con = _connect()
     try:
-        rows = _rows(con)
-    finally:
-        con.close()
+        rows = subject_usecases.rows()
+    except fact_queries.DatabaseNotFound as e:
+        _fail(e)
     if as_json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return
@@ -94,23 +63,16 @@ def cmd_list(as_json: bool = JSON_OPT):
 
 @app.command("show", help="One subject in full: description, relation, aliases, children, deprecation. NAME may be an alias.")
 def cmd_show(name: str, as_json: bool = JSON_OPT):
-    con = _connect()
     try:
-        rows = _rows(con)
-    finally:
-        con.close()
-    by_name = {r["name"]: r for r in rows}
-    via_alias = False
-    if name not in by_name:
-        owner = next((r for r in rows if name in r["aliases"]), None)
-        if owner is None:
-            _fail(f"unknown subject {name!r}")
-        name, via_alias = owner["name"], True
-    r = dict(by_name[name], children=[c["name"] for c in rows if c["parent"] == name])
+        r = subject_usecases.detail(name)
+    except fact_queries.DatabaseNotFound as e:
+        _fail(e)
+    if r is None:
+        _fail(f"unknown subject {name!r}")
     if as_json:
         print(json.dumps(r, indent=2, ensure_ascii=False))
         return
-    print(f"{r['name']}  [{r['domain']}]" + ("  (resolved from an alias)" if via_alias else ""))
+    print(f"{r['name']}  [{r['domain']}]" + ("  (resolved from an alias)" if r["resolved_from_alias"] else ""))
     if r["description"]:
         print(f"Description: {r['description']}")
     if r["parent"]:
@@ -151,16 +113,14 @@ def _report(res, as_json):
 @app.command("alias", help="Give a subject another name. New facts filed under the alias are stored under the subject.")
 def cmd_alias(name: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects_store.edit_file(lambda e: subjects_store.add_alias(e, name, alias, known=set(known), domain=known.get(name)),
-                             f"add alias {alias} to {name}", f"subjects: alias {alias} -> {name}", allow_dirty, dry_run)
+    res = subject_usecases.alias(name, alias, known, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("describe", help="Set a subject's scope note (blank text clears it).")
 def cmd_describe(name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects_store.edit_file(lambda e: subjects_store.describe(e, name, text, known=set(known), domain=known.get(name)),
-                             f"set description of {name}", f"subjects: describe {name}", allow_dirty, dry_run)
+    res = subject_usecases.describe(name, text, known, allow_dirty, dry_run)
     _report(res, as_json)
 
 
@@ -168,7 +128,5 @@ def cmd_describe(name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_
 def cmd_deprecate(name: str, replaced_by: str = typer.Option(None, "--replaced-by", help="The subject to use instead."),
                   allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
     known = _known()
-    res = subjects_store.edit_file(lambda e: subjects_store.deprecate(e, name, replaced_by, known=set(known), domain=known.get(name)),
-                             f"deprecate {name}" + (f" (use {replaced_by})" if replaced_by else ""),
-                             f"subjects: deprecate {name}", allow_dirty, dry_run)
+    res = subject_usecases.deprecate(name, replaced_by, known, allow_dirty, dry_run)
     _report(res, as_json)

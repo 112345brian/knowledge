@@ -10,12 +10,10 @@ that flow once, as a library function that never prints or exits (the CLI module
       write(state)                    writes `paths` atomically; called only when changed and not a dry run
 
 An edit that changes nothing writes and commits nothing and needs no clean tree. The commit never
-pushes (private_git).
+pushes. Git operations arrive through the injected `PrivateGit` protocol.
 """
 import os
-
-import private_git
-
+from private_git_port import PrivateGit
 
 class EditResult:
     def __init__(self, ok, changed=False, what=None, message=None, commit=None, commit_error=None, errors=(), notes=(),
@@ -29,7 +27,8 @@ class EditResult:
                 "commit": self.commit, "commit_error": self.commit_error, "errors": self.errors, "notes": self.notes}
 
 
-def edit_files(paths, compute, write, what, message, allow_dirty=False, dry_run=False, error_types=(Exception,)):
+def edit_files(paths, compute, write, what, message, git: PrivateGit, allow_dirty=False, dry_run=False,
+               error_types=(Exception,)):
     shown = paths[0]
     try:
         changed, state = compute()
@@ -43,12 +42,12 @@ def edit_files(paths, compute, write, what, message, allow_dirty=False, dry_run=
         probe = os.path.dirname(probe)
     notes = []
     try:
-        repo = private_git.find_repo(probe)
+        repo = git.find_repo(probe)
         if repo is None:
             notes.append(f"{directory} is not inside a git repository; the change will not be committed.")
         elif not allow_dirty:
-            private_git.ensure_clean_tree(repo)
-    except private_git.PrivateGitError as e:
+            git.ensure_clean_tree(repo)
+    except git.PrivateGitError as e:
         return EditResult(False, errors=[str(e)], path=shown)
     if dry_run:
         return EditResult(True, changed=True, what=what, message=message if repo else None, dry_run=True, path=shown, notes=notes)
@@ -60,9 +59,9 @@ def edit_files(paths, compute, write, what, message, allow_dirty=False, dry_run=
     if repo is None:
         return EditResult(True, changed=True, what=what, path=shown, notes=notes)
     try:
-        commit = private_git.commit_private_change(list(paths), message, repo)
-        detached = private_git.is_detached(repo)
-    except private_git.PrivateGitError as e:
+        commit = git.commit_private_change(list(paths), message, repo)
+        detached = git.is_detached(repo)
+    except git.PrivateGitError as e:
         return EditResult(True, changed=True, what=what, message=message, path=shown, notes=notes,
                           commit_error=f"the change IS written to {shown} but is NOT committed: {e}")
     return EditResult(True, changed=True, what=what, message=message, commit=commit, detached=detached, path=shown, notes=notes)

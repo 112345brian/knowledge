@@ -17,9 +17,10 @@ it only after every step succeeds, so a failing step (exit 1, naming the step)
 leaves the previous knowledge.db byte-identical, and a reader holding the old
 file open keeps a consistent snapshot.
 """
-import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile
+import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile, uuid
 
 import build_rules
+import private_git
 from paths import CLIENT_SOURCES, CLIENT_SOURCES_IMPLICIT, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -71,7 +72,7 @@ class BuildError(Exception):
 def record_build_info(con):
     """#47: which inputs and code produced this db (build_info / build_inputs)."""
     import build_info_store, paths
-    build_info_store.record(con, paths, HERE, paths.PRIVATE_DATA_DIR)
+    build_info_store.record(con, paths, HERE, paths.PRIVATE_DATA_DIR, private_git)
     con.commit()
 
 
@@ -113,11 +114,11 @@ def build(target_path, sources=None):
 def build_to_temp(directory):
     """Build into a fresh unique temp file in `directory`; return its path.
     On failure the temp file is removed and BuildError propagates."""
-    fd, tmp = tempfile.mkstemp(prefix="knowledge.db.building-", dir=directory)
+    tmp = os.path.join(directory, f"knowledge.db.building-{uuid.uuid4().hex}")
+    # Let the kernel apply umask at creation; reading it with os.umask(0) changes the
+    # process-wide setting while other threads may be creating files.
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     os.close(fd)
-    umask = os.umask(0)
-    os.umask(umask)
-    os.chmod(tmp, 0o666 & ~umask)  # mkstemp makes it 0600; keep the mode a plain sqlite3.connect gives
     try:
         build(tmp)
     except BaseException:

@@ -54,9 +54,11 @@ that sit on them.
 import os
 import sqlite3
 import sys
-import tempfile
+import uuid
 
 import privacy_store
+import leak_scan_store
+from leak_rules import format_leaks
 from normal_rules import (FACT_COLS, FTS_TABLES, NORMAL_DB_NAME, NormalDbError, REVISION_COLS, SOURCE_COLS, SOURCE_EDITION,  # noqa: F401  (the public API)
                           SubjectFilter, TABLES, VIEWS, check_objects, chain_ids as _chain_ids, cite_text_index,
                           clean_text as _clean_text, copy_fact_row, format_counts, qmarks as _qmarks, select_facts, select_revisions)
@@ -369,20 +371,19 @@ def build_normal_atomic(full_path, directory, rules, leak_check=True):
     os.replace onto knowledge-normal.db. On any failure the temp file is removed AND a previous
     knowledge-normal.db is removed too: a stale normal DB could still hold a fact that has since
     been made private, so no file is safer than an out-of-date one. Returns (final_path, counts)."""
-    import leak_test  # local: leak_test imports this module for the fixture
     final = os.path.join(directory, NORMAL_DB_NAME)
-    fd, tmp = tempfile.mkstemp(prefix=NORMAL_DB_NAME + ".building-", dir=directory)
+    tmp = os.path.join(directory, f"{NORMAL_DB_NAME}.building-{uuid.uuid4().hex}")
+    # Let the kernel apply umask at creation; reading it with os.umask(0) changes the
+    # process-wide setting while other threads may be creating files.
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     os.close(fd)
-    os.remove(tmp)  # sqlite creates it fresh
+    os.remove(tmp)  # build_normal_db expects a fresh path
     try:
         counts = build_normal_db(full_path, tmp, rules)
         if leak_check:
-            leaks = leak_test.scan_against_full(tmp, full_path)
+            leaks = leak_scan_store.scan_against_full(tmp, full_path)
             if leaks:
-                raise NormalDbError("leak test failed:\n" + leak_test.format_leaks(leaks))
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(tmp, 0o666 & ~umask)
+                raise NormalDbError("leak test failed:\n" + format_leaks(leaks))
         os.replace(tmp, final)
     except BaseException:
         remove_db_files(tmp)
