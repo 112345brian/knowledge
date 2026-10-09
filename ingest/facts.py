@@ -1,11 +1,9 @@
 """Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by
-background agents reading the vault's top-level synthesis notes and
-harm-reduction files -- see project_knowledge_db memory for how those were
-produced) into `facts`, `fact_sources`, `fact_subjects`. (The `measurements` client source then links facts to
+background agents reading the vault's notes) into `facts`, `fact_sources`, `fact_subjects`. (The `measurements` client source then links facts to
 measurements: client/link_fact_measurements.py.)
 
-Classifies is_personal with a multi-signal heuristic (documented inline) --
-this is a best-effort first pass, not hand-verified per fact.
+Classifies is_personal with a multi-signal heuristic (the generic pronoun rule plus the author's fact_hints.json,
+see fact_ingest_rules.Hints) -- a best-effort first pass, not hand-verified per fact.
 
 Run after seed_sources and literature_sources (needs sources + subjects to exist).
 """

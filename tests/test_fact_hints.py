@@ -131,4 +131,4 @@ def test_the_core_source_names_none_of_the_authors_vault():
     """The heuristic's data moved to the private repo; the core keeps only the generic pronoun rule."""
     text = open(rules.__file__, encoding="utf-8").read()
     assert "FINGERPRINT_RE" not in text and "TOP_LEVEL_PERSONAL_FILES" not in text and "HARM_REDUCTION_FILES" not in text
-    assert not re.search(r"\bHumira\b|Spondylitis|\d{4}-\d\d-\d\d\|", text, re.IGNORECASE)
+    assert not re.search(r"\bHumira\b|Spondylitis|BodySpec", text, re.IGNORECASE)
