@@ -114,6 +114,8 @@ def derive_markers(full_path):
             add("vault path", p)
         for (p,) in full.execute("SELECT origin_path FROM sources"):
             add("source origin_path", p)
+        for (n,) in full.execute("SELECT status_note FROM sources"):      # #41: a notice URL may be private; never copied
+            add("source status note", n)
         # #38 fixity: hashes identify private files and must never reach the normal DB.
         for (h,) in full.execute("SELECT content_sha256 FROM vault_files UNION SELECT content_sha256 FROM sources "
                                  "UNION SELECT extracted_from_sha256 FROM facts"):
@@ -154,6 +156,7 @@ MARKERS = {
     "private entity notes": "fernsby-secret-notes about a relative",
     "private subject description": "quillfeather-secret-description of the family topic",
     "private subject alias": "zephyr-secret-alias",
+    "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
     "claim text": "Therefore Grumbleton should change his life",
@@ -199,6 +202,8 @@ def build_fixture(directory):
     ex("INSERT INTO sources (id, citekey, name, source_type, publisher_id, origin_path) VALUES "
        "(2, 'priv2021', 'Only cited privately', 'primary', 2, 'x')")
     ex("INSERT INTO source_authors (source_id, author_id) VALUES (1, 1), (2, 2)")
+    ex("UPDATE sources SET status = 'corrected', status_date = '2025-03', status_note = ?, edition = '2nd edition' WHERE id = 1", (M["source status note"],))
+    ex("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (1, 'replaces', 2)")
 
     def fact(fid, subject, statement, vis, key, notes=None, quote=None, origin=None, personal=1):
         ex("INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, visibility, source_key, notes, "

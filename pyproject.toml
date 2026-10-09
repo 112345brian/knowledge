@@ -72,6 +72,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.source_status",
     "kn.subjects",
     "kn.textmatch",
     "kn.validtime",
@@ -129,6 +130,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.source_status",
     "kn.subjects",
     "kn.textmatch",
     "kn.validtime",
@@ -247,7 +249,7 @@ type = "layers"
 containers = ["kn"]
 layers = [
     "facts_batch | lifecycle | migrate_memory | entity_tools",
-    "review | modes | claims_audit | normal_db",
+    "review | modes | claims_audit | normal_db | source_status",
     "leak_test",
     "revisions",
     "add_fact",

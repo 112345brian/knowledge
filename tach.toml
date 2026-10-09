@@ -54,6 +54,13 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "source_status"  # #41 source status vocabulary, relation checks and the fact -> source audit
+layer = "library"
+depends_on = [
+    "validtime",
+]
+
+[[modules]]
 path = "textmatch"      # #42 literal whole-word matching, shared by privacy keywords and entity aliases
 layer = "library"
 depends_on = []
@@ -238,6 +245,7 @@ depends_on = [
     "private_git",
     "review",
     "revisions",
+    "source_status",
     "validtime",
 ]
 
@@ -357,6 +365,11 @@ layer = "pipeline"
 depends_on = ["entities", "paths"]
 
 [[modules]]
+path = "14_link_source_relations"
+layer = "pipeline"
+depends_on = ["source_status"]
+
+[[modules]]
 path = "export_subjects"
 layer = "pipeline"
 depends_on = ["subjects"]
@@ -374,12 +387,12 @@ depends_on = ["paths"]
 [[modules]]
 path = "01_seed_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "paths", "source_status"]
 
 [[modules]]
 path = "02_ingest_literature_sources"
 layer = "pipeline"
-depends_on = ["_shared", "fixity", "paths"]
+depends_on = ["_shared", "fixity", "paths", "source_status"]
 
 [[modules]]
 path = "03_ingest_measurements"

@@ -25,7 +25,8 @@ What goes in (everything else is absent, not empty):
                    belong to a normal fact, so they are as visible as the fact. A quote on a
                    private fact's citation of the same source is not copied.
   sources          only sources cited by an included fact (name, citekey, type, url, dates,
-                   description). LEFT OUT: origin_path (vault file path), created_at, and the fixity columns
+                   description, status and edition (#41)). LEFT OUT: origin_path (vault file path), created_at, status_date,
+                   status_note (may hold a private URL), original_published_date, source_relations, and the fixity columns
                    (content_sha256, size_bytes, file_mtime, mime_type, file_state; #38).
   authors, source_authors, publishers   only those reachable from an included source.
   subjects         subjects used by included facts plus their parent chain (id, name, domain,
@@ -108,7 +109,9 @@ CREATE TABLE sources (
     url             TEXT,
     published_date  TEXT,
     retrieved_date  TEXT,
-    description     TEXT
+    description     TEXT,
+    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','corrected','expression-of-concern','retracted','superseded')),
+    edition         TEXT
 );
 CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
 CREATE TABLE source_authors (
@@ -289,7 +292,7 @@ def populate(out, full, rules):
         if fid in fact_ids:
             source_ids.add(sid)
     publishers, authors = set(), set()
-    scols = "id, citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description"
+    scols = "id, citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, status, edition"
     src_rows = [r for r in full.execute(f"SELECT {scols} FROM sources ORDER BY id") if r[0] in source_ids]
     for r in src_rows:
         if r[4] is not None:
@@ -298,7 +301,9 @@ def populate(out, full, rules):
         if pid in publishers:
             out.execute("INSERT INTO publishers (id, name) VALUES (?, ?)", (pid, name))
     for r in src_rows:
-        out.execute(f"INSERT INTO sources ({scols}) VALUES ({_qmarks(9)})", r)
+        r = list(r)
+        r[10] = clean_text(r[10])        # #41: edition is free text, so it passes the keyword rules like the others
+        out.execute(f"INSERT INTO sources ({scols}) VALUES ({_qmarks(11)})", r)
     sa = [r for r in full.execute("SELECT source_id, author_id, author_order FROM source_authors ORDER BY source_id, author_id")
           if r[0] in source_ids]
     authors = {r[1] for r in sa}

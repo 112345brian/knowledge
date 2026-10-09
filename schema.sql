@@ -95,6 +95,16 @@ CREATE TABLE sources (
     origin_path     TEXT,               -- the actual file/table this source came from -- NOT normalized:
                                          -- 450/451 distinct, essentially 1:1 with sources, no repetition to fix
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Status over time (#41). A plain field read from the vault note frontmatter (02) or manual_sources.json
+    -- (01); git is its history (no revision log for sources, see source_status.py for what would change that).
+    -- Legacy sources are 'active' with a NULL status_date: no date is ever invented. status_note may hold a
+    -- private URL, so the normal-only DB leaves it out. original_published_date is the work's first
+    -- publication; published_date is this edition's.
+    status                  TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','corrected','expression-of-concern','retracted','superseded')),
+    status_date             TEXT CHECK (status_date IS NULL OR status_date GLOB '[0-9][0-9][0-9][0-9]' OR status_date GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR status_date GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
+    status_note             TEXT,
+    edition                 TEXT,
+    original_published_date TEXT,
     -- File fixity (#38): the file as it was when the build read it. NULL hash/size/mtime with
     -- file_state = 'missing' when the file was absent or unreadable; never an invented hash.
     content_sha256  TEXT CHECK (content_sha256 IS NULL OR length(content_sha256) = 64),
@@ -129,10 +139,21 @@ CREATE TRIGGER sources_fts_au AFTER UPDATE ON sources BEGIN
   INSERT INTO sources_fts(rowid, name, description) VALUES (new.id, new.name, new.description);
 END;
 
+-- "source_id <relation> related_source_id" (#41): `replaces` (the second is superseded) and `is-version-of`.
+-- Directed, never reflexive; cycles are refused by source_status.check_relations at build time.
+CREATE TABLE source_relations (
+    source_id          INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    relation           TEXT NOT NULL CHECK (relation IN ('replaces','is-version-of')),
+    related_source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_id, relation, related_source_id),
+    CHECK (source_id <> related_source_id)
+);
+CREATE INDEX idx_source_relations_related ON source_relations(related_source_id);
+
 CREATE VIEW v_sources AS
 SELECT s.id, s.citekey, s.name, s.source_type,
        GROUP_CONCAT(a.name, '; ') AS authors,
-       p.name AS publisher, s.url, s.published_date, s.origin_path
+       p.name AS publisher, s.url, s.published_date, s.origin_path, s.status, s.edition
 FROM sources s
 LEFT JOIN source_authors sa ON sa.source_id = s.id
 LEFT JOIN authors a ON a.id = sa.author_id

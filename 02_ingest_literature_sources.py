@@ -6,6 +6,7 @@ import sqlite3, os, re, glob, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fixity
+import source_status
 from _shared import link_authors, get_or_create_publisher
 from paths import BODYBUILDING_VAULT as VAULT
 
@@ -120,8 +121,15 @@ def parse_all():
             desc_parts.append(f'quoted: "{quote}"')
         description = " | ".join(desc_parts)
 
+        status_fields = source_status.normalize_fields({
+            "status": fm.get("source-status"), "status_date": fm.get("source-status-date"), "status_note": fm.get("source-status-note"),
+            "edition": fm.get("edition"), "original_published_date": fm.get("original-published-date"),
+        }, f"{base}: source {citekey!r}")
+        relations = [(citekey, rel, target) for rel, key in (("replaces", "replaces"), ("is-version-of", "is-version-of"))
+                     for target in source_status.as_list(fm.get(key))]
+
         rows.append(dict(
-            citekey=citekey, name=name, source_type=stype, author=author_str,
+            citekey=citekey, relations=relations, **status_fields, name=name, source_type=stype, author=author_str,
             publisher=journal, url=url, published_date=year, description=description,
             origin_path=f"{VAULT}/sources/{base}",
             **fixity.fingerprint(fp),
@@ -137,13 +145,15 @@ def run(con):
     for r in rows:
         if r["citekey"] in existing:
             continue
-        row = {k: v for k, v in r.items() if k not in ("author", "publisher")}
+        row = {k: v for k, v in r.items() if k not in ("author", "publisher", "relations")}
         row["publisher_id"] = get_or_create_publisher(cur, r.get("publisher"))
         cur.execute(
             """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
-                                    content_sha256, size_bytes, file_mtime, mime_type, file_state)
+                                    content_sha256, size_bytes, file_mtime, mime_type, file_state,
+                                    status, status_date, status_note, edition, original_published_date)
                VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, '2026-09-11', :description, :origin_path,
-                       :content_sha256, :size_bytes, :file_mtime, :mime_type, :file_state)""",
+                       :content_sha256, :size_bytes, :file_mtime, :mime_type, :file_state,
+                       :status, :status_date, :status_note, :edition, :original_published_date)""",
             row,
         )
         link_authors(cur, cur.lastrowid, r["author"])

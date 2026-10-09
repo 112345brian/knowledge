@@ -9,6 +9,7 @@
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
     knowledge.py audit-sources [--json]
+    knowledge.py audit-source-status [--json]
     knowledge.py subject list|show|alias|describe|deprecate ...  [--json]  (subjects.json; see cli_subjects.py)
     knowledge.py entity list|show|add|alias|tag|untag|migrate-keywords ...  [--json]  (entities.json; see cli_entities.py)
     knowledge.py privacy check "statement" --subject s [--requested normal|private] [--json]
@@ -51,6 +52,7 @@ import private_git
 import privacy
 import review
 import revisions
+import source_status
 import validtime
 from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR
 
@@ -468,6 +470,37 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
     if unparsed and not as_json:
         ids = ", ".join(f"#{u['fact_id']} ({u['recheck_by']!r})" for u in unparsed)
         print(f"note: {len(unparsed)} cited fact(s) have a recheck_by that is not an ISO date, so the audit cannot judge them: {ids}", file=sys.stderr)
+    if rows:
+        raise typer.Exit(1)
+
+
+@app.command("audit-source-status", help="List active/pending facts that cite a retracted source, one under an expression of concern, or one that was superseded (with its replacement). Exit 1 when any are found.")
+def cmd_audit_source_status(as_json: bool = JSON_OPT):
+    def run(con):
+        return source_status.audit_source_status(con), source_status.superseded_without_replacement(con)
+    try:
+        rows, orphans = _query(run)
+    except sqlite3.OperationalError as e:
+        _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
+    if as_json:
+        _emit_json({"flagged_sources": rows, "superseded_without_replacement": orphans})
+    elif not rows:
+        print("No fact cites a retracted, doubtful or superseded source.")
+    else:
+        for r in rows:
+            when = f" since {r['status_date']}" if r["status_date"] else ""
+            line = f"fact #{r['fact_id']} cites {r['citekey'] or r['source_name']}: {r['reason']}{when}"
+            if r["reason"] == "superseded":
+                line += " by " + (", ".join(x["citekey"] or x["name"] for x in r["replacement"]))
+                if r["derived"]:
+                    line += " (from a `replaces` relation; the source itself says " + r["status"] + ")"
+            print(line)
+            print(f"  {r['fact_statement']}")
+            if r["status_note"]:
+                print(f"  note: {r['status_note']}")
+    if orphans and not as_json:
+        names = ", ".join(f"{o['citekey'] or o['name']} (facts {', '.join(map(str, o['fact_ids']))})" for o in orphans)
+        print(f"note: {len(orphans)} source(s) are marked superseded but nothing replaces them, so there is nothing to move to: {names}", file=sys.stderr)
     if rows:
         raise typer.Exit(1)
 

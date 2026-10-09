@@ -15,6 +15,7 @@ Run after schema.sql, before 02/03/04.
 import sqlite3, os, sys, json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import source_status
 from _shared import link_authors, get_or_create_publisher
 from paths import BODYBUILDING_VAULT as VAULT, HEALTH_DIR as HEALTH, PRIVATE_DATA_DIR
 
@@ -38,9 +39,12 @@ def run(con):
         publisher_id = get_or_create_publisher(cur, s.get("publisher"))
         row = {k: s.get(k) for k in FIELDS if k not in ("author", "publisher")}
         row["publisher_id"] = publisher_id
+        row.update(source_status.normalize_fields(s, f"manual_sources.json: source {s.get('citekey')!r}"))  # #41
         cur.execute(
-            """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path)
-               VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, :retrieved_date, :description, :origin_path)""",
+            """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
+                                    status, status_date, status_note, edition, original_published_date)
+               VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, :retrieved_date, :description, :origin_path,
+                       :status, :status_date, :status_note, :edition, :original_published_date)""",
             row,
         )
         link_authors(cur, cur.lastrowid, author)
