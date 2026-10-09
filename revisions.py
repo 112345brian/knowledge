@@ -327,10 +327,31 @@ def check_array(items, path):
 
 # --------------------------------------------------------------------------- log text
 
-def parse_log(lines, path):
+# Fields added after the log format first shipped (#39, #40, #45). A line written before they existed has none
+# of them; it says nothing about them, so it keeps whatever the fact had at that point.
+LEGACY_INHERITED = ("kind", "valid_from", "valid_to", "applies_to")
+_LEGACY_DEFAULTS = {"kind": "unclassified", "valid_from": None, "valid_to": None, "applies_to": None}
+
+
+def inherit_legacy_fields(rec, previous):
+    """`rec` with the fields in LEGACY_INHERITED taken from `previous` (the same fact's previous revision, or its
+    original entry), when `rec` is a pre-#39 line: a dict with none of them. A record with some of them is
+    malformed and is left alone for validate_record_shape to refuse. With no `previous`, the column defaults."""
+    if not isinstance(rec, dict) or any(f in rec for f in LEGACY_INHERITED):
+        return rec
+    source = previous if previous is not None else _LEGACY_DEFAULTS
+    return {**rec, **{f: source[f] for f in LEGACY_INHERITED}}
+
+
+def parse_log(lines, path, base=None):
     """Parse the log: [(line_number, record)] from an iterable of text lines. Blank lines are
-    skipped. A line that is not a valid record raises RevisionError naming `path:line`."""
-    out = []
+    skipped. A line that is not a valid record raises RevisionError naming `path:line`.
+
+    A line written before `kind`, `valid_from`, `valid_to` and `applies_to` existed is accepted: those fields
+    are inherited from the fact's previous revision, or for its first logged revision from `base`
+    ({source_key: a mapping holding those fields}, the fact's original entry), else the column defaults. The
+    file is never rewritten; new lines are written in full."""
+    out, last = [], {}
     for n, line in enumerate(lines, start=1):
         if not line.strip():
             continue
@@ -338,9 +359,14 @@ def parse_log(lines, path):
             rec = json.loads(line)
         except json.JSONDecodeError as e:
             raise RevisionError(f"{path}:{n}: not valid JSON ({e})") from e
+        key = rec.get("source_key") if isinstance(rec, dict) else None
+        if isinstance(key, str):
+            rec = inherit_legacy_fields(rec, last.get(key) or (base or {}).get(key))
         errs = validate_record_shape(rec)
         if errs:
             raise RevisionError(f"{path}:{n}: " + "; ".join(errs))
+        if isinstance(key, str):
+            last[key] = rec
         out.append((n, rec))
     return out
 

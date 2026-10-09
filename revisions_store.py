@@ -63,13 +63,24 @@ def insert_revision_row(cur, fact_id, rev):
     cur.execute(INSERT_REVISION_SQL, (fact_id, *[rev[k] for k in REVISION_KEYS]))
 
 
-def read_log(path):
+def entry_base(entries):
+    """{source_key: the original state of its inherited-by-legacy-lines fields} for `entries` (load_entries)."""
+    out = {}
+    for e in entries:
+        snap = revisions.implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])
+        out[e["key"]] = {f: snap[f] for f in revisions.LEGACY_INHERITED}
+    return out
+
+
+def read_log(path, base=None):
     """Parse the log: [(line_number, record)]. Blank lines are skipped. A line that is not a
-    valid record raises RevisionError naming `path:line`. Missing file == empty log."""
+    valid record raises RevisionError naming `path:line`. Missing file == empty log. `base` is
+    {source_key: the fact's original state} and supplies the fields a pre-#39 line lacks (see
+    revisions.parse_log); callers that hold the entries or the db pass it."""
     if not os.path.exists(path):
         return []
     with open(path, encoding="utf-8") as f:
-        return revisions.parse_log(f, path)
+        return revisions.parse_log(f, path, base)
 
 
 def atomic_write_text(path, text):
@@ -115,7 +126,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     try:
         with locks.file_lock(locks.lock_path(revisions_path)):
             entries = load_entries(data_dir)
-            records = read_log(revisions_path)
+            records = read_log(revisions_path, entry_base(entries))
             result = revisions.plan_revision(source_key, changes, reason, via, session_id, expect,
                                              entries, records, clock.now_iso(), revisions_path)
             if not result.ok:
@@ -143,7 +154,9 @@ def apply_revisions(con, revisions_path):
     fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
     first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
     first_fresh = {k: v for k, v in cur.execute("SELECT source_key, freshness FROM fact_revisions WHERE revision = 1")}
-    records = read_log(revisions_path)
+    base = {k: dict(zip(revisions.LEGACY_INHERITED, vals)) for k, *vals in cur.execute(
+        "SELECT source_key, " + ", ".join(revisions.LEGACY_INHERITED) + " FROM fact_revisions WHERE revision = 1")}
+    records = read_log(revisions_path, base)
     revisions.validate_sequence(revisions_path, records, first, set(fact_ids), first_fresh)
     latest = {}
     for _, rec in records:
