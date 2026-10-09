@@ -59,6 +59,16 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "script_runner"      # ADAPTER: starts this repo's standalone scripts (the only subprocess in the CLI path)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
+layer = "library"
+depends_on = []
+
+[[modules]]
 path = "paths"          # the only module that knows personal paths
 layer = "library"
 depends_on = []
@@ -143,6 +153,16 @@ depends_on = [
     "clock",
     "paths",            # lazy
     "revisions",
+]
+
+[[modules]]
+path = "fact_queries"      # ADAPTER: the CLI's read-only queries on the built knowledge.db
+layer = "library"
+depends_on = [
+    "add_fact_store",
+    "new_fact",
+    "paths",
+    "revisions_store",
 ]
 
 [[modules]]
@@ -369,20 +389,21 @@ depends_on = []
 path = "knowledge"      # the Typer app; the only module that imports typer besides cli_*
 layer = "cli"
 depends_on = [
-    "add_fact",
-    "add_fact_store",
     "claims_store",
-    "cli_facts_batch",  # registration lines (CLI-internal)
-    "cli_inbox",
-    "cli_lifecycle",
-    "cli_migrate",
-    "paths",
+    "cli_facts_batch",        # registration lines (CLI-internal)
+    "cli_inbox",        # registration lines (CLI-internal)
+    "cli_lifecycle",        # registration lines (CLI-internal)
+    "cli_migrate",        # registration lines (CLI-internal)
+    "fact_queries",
+    "ports",
     "privacy",
     "privacy_store",
     "private_git",
     "review",
     "revisions",
     "revisions_store",
+    "rules_edit_service",
+    "script_runner",
 ]
 
 [[modules]]

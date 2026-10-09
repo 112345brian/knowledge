@@ -578,6 +578,8 @@ FACT_READERS_ALLOWED = {
     "leak_test.py",
     # names the whitelisted tables, reads none: the normal tier's column and table whitelist
     "normal_rules.py",
+    # the CLI's read-only query adapter (search, facts, show, subjects): the full db, not a tool surface
+    "fact_queries.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

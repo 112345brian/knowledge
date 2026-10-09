@@ -60,6 +60,7 @@ source_modules = [
     "kn.claims_audit",
     "kn.claims_store",
     "kn.clock",
+    "kn.fact_queries",
     "kn.fact_rules",
     "kn.facts_batch",
     "kn.facts_batch_rules",
@@ -91,6 +92,8 @@ source_modules = [
     "kn.review_store",
     "kn.revisions",
     "kn.revisions_store",
+    "kn.rules_edit_service",
+    "kn.script_runner",
     "kn.timestamps",
 ]
 forbidden_modules = [
@@ -129,6 +132,7 @@ source_modules = [
     "kn.claims_store",
     "kn.cli_parity",
     "kn.clock",
+    "kn.fact_queries",
     "kn.fact_rules",
     "kn.facts_batch",
     "kn.facts_batch_rules",
@@ -161,6 +165,8 @@ source_modules = [
     "kn.review_store",
     "kn.revisions",
     "kn.revisions_store",
+    "kn.rules_edit_service",
+    "kn.script_runner",
     "kn.timestamps",
 #planned:     "kn.mcp_server",
 ]
@@ -243,6 +249,7 @@ forbidden_modules = [
     "kn.migrate_memory",
     "kn.migrate_memory_store",
     "kn.ids",
+    "kn.fact_queries",
     "kn.normal_db",
     "kn.privacy",
     "kn.privacy_store",
@@ -256,19 +263,19 @@ allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "subprocess-allowlist"
-name = "Only private_git (git) and knowledge (python scripts) import subprocess"
+name = "Only private_git (git) and script_runner (python scripts) import subprocess"
 # Why: private_git is the only module that runs git against knowledge-private (lock, clean-tree and
 # detached-HEAD checks live there, #10). This forbids every other module from spawning processes.
-# knowledge.py is the one exception: `build`, `add-fact` and `clean-concerts` shell out to this
-# repo's own scripts. LIMIT: import-linter sees imports, not arguments, so knowledge.py running git
-# is caught by the `scan_git_usage` AST test in tests/test_architecture.py, not here.
+# script_runner.py is the one exception: `knowledge.py build`, `add-fact` and `clean-concerts` shell out to
+# this repo's own scripts through it. LIMIT: import-linter sees imports, not arguments, so a module running
+# git that is allowed subprocess is caught by the `scan_git_usage` AST test in tests/test_architecture.py.
 type = "forbidden"
 source_modules = ["kn"]
 forbidden_modules = ["subprocess"]
 allow_indirect_imports = true   # add_fact -> private_git -> subprocess is the intended path
 ignore_imports = [
     "kn.private_git -> subprocess",
-    "kn.knowledge -> subprocess",
+    "kn.script_runner -> subprocess",
 ]
 
 [[tool.importlinter.contracts]]
@@ -334,6 +341,7 @@ source_modules = [
     "kn.lifecycle_service",
     "kn.migrate_memory_service",
     "kn.review_service",
+    "kn.rules_edit_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -342,6 +350,30 @@ forbidden_modules = [
     "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.ids", "kn.private_git",
     "kn.paths", "kn.clock", "kn.normal_db", "kn.leak_test",
     "kn.add_fact", "kn.lifecycle", "kn.review", "kn.facts_batch", "kn.migrate_memory",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "driving-adapters-no-infrastructure"
+name = "The CLI and the inbox reach infrastructure only through use cases and read adapters"
+# Why (hexagonal architecture): the Typer app (knowledge, cli_*) and the inbox page are driving adapters:
+# they turn a command or a request into a use-case call and print or render the result. They never open a
+# database, spawn a process or touch files themselves, and never import a write-side adapter; writes go
+# through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory) or a *_service, and
+# reads through the read adapters (fact_queries, claims_store, modes_store, revisions_store's history).
+type = "forbidden"
+source_modules = [
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
+    "kn.inbox",
+    "kn.knowledge",
+]
+forbidden_modules = [
+    "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids",
+    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test",
 ]
 allow_indirect_imports = true
 
@@ -360,14 +392,14 @@ layers = [
     "modes_store | claims_store | facts_batch_service",
     "review | modes | claims_audit | normal_db",
     "leak_test | lifecycle_service | migrate_memory_service",
-    "review_store | lifecycle_store | migrate_memory_store | review_service",
+    "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
     "revisions_store",
     "add_fact",
     "privacy_store | add_fact_service",
     "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules",
     "new_fact",
     "privacy | private_git",
-    "clock | paths | timestamps | fact_rules | leak_rules | ports | ids",
+    "clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | rules_edit_service",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

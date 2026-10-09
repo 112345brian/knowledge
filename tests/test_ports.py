@@ -14,12 +14,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ports  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service")
+SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
+            "rules_edit_service")
 
 
 def test_every_facade_binds_adapters_that_satisfy_the_protocols():
     import add_fact, add_fact_store, clock, ids, lifecycle, lifecycle_store, migrate_memory, migrate_memory_store
     import facts_batch, private_git, privacy_store, review, review_store, revisions_store
+    import knowledge
+    assert knowledge.RULES_PORTS.rules is privacy_store and knowledge.RULES_PORTS.git is private_git
+    for name in ("rules", "git"):
+        assert ports.conformance_problems(name, getattr(knowledge.RULES_PORTS, name)) == [], f"knowledge.RULES_PORTS.{name}"
     for facade in (review, lifecycle, add_fact, facts_batch, migrate_memory):
         bundle = facade.PORTS
         for name in ports.PORT_PROTOCOLS:

@@ -44,7 +44,6 @@ Library code (view_model) never prints or exits.
 import html
 import ipaddress
 import json
-import os
 import re
 import secrets
 import threading

@@ -94,3 +94,24 @@ def apply_rules_to_db(con, rules):
             con.execute("UPDATE facts SET visibility = 'private' WHERE id = ?", (fact_id,))
             raised.append((fact_id, res.explain()))
     return {"raised": raised, "private_subjects": private_subjects}
+
+
+def data_dir_of(path):
+    """The directory a rules file lives in."""
+    return os.path.dirname(os.path.abspath(path))
+
+
+def rules_file_exists(path):
+    return os.path.exists(path)
+
+
+def existing_ancestor(directory):
+    """The nearest existing directory at or above `directory` (the data dir may not exist before the first rule)."""
+    probe = directory
+    while not os.path.isdir(probe):
+        probe = os.path.dirname(probe)
+    return probe
+
+
+def make_dirs(directory):
+    os.makedirs(directory, exist_ok=True)

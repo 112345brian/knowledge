@@ -121,7 +121,7 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
 # ignore_imports line as unmatched (a stale exception is an error, as it should be).
 BASELINE_CODE = {
     "private_git": "import subprocess\n",
-    "knowledge": "import subprocess\n",
+    "script_runner": "import subprocess\n",
     # THE one CLI -> serving exception (launcher), exactly as written in the real cli_inbox.py.
     "cli_inbox": "import inbox  # tach-ignore inbox\n",
 }
@@ -433,6 +433,28 @@ CASES = [
      [("tach", ["ports", "revisions_store"]), ("import-linter", ["kn.ports", "kn.revisions_store"])]),
     ("ids-adapter-imports-upward", "ids", "import add_fact",
      [("tach", ["ids", "add_fact"]), ("import-linter", ["kn.ids", "kn.add_fact"])]),
+    ("cli-imports-sqlite", "knowledge", "import sqlite3",
+     [("import-linter", ["reach infrastructure only through use cases", "kn.knowledge", "sqlite3"])]),
+    ("cli-imports-subprocess", "knowledge", "def f():\n    import subprocess",
+     [("import-linter", ["kn.knowledge", "subprocess"])]),
+    ("cli-imports-os", "cli_lifecycle", "import os",
+     [("import-linter", ["kn.cli_lifecycle", "os"])]),
+    ("cli-imports-write-adapter", "cli_migrate", "import add_fact_store",
+     [("tach", ["cli_migrate", "add_fact_store"]), ("import-linter", ["kn.cli_migrate", "kn.add_fact_store"])]),
+    ("cli-imports-ids-adapter", "knowledge", "import ids",
+     [("tach", ["knowledge", "ids"]), ("import-linter", ["kn.knowledge", "kn.ids"])]),
+    ("cli-imports-clock", "cli_facts_batch", "import clock",
+     [("tach", ["cli_facts_batch", "clock"]), ("import-linter", ["kn.cli_facts_batch", "kn.clock"])]),
+    ("inbox-imports-os", "inbox", "import os",
+     [("import-linter", ["kn.inbox", "os"])]),
+    ("serving-imports-fact-queries", "inbox", "import fact_queries",
+     [("tach", ["inbox", "fact_queries"]), ("import-linter", ["only through modes", "kn.fact_queries"])]),
+    ("subprocess-in-the-cli-app", "knowledge", "import subprocess",
+     [("import-linter", ["import subprocess", "kn.knowledge", "subprocess"])]),
+    ("rules-edit-service-imports-adapter", "rules_edit_service", "import privacy_store",
+     [("tach", ["rules_edit_service", "privacy_store"]), ("import-linter", ["never an adapter", "kn.rules_edit_service", "kn.privacy_store"])]),
+    ("script-runner-imports-upward", "script_runner", "import knowledge",
+     [("tach", ["script_runner", "knowledge"]), ("import-linter", ["kn.script_runner", "kn.knowledge"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -473,7 +495,7 @@ def test_exception_lists_are_exactly_the_documented_ones():
     ignores = {cid: c.get("ignore_imports", []) for cid, c in contracts.items() if c.get("ignore_imports")}
     assert ignores == {
         "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
-        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess"],
+        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.script_runner -> subprocess"],
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
     assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
@@ -507,7 +529,7 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service"}
+                      "migrate_memory_service", "rules_edit_service"}
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
@@ -573,8 +595,7 @@ def test_shadow_rewrites_lazy_and_aliased_imports(tmp_path):
 def test_unused_allowlist_entry_is_reported_by_tach(tree):
     """`exact = true`: a depends_on entry that is not imported any more fails, so the allowlists
     (including the `paths` one) cannot silently stay wider than the code."""
-    (tree / "knowledge.py").write_text(
-        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["knowledge"]["depends_on"] if d != "paths")
-        + "import subprocess\n")
+    (tree / "add_fact.py").write_text(
+        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["add_fact"]["depends_on"] if d != "paths"))
     rc, out = _check(tree, "tach")
     assert rc != 0 and "paths" in out, out

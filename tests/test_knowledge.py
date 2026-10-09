@@ -231,14 +231,14 @@ def lib(env, monkeypatch):
     """knowledge.py imported fresh against the fixture's private dir."""
     import importlib.util
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", env.private)
-    for m in ("paths", "local_paths"):
+    for m in ("paths", "local_paths", "fact_queries"):
         sys.modules.pop(m, None)
     spec = importlib.util.spec_from_file_location("knowledge_under_test", KNOWLEDGE)
     mod = importlib.util.module_from_spec(spec)
     monkeypatch.syspath_prepend(REPO)
     spec.loader.exec_module(mod)
     yield mod
-    for m in ("paths", "local_paths"):
+    for m in ("paths", "local_paths", "fact_queries"):
         sys.modules.pop(m, None)
 
 
