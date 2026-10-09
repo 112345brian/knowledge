@@ -44,6 +44,7 @@ entities        only NON-private entities that an included fact mentions (key, n
                    and links are never copied; a name, alias or note containing a listed keyword is dropped.
 build_info      the latest row's built_at and schema_version only (#47); commits, dirty flags, versions and build_inputs
                    (input keys) are never copied.
+source_identifiers   identifiers of included sources (#48); source_identifier_conflicts is never copied.
 Never copied: claims (and their fact links), vault_files, metrics, measurements, fact_measurements,
 exercises, training_sets, foods, food/meal logs, muscles, import_sources, artists, venues,
 festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and the views/triggers
@@ -59,7 +60,7 @@ import privacy
 NORMAL_DB_NAME = "knowledge-normal.db"
 
 # Every table the normal DB may contain (FTS shadow tables are the 'fts' siblings below).
-TABLES = ("build_info", "subjects", "subject_aliases", "entities", "entity_aliases", "fact_entities", "publishers", "authors", "sources", "source_authors", "facts",
+TABLES = ("build_info", "subjects", "source_identifiers", "subject_aliases", "entities", "entity_aliases", "fact_entities", "publishers", "authors", "sources", "source_authors", "facts",
           "fact_revisions", "fact_sources")
 FTS_TABLES = ("facts_fts", "sources_fts", "authors_fts")
 VIEWS = ("v_subjects",)
@@ -69,6 +70,13 @@ CREATE TABLE build_info (
     id              INTEGER PRIMARY KEY,
     built_at        TEXT NOT NULL,
     schema_version  INTEGER NOT NULL
+);
+CREATE TABLE source_identifiers (
+    source_id  INTEGER NOT NULL REFERENCES sources(id),
+    scheme     TEXT NOT NULL CHECK (scheme IN ('doi','isbn','issn','pmid','arxiv','other')),
+    value      TEXT NOT NULL CHECK (length(trim(value)) > 0),
+    PRIMARY KEY (source_id, scheme, value),
+    UNIQUE (scheme, value)
 );
 CREATE TABLE subjects (
     id         INTEGER PRIMARY KEY,
@@ -326,6 +334,13 @@ def populate(out, full, rules):
         if fid in fact_ids:
             out.execute("INSERT INTO fact_sources (fact_id, source_id, locator, quote) VALUES (?, ?, ?, ?)",
                         (fid, sid, locator, quote))
+
+    # 4a. identifiers (#48) of the included sources: public references (DOI, ISBN, ...), so they come along; an
+    # `other` value is free text and passes the keyword rules first. Conflicts are build diagnostics, never copied.
+    in_sources = {r[0] for r in src_rows}
+    for sid, scheme, value in full.execute("SELECT source_id, scheme, value FROM source_identifiers ORDER BY source_id, scheme, value"):
+        if sid in in_sources and (scheme != "other" or clean_text(value) is not None):
+            out.execute("INSERT INTO source_identifiers (source_id, scheme, value) VALUES (?, ?, ?)", (sid, scheme, value))
 
     # 4b. entities (#42): never a private entity, its aliases or its links. A non-private entity comes along
     # only when an INCLUDED fact mentions it, and only if its name passes the keyword rules (a listed name

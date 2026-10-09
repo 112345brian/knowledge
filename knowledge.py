@@ -9,6 +9,7 @@
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
     knowledge.py audit-sources [--json]
+    knowledge.py source ids CITEKEY [--json]
     knowledge.py build-info [--compare OTHER.db] [--json]
     knowledge.py audit-source-status [--json]
     knowledge.py subject list|show|alias|describe|deprecate ...  [--json]  (subjects.json; see cli_subjects.py)
@@ -50,6 +51,7 @@ import build_info
 import claims_audit
 import entities
 import fixity
+import identifiers
 import private_git
 import privacy
 import review
@@ -73,6 +75,7 @@ class Trust(str, enum.Enum):
 
 Kind = enum.Enum("Kind", {k: k for k in add_fact.KIND_VALUES}, type=str)  # #39; one source of truth: add_fact.KIND_VALUES
 ENTITY_OPT = typer.Option(None, "--entity", help="Only facts that mention this entity (its id, name or an alias; #42).")
+IDENTIFIER_OPT = typer.Option(None, "--identifier", help="Only facts that cite a source with this DOI, ISBN, ISSN, PMID, arXiv or PMC id (#48; a `doi:` style prefix is optional).")
 VALID_AT_OPT = typer.Option(None, "--valid-at", help="Only facts that were true on this date, YYYY-MM-DD (valid time, #40; not --as-of, which is when the db learned it).")
 KIND_OPT = typer.Option(None, "--kind", help="Only facts of this kind: " + ", ".join(add_fact.KIND_VALUES) + ".")
 
@@ -109,7 +112,7 @@ def _visible_statuses(include_pending):
     return ("active", "pending") if include_pending else ("active",)
 
 
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None, valid_at=None, entity=None):
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Append the shared fact filters. `personal` is True / False / None (no filter).
     An explicit `status` wins and `include_pending` is then ignored; without one only
     active facts (and pending ones when `include_pending`) match."""
@@ -122,6 +125,10 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     if kind:
         sql += " AND f.kind = ?"
         params.append(kind)
+    if identifier is not None:
+        clause, extra = identifiers.filter_clause(identifier)
+        sql += clause
+        params.extend(extra)
     if entity is not None:
         clause, extra = entities.filter_clause(entity)
         sql += clause
@@ -145,7 +152,7 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     return sql
 
 
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None, entity=None):
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
         SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
@@ -156,19 +163,19 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
     """
     params = [terms]
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity, identifier=identifier)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None, entity=None):
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
     sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity, identifier=identifier)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -292,13 +299,14 @@ def cmd_search(
     kind: Optional[Kind] = KIND_OPT,
     valid_at: Optional[str] = VALID_AT_OPT,
     entity: Optional[str] = ENTITY_OPT,
+    identifier: Optional[str] = IDENTIFIER_OPT,
     as_json: bool = JSON_OPT,
 ):
     personal = _personal(personal_only, not_personal)
     try:
         rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
-                      include_pending=include_pending, kind=kind.value if kind else None, valid_at=valid_at, entity=entity)
+                      include_pending=include_pending, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
         _fail(e)
     except sqlite3.OperationalError as e:
@@ -596,13 +604,14 @@ def cmd_facts(
     kind: Optional[Kind] = KIND_OPT,
     valid_at: Optional[str] = VALID_AT_OPT,
     entity: Optional[str] = ENTITY_OPT,
+    identifier: Optional[str] = IDENTIFIER_OPT,
     as_json: bool = JSON_OPT,
 ):
     personal = _personal(personal_only, not_personal)
     try:
         rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
                       status=status.value if status else None, include_pending=include_pending,
-                      personal=personal, limit=limit, kind=kind.value if kind else None, valid_at=valid_at, entity=entity)
+                      personal=personal, limit=limit, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
         _fail(e)
     _emit_json(rows) if as_json else _print_fact_lines(rows)
@@ -878,6 +887,7 @@ def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT
         return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
     _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
+import cli_sources; app.add_typer(cli_sources.app, name="source")  # source ids (#48)
 import cli_entities; app.add_typer(cli_entities.app, name="entity")  # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
 import cli_subjects; app.add_typer(cli_subjects.app, name="subject")  # subject list|show|alias|describe|deprecate (#43)
 import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, set-visibility (#8, #23)

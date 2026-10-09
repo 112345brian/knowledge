@@ -13,7 +13,7 @@ PRAGMA foreign_keys = ON;
 
 -- Schema version (#47): bump this whenever a table, column, constraint, view or trigger below changes.
 -- The build records it in build_info; tests/test_build_info.py fails when the schema changed without a bump.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 -- Which inputs and code produced this db (#47); written by the build, see build_info.py. input_key is a stable
 -- name, never a path.
@@ -184,6 +184,25 @@ CREATE TABLE source_relations (
     CHECK (source_id <> related_source_id)
 );
 CREATE INDEX idx_source_relations_related ON source_relations(related_source_id);
+
+-- Persistent identifiers (#48), normalized by identifiers.py (lowercase DOI, ISBN-13 with a verified check
+-- digit, ...). One (scheme, value) belongs to exactly one source. When a second source claims the same
+-- identifier it is NOT merged and NOT silently dropped: the claim is kept in source_identifier_conflicts
+-- (with the owner) and reported at build time.
+CREATE TABLE source_identifiers (
+    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    scheme     TEXT NOT NULL CHECK (scheme IN ('doi','isbn','issn','pmid','arxiv','other')),
+    value      TEXT NOT NULL CHECK (length(trim(value)) > 0),
+    PRIMARY KEY (source_id, scheme, value),
+    UNIQUE (scheme, value)
+);
+CREATE TABLE source_identifier_conflicts (
+    source_id        INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    scheme           TEXT NOT NULL,
+    value            TEXT NOT NULL,
+    owner_source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_id, scheme, value)
+);
 
 CREATE VIEW v_sources AS
 SELECT s.id, s.citekey, s.name, s.source_type,

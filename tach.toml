@@ -63,6 +63,11 @@ depends_on = [
 ]
 
 [[modules]]
+path = "identifiers"     # #48 DOI / ISBN / ISSN / PMID / arXiv normalization and checksums
+layer = "library"
+depends_on = []
+
+[[modules]]
 path = "acquisition"    # #46 custodial history: data first, macOS file attributes fill gaps (read-only, best effort)
 layer = "library"
 depends_on = [
@@ -175,6 +180,7 @@ path = "modes"          # the only serving-side reader of facts
 layer = "library"
 depends_on = [
     "entities",
+    "identifiers",
     "privacy",
     "revisions",
     "validtime",
@@ -253,10 +259,12 @@ depends_on = [
     "cli_lifecycle",
     "cli_entities",
     "cli_migrate",
+    "cli_sources",
     "build_info",
     "cli_subjects",
     "entities",
     "fixity",
+    "identifiers",
     "paths",
     "privacy",
     "private_git",
@@ -272,6 +280,13 @@ layer = "cli"
 depends_on = [
     "entities",
     "entity_tools",
+    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
+]
+
+[[modules]]
+path = "cli_sources"    # source ids (#48)
+layer = "cli"
+depends_on = [
     "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
 ]
 
@@ -345,7 +360,7 @@ depends_on = [
 [[modules]]
 path = "_shared"
 layer = "pipeline"
-depends_on = ["acquisition", "fixity"]
+depends_on = ["acquisition", "fixity", "identifiers"]
 
 [[modules]]
 path = "snapshot_date"

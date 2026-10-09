@@ -63,6 +63,7 @@ source_modules = [
     "kn.entity_tools",
     "kn.facts_batch",
     "kn.fixity",
+    "kn.identifiers",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.migrate_memory",
@@ -87,6 +88,7 @@ forbidden_modules = [
     "kn.cli_migrate",
     "kn.cli_entities",
     "kn.cli_parity",
+    "kn.cli_sources",
     "kn.cli_subjects",
     "kn.knowledge",
     # serving
@@ -122,6 +124,7 @@ source_modules = [
     "kn.entity_tools",
     "kn.facts_batch",
     "kn.fixity",
+    "kn.identifiers",
     "kn.inbox",
     "kn.leak_test",
     "kn.lifecycle",
@@ -265,7 +268,7 @@ layers = [
     "privacy",
     "entities",
     "private_edit",
-    "private_git | clock | paths | fixity | validtime | textmatch",
+    "private_git | clock | paths | fixity | validtime | textmatch | identifiers",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

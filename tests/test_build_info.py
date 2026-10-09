@@ -22,8 +22,8 @@ from test_add_fact import REPO
 
 # Bump rule: when this fails, schema.sql changed. Bump `PRAGMA user_version` in schema.sql, then update BOTH
 # constants below (the version and the fingerprint the failure message prints).
-EXPECTED_SCHEMA_VERSION = 1
-EXPECTED_SCHEMA_FINGERPRINT = '9e04872cfe43e39e'
+EXPECTED_SCHEMA_VERSION = 2
+EXPECTED_SCHEMA_FINGERPRINT = '4d7b04b7e5ec57e0'
 
 
 def schema_text():

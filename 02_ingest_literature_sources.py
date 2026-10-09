@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acquisition
 import fixity
 import source_status
-from _shared import link_authors, get_or_create_publisher
+from _shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 from paths import BODYBUILDING_VAULT as VAULT
 
 SRC_DIR = os.path.expanduser(f"{VAULT}/sources")
@@ -129,11 +129,12 @@ def parse_all():
         acquired = acquisition.resolve(acquisition.normalize_data({
             "acquired_at": fm.get("acquired-at"), "acquired_via": fm.get("acquired-via"), "where_from": fm.get("where-from"),
             "acquired_note": fm.get("acquired-note")}, f"{base}: source {citekey!r}"), os.path.join(SRC_DIR, base))
+        ids = collect_identifiers({k: fm.get(k) for k in ("doi", "pmid", "pmcid", "isbn", "issn", "arxiv")}, f"{base}: source {citekey!r}")
         relations = [(citekey, rel, target) for rel, key in (("replaces", "replaces"), ("is-version-of", "is-version-of"))
                      for target in source_status.as_list(fm.get(key))]
 
         rows.append(dict(
-            citekey=citekey, relations=relations, **status_fields, **acquired, name=name, source_type=stype, author=author_str,
+            citekey=citekey, relations=relations, identifiers=ids, **status_fields, **acquired, name=name, source_type=stype, author=author_str,
             publisher=journal, url=url, published_date=year, description=description,
             origin_path=f"{VAULT}/sources/{base}",
             **fixity.fingerprint(fp),
@@ -149,7 +150,7 @@ def run(con):
     for r in rows:
         if r["citekey"] in existing:
             continue
-        row = {k: v for k, v in r.items() if k not in ("author", "publisher", "relations")}
+        row = {k: v for k, v in r.items() if k not in ("author", "publisher", "relations", "identifiers")}
         row["publisher_id"] = get_or_create_publisher(cur, r.get("publisher"))
         cur.execute(
             """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
@@ -162,7 +163,9 @@ def run(con):
                        :acquired_at, :acquired_via, :where_from, :acquired_note)""",
             row,
         )
-        link_authors(cur, cur.lastrowid, r["author"])
+        source_id = cur.lastrowid
+        add_source_identifiers(cur, source_id, r["citekey"], r["identifiers"])
+        link_authors(cur, source_id, r["author"])
         existing.add(r["citekey"])
         inserted += 1
     con.commit()

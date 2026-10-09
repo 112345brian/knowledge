@@ -17,7 +17,7 @@ import sqlite3, os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acquisition
 import source_status
-from _shared import link_authors, get_or_create_publisher
+from _shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 from paths import BODYBUILDING_VAULT as VAULT, HEALTH_DIR as HEALTH, PRIVATE_DATA_DIR
 
 FIELDS = ("citekey", "name", "source_type", "author", "publisher", "url",
@@ -52,7 +52,10 @@ def run(con):
                        :acquired_at, :acquired_via, :where_from, :acquired_note)""",
             row,
         )
-        link_authors(cur, cur.lastrowid, author)
+        source_id = cur.lastrowid
+        raw_ids = {**{k: s.get(k) for k in ("doi", "pmid", "pmcid", "isbn", "issn", "arxiv")}, **(s.get("identifiers") or {})}
+        add_source_identifiers(cur, source_id, s.get("citekey"), collect_identifiers(raw_ids, f"manual_sources.json: source {s.get('citekey')!r}"))
+        link_authors(cur, source_id, author)
     con.commit()
     print(f"[01_seed_sources] inserted {len(sources)} manual sources")
 
