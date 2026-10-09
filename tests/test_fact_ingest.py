@@ -169,8 +169,8 @@ def test_04_honors_each_entrys_stored_date_added(ingest):
 
 def test_no_hardcoded_date_constants_left_in_the_ingest_scripts():
     import re
-    for name in ("measurements.py", "facts.py", "seed_general_facts.py"):
-        text = open(os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)).read()
+    for name in ("client/measurements.py", "ingest/facts.py", "ingest/seed_general_facts.py"):
+        text = open(os.path.join(REPO, name)).read()
         assert "TODAY =" not in text and "TODAY=" not in text, name
         assert "LEGACY_DATE_ADDED" not in text, name
         # nor any literal ISO date assigned or used as a default

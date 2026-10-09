@@ -19,7 +19,7 @@ def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
     for m in ("paths", "local_paths", "shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "backfill_source_keys",
-              "backfill_dates", "snapshot_date"):
+              "backfill_dates"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
     return e
@@ -116,7 +116,7 @@ def test_apply_twice_is_a_noop_and_never_rewrites(world, tmp_path):
     after = {n: read(d, n) for n in os.listdir(d)}
     mtimes = {n: os.stat(os.path.join(d, n)).st_mtime_ns for n in after}
     r = run(world, d, "--apply")
-    assert r.returncode == 0 and "updated 0 entries" in r.stdout and "already present" in r.stdout
+    assert r.returncode == 0 and "updated 0 entries" in r.stdout
     assert {n: read(d, n) for n in os.listdir(d)} == after
     assert {n: os.stat(os.path.join(d, n)).st_mtime_ns for n in after} == mtimes
 
@@ -178,25 +178,7 @@ def test_missing_files_and_an_empty_dir_are_fine(world, tmp_path):
     os.makedirs(d)
     r = run(world, d, "--apply")
     assert r.returncode == 0, r.stderr
-    assert json.loads(read(d, SNAP)) == {"synced_at": "2026-09-11"}
-
-
-def test_the_snapshot_file_is_written_once_and_never_regenerated(world, tmp_path):
-    d = str(tmp_path / "copy")
-    fixture_files(d)
-    put(d, SNAP, '{"synced_at": "2026-05-05"}\n')
-    assert run(world, d, "--apply").returncode == 0
-    assert read(d, SNAP) == '{"synced_at": "2026-05-05"}\n'
-
-
-@pytest.mark.parametrize("bad", ["{nope", "[]", '{"synced_at": null}', '{"synced_at": "soon"}', "{}"])
-def test_a_malformed_snapshot_file_blocks_every_write(world, tmp_path, bad):
-    d = str(tmp_path / "copy")
-    before = fixture_files(d)
-    put(d, SNAP, bad)
-    r = run(world, d, "--apply")
-    assert r.returncode == 1 and SNAP in r.stderr
-    assert {n: read(d, n) for n in before} == before and read(d, SNAP) == bad
+    assert os.listdir(d) == []          # the core backfill writes nothing for the `measurements` source's snapshot
 
 
 def test_it_does_not_touch_the_source_key_machinery_unless_asked(world, tmp_path):

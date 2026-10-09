@@ -20,8 +20,9 @@ SCHEMA_FRAGMENTS = {"music": "client/music.sql", "measurements": "client/measure
 PIPELINE = (
     ("ingest/seed_sources.py", None),
     ("ingest/literature_sources.py", None),
-    ("ingest/measurements.py", "measurements"),
+    ("client/measurements.py", "measurements"),
     ("ingest/facts.py", None),
+    ("client/link_fact_measurements.py", "measurements"),
     ("ingest/seed_claims.py", "claims"),
     ("ingest/seed_subject_hierarchy.py", None),
     ("client/concerts.py", "music"),

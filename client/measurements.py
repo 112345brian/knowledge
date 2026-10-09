@@ -13,15 +13,15 @@ Source: the bodybuilding vault's own bodybuilding.db (see paths.py -> BODYBUILDI
 """
 import sqlite3, os
 
-from ingest import measurement_rules
+from client import measurement_rules
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
-from ingest.snapshot_date import read_snapshot_date
+from client.snapshot_date import read_snapshot_date
 
 VAULT_DB = os.path.expanduser(f"{VAULT}/bodybuilding.db")
 # The vault db has no per-row load timestamp (only the date each reading was taken), so the
 # date_added of these rows, and the retrieved_date of the vault-db sources, is the date the
 # snapshot was taken. It is read from the data (measurements_snapshot.json, written once by
-# backfill_dates.py) in run(); a missing or malformed file fails the build. #35.
+# backfill_snapshot_date.py) in run(); a missing or malformed file fails the build. #35.
 SNAPSHOT_DATE = None
 
 _subject_cache = {}

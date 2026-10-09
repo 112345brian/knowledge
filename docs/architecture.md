@@ -60,6 +60,7 @@ Rules (each one is a failing test or contract if broken):
 | `backfill_dates` | ETL adapter (driving, batch) |  |
 | `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
 | `backfill_rules` | domain | key insertion into JSON text |
+| `backfill_snapshot_date` | ETL adapter (driving, batch) | one-time: writes measurements_snapshot.json (measurements source) |
 | `backfill_source_keys` | ETL adapter (driving, batch) |  |
 | `build` | ETL adapter (driving, batch) | runs the steps, swaps the db |
 | `build_info_store` | driven adapter | which inputs and code produced the db |
@@ -98,6 +99,7 @@ Rules (each one is a failing test or contract if broken):
 | `lifecycle_service` | use case | supersede / retract / set-visibility / edit |
 | `lifecycle_store` | driven adapter | rules + subject tree for the floor |
 | `measurement_rules` | domain | vault rows to measurements |
+| `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | driven adapter | inter-process file lock for the data-file writers |
 | `migrate_memory` | facade (composition root) | binds migrate_memory_service |
 | `migrate_memory_rules` | domain | memory-file rules |

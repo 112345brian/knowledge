@@ -577,6 +577,8 @@ FACT_READERS_ALLOWED = {
     "cli_subjects.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
     "entities_store.py", "link_entities.py",
+    # links facts to the measurements they cite at build time (the `measurements` client source)
+    "link_fact_measurements.py",
     # CLI-only audit over the full local db (like claims_store): which cited sources were retracted or replaced
     "source_status_store.py",
     # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table

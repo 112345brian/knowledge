@@ -55,7 +55,7 @@ def metric_label(key):
 
 def validate_snapshot_date(data, path):
     """The `synced_at` of the parsed snapshot file `data`, validated; RuntimeError naming `path` otherwise.
-    The snapshot date lives in the private data (written once by backfill_dates.py), never in code."""
+    The snapshot date lives in the private data (written once by client/backfill_snapshot_date.py), never in code."""
     value = data.get("synced_at") if isinstance(data, dict) else None
     try:
         if not isinstance(value, str):
@@ -77,7 +77,7 @@ def parse_snapshot_text(text, path):
 
 def missing_snapshot_message(path):
     return (f"{path} is missing: the measurements snapshot date is not stored in the data yet. "
-            f"Run `python3 -m ingest.backfill_dates --apply` (see the README, 'Dates'); a date is never invented.")
+            f"Run `python3 -m client.backfill_snapshot_date --apply` (see the README, 'Dates'); a date is never invented.")
 
 
 @dataclass

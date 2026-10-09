@@ -285,7 +285,7 @@ layer = "domain"
 depends_on = []
 
 [[modules]]
-path = "ingest.measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
+path = "client.measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
 layer = "domain"
 depends_on = []
 
@@ -687,10 +687,10 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.snapshot_date"
+path = "client.snapshot_date"
 layer = "pipeline"
 depends_on = [
-    "ingest.measurement_rules",
+    "client.measurement_rules",
 ]
 
 [[modules]]
@@ -722,7 +722,6 @@ depends_on = [
     "ingest.backfill_source_keys",
     "revisions",
     "revisions_store",
-    "ingest.snapshot_date",
     "locks",
 ]
 
@@ -764,12 +763,12 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.measurements"
+path = "client.measurements"
 layer = "pipeline"
 depends_on = [
-    "ingest.measurement_rules",
+    "client.measurement_rules",
     "paths",
-    "ingest.snapshot_date",
+    "client.snapshot_date",
 ]
 
 [[modules]]
@@ -903,3 +902,20 @@ layer = "pipeline"
 depends_on = [
     "client.artist_rules",
 ]
+
+[[modules]]
+path = "client.backfill_snapshot_date"
+layer = "pipeline"
+depends_on = [
+    "client.snapshot_date",
+    "locks",
+    "revisions_store",
+]
+
+[[modules]]
+path = "client.link_fact_measurements"
+layer = "pipeline"
+depends_on = [
+    "ingest.facts",
+]
+

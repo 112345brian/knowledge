@@ -3,8 +3,8 @@
 (`measurement_rules`). A missing or malformed file fails the build loudly."""
 import os
 
-from ingest import measurement_rules
-from ingest.measurement_rules import MEASUREMENTS_SNAPSHOT_FILE  # noqa: F401  (the public API)
+from client import measurement_rules
+from client.measurement_rules import MEASUREMENTS_SNAPSHOT_FILE  # noqa: F401  (the public API)
 
 
 def read_snapshot_date(data_dir):

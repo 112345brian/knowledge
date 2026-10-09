@@ -1,12 +1,13 @@
 """Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by
 background agents reading the vault's top-level synthesis notes and
 harm-reduction files -- see project_knowledge_db memory for how those were
-produced) into `facts`, `fact_sources`, `fact_subjects`, `fact_measurements`.
+produced) into `facts`, `fact_sources`, `fact_subjects`. (The `measurements` client source then links facts to
+measurements: client/link_fact_measurements.py.)
 
 Classifies is_personal with a multi-signal heuristic (documented inline) --
 this is a best-effort first pass, not hand-verified per fact.
 
-Run after 01/02/03 (needs sources + subjects + measurements to exist).
+Run after seed_sources and literature_sources (needs sources + subjects to exist).
 """
 import sqlite3, json, os, sys
 
@@ -111,13 +112,6 @@ def run(con):
                     "INSERT OR IGNORE INTO fact_sources (fact_id, source_id, locator, quote) VALUES (?, ?, ?, ?)",
                     (fact_id, source_id, item.get("source_locator"), item.get("source_quote"))
                 )
-
-        if measured_metric:
-            cur.execute(
-                """INSERT INTO fact_measurements (fact_id, measurement_id)
-                   SELECT ?, m.id FROM measurements m JOIN metrics mt ON mt.id = m.metric_id WHERE mt.key = ?""",
-                (fact_id, measured_metric)
-            )
 
         inserted += 1
 
