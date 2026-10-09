@@ -242,8 +242,10 @@ def test_batch_accepts_each_valid_combination_and_records_it(fb):
 
 
 def test_migrate_memory_facts_are_recheck_with_a_recheck_by():
-    src = open(os.path.join(REPO, "migrate_memory.py")).read()
+    # the mapping to a NewFact lives in the domain module; the use case must not set freshness itself
+    src = open(os.path.join(REPO, "migrate_memory_rules.py")).read()
     assert "recheck_by=recheck" in src and "no_decay" not in src
+    assert "no_decay" not in open(os.path.join(REPO, "migrate_memory.py")).read()
 
 
 # ------------------------------------------------------------------ ingest: 04 (legacy files) and 11
@@ -328,23 +330,23 @@ def test_revision_1_carries_the_freshness_and_step_12_writes_the_latest_into_fac
     world.seed(general=[entry("k1", freshness="recheck", recheck_by="2027-01-01")])
     assert world.append("k1", {"freshness": "no-decay", "recheck_rationale": "does not decay"}, "reassessed", at=T2).ok
     con = world.build()
-    assert [h["freshness"] for h in world.rv.get_history(con, "k1")] == ["recheck", "no-decay"]
+    assert [h["freshness"] for h in world.rs.get_history(con, "k1")] == ["recheck", "no-decay"]
     assert con.execute("SELECT freshness, recheck_rationale FROM facts").fetchone()[:] == ("no-decay", "does not decay")
 
 
 def test_a_legacy_fact_is_unreviewed_in_revision_1_and_a_revision_can_review_it(world):
     world.seed(pilot=[{"subject": "a", "statement": "Old.", "trust_level": "low", "date_added": "2026-09-11"}])
-    (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
+    (key,) = [e["key"] for e in world.rs.load_entries(world.env.data_dir)]
     assert world.append(key, {"trust_level": "high"}, "carry over", at=T2).ok  # carries unreviewed forward
     assert world.append(key, {"freshness": "recheck", "recheck_by": "2027-03-01"}, "reviewed", at=T3).ok
     con = world.build()
-    assert [h["freshness"] for h in world.rv.get_history(con, key)] == ["unreviewed", "unreviewed", "recheck"]
+    assert [h["freshness"] for h in world.rs.get_history(con, key)] == ["unreviewed", "unreviewed", "recheck"]
     assert con.execute("SELECT freshness, recheck_by FROM facts").fetchone()[:] == ("recheck", "2027-03-01")
 
 
 def test_a_legacy_fact_can_be_reviewed_straight_to_no_decay(world):
     world.seed(pilot=[{"subject": "a", "statement": "Old.", "trust_level": "low", "date_added": "2026-09-11"}])
-    (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
+    (key,) = [e["key"] for e in world.rs.load_entries(world.env.data_dir)]
     assert not world.append(key, {"freshness": "no-decay"}, "no rationale", at=T2).ok
     assert world.append(key, {"freshness": "no-decay", "recheck_rationale": "completed purchase"}, "reviewed", at=T2).ok
     con = world.build()
@@ -390,7 +392,7 @@ def test_a_revision_cannot_set_an_invalid_freshness_and_unreviewed_is_not_choosa
 
 def test_unreviewed_cannot_be_reintroduced_after_review(world):
     world.seed(pilot=[{"subject": "a", "statement": "Old.", "trust_level": "low", "date_added": "2026-09-11"}])
-    (key,) = [e["key"] for e in world.rv.load_entries(world.env.data_dir)]
+    (key,) = [e["key"] for e in world.rs.load_entries(world.env.data_dir)]
     assert world.append(key, {"freshness": "recheck", "recheck_by": "2027-01-01"}, "reviewed", at=T2).ok
     r = world.append(key, {"freshness": "unreviewed"}, "back", at=T3)
     assert not r.ok and "unreviewed" in r.errors[0]

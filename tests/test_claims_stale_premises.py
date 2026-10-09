@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-import claims_audit as ca
+import claims_store as ca
 import clock
 from conftest import REPO
 from test_claims_audit import add_claim, add_fact, load_seed, new_db
@@ -160,7 +160,7 @@ def test_flipping_a_seeded_claims_fact_to_superseded_surfaces_it_then_reverts():
 def test_no_other_module_reads_claim_facts():
     # the audit result cannot be silently discarded by a caller that does not exist yet; when the CLI
     # lands it must use audit_claims, so this scan lists the only allowed readers
-    allowed = {"claims_audit.py", "05_seed_claims.py", "build.py"}  # build.py only counts rows
+    allowed = {"claims_audit.py", "claims_store.py", "05_seed_claims.py", "build.py", "build_rules.py"}  # build* only count rows
     for path in glob.glob(os.path.join(REPO, "*.py")):
         name = os.path.basename(path)
         if name not in allowed:

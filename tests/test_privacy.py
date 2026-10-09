@@ -13,6 +13,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 
 import privacy
+import privacy_store
 from privacy import Rules, resolve_visibility as rv
 
 SYNTHETIC_NAMES = ["Zorblax", "Quenby", "Wumpfel"]
@@ -157,7 +158,7 @@ def test_check_defaults_to_a_normal_request():
 # ----------------------------------------------------------------- rules file
 
 def test_absent_rules_file_means_empty_rules(tmp_path):
-    rules = privacy.load_rules(str(tmp_path / "privacy_rules.json"))
+    rules = privacy_store.load_rules(str(tmp_path / "privacy_rules.json"))
     assert rules.subject_tags == {} and rules.keywords == ()
 
 
@@ -169,7 +170,7 @@ def test_corrupt_or_malformed_rules_raise_a_clear_error(tmp_path, content):
     path = tmp_path / "privacy_rules.json"
     path.write_text(content)
     with pytest.raises(privacy.PrivacyRulesError) as e:
-        privacy.load_rules(str(path))
+        privacy_store.load_rules(str(path))
     assert str(e.value)
     assert path.read_text() == content  # never rewritten on error
 
@@ -178,7 +179,7 @@ def test_non_utf8_rules_file_is_a_clear_error(tmp_path):
     path = tmp_path / "privacy_rules.json"
     path.write_bytes(b"\xff\xfe\x00")
     with pytest.raises(privacy.PrivacyRulesError):
-        privacy.load_rules(str(path))
+        privacy_store.load_rules(str(path))
 
 
 def test_edit_helpers_round_trip_through_save_and_load(tmp_path):
@@ -188,8 +189,8 @@ def test_edit_helpers_round_trip_through_save_and_load(tmp_path):
     assert privacy.tag_subject(rules, "family")[1] is False
     rules, _ = privacy.add_keyword(rules, "  Zorblax ")
     assert privacy.add_keyword(rules, "ZORBLAX")[1] is False
-    privacy.save_rules(rules, path)
-    loaded = privacy.load_rules(path)
+    privacy_store.save_rules(rules, path)
+    loaded = privacy_store.load_rules(path)
     assert loaded.subject_tags == {"family": "private"} and loaded.keywords == ("zorblax",)
     loaded, c1 = privacy.untag_subject(loaded, "family")
     loaded, c2 = privacy.remove_keyword(loaded, "zorblax")
@@ -207,7 +208,7 @@ def test_edit_helpers_reject_bad_input():
 
 def test_a_tag_on_a_nonexistent_subject_is_allowed_and_harmless(ingest):
     con = ingest.run11([F(subject="other", visibility="normal")])
-    privacy.apply_rules_to_db(con, Rules(subject_tags={"not-yet": "private"}))  # no error
+    privacy_store.apply_rules_to_db(con, Rules(subject_tags={"not-yet": "private"}))  # no error
     assert con.execute("SELECT visibility FROM facts").fetchone()[0] == "normal"
 
 
@@ -274,9 +275,9 @@ def test_removing_a_rule_does_not_downgrade_a_fact_stored_private(ingest):
 
 def test_apply_rules_to_db_is_raise_only_and_idempotent(ingest):
     con = ingest.run11([F(statement="A Quenby.", visibility="normal"), F(statement="B.", visibility="private")])
-    assert len(privacy.apply_rules_to_db(con, R(kws=["quenby"]))["raised"]) == 1
-    assert privacy.apply_rules_to_db(con, R(kws=["quenby"]))["raised"] == []
-    privacy.apply_rules_to_db(con, R())  # empty rules: nothing is lowered
+    assert len(privacy_store.apply_rules_to_db(con, R(kws=["quenby"]))["raised"]) == 1
+    assert privacy_store.apply_rules_to_db(con, R(kws=["quenby"]))["raised"] == []
+    privacy_store.apply_rules_to_db(con, R())  # empty rules: nothing is lowered
     assert vis(con) == {"A Quenby.": "private", "B.": "private"}
 
 
@@ -409,7 +410,7 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
     fact entry must reference `privacy`."""
     offenders = []
     for name in sorted(os.listdir(REPO)):
-        if not name.endswith(".py") or name == "privacy.py":
+        if not name.endswith(".py") or name in ("privacy.py", "ports.py"):  # ports.py only declares the AddFact protocol
             continue
         src = open(os.path.join(REPO, name)).read()
         if ("INSERT INTO facts" in src or "def build_entry" in src) and "privacy." not in src:
@@ -418,7 +419,7 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
 
 
 def test_add_fact_passes_the_resolved_value_to_build_entry():
-    tree = ast.parse(open(os.path.join(REPO, "add_fact.py")).read())
+    tree = ast.parse(open(os.path.join(REPO, "add_fact_service.py")).read())
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "append_fact")
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "build_entry"]
     assert calls and all(any(k.arg == "visibility" for k in c.keywords) for c in calls)

@@ -39,7 +39,7 @@ def test_history_is_never_more_visible_than_the_current_fact(world):
     assert world.append("k1", {"trust_level": "high"}, "one", at=T2).ok
     assert world.append("k1", {"trust_level": "medium"}, "two", at=T3).ok
     con = world.build()
-    assert {h["visibility"] for h in world.rv.get_history(con, "k1")} == {"private"}
+    assert {h["visibility"] for h in world.rs.get_history(con, "k1")} == {"private"}
 
 
 def test_without_rules_a_normal_revision_still_lowers_nothing_it_should_not(world):

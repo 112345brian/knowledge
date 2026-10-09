@@ -5,16 +5,7 @@ ingestion, so they must exist first).
 """
 import sqlite3, os
 
-AAS_CHILDREN = [
-    'aas-cardiovascular-risk', 'aas-cycle-risk', 'aas-decision-framework', 'aas-emergency-red-flags',
-    'aas-endocrine', 'aas-estrogen-management', 'aas-injection-safety', 'aas-kidney-toxicity', 'aas-legal',
-    'aas-liver-toxicity', 'aas-mental-health', 'aas-post-cycle-therapy', 'aas-side-effects', 'aas-supply-testing',
-]
-TRAINING_CHILDREN = [
-    'training-volume-hypertrophy', 'training-consistency', 'training-detraining', 'training-mental-health',
-    'training-mortality-health', 'training-recovery', 'training-scheduling', 'strength-progression-norms',
-    'program-design', 'ankle-mobility',
-]
+from seed_rules import AAS_CHILDREN, TRAINING_CHILDREN
 
 
 def run(con):

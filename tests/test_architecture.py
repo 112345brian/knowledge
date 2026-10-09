@@ -121,7 +121,7 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
 # ignore_imports line as unmatched (a stale exception is an error, as it should be).
 BASELINE_CODE = {
     "private_git": "import subprocess\n",
-    "knowledge": "import subprocess\n",
+    "script_runner": "import subprocess\n",
     # THE one CLI -> serving exception (launcher), exactly as written in the real cli_inbox.py.
     "cli_inbox": "import inbox  # tach-ignore inbox\n",
 }
@@ -314,6 +314,177 @@ CASES = [
      [("tach", ["01_seed_sources", "knowledge"])]),
     ("numbered-script-imports-unlisted-library", "03_ingest_measurements", "import add_fact",
      [("tach", ["03_ingest_measurements", "add_fact"])]),
+    # ---- hexagonal: the domain (privacy) never touches infrastructure or its own adapter
+    ("domain-imports-sqlite", "privacy", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.privacy", "sqlite3", "BROKEN"])]),
+    ("domain-lazy-imports-os", "privacy", "def f():\n    import os",
+     [("import-linter", ["kn.privacy", "os"])]),
+    ("domain-imports-pathlib", "privacy", "from pathlib import Path",
+     [("import-linter", ["kn.privacy", "pathlib"])]),
+    ("domain-imports-subprocess", "privacy", "import subprocess",
+     [("import-linter", ["kn.privacy", "subprocess"])]),
+    ("domain-imports-its-adapter", "privacy", "import privacy_store",
+     [("tach", ["privacy", "privacy_store"]), ("import-linter", ["kn.privacy", "kn.privacy_store"])]),
+    ("domain-imports-clock", "privacy", "import clock",
+     [("tach", ["privacy", "clock"]), ("import-linter", ["kn.privacy", "kn.clock"])]),
+    ("domain-modes-imports-sqlite", "modes", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.modes", "sqlite3"])]),
+    ("domain-modes-imports-its-adapter", "modes", "import modes_store",
+     [("tach", ["modes", "modes_store"]), ("import-linter", ["kn.modes", "kn.modes_store"])]),
+    ("domain-modes-imports-revisions", "modes", "import revisions",
+     [("tach", ["modes", "revisions"])]),   # revisions is a domain module now: only the tach allowlist stops it
+    ("domain-claims-audit-imports-clock", "claims_audit", "import clock",
+     [("tach", ["claims_audit", "clock"]), ("import-linter", ["kn.claims_audit", "kn.clock"])]),
+    ("domain-claims-audit-imports-sqlite", "claims_audit", "import sqlite3",
+     [("import-linter", ["kn.claims_audit", "sqlite3"])]),
+    ("domain-timestamps-imports-os", "timestamps", "import os",
+     [("import-linter", ["kn.timestamps", "os"])]),
+    ("adapter-modes-store-imports-upward", "modes_store", "import lifecycle",
+     [("tach", ["modes_store", "lifecycle"]), ("import-linter", ["kn.modes_store", "kn.lifecycle"])]),
+    ("serving-imports-claims-store", "inbox", "import claims_store",
+     [("tach", ["inbox", "claims_store"]), ("import-linter", ["only through modes", "kn.claims_store"])]),
+    ("domain-revisions-imports-sqlite", "revisions", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.revisions", "sqlite3"])]),
+    ("domain-revisions-imports-os", "revisions", "def f():\n    import os",
+     [("import-linter", ["kn.revisions", "os"])]),
+    ("domain-revisions-imports-add-fact", "revisions", "import add_fact",
+     [("tach", ["revisions", "add_fact"]), ("import-linter", ["kn.revisions", "kn.add_fact"])]),
+    ("domain-revisions-imports-clock", "revisions", "import clock",
+     [("tach", ["revisions", "clock"]), ("import-linter", ["kn.revisions", "kn.clock"])]),
+    ("domain-revisions-imports-its-adapter", "revisions", "import revisions_store",
+     [("tach", ["revisions", "revisions_store"]), ("import-linter", ["kn.revisions", "kn.revisions_store"])]),
+    ("domain-review-rules-imports-review-store", "review_rules", "import review_store",
+     [("tach", ["review_rules", "review_store"]), ("import-linter", ["kn.review_rules", "kn.review_store"])]),
+    ("domain-review-rules-imports-subprocess", "review_rules", "import subprocess",
+     [("import-linter", ["kn.review_rules", "subprocess"])]),
+    ("domain-fact-rules-imports-sqlite", "fact_rules", "import sqlite3",
+     [("import-linter", ["kn.fact_rules", "sqlite3"])]),
+    ("adapter-revisions-store-imports-review", "revisions_store", "import review",
+     [("tach", ["revisions_store", "review"]), ("import-linter", ["kn.revisions_store", "kn.review"])]),
+    ("serving-imports-revisions-store", "inbox", "import revisions_store",
+     [("tach", ["inbox", "revisions_store"]), ("import-linter", ["only through modes", "kn.revisions_store"])]),
+    ("serving-imports-review-store", "inbox", "import review_store",
+     [("tach", ["inbox", "review_store"]), ("import-linter", ["only through modes", "kn.review_store"])]),
+    ("domain-new-fact-imports-sqlite", "new_fact", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.new_fact", "sqlite3"])]),
+    ("domain-new-fact-imports-clock", "new_fact", "import clock",
+     [("tach", ["new_fact", "clock"]), ("import-linter", ["kn.new_fact", "kn.clock"])]),
+    ("domain-new-fact-imports-uuid", "new_fact", "import uuid",
+     [("import-linter", ["kn.new_fact", "uuid"])]),
+    ("domain-new-fact-imports-its-adapter", "new_fact", "import add_fact_store",
+     [("tach", ["new_fact", "add_fact_store"]), ("import-linter", ["kn.new_fact", "kn.add_fact_store"])]),
+    ("domain-lifecycle-rules-imports-sqlite", "lifecycle_rules", "import sqlite3",
+     [("import-linter", ["kn.lifecycle_rules", "sqlite3"])]),
+    ("domain-lifecycle-rules-imports-use-case", "lifecycle_rules", "import lifecycle",
+     [("tach", ["lifecycle_rules", "lifecycle"]), ("import-linter", ["kn.lifecycle_rules", "kn.lifecycle"])]),
+    ("domain-lifecycle-rules-imports-review", "lifecycle_rules", "import review",
+     [("tach", ["lifecycle_rules", "review"]), ("import-linter", ["kn.lifecycle_rules", "kn.review"])]),
+    ("adapter-add-fact-store-imports-upward", "add_fact_store", "import add_fact",
+     [("tach", ["add_fact_store", "add_fact"]), ("import-linter", ["kn.add_fact_store", "kn.add_fact"])]),
+    ("adapter-lifecycle-store-imports-lifecycle", "lifecycle_store", "import lifecycle",
+     [("tach", ["lifecycle_store", "lifecycle"]), ("import-linter", ["kn.lifecycle_store", "kn.lifecycle"])]),
+    ("serving-imports-lifecycle-store", "inbox", "import lifecycle_store",
+     [("tach", ["inbox", "lifecycle_store"]), ("import-linter", ["only through modes", "kn.lifecycle_store"])]),
+    ("serving-imports-add-fact-store", "inbox", "import add_fact_store",
+     [("tach", ["inbox", "add_fact_store"]), ("import-linter", ["only through modes", "kn.add_fact_store"])]),
+    ("domain-facts-batch-rules-imports-sqlite", "facts_batch_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.facts_batch_rules", "sqlite3"])]),
+    ("domain-facts-batch-rules-imports-use-case", "facts_batch_rules", "import facts_batch",
+     [("tach", ["facts_batch_rules", "facts_batch"]), ("import-linter", ["kn.facts_batch_rules", "kn.facts_batch"])]),
+    ("domain-migrate-memory-rules-imports-os", "migrate_memory_rules", "import os",
+     [("import-linter", ["kn.migrate_memory_rules", "os"])]),
+    ("domain-migrate-memory-rules-imports-clock", "migrate_memory_rules", "import clock",
+     [("tach", ["migrate_memory_rules", "clock"]), ("import-linter", ["kn.migrate_memory_rules", "kn.clock"])]),
+    ("domain-migrate-memory-rules-imports-glob", "migrate_memory_rules", "import glob",
+     [("import-linter", ["kn.migrate_memory_rules", "glob"])]),
+    ("adapter-migrate-memory-store-imports-use-case", "migrate_memory_store", "import migrate_memory",
+     [("tach", ["migrate_memory_store", "migrate_memory"]), ("import-linter", ["kn.migrate_memory_store", "kn.migrate_memory"])]),
+    ("domain-normal-rules-imports-sqlite", "normal_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.normal_rules", "sqlite3"])]),
+    ("domain-normal-rules-imports-tempfile", "normal_rules", "import tempfile",
+     [("import-linter", ["kn.normal_rules", "tempfile"])]),
+    ("domain-normal-rules-imports-adapter", "normal_rules", "import normal_db",
+     [("tach", ["normal_rules", "normal_db"]), ("import-linter", ["kn.normal_rules", "kn.normal_db"])]),
+    ("domain-leak-rules-imports-sqlite", "leak_rules", "import sqlite3",
+     [("import-linter", ["kn.leak_rules", "sqlite3"])]),
+    ("domain-leak-rules-imports-leak-test", "leak_rules", "import leak_test",
+     [("tach", ["leak_rules", "leak_test"]), ("import-linter", ["kn.leak_rules", "kn.leak_test"])]),
+    ("serving-imports-migrate-memory-store", "inbox", "import migrate_memory_store",
+     [("tach", ["inbox", "migrate_memory_store"]), ("import-linter", ["only through modes", "kn.migrate_memory_store"])]),
+    ("service-imports-adapter", "review_service", "import revisions_store",
+     [("tach", ["review_service", "revisions_store"]), ("import-linter", ["never an adapter", "kn.review_service", "kn.revisions_store"])]),
+    ("service-lazy-imports-adapter", "lifecycle_service", "def f():\n    import lifecycle_store",
+     [("tach", ["lifecycle_service", "lifecycle_store"]), ("import-linter", ["kn.lifecycle_service", "kn.lifecycle_store"])]),
+    ("service-imports-git-adapter", "lifecycle_service", "import private_git",
+     [("tach", ["lifecycle_service", "private_git"]), ("import-linter", ["kn.lifecycle_service", "kn.private_git"])]),
+    ("service-imports-its-facade", "add_fact_service", "import add_fact",
+     [("tach", ["add_fact_service", "add_fact"]), ("import-linter", ["kn.add_fact_service", "kn.add_fact"])]),
+    ("service-imports-clock", "facts_batch_service", "import clock",
+     [("tach", ["facts_batch_service", "clock"]), ("import-linter", ["kn.facts_batch_service", "kn.clock"])]),
+    ("service-imports-sqlite", "migrate_memory_service", "import sqlite3",
+     [("import-linter", ["never an adapter", "kn.migrate_memory_service", "sqlite3"])]),
+    ("service-imports-subprocess", "review_service", "def f():\n    import subprocess",
+     [("import-linter", ["kn.review_service", "subprocess"])]),
+    ("service-imports-uuid", "add_fact_service", "import uuid",
+     [("import-linter", ["kn.add_fact_service", "uuid"])]),
+    ("ports-imports-sqlite", "ports", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.ports", "sqlite3"])]),
+    ("ports-imports-an-adapter", "ports", "import revisions_store",
+     [("tach", ["ports", "revisions_store"]), ("import-linter", ["kn.ports", "kn.revisions_store"])]),
+    ("ids-adapter-imports-upward", "ids", "import add_fact",
+     [("tach", ["ids", "add_fact"]), ("import-linter", ["kn.ids", "kn.add_fact"])]),
+    ("cli-imports-sqlite", "knowledge", "import sqlite3",
+     [("import-linter", ["reach infrastructure only through use cases", "kn.knowledge", "sqlite3"])]),
+    ("cli-imports-subprocess", "knowledge", "def f():\n    import subprocess",
+     [("import-linter", ["kn.knowledge", "subprocess"])]),
+    ("cli-imports-os", "cli_lifecycle", "import os",
+     [("import-linter", ["kn.cli_lifecycle", "os"])]),
+    ("cli-imports-write-adapter", "cli_migrate", "import add_fact_store",
+     [("tach", ["cli_migrate", "add_fact_store"]), ("import-linter", ["kn.cli_migrate", "kn.add_fact_store"])]),
+    ("cli-imports-ids-adapter", "knowledge", "import ids",
+     [("tach", ["knowledge", "ids"]), ("import-linter", ["kn.knowledge", "kn.ids"])]),
+    ("cli-imports-clock", "cli_facts_batch", "import clock",
+     [("tach", ["cli_facts_batch", "clock"]), ("import-linter", ["kn.cli_facts_batch", "kn.clock"])]),
+    ("inbox-imports-os", "inbox", "import os",
+     [("import-linter", ["kn.inbox", "os"])]),
+    ("serving-imports-fact-queries", "inbox", "import fact_queries",
+     [("tach", ["inbox", "fact_queries"]), ("import-linter", ["only through modes", "kn.fact_queries"])]),
+    ("subprocess-in-the-cli-app", "knowledge", "import subprocess",
+     [("import-linter", ["import subprocess", "kn.knowledge", "subprocess"])]),
+    ("rules-edit-service-imports-adapter", "rules_edit_service", "import privacy_store",
+     [("tach", ["rules_edit_service", "privacy_store"]), ("import-linter", ["never an adapter", "kn.rules_edit_service", "kn.privacy_store"])]),
+    ("script-runner-imports-upward", "script_runner", "import knowledge",
+     [("tach", ["script_runner", "knowledge"]), ("import-linter", ["kn.script_runner", "kn.knowledge"])]),
+    ("domain-artist-rules-imports-sqlite", "artist_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.artist_rules", "sqlite3"])]),
+    ("domain-fact-ingest-rules-imports-os", "fact_ingest_rules", "import os",
+     [("import-linter", ["kn.fact_ingest_rules", "os"])]),
+    ("domain-fact-ingest-rules-imports-add-fact", "fact_ingest_rules", "import add_fact",
+     [("tach", ["fact_ingest_rules", "add_fact"]), ("import-linter", ["kn.fact_ingest_rules", "kn.add_fact"])]),
+    ("domain-source-ingest-rules-imports-glob", "source_ingest_rules", "import glob",
+     [("import-linter", ["kn.source_ingest_rules", "glob"])]),
+    ("domain-music-ingest-rules-imports-pathlib", "music_ingest_rules", "from pathlib import Path",
+     [("import-linter", ["kn.music_ingest_rules", "pathlib"])]),
+    ("domain-measurement-rules-imports-sqlite", "measurement_rules", "import sqlite3",
+     [("import-linter", ["kn.measurement_rules", "sqlite3"])]),
+    ("domain-measurement-rules-imports-paths", "measurement_rules", "import paths",
+     [("tach", ["measurement_rules", "paths"]), ("import-linter", ["kn.measurement_rules", "kn.paths"])]),
+    ("domain-build-rules-imports-shutil", "build_rules", "import shutil",
+     [("import-linter", ["kn.build_rules", "shutil"])]),
+    ("domain-build-rules-imports-clock", "build_rules", "import clock",
+     [("tach", ["build_rules", "clock"]), ("import-linter", ["kn.build_rules", "kn.clock"])]),
+    ("domain-backfill-rules-imports-lock", "backfill_rules", "import add_fact_store",
+     [("tach", ["backfill_rules", "add_fact_store"]), ("import-linter", ["kn.backfill_rules", "kn.add_fact_store"])]),
+    ("domain-seed-rules-imports-subprocess", "seed_rules", "import subprocess",
+     [("import-linter", ["kn.seed_rules", "subprocess"])]),
+    ("ingest-script-imports-a-store", "07_ingest_concerts", "import revisions_store",
+     [("tach", ["07_ingest_concerts", "revisions_store"])]),
+    ("build-imports-a-use-case", "build", "import review_service",
+     [("tach", ["build", "review_service"])]),
+    ("adapter-imports-upward", "privacy_store", "import add_fact",
+     [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
+    ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
+     [("tach", ["inbox", "privacy_store"]), ("import-linter", ["only through modes", "kn.privacy_store"])]),
 ]
 
 
@@ -350,11 +521,70 @@ def test_exception_lists_are_exactly_the_documented_ones():
     ignores = {cid: c.get("ignore_imports", []) for cid, c in contracts.items() if c.get("ignore_imports")}
     assert ignores == {
         "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
-        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess"],
+        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.script_runner -> subprocess"],
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
+    assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
+    assert "ignore_imports" not in contracts["use-cases-depend-on-ports"]
     assert "ignore_imports" not in contracts["serving-reads-facts-through-modes"]
     assert "ignore_imports" not in contracts["serving-never-imports-pipeline"]
+
+
+def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
+    """Hexagonal architecture: the domain list may grow but never shrink or gain an exception.
+    Each domain module must also parse to stdlib-only imports with no open()/print-to-disk calls,
+    which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
+    import ast
+    domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
+    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules",
+               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules", "ports",
+               "artist_rules", "fact_ingest_rules", "source_ingest_rules", "music_ingest_rules", "seed_rules",
+               "measurement_rules", "build_rules", "backfill_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    for name in sorted(domain):
+        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                assert node.func.id not in {"open", "__import__", "exec", "eval"}, f"{name}.py:{node.lineno} calls {node.func.id}()"
+                assert node.func.id != "print", f"{name}.py:{node.lineno}: the domain does not print"
+            if isinstance(node, ast.Attribute) and node.attr in {"import_module"}:
+                raise AssertionError(f"{name}.py:{node.lineno}: dynamic import in the domain")
+
+
+def test_use_case_list_is_pinned_and_matches_the_ports_test():
+    """The *_service modules are the use cases; each must be under the use-cases-depend-on-ports contract."""
+    contracts = _il_contracts(_read(PYPROJECT))
+    listed = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
+    on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
+    assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
+    assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
+                      "migrate_memory_service", "rules_edit_service"}
+
+
+def _architecture_roles():
+    roles = {}
+    for line in _read(os.path.join(REPO, "docs", "architecture.md")).splitlines():
+        m = re.match(r"^\| `([A-Za-z0-9_]+)` \| ([^|]+?) \|", line)
+        if m:
+            assert m.group(1) not in roles, f"{m.group(1)} is listed twice in docs/architecture.md"
+            roles[m.group(1)] = m.group(2)
+    return roles
+
+
+def test_architecture_map_classifies_every_module_and_matches_the_contracts():
+    """docs/architecture.md says what each module is; it must not drift from the code or the contracts."""
+    roles = _architecture_roles()
+    on_disk = {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")}
+    assert set(roles) == on_disk, f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk)}"
+    contracts = _il_contracts(_read(PYPROJECT))
+    domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
+    services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
+    assert {n for n, r in roles.items() if r == "domain"} == domain
+    assert {n for n, r in roles.items() if r == "use case"} == services
+    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory"}
+    driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
+    assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
+    allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}
+    assert {r for r in roles.values() if not r.startswith("facade")} <= allowed
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
@@ -420,8 +650,7 @@ def test_shadow_rewrites_lazy_and_aliased_imports(tmp_path):
 def test_unused_allowlist_entry_is_reported_by_tach(tree):
     """`exact = true`: a depends_on entry that is not imported any more fails, so the allowlists
     (including the `paths` one) cannot silently stay wider than the code."""
-    (tree / "knowledge.py").write_text(
-        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["knowledge"]["depends_on"] if d != "paths")
-        + "import subprocess\n")
+    (tree / "add_fact.py").write_text(
+        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["add_fact"]["depends_on"] if d != "paths"))
     rc, out = _check(tree, "tach")
     assert rc != 0 and "paths" in out, out

@@ -7,34 +7,28 @@ the implicit revision 1 (its original state). Every later change appends one lin
 (`12_apply_fact_revisions.py`) validates the log, fills the `fact_revisions` table and writes
 each fact's latest revision into the `facts` row.
 
-Library API (the Typer `history` / `show --as-of` commands are thin callers):
-    append_revision(source_key, changes, reason, via, session_id=None)  -> RevisionResult
-    get_history(db, fact_id | source_key)                               -> [revision dict, ...]
-    get_fact_as_of(db, fact_id | source_key, "YYYY-MM-DD")              -> revision dict | None
+This module is the DOMAIN: the rules for entries, keys, freshness, the log format and the next
+revision, as pure functions over plain data (import-linter contract "domain-has-no-infrastructure").
+Everything that touches the world lives in the adapter `revisions_store` (the entry files, the log
+file and its lock, the clock, the db):
+    revisions_store.append_revision(source_key, changes, reason, via, session_id=None)  -> RevisionResult
+    revisions_store.get_history(db, fact_id | source_key)                               -> [revision dict, ...]
+    revisions_store.get_fact_as_of(db, fact_id | source_key, "YYYY-MM-DD")              -> revision dict | None
 
 `source_key` is the stable identity of a fact. New facts get one from add_fact.py. Entries
 that predate it get a deterministic one derived from their content (`derive_keys`), the
 same value `backfill_source_keys.py` later writes into the file, so building before or
 after the backfill gives identical keys.
 
-Nothing here reads paths.py at import time (defaults resolve lazily), so tests can point
-every function at a temp directory.
+Nothing here reads a file, the clock or paths.py; the adapter passes everything in.
 """
-import contextlib
 import hashlib
 import json
-import os
-import re
-import sqlite3
-import stat
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-import clock
-from add_fact import (FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
-                      VIA_RE, _file_lock, _lock_path)
+from fact_rules import FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
+from timestamps import has_offset, parse_as_of, parse_timestamp  # noqa: F401  (re-exported: callers use revisions.parse_timestamp)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
@@ -65,17 +59,6 @@ class RevisionError(Exception):
     """The entry files or the revision log are not in a state we can safely use."""
 
 
-# --------------------------------------------------------------------------- paths
-
-def default_data_dir():
-    from paths import PRIVATE_DATA_DIR
-    return PRIVATE_DATA_DIR
-
-
-def default_revisions_path():
-    return os.path.join(default_data_dir(), REVISIONS_FILENAME)
-
-
 # --------------------------------------------------------------------------- keys
 
 def derive_keys(entries, filename):
@@ -104,37 +87,6 @@ def derive_keys(entries, filename):
 
 
 # --------------------------------------------------------------------------- entries
-
-def _read_array(path):
-    try:
-        with open(path) as f:
-            items = json.load(f)
-    except json.JSONDecodeError as e:
-        raise RevisionError(f"{path} is not valid JSON ({e})") from e
-    if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
-        raise RevisionError(f"{path} must be a JSON array of objects")
-    return items
-
-
-def load_entries(data_dir=None):
-    """Every fact entry in the data files, in file order, as dicts
-    {file, index, key, entry, legacy_date}. Missing files are skipped. A duplicate key fails."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
-    out, seen = [], {}
-    for name, legacy_date in ENTRY_FILES:
-        path = os.path.join(data_dir, name)
-        if not os.path.exists(path):
-            continue
-        items = _read_array(path)
-        for i, (item, key) in enumerate(zip(items, derive_keys(items, name))):
-            if not isinstance(key, str) or not SOURCE_KEY_RE.match(key):
-                raise RevisionError(f"{name}[{i}]: source_key {key!r} must match {SOURCE_KEY_RE.pattern}")
-            if key in seen:
-                raise RevisionError(f"duplicate source_key {key!r} in {name}[{i}] and {seen[key]}")
-            seen[key] = f"{name}[{i}]"
-            out.append({"file": name, "index": i, "key": key, "entry": item, "legacy_date": legacy_date})
-    return out
-
 
 def _present(value):
     return isinstance(value, str) and bool(value.strip())
@@ -209,35 +161,6 @@ def implicit_revision(key, entry, legacy_date, file=None):
     return {k: rev[k] for k in REVISION_KEYS}
 
 
-INSERT_REVISION_SQL = (
-    "INSERT INTO fact_revisions (fact_id, " + ", ".join(REVISION_KEYS) + ") VALUES (?, "
-    + ", ".join("?" for _ in REVISION_KEYS) + ")"
-)
-
-
-def insert_revision_row(cur, fact_id, rev):
-    cur.execute(INSERT_REVISION_SQL, (fact_id, *[rev[k] for k in REVISION_KEYS]))
-
-
-# --------------------------------------------------------------------------- time
-
-def parse_timestamp(value):
-    """ISO date or timestamp -> aware UTC datetime. A bare date is midnight UTC."""
-    if not isinstance(value, str):
-        raise ValueError(f"{value!r} is not a string")
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _has_offset(value):
-    try:
-        return isinstance(value, str) and datetime.fromisoformat(value).utcoffset() is not None
-    except ValueError:
-        return False
-
-
 # --------------------------------------------------------------------------- log format
 
 def validate_record_shape(rec):
@@ -257,7 +180,7 @@ def validate_record_shape(rec):
         errs.append(f"source_key {rec['source_key']!r} is not a valid key")
     if type(rec["revision"]) is not int or rec["revision"] < 2:
         errs.append(f"revision {rec['revision']!r} must be an integer >= 2 (revision 1 is the original entry)")
-    if not _has_offset(rec["changed_at"]):
+    if not has_offset(rec["changed_at"]):
         errs.append(f"changed_at {rec['changed_at']!r} must be an ISO-8601 timestamp with a UTC offset")
     if not isinstance(rec["changed_via"], str) or not VIA_RE.match(rec["changed_via"]):
         errs.append(f"changed_via {rec['changed_via']!r} must be a lowercase kebab-case token")
@@ -284,27 +207,6 @@ def validate_record_shape(rec):
     if problem:
         errs.append(problem + " (a revision is a full snapshot; the facts table would reject this combination)")
     return errs
-
-
-def read_log(path):
-    """Parse the log: [(line_number, record)]. Blank lines are skipped. A line that is not a
-    valid record raises RevisionError naming `path:line`. Missing file == empty log."""
-    if not os.path.exists(path):
-        return []
-    out = []
-    with open(path, encoding="utf-8") as f:
-        for n, line in enumerate(f, start=1):
-            if not line.strip():
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError as e:
-                raise RevisionError(f"{path}:{n}: not valid JSON ({e})") from e
-            errs = validate_record_shape(rec)
-            if errs:
-                raise RevisionError(f"{path}:{n}: " + "; ".join(errs))
-            out.append((n, rec))
-    return out
 
 
 def validate_sequence(path, records, first_revisions, known_keys, first_freshness=None):
@@ -350,47 +252,62 @@ class RevisionResult:
     revision: Optional[dict] = None
 
 
-def _atomic_write_text(path, text):
-    """Write `text` to `path` via a temp file + os.replace (a crash leaves the old or the new
-    file, never half). Keeps the file's mode; a new file gets the umask default."""
-    # mode 0o666 at creation: the kernel applies the umask (os.umask(0) would change it process-wide)
-    tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        if os.path.exists(path):
-            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+# --------------------------------------------------------------------------- entries from files
+
+def collect_entries(files):
+    """Every fact entry, in file order, as dicts {file, index, key, entry, legacy_date}.
+    `files` is [(name, legacy_date, items)] for the files that exist (items = the parsed JSON array).
+    A duplicate or malformed key fails."""
+    out, seen = [], {}
+    for name, legacy_date, items in files:
+        for i, (item, key) in enumerate(zip(items, derive_keys(items, name))):
+            if not isinstance(key, str) or not SOURCE_KEY_RE.match(key):
+                raise RevisionError(f"{name}[{i}]: source_key {key!r} must match {SOURCE_KEY_RE.pattern}")
+            if key in seen:
+                raise RevisionError(f"duplicate source_key {key!r} in {name}[{i}] and {seen[key]}")
+            seen[key] = f"{name}[{i}]"
+            out.append({"file": name, "index": i, "key": key, "entry": item, "legacy_date": legacy_date})
+    return out
 
 
-def _log_line(rev):
+def check_array(items, path):
+    """`items` (a parsed entry file) if it is a JSON array of objects, else RevisionError."""
+    if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+        raise RevisionError(f"{path} must be a JSON array of objects")
+    return items
+
+
+# --------------------------------------------------------------------------- log text
+
+def parse_log(lines, path):
+    """Parse the log: [(line_number, record)] from an iterable of text lines. Blank lines are
+    skipped. A line that is not a valid record raises RevisionError naming `path:line`."""
+    out = []
+    for n, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise RevisionError(f"{path}:{n}: not valid JSON ({e})") from e
+        errs = validate_record_shape(rec)
+        if errs:
+            raise RevisionError(f"{path}:{n}: " + "; ".join(errs))
+        out.append((n, rec))
+    return out
+
+
+def log_line(rev):
     return json.dumps({k: rev[k] for k in REVISION_KEYS}, ensure_ascii=False)
 
 
-def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
-    """Append one revision to a fact: locked, validated, atomic. Never raises for bad input and
-    never touches the original entry files; returns RevisionResult(ok, errors, revision).
+# --------------------------------------------------------------------------- next revision
 
-    `changes` maps mutable field names to new values; unchanged fields are carried over from
-    the fact's current state, so the stored line is always a full snapshot. A call that
-    changes nothing is refused (it would only add noise to the history).
-
-    `expect` (optional dict of mutable field -> value) is a precondition checked under the same
-    lock as the write: if the fact's current state differs, nothing is written and the result is
-    not ok with error "precondition failed: ...". review.approve uses it so a fact that was
-    retracted by another process between the check and the write is never silently re-activated."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
-    revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
+def check_request(changes, reason, via, session_id, expect):
+    """Problems with the arguments of an append, before anything is read (a list, empty when fine)."""
     errors = []
     if not isinstance(changes, dict) or not changes:
-        return RevisionResult(False, ["changes must be a non-empty dict of mutable fields"])
+        return ["changes must be a non-empty dict of mutable fields"]
     unknown = [k for k in changes if k not in MUTABLE_FIELDS]
     if unknown:
         errors.append(f"cannot change {unknown}; mutable fields are {list(MUTABLE_FIELDS)}")
@@ -402,145 +319,57 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
         errors.append("session_id must be None or a non-empty string")
     if expect is not None and (not isinstance(expect, dict) or any(k not in MUTABLE_FIELDS for k in expect)):
         errors.append(f"expect must be a dict over the mutable fields {list(MUTABLE_FIELDS)}")
-    if errors:
-        return RevisionResult(False, errors)
-    try:
-        with _file_lock(_lock_path(revisions_path)):
-            entries = load_entries(data_dir)
-            by_key = {e["key"]: e for e in entries}
-            if source_key not in by_key:
-                return RevisionResult(False, [f"unknown source_key {source_key!r}"])
-            records = read_log(revisions_path)
-            first = {e["key"]: e["entry"].get("date_added") or e["legacy_date"] for e in entries}
-            validate_sequence(revisions_path, records, first, set(by_key),
-                              {e["key"]: implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])["freshness"]
-                               for e in entries})
-            mine = [r for _, r in records if r["source_key"] == source_key]
-            current = mine[-1] if mine else implicit_revision(source_key, by_key[source_key]["entry"],
-                                                                by_key[source_key]["legacy_date"], by_key[source_key]["file"])
-            if expect:
-                wrong = {k: current[k] for k, v in expect.items() if current[k] != v}
-                if wrong:
-                    return RevisionResult(False, [f"precondition failed: current {wrong}, expected "
-                                                  f"{ {k: expect[k] for k in wrong} }"])
-            snapshot = {f: current[f] for f in MUTABLE_FIELDS}
-            snapshot.update(changes)
-            if isinstance(snapshot["statement"], str):
-                snapshot["statement"] = snapshot["statement"].strip()
-            if all(snapshot[f] == current[f] for f in MUTABLE_FIELDS):
-                return RevisionResult(False, ["no field would change"])
-            rev = {"source_key": source_key, "revision": current["revision"] + 1, "changed_at": clock.now_iso(),
-                   "changed_via": via, "session_id": session_id, "change_reason": reason.strip(), **snapshot}
-            rev = {k: rev[k] for k in REVISION_KEYS}
-            errs = validate_record_shape(rev)
-            if rev["freshness"] == UNREVIEWED and current["freshness"] != UNREVIEWED:
-                errs.append("freshness 'unreviewed' cannot be chosen by a revision; choose recheck or no-decay")
-            if not errs and rev["superseded_by"] is not None and rev["superseded_by"] not in by_key:
-                errs.append(f"superseded_by {rev['superseded_by']!r} is not an existing source_key")
-            if not errs and parse_timestamp(rev["changed_at"]) < parse_timestamp(current["changed_at"]):
-                errs.append(f"clock went backwards: now {rev['changed_at']} is before the previous revision "
-                            f"({current['changed_at']}); refusing to write a line the build would reject")
-            if errs:
-                return RevisionResult(False, errs)
-            existing = ""
-            if os.path.exists(revisions_path):
-                with open(revisions_path, encoding="utf-8", newline="") as f:
-                    existing = f.read()
-            if existing and not existing.endswith("\n"):
-                existing += "\n"
-            _atomic_write_text(revisions_path, existing + _log_line(rev) + "\n")
-    except RevisionError as e:
-        return RevisionResult(False, [str(e)])
-    except OSError as e:
-        return RevisionResult(False, [f"could not write {revisions_path}: {e}"])
+    return errors
+
+
+def plan_revision(source_key, changes, reason, via, session_id, expect, entries, records, now_iso, revisions_path):
+    """The next revision of `source_key` given the loaded `entries` (collect_entries) and log
+    `records` (parse_log), or the reasons it cannot be written. Pure: the caller holds the lock,
+    supplies the time and writes the line. Returns RevisionResult; may raise RevisionError when the
+    existing log is inconsistent."""
+    by_key = {e["key"]: e for e in entries}
+    if source_key not in by_key:
+        return RevisionResult(False, [f"unknown source_key {source_key!r}"])
+    first = {e["key"]: e["entry"].get("date_added") or e["legacy_date"] for e in entries}
+    validate_sequence(revisions_path, records, first, set(by_key),
+                      {e["key"]: implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])["freshness"]
+                       for e in entries})
+    mine = [r for _, r in records if r["source_key"] == source_key]
+    current = mine[-1] if mine else implicit_revision(source_key, by_key[source_key]["entry"],
+                                                        by_key[source_key]["legacy_date"], by_key[source_key]["file"])
+    if expect:
+        wrong = {k: current[k] for k, v in expect.items() if current[k] != v}
+        if wrong:
+            return RevisionResult(False, [f"precondition failed: current {wrong}, expected "
+                                          f"{ {k: expect[k] for k in wrong} }"])
+    snapshot = {f: current[f] for f in MUTABLE_FIELDS}
+    snapshot.update(changes)
+    if isinstance(snapshot["statement"], str):
+        snapshot["statement"] = snapshot["statement"].strip()
+    if all(snapshot[f] == current[f] for f in MUTABLE_FIELDS):
+        return RevisionResult(False, ["no field would change"])
+    rev = {"source_key": source_key, "revision": current["revision"] + 1, "changed_at": now_iso,
+           "changed_via": via, "session_id": session_id, "change_reason": reason.strip(), **snapshot}
+    rev = {k: rev[k] for k in REVISION_KEYS}
+    errs = validate_record_shape(rev)
+    if rev["freshness"] == UNREVIEWED and current["freshness"] != UNREVIEWED:
+        errs.append("freshness 'unreviewed' cannot be chosen by a revision; choose recheck or no-decay")
+    if not errs and rev["superseded_by"] is not None and rev["superseded_by"] not in by_key:
+        errs.append(f"superseded_by {rev['superseded_by']!r} is not an existing source_key")
+    if not errs and parse_timestamp(rev["changed_at"]) < parse_timestamp(current["changed_at"]):
+        errs.append(f"clock went backwards: now {rev['changed_at']} is before the previous revision "
+                    f"({current['changed_at']}); refusing to write a line the build would reject")
+    if errs:
+        return RevisionResult(False, errs)
     return RevisionResult(True, revision=rev)
 
 
-# --------------------------------------------------------------------------- build step
-
-def apply_revisions(con, revisions_path):
-    """Used by 12_apply_fact_revisions.py. Validates the log against the facts and revision-1
-    rows already in `con`, inserts revisions >= 2 and writes each touched fact's latest
-    revision into `facts`. Raises RevisionError (naming path:line) on any violation.
-    Returns the number of revisions applied."""
-    cur = con.cursor()
-    fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
-    first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
-    first_fresh = {k: v for k, v in cur.execute("SELECT source_key, freshness FROM fact_revisions WHERE revision = 1")}
-    records = read_log(revisions_path)
-    validate_sequence(revisions_path, records, first, set(fact_ids), first_fresh)
-    latest = {}
-    for _, rec in records:
-        insert_revision_row(cur, fact_ids[rec["source_key"]], rec)
-        latest[rec["source_key"]] = rec
-    for key, rec in latest.items():
-        sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
-        cur.execute(
-            """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
-                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, freshness = ?, notes = ?
-               WHERE id = ?""",
-            (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
-             rec["recheck_by"], rec["recheck_rationale"], rec["freshness"], rec["notes"], fact_ids[key]))
-    con.commit()
-    return len(records)
-
-
-# --------------------------------------------------------------------------- reads
-
-@contextlib.contextmanager
-def _connection(db):
-    if isinstance(db, (str, os.PathLike)):
-        con = sqlite3.connect(f"file:{os.fspath(db)}?mode=ro", uri=True)
-        con.row_factory = sqlite3.Row
-        try:
-            yield con
-        finally:
-            con.close()
-    else:
-        yield db
-
-
-def _revision_rows(con, ref):
-    if isinstance(ref, bool) or not isinstance(ref, (int, str)):
-        raise TypeError("ref must be a fact id (int) or a source_key (str)")
-    column = "f.id" if isinstance(ref, int) else "f.source_key"
-    cur = con.execute(
-        f"""SELECT f.id AS fact_id, sub.name AS subject, r.*
-            FROM fact_revisions r JOIN facts f ON f.id = r.fact_id JOIN subjects sub ON sub.id = f.subject_id
-            WHERE {column} = ? ORDER BY r.revision""", (ref,))
-    names = [d[0] for d in cur.description]
-    rows = [dict(zip(names, r)) for r in cur.fetchall()]
-    for r in rows:
-        r.pop("id", None)
-    return rows
-
-
-def get_history(db, ref):
-    """Every revision of a fact in order (revision 1 = the original entry), each a dict with
-    fact_id, subject, source_key, revision, changed_at, changed_via, session_id, change_reason
-    and the mutable fields. `db` is a sqlite connection (or a path, opened read-only);
-    `ref` is a fact id (int) or a source_key (str). Unknown fact -> []."""
-    with _connection(db) as con:
-        return _revision_rows(con, ref)
-
-
-def parse_as_of(value):
-    """'YYYY-MM-DD' means the end of that day (UTC); a full timestamp is taken as is."""
-    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        return parse_timestamp(value) + timedelta(days=1) - timedelta(microseconds=1)
-    try:
-        return parse_timestamp(value)
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"as-of {value!r} must be YYYY-MM-DD or an ISO-8601 timestamp") from e
-
-
-def get_fact_as_of(db, ref, as_of):
-    """The fact as it stood at `as_of`: the latest revision whose changed_at is <= that moment,
-    or None if the fact did not exist yet (or does not exist). Raises ValueError on a bad date."""
+def revision_as_of(rows, as_of):
+    """The latest of `rows` (revisions of one fact) whose changed_at is <= `as_of`, or None if the
+    fact did not exist yet. Raises ValueError on a bad date."""
     cutoff = parse_as_of(as_of)
-    with _connection(db) as con:
-        chosen = None
-        for r in _revision_rows(con, ref):
-            if parse_timestamp(r["changed_at"]) <= cutoff:
-                chosen = r
-        return chosen
+    chosen = None
+    for r in rows:
+        if parse_timestamp(r["changed_at"]) <= cutoff:
+            chosen = r
+    return chosen

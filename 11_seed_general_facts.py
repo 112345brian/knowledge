@@ -13,13 +13,11 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
-from _shared import require_date_added
+import fact_ingest_rules
 import privacy
+import privacy_store
 import revisions
-
-VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
-VALID_VISIBILITY = {"private", "normal"}  # keep in sync with the CHECK on facts.visibility
-
+import revisions_store
 
 def get_or_create_subject(cur, name, domain, cache):
     if name in cache:
@@ -36,7 +34,7 @@ def get_or_create_subject(cur, name, domain, cache):
 
 def run(con):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -47,26 +45,14 @@ def run(con):
     derived = 0
 
     for index, (item, key) in enumerate(zip(items, revisions.derive_keys(items, "general_facts.json"))):
-        subj = (item.get("subject") or "").strip()
-        stmt = (item.get("statement") or "").strip()
-        trust = (item.get("trust_level") or "").strip()
-        if not subj or not stmt or trust not in VALID_TRUST:
+        try:
+            subj, stmt, trust, visibility, status = fact_ingest_rules.screen_item(item)
+        except fact_ingest_rules.Skip as skip:
+            if skip.warning:
+                print(skip.warning)
             skipped += 1
             continue
-        visibility = item.get("visibility")
-        if visibility is None:
-            visibility = "private"  # unmarked facts are private; never derived from is_personal
-        if not isinstance(visibility, str) or visibility not in VALID_VISIBILITY:
-            print(f"  WARNING -- skipping fact with invalid visibility {visibility!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        status = item.get("status") or "active"
-        if status not in revisions.VALID_STATUS:
-            print(f"  WARNING -- skipping fact with invalid status {status!r}: {stmt[:60]!r}")
-            skipped += 1
-            continue
-        if not revisions.SOURCE_KEY_RE.match(key):
-            raise ValueError(f"invalid source_key {key!r} on fact {stmt[:60]!r}")
+        fact_ingest_rules.check_source_key(key, stmt)
         if cur.execute("SELECT 1 FROM facts WHERE source_key = ?", (key,)).fetchone():
             raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
         derived += 0 if item.get("source_key") else 1
@@ -75,7 +61,7 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
-        date_added = require_date_added(item, "general_facts.json", index)
+        date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)
         # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")
         cur.execute(
@@ -90,7 +76,7 @@ def run(con):
              status, key, eff["freshness"])
         )
         fact_id = cur.lastrowid
-        revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
+        revisions_store.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -107,7 +93,7 @@ def run(con):
 
     # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
     # This is the last build step, so subjects' parent_id (step 06) is set and tags inherit.
-    applied = privacy.apply_rules_to_db(con, rules)
+    applied = privacy_store.apply_rules_to_db(con, rules)
     con.commit()
     if applied["raised"]:
         print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")

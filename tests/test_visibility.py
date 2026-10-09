@@ -82,9 +82,11 @@ def test_valid_values_agree_across_schema_ingest_and_add_fact(ingest):
     schema = open(os.path.join(REPO, "schema.sql")).read()
     m = re.search(r"visibility\s+TEXT NOT NULL[^,]*?CHECK \(visibility IN \(([^)]*)\)\)", schema)
     in_schema = {v.strip().strip("'") for v in m.group(1).split(",")}
-    import add_fact
+    import add_fact, fact_ingest_rules, fact_rules
     assert in_schema == {"private", "normal"}
-    assert in_schema == set(ingest.mod04.VALID_VISIBILITY) == set(ingest.mod11.VALID_VISIBILITY) == set(add_fact.VALID_VISIBILITY)
+    # one definition now: the ingest rules (steps 04 and 11) and add_fact both take it from fact_rules
+    assert in_schema == set(fact_rules.VALID_VISIBILITY) == set(add_fact.VALID_VISIBILITY)
+    assert set(fact_ingest_rules.VALID_VISIBILITY) == set(fact_rules.VALID_VISIBILITY)
 
 
 # ---------------------------------------------------------------- add_fact

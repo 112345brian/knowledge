@@ -11,6 +11,7 @@ through unchanged.
 """
 import csv, os
 
+import music_ingest_rules
 from paths import CONCERTS_CSV
 
 CSV_PATH = os.path.expanduser(CONCERTS_CSV)
@@ -20,38 +21,12 @@ def clean():
     with open(CSV_PATH, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
 
-    cleaned = []
-    for r in rows:
-        c = {k: v.strip() for k, v in r.items()}
-        # "NO VALUES" is the actual name of a real punk festival (Goldenvoice's
-        # "No Values"), not a placeholder -- just normalize the casing.
-        if c["Concert"] == "NO VALUES Festival":
-            c["Concert"] = "No Values"
-        if c["Location"] == "NO VALUES":
-            c["Location"] = "No Values"
-        cleaned.append(c)
+    merged = music_ingest_rules.clean_concert_rows(rows)
 
-    # merge near-duplicates: same (name, start_date), one location a prefix of the other
-    merged = []
-    for r in cleaned:
-        match = next((m for m in merged
-                      if m["Concert"] == r["Concert"] and m["Start Date"] == r["Start Date"]
-                      and (m["Location"].startswith(r["Location"]) or r["Location"].startswith(m["Location"]))),
-                     None)
-        if match:
-            if len(r["Location"]) > len(match["Location"]):
-                match["Location"] = r["Location"]
-            if not match["Notes"] and r["Notes"]:
-                match["Notes"] = r["Notes"]
-            if not match["End Date"] and r["End Date"]:
-                match["End Date"] = r["End Date"]
-        else:
-            merged.append(dict(r))
-
-    removed = len(cleaned) - len(merged)
+    removed = len(rows) - len(merged)
 
     with open(CSV_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["Concert", "Start Date", "End Date", "Location", "Notes"])
+        writer = csv.DictWriter(f, fieldnames=music_ingest_rules.CONCERT_COLUMNS)
         writer.writeheader()
         writer.writerows(merged)
 

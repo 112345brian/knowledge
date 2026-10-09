@@ -45,10 +45,14 @@ def write_rules(world, tags=None, keywords=(NAME.lower(),)):
 
 @pytest.fixture
 def mods(world):
-    for m in ("privacy", "review", "lifecycle", "normal_db"):
+    names = ("privacy", "privacy_store", "review", "review_service", "review_store", "review_rules", "lifecycle", "lifecycle_service", "lifecycle_rules", "lifecycle_store", "normal_db")
+    saved = {m: sys.modules.pop(m) for m in names if m in sys.modules}
+    import privacy, privacy_store, review, lifecycle, normal_db
+    yield types.SimpleNamespace(privacy=privacy, privacy_store=privacy_store, review=review, lifecycle=lifecycle, normal_db=normal_db)
+    # put the originals back: other tests in this worker hold them (e.g. PrivacyRulesError identity)
+    for m in names:
         sys.modules.pop(m, None)
-    import privacy, review, lifecycle, normal_db
-    return types.SimpleNamespace(privacy=privacy, review=review, lifecycle=lifecycle, normal_db=normal_db)
+    sys.modules.update(saved)
 
 
 def full_db_file(world, tmp_path):
@@ -155,8 +159,8 @@ def test_rebuild_checks_citation_text_too(world):
     con.execute("INSERT INTO sources (id, name, source_type) VALUES (1, 'A paper', 'primary')")
     con.execute("INSERT INTO fact_sources (fact_id, source_id, locator, quote) VALUES (1, 1, 'p. 3', ?)",
                 (f"{NAME} wrote this",))
-    import privacy
-    applied = privacy.apply_rules_to_db(con, privacy.load_rules(os.path.join(world.env.data_dir, "privacy_rules.json")))
+    import privacy_store
+    applied = privacy_store.apply_rules_to_db(con, privacy_store.load_rules(os.path.join(world.env.data_dir, "privacy_rules.json")))
     assert [fid for fid, _ in applied["raised"]] == [1]
     assert con.execute("SELECT visibility FROM facts").fetchone()[0] == "private"
 
@@ -243,7 +247,7 @@ def test_atomic_writers_never_touch_the_process_umask_and_new_files_follow_it(wo
     assert world.append(key, {"trust_level": "high"}, "checked").ok  # real clock: add_fact stamped today's date
     # privacy rules: save_rules creates privacy_rules.json
     rules_path = str(tmp_path / "privacy_rules.json")
-    mods.privacy.save_rules(mods.privacy.Rules(keywords=(NAME.lower(),)), rules_path)
+    mods.privacy_store.save_rules(mods.privacy.Rules(keywords=(NAME.lower(),)), rules_path)
     for p in (facts_path, world.log, rules_path):
         assert os.stat(p).st_mode & 0o777 == expected, (p, oct(os.stat(p).st_mode))
     # and no temp litter

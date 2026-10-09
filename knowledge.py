@@ -31,26 +31,24 @@ remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
 import enum
 import json
-import os
-import pathlib
-import sqlite3
-import subprocess
 import sys
 from typing import List, Optional
 
 import typer
 
-import add_fact
-import claims_audit
+import claims_store
+import fact_queries
 import private_git
 import privacy
+import privacy_store
 import review
 import revisions
-from paths import KNOWLEDGE_DB_DIR
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-
+import revisions_store
+import rules_edit_service
+import script_runner
+from fact_queries import (DB_PATH, DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
+                          fact_as_of, get_fact, list_facts, list_subjects, search_facts)
+from ports import Ports
 
 class Trust(str, enum.Enum):
     verified = "verified"
@@ -66,122 +64,6 @@ class Status(str, enum.Enum):
     active = "active"
     superseded = "superseded"
     retracted = "retracted"
-
-
-class DatabaseNotFound(FileNotFoundError):
-    """knowledge.db doesn't exist yet (it is built, never hand-created)."""
-
-
-def connect(db_path=None):
-    """Open the knowledge db READ-ONLY. Raises DatabaseNotFound if it is missing.
-
-    Everything in this module only reads; writes go through build.py, which
-    makes its own connection."""
-    path = os.path.abspath(db_path or DB_PATH)
-    if not os.path.exists(path):
-        raise DatabaseNotFound(f"{path} doesn't exist -- run `python3 knowledge.py build` first")
-    con = sqlite3.connect(pathlib.Path(path).as_uri() + "?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
-    return con
-
-
-# ---- query functions: take a connection, return plain dicts, never print or exit ----
-
-def _visible_statuses(include_pending):
-    """Statuses shown when the caller names none: active only (#6), plus pending on request.
-    Superseded and retracted facts need an explicit status filter. Same rule as modes.py."""
-    return ("active", "pending") if include_pending else ("active",)
-
-
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False):
-    """Append the shared fact filters. `personal` is True / False / None (no filter).
-    An explicit `status` wins and `include_pending` is then ignored; without one only
-    active facts (and pending ones when `include_pending`) match."""
-    if subject:
-        sql += " AND sub.name = ?"
-        params.append(subject)
-    if trust:
-        sql += " AND f.trust_level = ?"
-        params.append(trust)
-    if status:
-        sql += " AND f.status = ?"
-        params.append(status)
-    else:
-        statuses = _visible_statuses(include_pending)
-        sql += f" AND f.status IN ({','.join('?' for _ in statuses)})"
-        params.extend(statuses)
-    if personal is True:
-        sql += " AND f.is_personal = 1"
-    elif personal is False:
-        sql += " AND f.is_personal = 0"
-    return sql
-
-
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False):
-    """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
-    sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
-        FROM facts_fts
-        JOIN facts f ON f.id = facts_fts.rowid
-        JOIN subjects sub ON sub.id = f.subject_id
-        WHERE facts_fts MATCH ?
-    """
-    params = [terms]
-    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
-    sql += " ORDER BY rank LIMIT ?"
-    params.append(limit)
-    return [dict(r) for r in con.execute(sql, params).fetchall()]
-
-
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False):
-    """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
-             FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
-    params = []
-    sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
-    sql += " ORDER BY f.id LIMIT ?"
-    params.append(limit)
-    return [dict(r) for r in con.execute(sql, params).fetchall()]
-
-
-def get_fact(con, fact_id):
-    """One fact (all columns, plus subject and origin_path) with a `sources` list of
-    {name, locator} dicts; None if there is no such fact. Deliberately NOT status-filtered
-    (#6): asking for an id by name shows it whatever its status, pending included."""
-    f = con.execute(
-        """SELECT f.*, sub.name AS subject, vf.path AS origin_path
-           FROM facts f
-           JOIN subjects sub ON sub.id = f.subject_id
-           LEFT JOIN vault_files vf ON vf.id = f.origin_file_id
-           WHERE f.id = ?""",
-        (fact_id,),
-    ).fetchone()
-    if not f:
-        return None
-    out = dict(f)
-    out["sources"] = [dict(s) for s in con.execute(
-        """SELECT s.name, fs.locator
-           FROM fact_sources fs JOIN sources s ON s.id = fs.source_id
-           WHERE fs.fact_id = ?""",
-        (f["id"],),
-    ).fetchall()]
-    return out
-
-
-def list_subjects(con, include_pending=False):
-    """Every subject with `n_facts` = its active facts (plus pending ones when `include_pending`).
-    Subjects with no counted facts are still listed, with 0."""
-    statuses = _visible_statuses(include_pending)
-    return [dict(r) for r in con.execute(
-        f"""SELECT s.name, s.domain, p.name AS parent, COUNT(f.id) AS n_facts
-            FROM subjects s
-            LEFT JOIN subjects p ON p.id = s.parent_id
-            LEFT JOIN facts f ON f.subject_id = s.id AND f.status IN ({','.join('?' for _ in statuses)})
-            GROUP BY s.id
-            ORDER BY s.domain, COALESCE(p.name, s.name), s.name""",
-        statuses).fetchall()]
 
 
 # ---- thin CLI printers (Typer) ----
@@ -233,21 +115,18 @@ INCLUDE_PENDING_OPT = typer.Option(False, "--include-pending", help="Also show p
 
 @app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
 def cmd_build(check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
-    cmd = [sys.executable, os.path.join(HERE, "build.py")]
-    if check:
-        cmd.append("--check")
-    raise typer.Exit(subprocess.call(cmd))
+    raise typer.Exit(script_runner.run_script("build.py", ["--check"] if check else []))
 
 
 @app.command("add-fact", help="Append an ad hoc fact to data/general_facts.json. Every argument is forwarded to add_fact.py (see add_fact.py --help).",
              context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []})
 def cmd_add_fact(ctx: typer.Context):
-    raise typer.Exit(subprocess.call([sys.executable, os.path.join(HERE, "add_fact.py")] + list(ctx.args)))
+    raise typer.Exit(script_runner.run_script("add_fact.py", list(ctx.args)))
 
 
 @app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
 def cmd_clean_concerts():
-    raise typer.Exit(subprocess.call([sys.executable, os.path.join(HERE, "clean_concerts_csv.py")]))
+    raise typer.Exit(script_runner.run_script("clean_concerts_csv.py"))
 
 
 @app.command("search", help="Full-text search over facts (statement/trust_rationale/notes).")
@@ -267,20 +146,9 @@ def cmd_search(
         rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
                       include_pending=include_pending)
-    except sqlite3.OperationalError as e:
+    except QueryError as e:
         _fail(f"search failed: {e}")
     _emit_json(rows) if as_json else _print_fact_lines(rows)
-
-
-def fact_as_of(con, fact_id, as_of):
-    """('ok', revision) | ('no-fact', None) | ('no-history', None) | ('not-yet', None).
-    Raises ValueError for a bad `as_of` (from revisions.get_fact_as_of)."""
-    rev = revisions.get_fact_as_of(con, fact_id, as_of)
-    if rev is not None:
-        return "ok", rev
-    if get_fact(con, fact_id) is None:
-        return "no-fact", None
-    return ("not-yet", None) if revisions.get_history(con, fact_id) else ("no-history", None)
 
 
 def _print_revision_state(r):
@@ -361,7 +229,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
     if not ref:
         _fail("give a fact id or a source_key")
     key = int(ref) if ref.isascii() and ref.isdigit() else ref
-    rows = _query(revisions.get_history, key)
+    rows = _query(revisions_store.get_history, key)
     if not rows:
         _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
     if as_json:
@@ -390,10 +258,10 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
 @app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when any are found.")
 def cmd_audit_claims(as_json: bool = JSON_OPT):
     def run(con):
-        return claims_audit.audit_claims(con), claims_audit.unparseable_rechecks(con)
+        return claims_store.audit_claims(con), claims_store.unparseable_rechecks(con)
     try:
         rows, unparsed = _query(run)
-    except sqlite3.OperationalError as e:
+    except QueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json({"stale_premises": rows, "unparseable_rechecks": unparsed})
@@ -489,16 +357,11 @@ def _report_review(res, as_json):
         raise typer.Exit(code)
 
 
-def _review_db():
-    """The db path for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
-    return DB_PATH if os.path.exists(DB_PATH) else None
-
-
 @app.command("review-pending", help="List pending (unreviewed) facts, oldest first.")
 def cmd_review_pending(as_json: bool = JSON_OPT):
     try:
         rows = _query(review.list_pending)
-    except sqlite3.OperationalError as e:
+    except QueryError as e:
         _fail(f"review-pending failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json(rows)
@@ -529,7 +392,7 @@ def cmd_approve(
         raise typer.BadParameter("give REF... or --all, not both")
     if not all_ and not refs:
         raise typer.BadParameter("give at least one REF, or --all")
-    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=_review_db())
+    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=existing_db_path())
     _report_review(res, as_json)
 
 
@@ -541,7 +404,7 @@ def cmd_reject(
     allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
     as_json: bool = JSON_OPT,
 ):
-    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=_review_db())
+    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=existing_db_path())
     _report_review(res, as_json)
 
 
@@ -560,32 +423,19 @@ class Requested(str, enum.Enum):
 
 def _load_rules():
     try:
-        return privacy.load_rules(privacy.rules_path())
+        return privacy_store.load_rules(privacy_store.rules_path())
     except privacy.PrivacyRulesError as e:
         _fail(e)
 
 
 def _db_context(rules):
-    """`rules` with the subject tree and the known-subject list from the live db (read-only) plus
-    subjects already in general_facts.json (same notion of "known" as add-fact). No db -> empty
-    context, so the unknown-subject rule is not enforced (nothing to compare against)."""
-    try:
-        con = connect()
-    except DatabaseNotFound:
+    """`rules` with the subject tree and the known-subject list from the live db (see
+    fact_queries.subject_context). No db -> empty context, so the unknown-subject rule is not enforced
+    (nothing to compare against)."""
+    ctx = fact_queries.subject_context()
+    if ctx is None:
         return rules
-    try:
-        rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
-    except sqlite3.Error:
-        return rules
-    finally:
-        con.close()
-    parents = {n: p for n, p in rows}
-    known = set(parents)
-    try:
-        known |= {e["subject"] for e in add_fact._read_array(add_fact.DATA_PATH)
-                  if isinstance(e, dict) and isinstance(e.get("subject"), str)}
-    except add_fact.DataFileError:
-        pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
+    parents, known = ctx
     return rules.with_context(parents=parents, known_subjects=known)
 
 
@@ -607,9 +457,9 @@ def cmd_privacy_check(statement: str,
 
 @privacy_app.command("rules", help="Show the loaded privacy rules (subject tags and keywords).")
 def cmd_privacy_rules(as_json: bool = JSON_OPT):
-    path = privacy.rules_path()
+    path = privacy_store.rules_path()
     rules = _load_rules()
-    exists = os.path.exists(path)
+    exists = privacy_store.rules_file_exists(path)
     if as_json:
         _emit_json({"path": path, "exists": exists, "version": privacy.VERSION,
                     "subject_tags": dict(sorted(rules.subject_tags.items())), "keywords": sorted(rules.keywords)})
@@ -629,50 +479,34 @@ def cmd_privacy_rules(as_json: bool = JSON_OPT):
         print("keywords: (none)")
 
 
+RULES_PORTS = Ports(rules=privacy_store, git=private_git)
+
+
 def _edit_rules(edit, describe, allow_dirty, dry_run):
-    """Shared body of the rules-editing commands, mirroring add-fact's git safety net (#10):
-    load, apply the library edit, refuse on a dirty private repo, write, commit only the rules file.
-    `edit(rules) -> (new_rules, changed)`; `describe(old, new) -> (what, commit_message)`.
-    An edit that changes nothing writes and commits nothing (and needs no clean tree)."""
-    path = privacy.rules_path()
-    rules = _load_rules()
+    """Shared body of the rules-editing commands: run rules_edit_service.edit_rules and print what it did."""
     try:
-        new, changed = edit(rules)
+        res = rules_edit_service.edit_rules(RULES_PORTS, edit, describe, allow_dirty, dry_run)
     except privacy.PrivacyRulesError as e:
         _fail(e)
-    if not changed:
-        print(f"no change: {path} already has this rule state")
-        return
-    what, message = describe(rules, new)
-    directory = os.path.dirname(os.path.abspath(path))
-    probe = directory
-    while not os.path.isdir(probe):  # the data dir may not exist before the first rule
-        probe = os.path.dirname(probe)
-    try:
-        repo = private_git.find_repo(probe)
-        if repo is None:
-            print(f"note: {directory} is not inside a git repository; the change will not be committed.", file=sys.stderr)
-        elif not allow_dirty:
-            private_git.ensure_clean_tree(repo)
     except private_git.PrivateGitError as e:
         _fail(e)
-    if dry_run:
-        print(f"dry run: would {what} in {path}" + (f" and commit {message!r}" if repo else "") + "; nothing written")
+    if not res.changed:
+        print(f"no change: {res.path} already has this rule state")
         return
-    os.makedirs(directory, exist_ok=True)
-    privacy.save_rules(new, path)
-    print(f"Updated {path}: {what}.")
-    if repo is None:
+    if res.not_in_git:
+        print(f"note: {res.directory} is not inside a git repository; the change will not be committed.", file=sys.stderr)
+    if res.dry_run:
+        print(f"dry run: would {res.what} in {res.path}" + (f" and commit {res.message!r}" if res.repo else "") + "; nothing written")
         return
-    try:
-        commit = private_git.commit_private_change([path], message, repo)
-        detached = private_git.is_detached(repo)
-    except private_git.PrivateGitError as e:
-        print(f"error: the rule IS written to {path} but is NOT committed: {e}", file=sys.stderr)
+    print(f"Updated {res.path}: {res.what}.")
+    if res.repo is None:
+        return
+    if res.commit_error:
+        print(f"error: the rule IS written to {res.path} but is NOT committed: {res.commit_error}", file=sys.stderr)
         raise typer.Exit(3)
-    print(f"Committed {commit} in {repo}: {message}")
-    if detached:
-        print(f"warning: {repo} has a detached HEAD; that commit is not on any branch.", file=sys.stderr)
+    print(f"Committed {res.committed} in {res.repo}: {res.message}")
+    if res.detached:
+        print(f"warning: {res.repo} has a detached HEAD; that commit is not on any branch.", file=sys.stderr)
 
 
 ALLOW_DIRTY_OPT = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the rules file.")

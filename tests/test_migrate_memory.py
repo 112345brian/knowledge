@@ -320,7 +320,7 @@ def test_source_key_is_stable_and_depends_on_place_not_content():
 def test_colliding_derived_keys_second_file_is_a_problem(w, monkeypatch):
     w.mem("p", "a.md")
     w.mem("p", "b.md")
-    monkeypatch.setattr(mm, "source_key_for", lambda project, name: "mm-collide")
+    monkeypatch.setitem(mm.plan_file.__globals__, "source_key_for", lambda project, name: "mm-collide")  # the rules module
     r = w.run()
     assert actions(r) == ["added", "problem"] and "collides" in r.files[1].detail
     assert len(w.entries()) == 1 and r.exit_code == 1
@@ -542,7 +542,7 @@ def test_no_caller_discards_an_append_fact_result():
 
 
 def test_migrate_memory_reads_ok_from_every_append_fact_result():
-    tree = ast.parse(open(os.path.join(REPO, "migrate_memory.py"), encoding="utf-8").read())
+    tree = ast.parse(open(os.path.join(REPO, "migrate_memory_service.py"), encoding="utf-8").read())
     assigned = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
                 and getattr(n.value.func, "attr", None) == "append_fact"]
     assert assigned, "expected migrate_memory to call append_fact"

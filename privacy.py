@@ -23,19 +23,15 @@ never lowers anything: a private parent or a keyword hit still wins.
 No rules file: no tags, no keywords (empty rules). That is deterministic and fails closed where it
 matters: callers that know the subject list still get 'private' for unknown subjects.
 
-Pure functions: resolve_visibility / check never touch the disk. load_rules/save_rules and the
-edit helpers (tag_subject, untag_subject, add_keyword, remove_keyword) only touch the rules file
-you pass. They do not commit; the CLI wraps them with private_git (#10).
+This module is the domain: pure functions only, no file, database or git access (enforced by the
+import-linter contract "domain-has-no-infrastructure"). Reading and writing the rules file and
+applying rules to a db live in the adapter `privacy_store`. The edit helpers (tag_subject,
+untag_subject, add_keyword, remove_keyword) return new rules and never write; the CLI saves them
+through privacy_store and wraps that with private_git (#10).
 """
-import contextlib
 import functools
-import json
-import os
 import re
-import sqlite3
-import stat
 import unicodedata
-import uuid
 from dataclasses import dataclass, field, replace
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
@@ -95,15 +91,6 @@ class Resolution:
         return "private: " + "; ".join(str(r) for r in self.raised_by)
 
 
-# ----------------------------------------------------------------- loading / saving
-
-def rules_path(data_dir=None):
-    if data_dir is None:
-        from paths import PRIVATE_DATA_DIR  # lazy: keeps this module importable without a private repo
-        data_dir = PRIVATE_DATA_DIR
-    return os.path.join(data_dir, RULES_FILENAME)
-
-
 def _normalize_keyword(raw):
     if not isinstance(raw, str):
         raise PrivacyRulesError(f"keyword {raw!r} must be a string")
@@ -148,44 +135,6 @@ def parse_rules(data, source="privacy rules"):
             seen.append(n)
     return Rules(subject_tags=dict(tags), keywords=tuple(seen))
 
-
-def load_rules(path=None):
-    """Rules from `path` (default: PRIVATE_DATA_DIR/privacy_rules.json). Absent file -> empty
-    rules. A file that is unreadable, corrupt JSON or not an object raises PrivacyRulesError."""
-    path = rules_path() if path is None else path
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return Rules()
-    except json.JSONDecodeError as e:
-        raise PrivacyRulesError(f"{path} is not valid JSON ({e}); left untouched") from e
-    except (OSError, UnicodeDecodeError) as e:
-        raise PrivacyRulesError(f"could not read {path}: {e}") from e
-    return parse_rules(data, source=path)
-
-
-def save_rules(rules, path):
-    """Atomic write (temp file + os.replace), keys sorted so diffs in knowledge-private are small."""
-    data = {"version": VERSION,
-            "subject_tags": {k: rules.subject_tags[k] for k in sorted(rules.subject_tags)},
-            "keywords": sorted(rules.keywords)}
-    # mode 0o666 at creation: the kernel applies the umask (os.umask(0) would change it process-wide)
-    tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        if os.path.exists(path):
-            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
 
 
 # ----------------------------------------------------------------- edits (library for the CLI)
@@ -239,7 +188,7 @@ def match_keywords(statement, keywords):
     return [k for k in keywords if _keyword_re(k).search(text)]
 
 
-def _subject_chain(subject, rules):
+def subject_chain(subject, rules):
     """(subject, parent, grandparent, ...) by name, plus whether a cycle was hit."""
     chain, seen = [], set()
     cur = subject
@@ -271,7 +220,7 @@ def resolve_visibility(subject, statement, requested, rules, extra_text=None) ->
         reasons.append(Reason("unknown-subject", "no subject given (fail closed)", True))
     else:
         subject = subject.strip()
-        chain, cyclic = _subject_chain(subject, rules)
+        chain, cyclic = subject_chain(subject, rules)
         if cyclic:
             reasons.append(Reason("cycle", f"the subject tree above {subject!r} loops (fail closed)", True))
         for name in chain:
@@ -303,39 +252,3 @@ def check(subject, statement, rules, requested="normal") -> Resolution:
     """What `knowledge.py privacy check` prints: resolve as if a caller asked for `requested`
     (default 'normal', so the answer shows what the rules alone would do)."""
     return resolve_visibility(subject, statement, requested, rules)
-
-
-# ----------------------------------------------------------------- applying to a built db
-
-def _rules_with_db_context(con, rules):
-    rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
-    parents = {name: parent for name, parent in rows}
-    return rules.with_context(parents=parents, known_subjects=set(parents))
-
-
-def apply_rules_to_db(con, rules):
-    """Re-apply the CURRENT rules to every fact in `con` (used at the end of 04 and 11, so a rebuild
-    retroactively privatizes old facts). Raise-only: a fact stored 'private' stays private even if
-    the rule that once caught it is gone. Also writes subjects.private (1 for every subject whose
-    own tag or an ancestor's tag is private). Returns {"raised": [(fact_id, explanation)...],
-    "private_subjects": n}. Does not commit."""
-    ctx = _rules_with_db_context(con, rules)
-    private_subjects = 0
-    for (name,) in con.execute("SELECT name FROM subjects").fetchall():
-        chain, cyclic = _subject_chain(name, ctx)
-        flag = 1 if cyclic or any(rules.subject_tags.get(n) == "private" for n in chain) else 0
-        con.execute("UPDATE subjects SET private = ? WHERE name = ?", (flag, name))
-        private_subjects += flag
-    raised = []
-    rows = con.execute(
-        """SELECT f.id, s.name, f.statement, f.visibility, f.notes, f.trust_rationale, f.recheck_rationale,
-                  f.source_quote,
-                  (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
-                   FROM fact_sources fs WHERE fs.fact_id = f.id)
-           FROM facts f JOIN subjects s ON s.id = f.subject_id""").fetchall()
-    for fact_id, subject, statement, stored, *extra in rows:
-        res = resolve_visibility(subject, statement, stored, ctx, extra_text=extra)
-        if res.visibility == "private" and stored != "private":
-            con.execute("UPDATE facts SET visibility = 'private' WHERE id = ?", (fact_id,))
-            raised.append((fact_id, res.explain()))
-    return {"raised": raised, "private_subjects": private_subjects}

@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-import claims_audit
+import claims_store
 import clock
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, file_hashes, GIT_ENV  # noqa: F401  (rw is a fixture)
@@ -21,7 +21,8 @@ KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 @pytest.fixture
 def lw(rw):
     """The review world plus lifecycle (imported after it so every module shares one `revisions`)."""
-    sys.modules.pop("lifecycle", None)
+    for _m in ("lifecycle", "lifecycle_service", "lifecycle_rules", "lifecycle_store"):
+        sys.modules.pop(_m, None)
     import lifecycle
     rw.lc = lifecycle
     return rw
@@ -36,7 +37,7 @@ def seed_two(w):
 
 
 def history(con, w, key):
-    return [(h["revision"], h["status"], h["superseded_by"], h["change_reason"]) for h in w.rv.get_history(con, key)]
+    return [(h["revision"], h["status"], h["superseded_by"], h["change_reason"]) for h in w.rs.get_history(con, key)]
 
 
 # ---------------------------------------------------------------- supersede
@@ -73,9 +74,9 @@ def test_history_shows_the_revision_with_its_reason_and_as_of_before_it_still_sh
         assert w.lc.retract("a", "turned out wrong", **kw(w)).ok
     con = w.build()
     assert history(con, w, "a") == [(1, "active", None, "original entry"), (2, "retracted", None, "turned out wrong")]
-    before = w.rv.get_fact_as_of(con, "a", "2026-10-02")   # between T1 (entry) and T3 (change)
+    before = w.rs.get_fact_as_of(con, "a", "2026-10-02")   # between T1 (entry) and T3 (change)
     assert before["status"] == "active" and before["revision"] == 1
-    assert w.rv.get_fact_as_of(con, "a", "2026-10-03")["status"] == "retracted"
+    assert w.rs.get_fact_as_of(con, "a", "2026-10-03")["status"] == "retracted"
 
 
 def test_works_for_pilot_and_batch_facts_by_source_key_and_by_id_even_without_a_stored_key(lw):
@@ -201,7 +202,7 @@ def test_reversal_is_another_revision_through_the_library(lw):
     with clock.frozen(T2):
         assert w.lc.retract("a", "oops", **kw(w)).ok
     with clock.frozen(T3):
-        assert w.rv.append_revision("a", {"status": "active", "superseded_by": None}, "restored", "cli",
+        assert w.rs.append_revision("a", {"status": "active", "superseded_by": None}, "restored", "cli",
                                     data_dir=w.env.data_dir).ok
     con = w.build()
     assert [h[1] for h in history(con, w, "a")] == ["active", "retracted", "active"]
@@ -222,7 +223,7 @@ def test_audit_claims_flags_a_claim_citing_the_fact_after_a_rebuild(lw, how):
     fid = con.execute("SELECT id FROM facts WHERE source_key='a'").fetchone()[0]
     con.execute("INSERT INTO claims (id, statement) VALUES (1, 'A claim resting on fact a')")
     con.execute("INSERT INTO claim_facts (claim_id, fact_id) VALUES (1, ?)", (fid,))
-    rows = claims_audit.audit_claims(con)
+    rows = claims_store.audit_claims(con)
     assert [(r["claim_id"], r["fact_id"], r["reason"]) for r in rows] == [(1, fid, "retracted" if how == "retract" else "superseded")]
 
 
@@ -242,7 +243,7 @@ def test_concurrent_retracts_write_one_revision_and_every_call_is_ok(lw):
 def test_a_fact_retracted_by_another_process_after_we_looked_is_not_superseded(lw, monkeypatch):
     w = lw
     seed_two(w)
-    real = w.rv.append_revision
+    real = w.rs.append_revision
     state = {"raced": False}
 
     def racing(key, changes, *a, **k):
@@ -251,7 +252,7 @@ def test_a_fact_retracted_by_another_process_after_we_looked_is_not_superseded(l
             assert real("a", {"status": "retracted"}, "other process", "cli", data_dir=w.env.data_dir).ok
         return real(key, changes, *a, **k)
 
-    monkeypatch.setattr(w.rv, "append_revision", racing)
+    monkeypatch.setattr(w.rs, "append_revision", racing)
     res = w.lc.supersede("a", "b", "mine", **kw(w))
     assert res.outcome == "refused" and "changed by another process" in res.reason and not res.ok
     assert [json.loads(l)["status"] for l in w.log_lines()] == ["retracted"]
@@ -365,9 +366,9 @@ def test_no_caller_discards_a_lifecycle_result_and_every_append_revision_result_
                 owner = getattr(getattr(f, "value", None), "id", None)
                 if called in ("supersede", "retract", "set_visibility") and owner in ("lifecycle", "lc", "w"):
                     offenders.append(f"{rel}:{node.lineno} discards lifecycle.{called}")
-                if called == "append_revision" and owner in ("revisions", "rv", "w"):
+                if called == "append_revision" and owner in ("revisions", "revisions_store", "rv", "rs", "w"):
                     offenders.append(f"{rel}:{node.lineno} discards append_revision")
-        if rel in ("lifecycle.py", "review.py"):  # production callers of append_revision must read `.ok`
+        if rel in ("lifecycle.py", "review.py", "lifecycle_service.py", "review_service.py"):  # production callers of append_revision must read `.ok`
             for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
                 calls = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
                          and getattr(n.value.func, "attr", None) == "append_revision"]

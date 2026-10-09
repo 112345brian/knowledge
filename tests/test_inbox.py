@@ -24,7 +24,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture
 def ib(world, monkeypatch):
-    for m in ("review", "lifecycle", "inbox", "cli_inbox"):
+    for m in ("privacy_store", "review", "review_service", "review_store", "review_rules", "lifecycle", "lifecycle_service", "lifecycle_rules", "lifecycle_store", "inbox", "cli_inbox"):
         sys.modules.pop(m, None)
     for k, v in GIT_ENV.items():
         monkeypatch.setenv(k, v)
@@ -32,6 +32,7 @@ def ib(world, monkeypatch):
     import lifecycle
     import review
     import privacy
+    import privacy_store
     world.inbox, world.lifecycle, world.review, world.privacy = inbox, lifecycle, review, privacy
     servers = []
 
@@ -46,7 +47,7 @@ def ib(world, monkeypatch):
 
     def start(rules=None, repo=True, snapshot=True):
         if rules is not None:
-            privacy.save_rules(rules, privacy.rules_path(world.env.data_dir))
+            privacy_store.save_rules(rules, privacy_store.rules_path(world.env.data_dir))
         if repo:
             make_repo(world)
         db = rebuild_db() if snapshot else world.env.db
@@ -184,7 +185,7 @@ def test_list_overlays_current_state_not_the_stale_snapshot(ib):
     seed(w)
     srv = w.start()
     assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).ok     # approved after the snapshot
-    assert w.rv.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir).ok
+    assert w.rs.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir).ok
     _, _, page = call(srv)
     assert "Pending p1." not in page and "Edited since the rebuild." in page
     assert '<span class="count">1</span> pending' in page and "already reviewed" in page
@@ -212,7 +213,7 @@ def test_approve_appends_a_revision_commits_once_and_keeps_entries_unchanged(ib)
     assert (rec["source_key"], rec["status"], rec["changed_via"], rec["revision"]) == ("p1", "active", "inbox", 2)
     assert git(w.env.data_dir, "status", "--porcelain") == ""
     assert "Pending p1." not in call(srv)[2]                       # not offered again, though the db is stale
-    assert [(h["revision"], h["status"]) for h in w.rv.get_history(w.build(), "p1")] == [(1, "pending"), (2, "active")]
+    assert [(h["revision"], h["status"]) for h in w.rs.get_history(w.build(), "p1")] == [(1, "pending"), (2, "active")]
 
 
 def test_reject_needs_a_reason_and_shows_in_history(ib):
@@ -223,7 +224,7 @@ def test_reject_needs_a_reason_and_shows_in_history(ib):
     assert status == 409 and not res["ok"] and "reason is required" in res["errors"][0] and log_count(w) == 0
     status, res = act(srv, action="reject", ref="p1", reason="not true")
     assert status == 200 and items(res) == [("p1", "rejected", "")]
-    hist = w.rv.get_history(w.build(), "p1")
+    hist = w.rs.get_history(w.build(), "p1")
     assert (hist[-1]["status"], hist[-1]["change_reason"]) == ("retracted", "not true")
 
 
@@ -363,7 +364,7 @@ def test_edit_appends_a_revision_with_reason_and_shows_in_history(ib):
     assert rec["status"] == "pending" and rec["change_reason"] == "fixed typo" and rec["changed_via"] == "inbox"
     con = w.build()
     assert con.execute("SELECT s.name FROM facts f JOIN subjects s ON s.id=f.subject_id WHERE f.source_key='p1'").fetchone()[0] == "alpha"
-    assert w.rv.get_history(con, "p1")[-1]["change_reason"] == "fixed typo"
+    assert w.rs.get_history(con, "p1")[-1]["change_reason"] == "fixed typo"
     assert "Better p1." in call(srv)[2]
 
 
@@ -409,13 +410,13 @@ def test_edit_does_not_overwrite_a_concurrent_change(ib, monkeypatch):
     w = ib
     seed(w)
     w.start()
-    real = w.lifecycle.revisions.append_revision
+    real = w.lifecycle.revisions_store.append_revision
 
     def sneaky(key, changes, *a, **kw):
-        monkeypatch.setattr(w.lifecycle.revisions, "append_revision", real)
+        monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", real)
         assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir).ok
         return real(key, changes, *a, **kw)
-    monkeypatch.setattr(w.lifecycle.revisions, "append_revision", sneaky)
+    monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", sneaky)
     res = w.lifecycle.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and res.outcome == "skipped" and "someone else" in res.message
     assert w.review.current_states(w.env.data_dir)["p1"]["statement"] == "Someone else."

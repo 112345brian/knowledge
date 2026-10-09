@@ -139,12 +139,16 @@ A fact entry is never edited. The JSON entry is **revision 1**; every later chan
 
 ## Architecture enforcement (#36)
 
+The repo is organized as ports and adapters: see [docs/architecture.md](docs/architecture.md) for the map of which module is domain, use case, facade, adapter or driving adapter, and the rules that are enforced.
+
 The layering the program relies on is checked mechanically, by **tach** (`tach.toml`: per-module import allowlists and layers) and **import-linter** (contracts in `pyproject.toml`), and both run inside `uv run pytest` (`tests/test_architecture.py`). A violating import fails like a failing test.
 
 Run them directly:
 
 - `uv run tach check` : module boundaries (every top-level module and every numbered script is a tach module).
 - `uv run python tests/arch_check.py` : tach + import-linter + the git scan, the same as the test. **Plain `uv run lint-imports` does not work here**: import-linter only analyses packages and this repo is flat modules (`'x' is a module, not a package`). `tests/arch_check.py` copies each importable top-level module into a throwaway package `kn/` (rewriting only project-internal imports, `import privacy` -> `import kn.privacy`, lazy ones included) and runs `lint-imports --config pyproject.toml` on that, so contracts name `kn.<module>`. The copy is parsed, never executed.
+
+**Ports and adapters.** On top of the layering below, the code is a hexagon: a pure domain (`privacy`, `modes`, `revisions`, `new_fact`, the `*_rules` modules, ...), use cases (`*_service`) that reach the world only through the protocols in `ports.py`, driven adapters that implement those ports (`*_store`, `fact_queries`, `ids`, `script_runner`, `clock`, `paths`, `private_git`, `normal_db`, `leak_test`), facades (`review`, `lifecycle`, `add_fact`, `facts_batch`, `migrate_memory`) that are the composition roots binding a use case to its adapters, and driving adapters (the Typer app, the inbox page and the ingest scripts with `build.py`). [docs/architecture.md](docs/architecture.md) classifies every module and states the rules; each is enforced by a contract or a test (`domain-has-no-infrastructure`, `use-cases-depend-on-ports`, `driving-adapters-no-infrastructure`, `tests/test_ports.py`), and `tests/test_pipeline_golden.py` pins what the whole ingest pipeline produces on a synthetic world.
 
 **Layers, top to bottom:** serving (`inbox`; `mcp_server`, planned) > CLI (`knowledge.py`, `cli_*.py`, `cli_parity.py`) > pipeline (`build.py`, numbered scripts, `backfill_*`, `clean_concerts_csv`, `export_music_taste`, `snapshot_date`, `_shared`) > libraries (`add_fact`, `revisions`, `review`, `lifecycle`, `facts_batch`, `migrate_memory`, `privacy`, `modes`, `claims_audit`, `normal_db`, `leak_test`, `private_git`, `clock`, `paths`). The pipeline sits above the libraries because the ingest scripts and `build.py` call them (`revisions`, `privacy`, `normal_db`); the direction that is forbidden is library -> pipeline.
 

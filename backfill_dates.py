@@ -32,9 +32,11 @@ import json
 import os
 import sys
 
+import backfill_rules
 import backfill_source_keys
 import revisions
-from add_fact import _file_lock, _lock_path
+import revisions_store
+from add_fact_store import file_lock, lock_path
 from snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
 
 # What 03_ingest_measurements.py's `TODAY` constant stood for.
@@ -54,15 +56,7 @@ def find_problems(data_dir):
         path = os.path.join(data_dir, name)
         if not os.path.exists(path):
             continue
-        for i, item in enumerate(revisions._read_array(path)):
-            if "date_added" not in item:
-                continue
-            v = item["date_added"]
-            try:
-                revisions.parse_timestamp(v)
-            except (TypeError, ValueError):
-                problems.append((f"{name}[{i}]", f"date_added is {v!r}, not an ISO date or timestamp; fix it by hand "
-                                                 f"(the backfill never overwrites an existing value)"))
+        problems.extend(backfill_rules.date_problems(name, revisions_store.read_array(path)))
     if os.path.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
             read_snapshot_date(data_dir)
@@ -74,11 +68,11 @@ def find_problems(data_dir):
 def _write_snapshot(data_dir, apply):
     """Create measurements_snapshot.json if absent. Returns 1 if it was (or would be) written."""
     path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
-    with _file_lock(_lock_path(path)):
+    with file_lock(lock_path(path)):
         if os.path.exists(path):
             return 0
         if apply:
-            revisions._atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
+            revisions_store.atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
     return 1
 
 
@@ -101,7 +95,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions.default_data_dir()
+    data_dir = args.data_dir or revisions_store.default_data_dir()
     try:
         result = backfill_dates(data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:

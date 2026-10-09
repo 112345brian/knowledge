@@ -12,57 +12,12 @@ re-inserts this source file's own attendances (and any artists/venues/
 festivals become orphaned only if nothing else references them, which is
 fine -- they're just not re-created if already present).
 """
-import sqlite3, csv, os, re
+import sqlite3, csv, os
 from _shared import load_artist_cache, get_or_create_artist
+import music_ingest_rules
 from paths import CONCERTS_CSV
 
 CSV_PATH = os.path.expanduser(CONCERTS_CSV)
-
-KNOWN_FESTIVALS = {
-    "Camp Flog Gnaw", "Flog Gnaw", "Coachella", "Bonnaroo", "Primavera Sound",
-    "Second Sky", "This Ain't No Picnic", "Boiler Room", "Portola",
-    "Best Friends Forever", "No Values",  # a real Goldenvoice punk festival
-}
-FESTIVAL_NOTE_RE = re.compile(r"festival", re.IGNORECASE)
-OPENER_RE = re.compile(r"open(?:ed|ing)?\s+for\s+(.+?)(?:;|$)", re.IGNORECASE)
-
-
-def parse_location(location):
-    """Split 'Venue, City, ST' -> ('Venue', 'City, ST'); no comma -> (location, None)."""
-    if not location:
-        return None, None
-    if "," in location:
-        venue, rest = location.split(",", 1)
-        return venue.strip() or None, rest.strip() or None
-    return location, None
-
-
-def parse_row(name, location, notes):
-    is_festival = bool(FESTIVAL_NOTE_RE.search(notes or ""))
-    festival_name = None
-    venue, city_state = None, None
-
-    if name in KNOWN_FESTIVALS:
-        is_festival = True
-        festival_name = name
-        venue, city_state = parse_location(location)  # Location is the sub-venue/city for the festival's own row
-    elif location in KNOWN_FESTIVALS:
-        is_festival = True
-        festival_name = location
-        # Location was consumed as the festival name, not an actual venue
-    else:
-        venue, city_state = parse_location(location)
-
-    opener_match = OPENER_RE.search(notes or "")
-    if opener_match:
-        billing, supporting_for = "opener", opener_match.group(1).strip()
-    elif is_festival:
-        billing, supporting_for = "festival-set", None
-    else:
-        billing, supporting_for = "headliner", None
-
-    return venue, city_state, festival_name, billing, supporting_for
-
 
 def get_or_create(cur, table, **fields):
     where = " AND ".join(f"{k} IS :{k}" for k in fields)
@@ -87,16 +42,13 @@ def run(con):
 
     with open(CSV_PATH, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            name = row["Concert"].strip()
-            start_date = row["Start Date"].strip()
-            end_date = row["End Date"].strip() or None
-            location = row["Location"].strip() or None
-            notes = row["Notes"].strip() or None
-            if not name or not start_date:
+            concert = music_ingest_rules.concert_from_csv(row)
+            if concert is None:
                 continue
-
-            venue, city_state, festival_name, billing, supporting_for = parse_row(name, location, notes)
-            if FESTIVAL_NOTE_RE.search(notes or "") and not festival_name:
+            name, start_date, end_date, notes = concert["name"], concert["start_date"], concert["end_date"], concert["notes"]
+            venue, city_state, festival_name = concert["venue"], concert["city_state"], concert["festival_name"]
+            billing, supporting_for = concert["billing"], concert["supporting_for"]
+            if concert["unresolved_festival"]:
                 unresolved_festival_names += 1
             billing_counts[billing] = billing_counts.get(billing, 0) + 1
 

@@ -21,7 +21,8 @@ RULES = {"version": 1, "subject_tags": {"health": "private", "coffee": "normal",
 
 @pytest.fixture
 def fb(world, monkeypatch):
-    sys.modules.pop("facts_batch", None)
+    for _m in ("facts_batch", "facts_batch_service", "facts_batch_rules"):
+        sys.modules.pop(_m, None)
     import facts_batch
     world.fb = facts_batch
     for k, v in GIT_ENV.items():

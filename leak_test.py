@@ -21,32 +21,19 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-import unicodedata
+
+from leak_rules import (MIN_MARKER_LEN, add_marker, check_markers, format_leaks, leaks_in_bytes,  # noqa: F401  (the public API)
+                        leaks_in_cell, variants as _variants)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MIN_MARKER_LEN = 6  # shorter derived strings are too generic to be a meaningful marker
-
-
-def _variants(marker):
-    out = set()
-    for form in ("NFC", "NFD"):
-        out.add(unicodedata.normalize(form, marker).lower())
-    return out
 
 
 def scan(normal_path, markers):
     """markers: iterable of strings (or {label: string}). Returns [(label, marker, where)]."""
-    if not isinstance(markers, dict):
-        markers = {m: m for m in markers}
-    leaks = []
-    for label, marker in markers.items():
-        if not marker or not marker.strip():
-            raise ValueError(f"empty marker {label!r}: it would match everything")
+    markers = check_markers(markers)
     with open(normal_path, "rb") as f:
         raw = f.read().lower()
-    for label, marker in markers.items():
-        if any(v.encode("utf-8") in raw for v in _variants(marker)):
-            leaks.append((label, marker, "raw file bytes"))
+    leaks = leaks_in_bytes(raw, markers)
     con = sqlite3.connect(f"file:{os.path.abspath(normal_path)}?mode=ro", uri=True)
     try:
         for (table,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall():
@@ -55,21 +42,10 @@ def scan(normal_path, markers):
                 continue
             for row in con.execute(f'SELECT {", ".join(chr(34) + c + chr(34) for c in cols)} FROM "{table}"'):
                 for col, cell in zip(cols, row):
-                    if isinstance(cell, bytes):
-                        cell = cell.decode("utf-8", "ignore")
-                    if not isinstance(cell, str):
-                        continue
-                    folded = unicodedata.normalize("NFC", cell).lower()
-                    for label, marker in markers.items():
-                        if any(unicodedata.normalize("NFC", v) in folded for v in _variants(marker)):
-                            leaks.append((label, marker, f"{table}.{col}"))
+                    leaks.extend(leaks_in_cell(cell, f"{table}.{col}", markers))
     finally:
         con.close()
     return leaks
-
-
-def format_leaks(leaks):
-    return "\n".join(f"  LEAK {label!r} found in {where}" for label, _m, where in leaks)
 
 
 def derive_markers(full_path):
@@ -89,10 +65,7 @@ def derive_markers(full_path):
                 legit.update(c for c in row if isinstance(c, str))
 
         def add(label, value, shareable=False):
-            # `shareable`: text copied from a private fact that a normal fact may legitimately also hold
-            # (e.g. the same quote from a shared source); claims, paths and subject names never are.
-            if isinstance(value, str) and len(value.strip()) >= MIN_MARKER_LEN and not (shareable and value in legit):
-                markers.setdefault(f"{label}: {value[:40]}", value)
+            add_marker(markers, label, value, legit, shareable)
 
         for fid, st, notes, quote, rat in full.execute(
                 f"SELECT f.id, f.statement, f.notes, f.source_quote, f.trust_rationale FROM facts f WHERE {private_fact}"):

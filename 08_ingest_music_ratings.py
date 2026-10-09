@@ -20,18 +20,12 @@ rather than carried into empty columns.
 
 Idempotent: re-running deletes and re-inserts this source file's own albums.
 """
-import sqlite3, csv, os, html
+import sqlite3, csv, os
 from _shared import load_artist_cache, get_or_create_artist, get_or_create
+import music_ingest_rules
 from paths import RYM_EXPORT_CSV
 
 CSV_PATH = os.path.expanduser(RYM_EXPORT_CSV)
-
-
-def artist_name(row):
-    localized = f"{row['First Name localized'].strip()} {row[' Last Name localized'].strip()}".strip()
-    if localized:
-        return localized
-    return f"{row[' First Name'].strip()} {row['Last Name'].strip()}".strip()
 
 
 def run(con):
@@ -43,16 +37,16 @@ def run(con):
     inserted = 0
     with open(CSV_PATH, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            name = artist_name(row)
-            title = html.unescape(row["Title"].strip())
-            if not name or not title:
+            album = music_ingest_rules.album_from_row(row)
+            if album is None:
                 continue
+            name, title, release_year, rating, rym_id = album
 
             artist_id = get_or_create_artist(cur, artist_cache, name)
             cur.execute(
                 """INSERT INTO albums (artist_id, title, release_year, rating, rym_id, import_source_id)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (artist_id, title, int(row["Release_Date"]), int(row["Rating"]), row["RYM Album"].strip(), import_source_id),
+                (artist_id, title, release_year, rating, rym_id, import_source_id),
             )
             inserted += 1
 

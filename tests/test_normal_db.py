@@ -1,5 +1,6 @@
 """#21: knowledge-normal.db is built by copying a whitelist INTO a fresh db, then leak-checked.
 Fixture data (built from the real schema.sql by leak_test.build_fixture) holds known private markers."""
+import importlib
 import os
 import shutil
 import sqlite3
@@ -272,7 +273,7 @@ def hooked(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "DB_DIR", str(db_dir))
     monkeypatch.setattr(build, "LIVE_DB", str(db_dir / "knowledge.db"))
     monkeypatch.setattr(build, "BACKUP_DIR", str(db_dir / "backups"))
-    monkeypatch.setattr(privacy, "load_rules", lambda path=None: rules())
+    monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", lambda path=None: rules())
     return db_dir
 
 
@@ -308,7 +309,7 @@ def test_normal_failure_exits_nonzero_but_keeps_the_main_build(hooked, monkeypat
 def test_bad_rules_file_fails_the_normal_build_closed(hooked, monkeypatch, capsys):
     def bad(path=None):
         raise privacy.PrivacyRulesError("corrupt rules")
-    monkeypatch.setattr(privacy, "load_rules", bad)
+    monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", bad)
     with pytest.raises(SystemExit):
         run_main()
     assert (hooked / "knowledge.db").exists() and not (hooked / "knowledge-normal.db").exists()

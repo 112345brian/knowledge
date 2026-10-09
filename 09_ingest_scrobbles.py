@@ -29,8 +29,9 @@ parses the same Last.fm export into a separate rave.db. That's deliberate --
 the two repos are independent on purpose -- but it means a parsing fix here
 (e.g. if Last.fm changes its export shape) needs to be made there too.
 """
-import sqlite3, json, os, datetime
+import sqlite3, json, os
 from _shared import load_artist_cache, get_or_create_artist, get_or_create
+import music_ingest_rules
 from paths import SCROBBLES_JSON
 
 SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)
@@ -39,19 +40,7 @@ SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)
 def iter_scrobbles(path):
     with open(path) as f:
         pages = json.load(f)
-    for page in pages:
-        for t in page:
-            date = t.get("date")
-            if not date:
-                continue  # "now playing" entries from the API carry no date
-            artist = (t.get("artist") or {}).get("#text", "").strip()
-            track = (t.get("name") or "").strip()
-            album = ((t.get("album") or {}).get("#text", "") or "").strip()
-            uts = date.get("uts")
-            if not artist or not track or not uts:
-                continue
-            played_at = datetime.datetime.fromtimestamp(int(uts), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            yield artist, track, album, played_at
+    yield from music_ingest_rules.scrobbles_from_pages(pages)
 
 
 def get_or_create_track(cur, cache, artist_id, title, album):

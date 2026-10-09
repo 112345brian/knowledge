@@ -31,105 +31,26 @@ import json
 import os
 import sys
 
+import backfill_rules
 import revisions
-from add_fact import _file_lock, _lock_path
-
-
-def source_key_adder(keys_by_file):
-    def add(entry, filename, index):
-        return {"source_key": keys_by_file[filename][index]}
-    return add
-
-
-def _element_starts(text, path):
-    """Offsets of each top-level array element: [(start, end)]."""
-    dec = json.JSONDecoder()
-    i = _skip_ws(text, 0)
-    if i >= len(text) or text[i] != "[":
-        raise revisions.RevisionError(f"{path} is not a JSON array")
-    i += 1
-    spans = []
-    while True:
-        i = _skip_ws(text, i)
-        if i < len(text) and text[i] == "]":
-            return spans
-        _, end = dec.raw_decode(text, i)
-        spans.append((i, end))
-        i = _skip_ws(text, end)
-        if i < len(text) and text[i] == ",":
-            i += 1
-
-
-def _skip_ws(text, i):
-    while i < len(text) and text[i] in " \t\r\n":
-        i += 1
-    return i
-
-
-def _insertion(text, start, pairs):
-    """Text to insert right after the `{` at text[start], matching the object's own layout."""
-    body = ", ".join(f"{json.dumps(k)}: {json.dumps(v, ensure_ascii=False)}" for k, v in pairs)
-    after = text[start + 1:]
-    j = _skip_ws(after, 0)
-    if j < len(after) and after[j] == "}":  # empty object
-        return f" {body} " if j else body
-    ws = after[:j]
-    if "\n" in ws:  # multi-line object: reuse the indent of its first key
-        indent = ws.split("\n")[-1]
-        return "".join(f"\n{indent}{json.dumps(k)}: {json.dumps(v, ensure_ascii=False)}," for k, v in pairs)
-    return f" {body}," if ws else f"{body}, "
-
-
-def rewrite_text(text, path, additions):
-    """`additions[i]` = list of (key, value) pairs to insert into element i. Returns
-    (new_text, inserted_segments) with the insertions applied; verifies nothing else changed."""
-    spans = _element_starts(text, path)
-    segments = []  # (position, inserted text)
-    for (start, _), pairs in zip(spans, additions):
-        if pairs:
-            segments.append((start + 1, _insertion(text, start, pairs)))
-    new = text
-    for pos, seg in reversed(segments):
-        new = new[:pos] + seg + new[pos:]
-    # Verify: stripping the insertions gives back the old bytes, and the parse differs only by the new keys.
-    back, offset, actual = new, 0, []
-    for pos, seg in segments:
-        actual.append(pos + offset)
-        offset += len(seg)
-    for at, (_, seg) in reversed(list(zip(actual, segments))):
-        if back[at:at + len(seg)] != seg:
-            raise revisions.RevisionError(f"{path}: internal check failed (insertion not where expected)")
-        back = back[:at] + back[at + len(seg):]
-    if back != text:
-        raise revisions.RevisionError(f"{path}: internal check failed (bytes outside the insertion changed)")
-    old_items, new_items = json.loads(text), json.loads(new)
-    for old, cur, pairs in zip(old_items, new_items, additions):
-        added = {k for k, _ in pairs}
-        if {k: v for k, v in cur.items() if k not in added} != old or any(cur[k] != v for k, v in pairs):
-            raise revisions.RevisionError(f"{path}: internal check failed (parsed content differs beyond the added keys)")
-    return new, segments
+import revisions_store
+from add_fact_store import file_lock, lock_path
+from backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
 
 
 def _backfill_file(path, name, adders, apply):
     """Returns the number of entries changed in this file."""
-    with _file_lock(_lock_path(path)):
+    with file_lock(lock_path(path)):
         with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
-        items = revisions._read_array(path)
+        items = revisions_store.read_array(path)
         keys = revisions.derive_keys(items, name)
         context = {name: keys}
-        additions = []
-        for i, item in enumerate(items):
-            pairs = []
-            for adder in adders(context):
-                for k, v in adder(item, name, i).items():
-                    if k not in item and k not in {p[0] for p in pairs}:
-                        pairs.append((k, v))
-            additions.append(pairs)
+        additions = backfill_rules.plan_additions(items, name, adders(context))
         changed = sum(1 for p in additions if p)
         if changed and apply:
             new, _ = rewrite_text(text, path, additions)
-            revisions._atomic_write_text(path, new)
+            revisions_store.atomic_write_text(path, new)
         elif changed:
             rewrite_text(text, path, additions)  # dry run still proves the rewrite would verify
     return changed
@@ -139,7 +60,7 @@ def backfill(data_dir, apply=False, extra_adders=(), source_keys=True):
     """Backfill source_key (when `source_keys`) and whatever `extra_adders` return across the
     legacy files. Returns {filename: entries_changed}. Nothing is written unless apply=True."""
     # All keys must be unique across files before we write anything.
-    revisions.load_entries(data_dir)
+    revisions_store.load_entries(data_dir)
     result = {}
     for name, _ in revisions.ENTRY_FILES:
         path = os.path.join(data_dir, name)
@@ -158,7 +79,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions.default_data_dir()
+    data_dir = args.data_dir or revisions_store.default_data_dir()
     try:
         result = backfill(data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:

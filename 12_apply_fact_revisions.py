@@ -19,15 +19,17 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import privacy
+import privacy_store
 import revisions
+import revisions_store
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 
 
 def run(con):
     path = os.path.join(DATA_DIR, revisions.REVISIONS_FILENAME)
-    applied = revisions.apply_revisions(con, path)
-    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
-    floor = privacy.apply_rules_to_db(con, rules)
+    applied = revisions_store.apply_revisions(con, path)
+    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    floor = privacy_store.apply_rules_to_db(con, rules)
     con.execute("""UPDATE fact_revisions SET visibility = 'private'
                    WHERE visibility != 'private'
                      AND fact_id IN (SELECT id FROM facts WHERE visibility = 'private')""")

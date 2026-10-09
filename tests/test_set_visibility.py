@@ -11,6 +11,7 @@ import pytest
 
 import clock
 import privacy
+import privacy_store
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, file_hashes  # noqa: F401  (rw is a fixture)
 from test_lifecycle import lw, kw, history, Cli  # noqa: F401  (lw is a fixture)
@@ -47,10 +48,10 @@ def test_history_shows_the_visibility_revision_and_as_of_before_it_shows_the_ear
     with clock.frozen(T3):
         assert w.lc.set_visibility("a", "normal", "why", db=con, **kw(w)).ok
     con = w.build()
-    hist = w.rv.get_history(con, "a")
+    hist = w.rs.get_history(con, "a")
     assert [(h["revision"], h["visibility"], h["change_reason"]) for h in hist] == [(1, "private", "original entry"), (2, "normal", "why")]
-    assert w.rv.get_fact_as_of(con, "a", "2026-10-02")["visibility"] == "private"
-    assert w.rv.get_fact_as_of(con, "a", "2026-10-03")["visibility"] == "normal"
+    assert w.rs.get_fact_as_of(con, "a", "2026-10-02")["visibility"] == "private"
+    assert w.rs.get_fact_as_of(con, "a", "2026-10-03")["visibility"] == "normal"
 
 
 def test_after_a_demotion_the_built_history_is_private_throughout_by_design(lw):
@@ -62,8 +63,8 @@ def test_after_a_demotion_the_built_history_is_private_throughout_by_design(lw):
     with clock.frozen(T3):
         assert w.lc.set_visibility("a", "private", "why", **kw(w)).ok
     con = w.build()
-    assert [h["visibility"] for h in w.rv.get_history(con, "a")] == ["private", "private"]
-    assert w.rv.get_fact_as_of(con, "a", "2026-10-02")["visibility"] == "private"
+    assert [h["visibility"] for h in w.rs.get_history(con, "a")] == ["private", "private"]
+    assert w.rs.get_fact_as_of(con, "a", "2026-10-02")["visibility"] == "private"
     assert [json.loads(l)["visibility"] for l in w.log_lines()] == ["private"]
     entry_vis = json.load(open(os.path.join(w.env.data_dir, "general_facts.json")))[0]["visibility"]
     assert entry_vis == "normal"  # the original entry still says what it said
@@ -285,7 +286,7 @@ def _normal_statements(w, tmp_path, name):
     out.close()
     outdir = tmp_path / f"{name}-out"
     outdir.mkdir()
-    path, _counts = normal_db.build_normal_atomic(full, str(outdir), privacy.load_rules(privacy.rules_path(w.env.data_dir)))
+    path, _counts = normal_db.build_normal_atomic(full, str(outdir), privacy_store.load_rules(privacy_store.rules_path(w.env.data_dir)))
     n = sqlite3.connect(path)
     try:
         return sorted(r[0] for r in n.execute("SELECT statement FROM facts"))
