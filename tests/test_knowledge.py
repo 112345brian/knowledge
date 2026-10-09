@@ -278,7 +278,7 @@ def test_functions_return_dicts_and_never_print_or_exit(lib, capsys):
     con = lib.connect()
     hits = lib.search_facts(con, "protein", personal=False)
     assert {h["id"] for h in hits} == {1}
-    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "statement"}
+    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "statement"}
     assert [r["id"] for r in lib.list_facts(con, status="active", personal=True)] == [3]
     assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]  # active only (#6)
     assert [r["id"] for r in lib.list_facts(con, status="superseded")] == [4]
@@ -311,7 +311,7 @@ def test_json_flag_on_every_read_command(env):
     import json
     hits = json.loads(ok(env.cli("search", "protein", "--not-personal", "--json")))
     assert {h["id"] for h in hits} == {1}
-    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "statement"}
+    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "statement"}
     assert json.loads(ok(env.cli("search", "zzzznothing", "--json"))) == []
     assert [r["id"] for r in json.loads(ok(env.cli("facts", "--status", "active", "--json")))] == [1, 2, 3]
     assert json.loads(ok(env.cli("facts", "--subject", "nope", "--json"))) == []

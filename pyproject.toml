@@ -69,6 +69,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.validtime",
 ]
 forbidden_modules = [
     # CLI
@@ -117,6 +118,7 @@ source_modules = [
     "kn.private_git",
     "kn.review",
     "kn.revisions",
+    "kn.validtime",
 #planned:     "kn.mcp_server",
 ]
 forbidden_modules = ["typer", "click"]
@@ -236,7 +238,7 @@ layers = [
     "revisions",
     "add_fact",
     "privacy | private_git",
-    "clock | paths | fixity",
+    "clock | paths | fixity | validtime",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

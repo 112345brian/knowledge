@@ -48,6 +48,7 @@ import private_git
 import privacy
 import review
 import revisions
+import validtime
 from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -64,6 +65,7 @@ class Trust(str, enum.Enum):
 
 
 Kind = enum.Enum("Kind", {k: k for k in add_fact.KIND_VALUES}, type=str)  # #39; one source of truth: add_fact.KIND_VALUES
+VALID_AT_OPT = typer.Option(None, "--valid-at", help="Only facts that were true on this date, YYYY-MM-DD (valid time, #40; not --as-of, which is when the db learned it).")
 KIND_OPT = typer.Option(None, "--kind", help="Only facts of this kind: " + ", ".join(add_fact.KIND_VALUES) + ".")
 
 
@@ -99,7 +101,7 @@ def _visible_statuses(include_pending):
     return ("active", "pending") if include_pending else ("active",)
 
 
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None):
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None, valid_at=None):
     """Append the shared fact filters. `personal` is True / False / None (no filter).
     An explicit `status` wins and `include_pending` is then ignored; without one only
     active facts (and pending ones when `include_pending`) match."""
@@ -112,6 +114,11 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     if kind:
         sql += " AND f.kind = ?"
         params.append(kind)
+    if valid_at is not None:
+        if not validtime.is_valid_date(valid_at):
+            raise ValueError(f"valid_at {valid_at!r} must be a real date, YYYY-MM-DD")
+        sql += " AND " + validtime.sql_valid_at()
+        params.extend([valid_at, valid_at])
     if status:
         sql += " AND f.status = ?"
         params.append(status)
@@ -126,10 +133,10 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     return sql
 
 
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None):
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -137,19 +144,19 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
     """
     params = [terms]
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending, kind=kind)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None):
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.statement
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending, kind=kind)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -270,13 +277,16 @@ def cmd_search(
     status: Optional[Status] = typer.Option(None, "--status", help="Only facts with this status (overrides the active-only default and --include-pending)."),
     include_pending: bool = INCLUDE_PENDING_OPT,
     kind: Optional[Kind] = KIND_OPT,
+    valid_at: Optional[str] = VALID_AT_OPT,
     as_json: bool = JSON_OPT,
 ):
     personal = _personal(personal_only, not_personal)
     try:
         rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
-                      include_pending=include_pending, kind=kind.value if kind else None)
+                      include_pending=include_pending, kind=kind.value if kind else None, valid_at=valid_at)
+    except ValueError as e:
+        _fail(e)
     except sqlite3.OperationalError as e:
         _fail(f"search failed: {e}")
     _emit_json(rows) if as_json else _print_fact_lines(rows)
@@ -303,7 +313,16 @@ def _print_revision_state(r):
         print(f"Recheck by: {r['recheck_by']}" + (f"  ({r['recheck_rationale']})" if r["recheck_rationale"] else ""))
 
 
-def _show_as_of(fact_id, as_of, as_json):
+def _print_validity(r, valid_at=None, verdict=None):
+    """Valid-time line (#40); printed when the fact has an interval or a --valid-at question was asked."""
+    span = validtime.describe(r["valid_from"], r["valid_to"])
+    if span:
+        print(f"Valid: {span}")
+    if valid_at is not None:
+        print(f"Valid on {valid_at}: {'yes' if verdict else 'NO'}")
+
+
+def _show_as_of(fact_id, as_of, as_json, valid_at=None):
     try:
         kind, r = _query(fact_as_of, fact_id, as_of)
     except ValueError as e:
@@ -314,8 +333,11 @@ def _show_as_of(fact_id, as_of, as_json):
         _fail(f"fact {fact_id} has no revision history (rebuild, or it predates revisions)")
     if kind == "not-yet":
         _fail(f"fact {fact_id} did not exist yet at {as_of}")
+    verdict = None if valid_at is None else validtime.contains(r["valid_from"], r["valid_to"], valid_at)
     if as_json:
-        _emit_json(r)
+        _emit_json(r if verdict is None else {**r, "valid_at": {"date": valid_at, "valid": verdict}})
+        if verdict is False:
+            raise typer.Exit(1)
         return
     via = f" via {r['changed_via']}" if r["changed_via"] else ""
     print(f"Fact #{r['fact_id']}  [{r['subject']}]  as of {as_of}  (revision {r['revision']}, changed {r['changed_at']}{via})")
@@ -323,18 +345,27 @@ def _show_as_of(fact_id, as_of, as_json):
     if r["change_reason"]:
         print(f"Reason: {r['change_reason']}")
     _print_revision_state(r)
+    _print_validity(r, valid_at, verdict)
+    if verdict is False:
+        raise typer.Exit(1)
 
 
 @app.command("show", help="Show one fact in full, with its sources. --as-of DATE shows it as it stood then (end of that day, UTC; or an ISO timestamp).")
 def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
-             as_of: Optional[str] = typer.Option(None, "--as-of", help="YYYY-MM-DD (end of that day, UTC) or an ISO-8601 timestamp.")):
+             as_of: Optional[str] = typer.Option(None, "--as-of", help="YYYY-MM-DD (end of that day, UTC) or an ISO-8601 timestamp."),
+             valid_at: Optional[str] = typer.Option(None, "--valid-at", help="Also say whether the fact was true on this date, YYYY-MM-DD (valid time, #40). Exit 1 when it was not.")):
+    if valid_at is not None and not validtime.is_valid_date(valid_at):
+        _fail(f"--valid-at {valid_at!r} must be a real date, YYYY-MM-DD")
     if as_of is not None:
-        return _show_as_of(fact_id, as_of, as_json)
+        return _show_as_of(fact_id, as_of, as_json, valid_at)
     f = _query(get_fact, fact_id)
     if not f:
         _fail(f"no fact with id {fact_id}")
+    verdict = None if valid_at is None else validtime.contains(f["valid_from"], f["valid_to"], valid_at)
     if as_json:
-        _emit_json(f)
+        _emit_json(f if verdict is None else {**f, "valid_at": {"date": valid_at, "valid": verdict}})
+        if verdict is False:
+            raise typer.Exit(1)
         return
 
     print(f"Fact #{f['id']}  [{f['subject']}]  trust={f['trust_level']}  personal={bool(f['is_personal'])}  visibility={f['visibility']}  status={f['status']}  kind={f['kind']}")
@@ -347,6 +378,7 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
         print(f"Origin: {f['origin_path']}")
     if f["recheck_by"]:
         print(f"Recheck by: {f['recheck_by']}" + (f"  ({f['recheck_rationale']})" if f["recheck_rationale"] else ""))
+    _print_validity(f, valid_at, verdict)
     if f["source_key"]:
         print(f"Source key: {f['source_key']}")
     if f["captured_via"] or f["session_id"] or f["captured_at"]:
@@ -359,6 +391,8 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
         for s in f["sources"]:
             loc = f" ({s['locator']})" if s["locator"] else ""
             print(f"  - {s['name']}{loc}")
+    if verdict is False:
+        raise typer.Exit(1)
 
 
 def _revision_diff(prev, cur):
@@ -473,12 +507,16 @@ def cmd_facts(
     not_personal: bool = typer.Option(False, "--not-personal"),
     include_pending: bool = INCLUDE_PENDING_OPT,
     kind: Optional[Kind] = KIND_OPT,
+    valid_at: Optional[str] = VALID_AT_OPT,
     as_json: bool = JSON_OPT,
 ):
-    rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
-                  status=status.value if status else None, include_pending=include_pending,
-                  personal=_personal(personal_only, not_personal), limit=limit,
-                  kind=kind.value if kind else None)
+    personal = _personal(personal_only, not_personal)
+    try:
+        rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
+                      status=status.value if status else None, include_pending=include_pending,
+                      personal=personal, limit=limit, kind=kind.value if kind else None, valid_at=valid_at)
+    except ValueError as e:
+        _fail(e)
     _emit_json(rows) if as_json else _print_fact_lines(rows)
 
 

@@ -175,12 +175,12 @@ def run(con):
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
                                    captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
-                                   extracted_from_sha256, kind)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   extracted_from_sha256, kind, valid_from, valid_to)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, eff.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["freshness"], baseline, revisions.entry_kind(item))
+             status, key, eff["freshness"], baseline, revisions.entry_kind(item), *revisions.entry_validity(item))
         )
         fact_id = cur.lastrowid
         revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))

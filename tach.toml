@@ -54,6 +54,11 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "validtime"      # #40 valid-time dates: parsing, ordering, containment (Python and SQL)
+layer = "library"
+depends_on = []
+
+[[modules]]
 path = "paths"          # the only module that knows personal paths
 layer = "library"
 depends_on = []
@@ -79,6 +84,7 @@ depends_on = [
     "paths",
     "privacy",
     "private_git",
+    "validtime",
 ]
 
 [[modules]]
@@ -88,6 +94,7 @@ depends_on = [
     "add_fact",
     "clock",
     "paths",            # lazy
+    "validtime",
 ]
 
 [[modules]]
@@ -105,6 +112,7 @@ layer = "library"
 depends_on = [
     "privacy",
     "revisions",
+    "validtime",
 ]
 
 [[modules]]
@@ -185,6 +193,7 @@ depends_on = [
     "private_git",
     "review",
     "revisions",
+    "validtime",
 ]
 
 [[modules]]

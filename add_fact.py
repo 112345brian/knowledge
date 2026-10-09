@@ -33,6 +33,7 @@ from typing import List, Optional
 import clock
 import fixity
 import privacy
+import validtime
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
@@ -78,6 +79,8 @@ def parse_args(argv):
                         "and excludes --recheck-by. It does NOT justify --trust verified.")
     p.add_argument("--kind", default="unclassified", choices=KIND_VALUES,
                    help="What kind of assertion this is (default: unclassified). Self-reported guidance.")
+    p.add_argument("--valid-from", dest="valid_from", help="When the fact became true: YYYY, YYYY-MM or YYYY-MM-DD (#40). Omit if unknown.")
+    p.add_argument("--valid-to", dest="valid_to", help="When it stopped being true (same formats; same value as --valid-from for a point in time). Omit if still true as far as known.")
     p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
@@ -109,6 +112,9 @@ class NewFact:
     is_personal: bool = True
     visibility: str = "private"
     kind: str = "unclassified"   # #39, one of KIND_VALUES
+    # Valid time (#40): when the fact was true. YYYY / YYYY-MM / YYYY-MM-DD or None; see validtime.py.
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
     trust_rationale: Optional[str] = None
     notes: Optional[str] = None
     recheck_by: Optional[str] = None
@@ -164,6 +170,7 @@ def validate_fact(fact, db_path=None):
         errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
     if not isinstance(fact.kind, str) or fact.kind not in KIND_VALUES:
         errors.append(f"kind {fact.kind!r} must be one of {list(KIND_VALUES)}")
+    errors.extend(validtime.problems(fact.valid_from, fact.valid_to))
     if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
@@ -241,6 +248,9 @@ def build_entry(fact, visibility=None):
         "freshness": "no-decay" if fact.no_decay else "recheck",
         "kind": fact.kind,
     }
+    for key in ("valid_from", "valid_to"):
+        if getattr(fact, key) is not None:
+            entry[key] = getattr(fact, key)
     if fact.domain != "general":
         entry["domain"] = fact.domain
     for key in ("trust_rationale", "notes", "recheck_by", "recheck_rationale",
@@ -417,7 +427,7 @@ def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
         statement=args.statement, subject=args.subject, trust_level=args.trust_level, no_decay=args.no_decay, domain=args.domain,
-        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind, valid_from=args.valid_from, valid_to=args.valid_to,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote, origin_path=args.origin_path,

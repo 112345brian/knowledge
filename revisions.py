@@ -33,13 +33,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import clock
+import validtime
 from add_fact import (FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY,
                       VIA_RE, _file_lock, _lock_path)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
-                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "notes")
+                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "valid_from", "valid_to", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
 # (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
@@ -197,6 +198,16 @@ def entry_kind(entry):
     return kind
 
 
+def entry_validity(entry):
+    """(valid_from, valid_to) of an entry (#40); absent keys are None. Raises RevisionError for a value that
+    is not a real YYYY / YYYY-MM / YYYY-MM-DD, or a valid_to before the valid_from (null and blank included)."""
+    vf, vt = entry.get("valid_from"), entry.get("valid_to")
+    bad = validtime.problems(vf, vt)
+    if bad:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: " + "; ".join(bad))
+    return vf, vt
+
+
 def entry_snapshot(entry):
     """The mutable fields of a JSON entry: what revision 1 says."""
     snap = {f: entry.get(f) for f in MUTABLE_FIELDS}
@@ -204,6 +215,7 @@ def entry_snapshot(entry):
     snap["status"] = entry.get("status") or "active"
     snap["visibility"] = entry.get("visibility") or "private"
     snap["kind"] = entry_kind(entry)
+    snap["valid_from"], snap["valid_to"] = entry_validity(entry)
     return snap
 
 
@@ -289,6 +301,7 @@ def validate_record_shape(rec):
         errs.append(f"superseded_by {rec['superseded_by']!r} must be null or a source_key")
     if rec["superseded_by"] is not None and rec["superseded_by"] == rec["source_key"]:
         errs.append("superseded_by points at the fact itself")
+    errs.extend(validtime.problems(rec["valid_from"], rec["valid_to"]))
     if rec["kind"] not in KIND_VALUES:
         errs.append(f"kind {rec['kind']!r} must be one of {list(KIND_VALUES)}")
     for k in ("trust_rationale", "recheck_by", "recheck_rationale", "freshness", "notes"):

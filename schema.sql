@@ -186,6 +186,15 @@ CREATE TABLE facts (
     -- fact gets is self-reported guidance, not something the database can verify. 'unclassified' is the
     -- honest marker for every legacy fact and the default for a new one. Mutable via a revision (#30).
     kind                    TEXT NOT NULL DEFAULT 'unclassified' CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
+    -- Valid time (#40): when the fact was TRUE, not when it was recorded (date_added / revisions are
+    -- transaction time). ISO dates YYYY, YYYY-MM or YYYY-MM-DD; a partial date names the whole span
+    -- (valid_from '2024' starts 2024-01-01, valid_to '2024-03' ends 2024-03-31). NULL valid_from: no known
+    -- start; NULL valid_to: still true as far as known; a point in time sets both equal. The CHECKs
+    -- enforce the shape and valid_to >= valid_from at the shorter precision; whether the date is REAL
+    -- (no Feb 30) is checked by validtime.py in the writers and the ingest. A past valid_to does not
+    -- change status: validity is not retraction.
+    valid_from              TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
+    valid_to                TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     extracted_from_sha256   TEXT CHECK (extracted_from_sha256 IS NULL OR length(extracted_from_sha256) = 64),
     -- Freshness (#7): every fact either has a recheck_by or explicitly asserts it does not decay.
     --   recheck     the fact may go stale; recheck_by is required (first CHECK below).
@@ -204,6 +213,7 @@ CREATE TABLE facts (
     -- recheck_by is sensible; that stays with whoever writes the fact. Staleness only: a fact that
     -- was wrong when typed is trust_level's job.
     freshness               TEXT NOT NULL CHECK (freshness IN ('recheck','no-decay','unreviewed')),
+    CHECK (valid_from IS NULL OR valid_to IS NULL OR substr(valid_from, 1, min(length(valid_from), length(valid_to))) <= substr(valid_to, 1, min(length(valid_from), length(valid_to)))),
     CHECK (freshness <> 'recheck' OR recheck_by IS NOT NULL),
     CHECK (freshness <> 'no-decay' OR COALESCE(length(trim(recheck_rationale, char(32, 9, 10, 11, 12, 13))), 0) > 0)
 );
@@ -238,7 +248,10 @@ CREATE TABLE fact_revisions (
     recheck_rationale TEXT,
     freshness        TEXT,
     kind             TEXT NOT NULL DEFAULT 'unclassified' CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
+    valid_from       TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
+    valid_to         TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     notes            TEXT,
+    CHECK (valid_from IS NULL OR valid_to IS NULL OR substr(valid_from, 1, min(length(valid_from), length(valid_to))) <= substr(valid_to, 1, min(length(valid_from), length(valid_to)))),
     UNIQUE (source_key, revision)
 );
 CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
@@ -639,7 +652,7 @@ LEFT JOIN subjects p ON p.id = s.parent_id;
 CREATE VIEW v_facts AS
 SELECT
     f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
-    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness, f.kind,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness, f.kind, f.valid_from, f.valid_to,
     vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
 FROM facts f
 JOIN subjects sub ON sub.id = f.subject_id
