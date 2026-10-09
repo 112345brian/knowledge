@@ -287,6 +287,41 @@ CREATE TABLE fact_revisions (
 CREATE INDEX idx_fact_revisions_fact ON fact_revisions(fact_id, revision);
 -- ===== END #30 fact revisions =====
 
+-- ============================================================
+-- Entities (#42): the people, organizations, places, projects and substances facts are about, loaded
+-- from entities.json by step 13. A fact is linked to an entity when the entity's name or an alias appears
+-- in the fact's text as a whole word (literal, case-insensitive; see entities.py). A `private` entity makes
+-- every fact that mentions it private (privacy.py); the normal-only DB leaves private entities out.
+-- ============================================================
+CREATE TABLE entities (
+    id              INTEGER PRIMARY KEY,
+    entity_key      TEXT NOT NULL UNIQUE,   -- the stable slug from entities.json
+    canonical_name  TEXT NOT NULL,
+    name_norm       TEXT NOT NULL UNIQUE,   -- normalized (NFC, casefold, whitespace collapsed): what is matched
+    type            TEXT NOT NULL CHECK (type IN ('person','organization','place','project','substance','other')),
+    private         INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1)),
+    external_id     TEXT,
+    notes           TEXT
+);
+CREATE TABLE entity_aliases (
+    entity_id   INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    alias       TEXT NOT NULL,
+    alias_norm  TEXT NOT NULL UNIQUE,
+    PRIMARY KEY (entity_id, alias)
+);
+CREATE TRIGGER entity_alias_not_a_name BEFORE INSERT ON entity_aliases
+WHEN EXISTS (SELECT 1 FROM entities WHERE name_norm = NEW.alias_norm)
+BEGIN SELECT RAISE(ABORT, 'alias collides with an entity name'); END;
+CREATE TRIGGER entity_name_not_an_alias BEFORE INSERT ON entities
+WHEN EXISTS (SELECT 1 FROM entity_aliases WHERE alias_norm = NEW.name_norm)
+BEGIN SELECT RAISE(ABORT, 'entity name collides with an alias'); END;
+CREATE TABLE fact_entities (
+    fact_id    INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+    entity_id  INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    PRIMARY KEY (fact_id, entity_id)
+);
+CREATE INDEX idx_fact_entities_entity ON fact_entities(entity_id);
+
 CREATE TABLE fact_sources (
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
     source_id   INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,

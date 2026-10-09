@@ -36,6 +36,9 @@ What goes in (everything else is absent, not empty):
 subjects        also description, parent_relation, deprecated, replaced_by_subject_id (only if that subject is
                    included) and subject_aliases (#43); a description or alias that contains a listed keyword
                    is dropped, the subject stays.
+entities        only NON-private entities that an included fact mentions (key, name, type, external_id, notes), their
+                   aliases and the fact_entities links of included facts (#42). A private entity, its aliases, notes
+                   and links are never copied; a name, alias or note containing a listed keyword is dropped.
 Never copied: claims (and their fact links), vault_files, metrics, measurements, fact_measurements,
 exercises, training_sets, foods, food/meal logs, muscles, import_sources, artists, venues,
 festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and the views/triggers
@@ -51,7 +54,7 @@ import privacy
 NORMAL_DB_NAME = "knowledge-normal.db"
 
 # Every table the normal DB may contain (FTS shadow tables are the 'fts' siblings below).
-TABLES = ("subjects", "subject_aliases", "publishers", "authors", "sources", "source_authors", "facts",
+TABLES = ("subjects", "subject_aliases", "entities", "entity_aliases", "fact_entities", "publishers", "authors", "sources", "source_authors", "facts",
           "fact_revisions", "fact_sources")
 FTS_TABLES = ("facts_fts", "sources_fts", "authors_fts")
 VIEWS = ("v_subjects",)
@@ -72,6 +75,27 @@ CREATE TABLE subject_aliases (
     subject_id  INTEGER NOT NULL REFERENCES subjects(id),
     alias       TEXT NOT NULL UNIQUE,
     PRIMARY KEY (subject_id, alias)
+);
+CREATE TABLE entities (
+    id              INTEGER PRIMARY KEY,
+    entity_key      TEXT NOT NULL UNIQUE,
+    canonical_name  TEXT NOT NULL,
+    name_norm       TEXT NOT NULL UNIQUE,
+    type            TEXT NOT NULL CHECK (type IN ('person','organization','place','project','substance','other')),
+    private         INTEGER NOT NULL DEFAULT 0 CHECK (private = 0),
+    external_id     TEXT,
+    notes           TEXT
+);
+CREATE TABLE entity_aliases (
+    entity_id   INTEGER NOT NULL REFERENCES entities(id),
+    alias       TEXT NOT NULL,
+    alias_norm  TEXT NOT NULL UNIQUE,
+    PRIMARY KEY (entity_id, alias)
+);
+CREATE TABLE fact_entities (
+    fact_id    INTEGER NOT NULL REFERENCES facts(id),
+    entity_id  INTEGER NOT NULL REFERENCES entities(id),
+    PRIMARY KEY (fact_id, entity_id)
 );
 CREATE TABLE publishers (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
@@ -288,6 +312,29 @@ def populate(out, full, rules):
         if fid in fact_ids:
             out.execute("INSERT INTO fact_sources (fact_id, source_id, locator, quote) VALUES (?, ?, ?, ?)",
                         (fid, sid, locator, quote))
+
+    # 4b. entities (#42): never a private entity, its aliases or its links. A non-private entity comes along
+    # only when an INCLUDED fact mentions it, and only if its name passes the keyword rules (a listed name
+    # in the name itself would expose it); an alias or notes/external_id containing a listed keyword is dropped.
+    # A private entity's links cannot be in an included fact (the resolver made that fact private), but they
+    # are excluded here on their own account too, so the two protections are independent.
+    entity_rows = {r[0]: r for r in full.execute(
+        "SELECT id, entity_key, canonical_name, name_norm, type, external_id, notes FROM entities WHERE private = 0 ORDER BY id")}
+    linked = {}
+    for fid, eid in full.execute("SELECT fact_id, entity_id FROM fact_entities ORDER BY fact_id, entity_id"):
+        if fid in fact_ids and eid in entity_rows:
+            linked.setdefault(eid, []).append(fid)
+    for eid in sorted(linked):
+        _, key, name, norm, etype, external_id, notes = entity_rows[eid]
+        if clean_text(name) is None or clean_text(norm) is None:
+            continue
+        out.execute("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, external_id, notes) "
+                    "VALUES (?, ?, ?, ?, ?, 0, ?, ?)", (eid, key, name, norm, etype, clean_text(external_id), clean_text(notes)))
+        for alias, alias_norm in full.execute("SELECT alias, alias_norm FROM entity_aliases WHERE entity_id = ? ORDER BY alias", (eid,)):
+            if clean_text(alias) is not None and clean_text(alias_norm) is not None:
+                out.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (?, ?, ?)", (eid, alias, alias_norm))
+        for fid in linked[eid]:
+            out.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (?, ?)", (fid, eid))
 
     # 5. FTS over what was copied
     for fts in FTS_TABLES:

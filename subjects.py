@@ -30,7 +30,7 @@ import re
 import stat
 import uuid
 
-import private_git
+import private_edit
 
 SUBJECTS_FILENAME = "subjects.json"
 VERSION = 1
@@ -300,57 +300,18 @@ def deprecate(entries, subject, replaced_by=None, known=(), domain=None):
 
 # ------------------------------------------------------------------ the git flow (like the privacy rules)
 
-class EditResult:
-    def __init__(self, ok, changed=False, what=None, message=None, commit=None, commit_error=None, errors=(), notes=(),
-                 detached=False, dry_run=False, path=None):
-        self.ok, self.changed, self.what, self.message = ok, changed, what, message
-        self.commit, self.commit_error, self.errors, self.notes = commit, commit_error, list(errors), list(notes)
-        self.detached, self.dry_run, self.path = detached, dry_run, path
-
-    def to_json(self):
-        return {"ok": self.ok, "changed": self.changed, "what": self.what, "dry_run": self.dry_run, "path": self.path,
-                "commit": self.commit, "commit_error": self.commit_error, "errors": self.errors, "notes": self.notes}
+EditResult = private_edit.EditResult
 
 
 def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None):
     """Load subjects.json (an absent file starts empty), apply `edit(entries) -> (new_entries, changed)`,
-    refuse on a dirty private repo, write atomically and commit only that file. Mirrors the privacy rules
-    editor. An edit that changes nothing writes and commits nothing (and needs no clean tree). Never
-    prints or exits. `what` / `message` describe the change for the report / commit."""
+    refuse on a dirty private repo, write atomically and commit only that file (private_edit.edit_files).
+    Never prints or exits. `what` / `message` describe the change for the report / commit."""
     path = data_path() if path is None else path
-    try:
-        entries = read_file(path) or []
-        new, changed = edit(entries)
-    except SubjectsError as e:
-        return EditResult(False, errors=[str(e)], path=path)
-    if not changed:
-        return EditResult(True, changed=False, what=what, path=path, notes=[f"no change: {path} already has this"])
-    directory = os.path.dirname(os.path.abspath(path))
-    probe = directory
-    while not os.path.isdir(probe):
-        probe = os.path.dirname(probe)
-    notes = []
-    try:
-        repo = private_git.find_repo(probe)
-        if repo is None:
-            notes.append(f"{directory} is not inside a git repository; the change will not be committed.")
-        elif not allow_dirty:
-            private_git.ensure_clean_tree(repo)
-    except private_git.PrivateGitError as e:
-        return EditResult(False, errors=[str(e)], path=path)
-    if dry_run:
-        return EditResult(True, changed=True, what=what, message=message if repo else None, dry_run=True, path=path, notes=notes)
-    try:
-        os.makedirs(directory, exist_ok=True)
-        save(new, path)
-    except (SubjectsError, OSError) as e:
-        return EditResult(False, errors=[f"could not write {path}: {e}"], path=path)
-    if repo is None:
-        return EditResult(True, changed=True, what=what, path=path, notes=notes)
-    try:
-        commit = private_git.commit_private_change([path], message, repo)
-        detached = private_git.is_detached(repo)
-    except private_git.PrivateGitError as e:
-        return EditResult(True, changed=True, what=what, message=message, path=path, notes=notes,
-                          commit_error=f"the change IS written to {path} but is NOT committed: {e}")
-    return EditResult(True, changed=True, what=what, message=message, commit=commit, detached=detached, path=path, notes=notes)
+
+    def compute():
+        new, changed = edit(read_file(path) or [])
+        return changed, new
+
+    return private_edit.edit_files([path], compute, lambda new: save(new, path), what, message,
+                                   allow_dirty, dry_run, error_types=(SubjectsError,))

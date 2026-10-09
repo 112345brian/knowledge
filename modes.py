@@ -28,6 +28,7 @@ Rules the code enforces:
 import enum
 import threading
 
+import entities
 import privacy
 import validtime
 from revisions import parse_as_of, parse_timestamp
@@ -197,7 +198,7 @@ def _limit(limit):
     return limit
 
 
-def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=None):
+def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=None, entity=None):
     if subject:  # a subject's alias (#43) selects the same facts as its name
         sql += " AND (sub.name = ? OR sub.id IN (SELECT subject_id FROM subject_aliases WHERE alias = ?))"
         params.extend([subject, subject])
@@ -207,6 +208,10 @@ def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=
     if kind:
         sql += " AND f.kind = ?"
         params.append(kind)
+    if entity is not None:
+        clause, extra = entities.filter_clause(entity)
+        sql += clause
+        params.extend(extra)
     if valid_at is not None:
         if not validtime.is_valid_date(valid_at):
             raise ValueError("valid_at must be a real date, YYYY-MM-DD")
@@ -223,7 +228,7 @@ def _filters(sql, params, subject, trust, status, personal, kind=None, valid_at=
 
 
 def search_facts(session, con, terms, subject=None, trust=None, personal=None, limit=20,
-                 include_pending=False, kind=None, valid_at=None):
+                 include_pending=False, kind=None, valid_at=None, entity=None):
     """Full-text search, best match first, visible facts only. Same row shape as
     knowledge.search_facts. An empty/blank query or invalid FTS syntax (unbalanced quote, ...)
     raises InvalidQuery with a generic message; the sqlite error text is not passed on."""
@@ -239,7 +244,7 @@ def search_facts(session, con, terms, subject=None, trust=None, personal=None, l
         JOIN subjects sub ON sub.id = f.subject_id
         WHERE facts_fts MATCH ?""" + gate
     params = [terms] + gparams
-    sql, params = _filters(sql, params, subject, trust, None, personal, kind, valid_at)
+    sql, params = _filters(sql, params, subject, trust, None, personal, kind, valid_at, entity)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     try:
@@ -252,7 +257,7 @@ def search_facts(session, con, terms, subject=None, trust=None, personal=None, l
 
 
 def list_facts(session, con, subject=None, trust=None, status=None, personal=None, limit=50,
-               include_pending=False, kind=None, valid_at=None):
+               include_pending=False, kind=None, valid_at=None, entity=None):
     """Same row shape as knowledge.list_facts. A `status` filter can only narrow the visible set
     (normal mode asking for status 'superseded' gets [])."""
     mode = _readable(session, "listing facts")
@@ -260,7 +265,7 @@ def list_facts(session, con, subject=None, trust=None, status=None, personal=Non
     gate, gparams = _gate(mode, include_pending)
     sql = ("""SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
               FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1""" + gate)
-    sql, params = _filters(sql, list(gparams), subject, trust, status, personal, kind, valid_at)
+    sql, params = _filters(sql, list(gparams), subject, trust, status, personal, kind, valid_at, entity)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]

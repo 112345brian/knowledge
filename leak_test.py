@@ -121,6 +121,14 @@ def derive_markers(full_path):
         for (n,) in full.execute("SELECT name FROM subjects WHERE private = 1"):
             add("private subject name", n)
         # #43: a private subject's description and aliases are as private as its name
+        # #42: a private entity's name, aliases, notes and id are as private as the facts that mention it
+        for (n, norm, key, ext, notes) in full.execute("SELECT canonical_name, name_norm, entity_key, external_id, notes FROM entities WHERE private = 1"):
+            for label, value in (("private entity name", n), ("private entity name (normalized)", norm), ("private entity key", key),
+                                 ("private entity external id", ext), ("private entity notes", notes)):
+                add(label, value)
+        for (a, an) in full.execute("SELECT a.alias, a.alias_norm FROM entity_aliases a JOIN entities e ON e.id = a.entity_id WHERE e.private = 1"):
+            add("private entity alias", a)
+            add("private entity alias (normalized)", an)
         for (d,) in full.execute("SELECT description FROM subjects WHERE private = 1"):
             add("private subject description", d)
         for (a,) in full.execute("SELECT a.alias FROM subject_aliases a JOIN subjects s ON s.id = a.subject_id WHERE s.private = 1"):
@@ -141,6 +149,9 @@ MARKERS = {
     "rules-file name in untagged subject": "Marnoq Fothergill",
     "private fact source quote": "quenchwhistle verbatim private quote",
     "private subject name": "zephyr-family-matters",
+    "private entity name": "Quillon Fernsby",
+    "private entity alias": "Q-Fern-Alias",
+    "private entity notes": "fernsby-secret-notes about a relative",
     "private subject description": "quillfeather-secret-description of the family topic",
     "private subject alias": "zephyr-secret-alias",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
@@ -173,6 +184,11 @@ def build_fixture(directory):
     ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (3, ?)", (M["private subject alias"],))
     ex("UPDATE subjects SET description = 'Sleep habits and duration', parent_relation = 'part-of' WHERE id = 2")
     ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (2, 'rest')")
+    ex("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, notes) VALUES (1, 'quillon-fernsby', ?, ?, 'person', 1, ?)",
+       (M["private entity name"], M["private entity name"].casefold(), M["private entity notes"]))
+    ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (1, ?, ?)", (M["private entity alias"], M["private entity alias"].casefold()))
+    ex("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, external_id, notes) VALUES (2, 'acme-labs', 'Acme Labs', 'acme labs', 'organization', 0, 'wikidata:Q1', 'A public lab')")
+    ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, 'Acme', 'acme')")
     ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state) VALUES (1, ?, ?, 10, 'present')",
        (M["vault path"], M["file hash"]))
     ex("INSERT INTO publishers (id, name) VALUES (1, 'Journal of Fixtures')")
@@ -201,6 +217,9 @@ def build_fixture(directory):
     fact(5, 4, M["private-subject fact under normal-looking fact"], "normal", "k-floor-1")
     fact(6, 3, "Another private-subject fact about the family", "private", "k-priv-3")
     fact(7, 1, M["unicode private"], "private", "k-priv-4")
+    # #42: the private fact mentions the private entity; the normal fact mentions the public one
+    ex("INSERT INTO fact_entities (fact_id, entity_id) VALUES (3, 1)")
+    ex("INSERT INTO fact_entities (fact_id, entity_id) VALUES (1, 2)")
     # #38: a normal fact and a normal-included source both carry the hash; neither column is copied
     ex("UPDATE facts SET extracted_from_sha256 = ? WHERE id = 1", (M["file hash"],))
     ex("UPDATE sources SET content_sha256 = ?, size_bytes = 10, file_state = 'present' WHERE id = 1", (M["file hash"],))

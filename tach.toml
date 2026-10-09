@@ -54,11 +54,41 @@ layer = "library"
 depends_on = []
 
 [[modules]]
-path = "subjects"       # #43 the subject hierarchy as data: validation, alias resolution, edits through private_git
+path = "textmatch"      # #42 literal whole-word matching, shared by privacy keywords and entity aliases
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "private_edit"   # #43/#42 the shared load-edit-write-commit flow for hand-curated files in knowledge-private
+layer = "library"
+depends_on = [
+    "private_git",
+]
+
+[[modules]]
+path = "entities"       # #42 entities.json: validation, term matching, edits, linking
 layer = "library"
 depends_on = [
     "paths",            # lazy
-    "private_git",
+    "private_edit",
+    "textmatch",
+]
+
+[[modules]]
+path = "entity_tools"   # #42 keywords -> private entities (touches privacy_rules.json and entities.json together)
+layer = "library"
+depends_on = [
+    "entities",
+    "privacy",
+    "private_edit",
+]
+
+[[modules]]
+path = "subjects"       # #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
+layer = "library"
+depends_on = [
+    "paths",            # lazy
+    "private_edit",
 ]
 
 [[modules]]
@@ -80,7 +110,9 @@ depends_on = []
 path = "privacy"
 layer = "library"
 depends_on = [
+    "entities",         # private entities (#42) are read from entities.json beside the rules file
     "paths",            # lazy import of PRIVATE_DATA_DIR, so the module imports without a private repo
+    "textmatch",
 ]
 
 [[modules]]
@@ -119,6 +151,7 @@ depends_on = [
 path = "modes"          # the only serving-side reader of facts
 layer = "library"
 depends_on = [
+    "entities",
     "privacy",
     "revisions",
     "validtime",
@@ -195,8 +228,10 @@ depends_on = [
     "cli_facts_batch",  # registration lines (CLI-internal)
     "cli_inbox",
     "cli_lifecycle",
+    "cli_entities",
     "cli_migrate",
     "cli_subjects",
+    "entities",
     "fixity",
     "paths",
     "privacy",
@@ -204,6 +239,15 @@ depends_on = [
     "review",
     "revisions",
     "validtime",
+]
+
+[[modules]]
+path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
+layer = "cli"
+depends_on = [
+    "entities",
+    "entity_tools",
+    "knowledge",        # lazy `import knowledge` for connect() (CLI-internal; knowledge registers this module)
 ]
 
 [[modules]]
@@ -306,6 +350,11 @@ depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date"]
 path = "backfill_extracted_hashes"
 layer = "pipeline"
 depends_on = ["backfill_source_keys", "fixity", "revisions"]
+
+[[modules]]
+path = "13_link_entities"
+layer = "pipeline"
+depends_on = ["entities", "paths"]
 
 [[modules]]
 path = "export_subjects"
