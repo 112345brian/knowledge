@@ -61,15 +61,20 @@ source_modules = [
     "kn.clock",
     "kn.fact_rules",
     "kn.facts_batch",
+    "kn.facts_batch_rules",
+    "kn.leak_rules",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.lifecycle_rules",
     "kn.lifecycle_store",
     "kn.migrate_memory",
+    "kn.migrate_memory_rules",
+    "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
     "kn.new_fact",
     "kn.normal_db",
+    "kn.normal_rules",
     "kn.paths",
     "kn.privacy",
     "kn.privacy_store",
@@ -118,16 +123,21 @@ source_modules = [
     "kn.clock",
     "kn.fact_rules",
     "kn.facts_batch",
+    "kn.facts_batch_rules",
     "kn.inbox",
+    "kn.leak_rules",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.lifecycle_rules",
     "kn.lifecycle_store",
     "kn.migrate_memory",
+    "kn.migrate_memory_rules",
+    "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
     "kn.new_fact",
     "kn.normal_db",
+    "kn.normal_rules",
     "kn.paths",
     "kn.privacy",
     "kn.privacy_store",
@@ -217,6 +227,7 @@ forbidden_modules = [
     "kn.leak_test",
     "kn.lifecycle_store",
     "kn.migrate_memory",
+    "kn.migrate_memory_store",
     "kn.normal_db",
     "kn.privacy",
     "kn.privacy_store",
@@ -255,9 +266,11 @@ name = "Domain modules never touch the file system, the database, processes or a
 # the other way round (the layered contract below already forbids the upward import).
 # DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
 # revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
-# fact_rules and timestamps. Their adapters: privacy_store, modes_store, claims_store, revisions_store,
-# review_store, lifecycle_store, add_fact_store. `review`, `lifecycle` and `add_fact` are the use cases
-# that wire the adapters to the rules.
+# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules and timestamps. Their
+# adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
+# add_fact_store, migrate_memory_store (normal_db and leak_test are the adapters for their rules).
+# `review`, `lifecycle`, `add_fact`, `facts_batch` and `migrate_memory` are the use cases that wire the
+# adapters to the rules.
 # The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
 # module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
 # (tests/test_architecture.py pins it). Direct imports only, because the ADAPTER legitimately
@@ -266,9 +279,13 @@ type = "forbidden"
 source_modules = [
     "kn.claims_audit",
     "kn.fact_rules",
-    "kn.modes",
+    "kn.facts_batch_rules",
+    "kn.leak_rules",
     "kn.lifecycle_rules",
+    "kn.migrate_memory_rules",
+    "kn.modes",
     "kn.new_fact",
+    "kn.normal_rules",
     "kn.privacy",
     "kn.review_rules",
     "kn.revisions",
@@ -280,7 +297,8 @@ forbidden_modules = [
     "subprocess", "socket", "http", "urllib", "uuid",
     # adapters and the modules that wrap infrastructure
     "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
-    "kn.add_fact_store", "kn.lifecycle_store", "kn.add_fact", "kn.lifecycle", "kn.review", "kn.private_git",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.add_fact", "kn.lifecycle",
+    "kn.review", "kn.facts_batch", "kn.migrate_memory", "kn.normal_db", "kn.leak_test", "kn.private_git",
     "kn.paths", "kn.clock",
 ]
 allow_indirect_imports = true
@@ -300,14 +318,14 @@ layers = [
     "modes_store | claims_store",
     "review | modes | claims_audit | normal_db",
     "leak_test",
-    "review_store | lifecycle_store",
+    "review_store | lifecycle_store | migrate_memory_store",
     "revisions_store",
     "add_fact",
     "privacy_store",
-    "add_fact_store | revisions | review_rules | lifecycle_rules",
+    "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules",
     "new_fact",
     "privacy | private_git",
-    "clock | paths | timestamps | fact_rules",
+    "clock | paths | timestamps | fact_rules | leak_rules",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

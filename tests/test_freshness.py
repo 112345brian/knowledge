@@ -242,8 +242,10 @@ def test_batch_accepts_each_valid_combination_and_records_it(fb):
 
 
 def test_migrate_memory_facts_are_recheck_with_a_recheck_by():
-    src = open(os.path.join(REPO, "migrate_memory.py")).read()
+    # the mapping to a NewFact lives in the domain module; the use case must not set freshness itself
+    src = open(os.path.join(REPO, "migrate_memory_rules.py")).read()
     assert "recheck_by=recheck" in src and "no_decay" not in src
+    assert "no_decay" not in open(os.path.join(REPO, "migrate_memory.py")).read()
 
 
 # ------------------------------------------------------------------ ingest: 04 (legacy files) and 11

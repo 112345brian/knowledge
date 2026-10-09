@@ -188,18 +188,31 @@ depends_on = [
 ]
 
 [[modules]]
-path = "normal_db"
+path = "normal_rules"   # DOMAIN: the normal tier's table/column whitelist and which rows may enter (pure)
+layer = "library"
+depends_on = [
+    "privacy",
+]
+
+[[modules]]
+path = "normal_db"      # ADAPTER (and script): the SQL copy and the file swap for knowledge-normal.db
 layer = "library"
 depends_on = [
     "leak_test",        # lazy, to leak-check the DB it just built
-    "privacy",
+    "normal_rules",
     "privacy_store",
 ]
 
 [[modules]]
-path = "leak_test"
+path = "leak_rules"     # DOMAIN: how a private marker is matched and which derived strings count (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "leak_test"      # ADAPTER (and script): reads the db files, derives markers from the full DB
 layer = "library"
 depends_on = [
+    "leak_rules",
     "normal_db",        # lazy, self_test() builds a fixture normal DB. The one documented
                         # library cycle (see import-linter "libraries-layered" ignore_imports).
     "privacy",          # lazy
@@ -237,26 +250,50 @@ depends_on = [
 ]
 
 [[modules]]
-path = "facts_batch"    # #32 add_facts batch + `register facts`
+path = "facts_batch_rules" # DOMAIN: batch result types, item parsing, the duplicate test (pure)
+layer = "library"
+depends_on = [
+    "new_fact",
+]
+
+[[modules]]
+path = "facts_batch"    # USE CASE #32 add_facts batch + `register facts`: reads the file and the mode, resolves privacy, writes
 layer = "library"
 depends_on = [
     "add_fact",
     "add_fact_store",
+    "facts_batch_rules",
     "modes",
     "privacy",
     "private_git",
 ]
 
 [[modules]]
-path = "migrate_memory" # #29
+path = "migrate_memory_rules" # DOMAIN: memory-file parsing, the mapping to a NewFact, the per-file decision (pure)
+layer = "library"
+depends_on = [
+    "new_fact",
+]
+
+[[modules]]
+path = "migrate_memory_store" # ADAPTER for migrate_memory: finds/reads the files, the run lock, existing source keys
+layer = "library"
+depends_on = [
+    "migrate_memory_rules",
+    "revisions",
+    "revisions_store",
+]
+
+[[modules]]
+path = "migrate_memory" # USE CASE #29: validates, appends through add_fact, commits
 layer = "library"
 depends_on = [
     "add_fact",
     "clock",
-    "paths",
+    "migrate_memory_rules",
+    "migrate_memory_store",
     "private_git",
     "revisions",
-    "revisions_store",
 ]
 
 # ===================================================================== CLI

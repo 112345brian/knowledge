@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build knowledge-normal.db: a copy of the full DB that CANNOT contain private data (#21).
+"""Build knowledge-normal.db (the adapter: SQL and files; the whitelist and row decisions are in
+`normal_rules`): a copy of the full DB that CANNOT contain private data (#21).
 
 Used so a remote-served connector never has anything private to leak. The build COPIES a
 whitelist INTO a fresh, empty database; it never deletes from a copy of knowledge.db (deletion
@@ -42,16 +43,10 @@ import sqlite3
 import sys
 import tempfile
 
-import privacy
 import privacy_store
-
-NORMAL_DB_NAME = "knowledge-normal.db"
-
-# Every table the normal DB may contain (FTS shadow tables are the 'fts' siblings below).
-TABLES = ("subjects", "publishers", "authors", "sources", "source_authors", "facts",
-          "fact_revisions", "fact_sources")
-FTS_TABLES = ("facts_fts", "sources_fts", "authors_fts")
-VIEWS = ("v_subjects",)
+from normal_rules import (FACT_COLS, FTS_TABLES, NORMAL_DB_NAME, NormalDbError, REVISION_COLS, SOURCE_COLS,  # noqa: F401  (the public API)
+                          SubjectFilter, TABLES, VIEWS, check_objects, chain_ids as _chain_ids, cite_text_index,
+                          copy_fact_row, format_counts, qmarks as _qmarks, select_facts, select_revisions)
 
 DDL = """
 CREATE TABLE subjects (
@@ -137,14 +132,6 @@ GROUP BY s.id;
 """
 
 
-class NormalDbError(Exception):
-    pass
-
-
-def _qmarks(n):
-    return ",".join("?" * n)
-
-
 def _subject_context(full):
     """name by id, parent id by id, private flag by id, from the full DB."""
     names, parents, private = {}, {}, {}
@@ -153,55 +140,23 @@ def _subject_context(full):
     return names, parents, private
 
 
-def _chain_ids(sid, parents):
-    """sid and its ancestors; None if the tree loops or dangles (fail closed)."""
-    out, seen = [], set()
-    cur = sid
-    while cur is not None:
-        if cur in seen or cur not in parents:
-            return None
-        seen.add(cur)
-        out.append(cur)
-        cur = parents[cur]
-    return out
-
-
 def populate(out, full, rules):
     """Copy the whitelist from `full` (a read-only connection) into `out` (fresh, schema made)."""
     names, parents, private = _subject_context(full)
-    ctx = rules.with_context(
-        parents={names[i]: names.get(parents[i]) for i in names}, known_subjects=set(names.values()))
-
-    # Free text that is COPIED into this DB besides the statement must pass the keyword rules too:
-    # the resolver only ever scanned the statement, so a listed name in a rationale or a citation
-    # quote would otherwise slip through into the tier that is served remotely.
-    cite_text = {}
-    for fid, locator, quote in full.execute("SELECT fact_id, locator, quote FROM fact_sources"):
-        cite_text.setdefault(fid, []).extend(t for t in (locator, quote) if t)
-
-    def passes(sid, statement, visibility, extra=()):
-        chain = _chain_ids(sid, parents)
-        if chain is None or any(private[i] for i in chain):
-            return False
-        return privacy.resolve_visibility(names[sid], statement, visibility, ctx, extra_text=extra).visibility == "normal"
+    flt = SubjectFilter(names, parents, private, rules)
+    cite_text = cite_text_index(full.execute("SELECT fact_id, locator, quote FROM fact_sources"))
 
     # 1. facts
     fact_keys, subject_ids = set(), set()
-    cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
-            "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
-            "visibility, source_key, freshness")
-    # cols: r[5] trust_rationale, r[11] recheck_rationale (both copied)
-    facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
-             if passes(r[1], r[2], r[12], extra=(r[5], r[11], *cite_text.get(r[0], ())))]
+    facts = select_facts(full.execute(f"SELECT {FACT_COLS} FROM facts WHERE visibility = 'normal' ORDER BY id"),
+                         flt, cite_text)
     fact_ids = {r[0] for r in facts}
     for r in facts:
-        r = list(r)
-        if r[7] not in fact_ids:
-            r[7] = None  # superseded_by points at a fact that is not in this DB
-        subject_ids.update(_chain_ids(r[1], parents))
+        r = copy_fact_row(r, fact_ids)
+        subject_ids.update(flt.chain(r[1]))
         if r[13] is not None:
             fact_keys.add(r[13])
-        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(15)})", r)
+        out.execute(f"INSERT INTO facts ({FACT_COLS}) VALUES ({_qmarks(15)})", r)
 
     # 2. subjects (used + ancestors), parents first is not required (FKs are checked at commit)
     for sid in sorted(subject_ids):
@@ -210,17 +165,10 @@ def populate(out, full, rules):
                     (sid, names[sid], domain, parent_id))
 
     # 3. revisions: of an included fact, only revisions that are themselves normal and pass the rules
-    rcols = ("id, fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "
-             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness")
     subject_of = {r[0]: r[1] for r in facts}
-    for r in full.execute(f"SELECT {rcols} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"):
-        # rcols: r[8] trust_rationale, r[13] recheck_rationale
-        if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10], extra=(r[8], r[13])):
-            continue
-        r = list(r)
-        if r[11] not in fact_keys:
-            r[11] = None
-        out.execute(f"INSERT INTO fact_revisions ({rcols}) VALUES ({_qmarks(15)})", r)
+    for r in select_revisions(full.execute(f"SELECT {REVISION_COLS} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"),
+                              fact_ids, subject_of, flt, fact_keys):
+        out.execute(f"INSERT INTO fact_revisions ({REVISION_COLS}) VALUES ({_qmarks(15)})", r)
 
     # 4. citations of included facts, and only the sources they cite
     source_ids = set()
@@ -229,8 +177,7 @@ def populate(out, full, rules):
         if fid in fact_ids:
             source_ids.add(sid)
     publishers, authors = set(), set()
-    scols = "id, citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description"
-    src_rows = [r for r in full.execute(f"SELECT {scols} FROM sources ORDER BY id") if r[0] in source_ids]
+    src_rows = [r for r in full.execute(f"SELECT {SOURCE_COLS} FROM sources ORDER BY id") if r[0] in source_ids]
     for r in src_rows:
         if r[4] is not None:
             publishers.add(r[4])
@@ -238,7 +185,7 @@ def populate(out, full, rules):
         if pid in publishers:
             out.execute("INSERT INTO publishers (id, name) VALUES (?, ?)", (pid, name))
     for r in src_rows:
-        out.execute(f"INSERT INTO sources ({scols}) VALUES ({_qmarks(9)})", r)
+        out.execute(f"INSERT INTO sources ({SOURCE_COLS}) VALUES ({_qmarks(9)})", r)
     sa = [r for r in full.execute("SELECT source_id, author_id, author_order FROM source_authors ORDER BY source_id, author_id")
           if r[0] in source_ids]
     authors = {r[1] for r in sa}
@@ -287,14 +234,8 @@ def table_counts(con):
 
 def check_structure(con):
     """Only whitelisted tables/views exist (FTS shadow tables allowed): no non-fact table, empty or not."""
-    allowed = set(TABLES) | set(FTS_TABLES) | set(VIEWS)
-    allowed |= {f"{f}_{s}" for f in FTS_TABLES for s in ("data", "idx", "docsize", "config")}
     names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')")}
-    extra = names - allowed
-    if extra:
-        raise NormalDbError(f"unexpected objects in the normal DB: {sorted(extra)}")
-    if con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'").fetchone()[0]:
-        raise NormalDbError("unexpected triggers in the normal DB")
+    check_objects(names, con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'").fetchone()[0])
 
 
 def remove_db_files(path):
@@ -330,10 +271,6 @@ def build_normal_atomic(full_path, directory, rules, leak_check=True):
         remove_db_files(final)
         raise
     return final, counts
-
-
-def format_counts(counts):
-    return "\n".join(f"  {t}: {n}" for t, n in counts.items())
 
 
 def main(argv=None):

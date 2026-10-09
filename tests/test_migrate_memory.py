@@ -320,7 +320,7 @@ def test_source_key_is_stable_and_depends_on_place_not_content():
 def test_colliding_derived_keys_second_file_is_a_problem(w, monkeypatch):
     w.mem("p", "a.md")
     w.mem("p", "b.md")
-    monkeypatch.setattr(mm, "source_key_for", lambda project, name: "mm-collide")
+    monkeypatch.setitem(mm.plan_file.__globals__, "source_key_for", lambda project, name: "mm-collide")  # the rules module
     r = w.run()
     assert actions(r) == ["added", "problem"] and "collides" in r.files[1].detail
     assert len(w.entries()) == 1 and r.exit_code == 1

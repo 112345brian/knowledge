@@ -387,6 +387,30 @@ CASES = [
      [("tach", ["inbox", "lifecycle_store"]), ("import-linter", ["only through modes", "kn.lifecycle_store"])]),
     ("serving-imports-add-fact-store", "inbox", "import add_fact_store",
      [("tach", ["inbox", "add_fact_store"]), ("import-linter", ["only through modes", "kn.add_fact_store"])]),
+    ("domain-facts-batch-rules-imports-sqlite", "facts_batch_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.facts_batch_rules", "sqlite3"])]),
+    ("domain-facts-batch-rules-imports-use-case", "facts_batch_rules", "import facts_batch",
+     [("tach", ["facts_batch_rules", "facts_batch"]), ("import-linter", ["kn.facts_batch_rules", "kn.facts_batch"])]),
+    ("domain-migrate-memory-rules-imports-os", "migrate_memory_rules", "import os",
+     [("import-linter", ["kn.migrate_memory_rules", "os"])]),
+    ("domain-migrate-memory-rules-imports-clock", "migrate_memory_rules", "import clock",
+     [("tach", ["migrate_memory_rules", "clock"]), ("import-linter", ["kn.migrate_memory_rules", "kn.clock"])]),
+    ("domain-migrate-memory-rules-imports-glob", "migrate_memory_rules", "import glob",
+     [("import-linter", ["kn.migrate_memory_rules", "glob"])]),
+    ("adapter-migrate-memory-store-imports-use-case", "migrate_memory_store", "import migrate_memory",
+     [("tach", ["migrate_memory_store", "migrate_memory"]), ("import-linter", ["kn.migrate_memory_store", "kn.migrate_memory"])]),
+    ("domain-normal-rules-imports-sqlite", "normal_rules", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.normal_rules", "sqlite3"])]),
+    ("domain-normal-rules-imports-tempfile", "normal_rules", "import tempfile",
+     [("import-linter", ["kn.normal_rules", "tempfile"])]),
+    ("domain-normal-rules-imports-adapter", "normal_rules", "import normal_db",
+     [("tach", ["normal_rules", "normal_db"]), ("import-linter", ["kn.normal_rules", "kn.normal_db"])]),
+    ("domain-leak-rules-imports-sqlite", "leak_rules", "import sqlite3",
+     [("import-linter", ["kn.leak_rules", "sqlite3"])]),
+    ("domain-leak-rules-imports-leak-test", "leak_rules", "import leak_test",
+     [("tach", ["leak_rules", "leak_test"]), ("import-linter", ["kn.leak_rules", "kn.leak_test"])]),
+    ("serving-imports-migrate-memory-store", "inbox", "import migrate_memory_store",
+     [("tach", ["inbox", "migrate_memory_store"]), ("import-linter", ["only through modes", "kn.migrate_memory_store"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -441,7 +465,8 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
-    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules",
+               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):

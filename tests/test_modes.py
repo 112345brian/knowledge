@@ -576,6 +576,8 @@ FACT_READERS_ALLOWED = {
     "add_fact.py", "backfill_source_keys.py", "build.py",
     # build-time checker: scans the full db for private markers, never serves tool results
     "leak_test.py",
+    # names the whitelisted tables, reads none: the normal tier's column and table whitelist
+    "normal_rules.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"
