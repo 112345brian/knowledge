@@ -152,6 +152,11 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
     batch1 = [legacy, _entry("b-1", "sleep", "Visibility oddity.", visibility="weird"),
               _entry("b-2", "sleep", "Status oddity.", status="odd"),
               _entry("b-3", "sleep", "AAS Cardiovascular Risk.md origin", notes="AAS Cardiovascular Risk.md")]
+    # the world's own vault hints (fact_hints.json): fixture names only, the same shape the author keeps privately
+    _write(os.path.join(data, "fact_hints.json"), json.dumps({
+        "fingerprints": [r"156\.4"], "personal_notes": ["Current State"],
+        "note_folders": {"harm-reduction": ["AAS Cardiovascular Risk.md"]},
+        "whole_titles": ["Volume Is the Variable, Not Frequency.md"]}, indent=1))
     _write(os.path.join(data, "pilot_facts.json"), json.dumps(pilot, indent=1))
     for i in range(1, 5):
         _write(os.path.join(data, f"facts_batch{i}.json"), json.dumps(batch1 if i == 1 else [], indent=1))

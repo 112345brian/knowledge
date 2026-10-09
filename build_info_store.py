@@ -30,7 +30,7 @@ KEY_PREFIX = "input:"
 # (stable key, how to find it). Data files live in the private data dir; the others come from paths.py.
 DATA_FILES = ("manual_sources.json", "pilot_facts.json", "facts_batch1.json", "facts_batch2.json", "facts_batch3.json",
               "facts_batch4.json", "general_facts.json", "fact_revisions.jsonl", "privacy_rules.json", "entities.json",
-              "subjects.json", "measurements_snapshot.json")
+              "subjects.json", "measurements_snapshot.json", "fact_hints.json")
 NOTES_KEY = KEY_PREFIX + "vault-source-notes"
 
 

@@ -5,77 +5,102 @@ vault note an extracted fact came from, and the validated `date_added`. The scri
 write the rows; they call these.
 """
 import re
+from dataclasses import dataclass
 from datetime import datetime
 
 from fact_rules import VALID_TRUST, VALID_VISIBILITY
 from revisions import SOURCE_KEY_RE, VALID_STATUS
 
 PRONOUN_RE = re.compile(r'\b(he|his|him|the vault owner|vault owner)\b', re.IGNORECASE)
-FINGERPRINT_RE = re.compile(
-    r'(26-year-old|26 years old|FFMI 15\.75|156\.4|163\.6|2025-11-15|2026-06-17|2025-01-24|'
-    r'ankylosing spondylitis|Humira|BodySpec|adherence|13 lb weight loss)',
-    re.IGNORECASE
-)
-TOP_LEVEL_PERSONAL_FILES = [
-    "Current Recommendations", "Current State", "Goal Progress", "DEXA Decision Rules",
-    "Body Measurement Tracker", "Restarting After a Gap", "Starting Sequence",
-    "Strength Progression Baselines", "Where Sessions Break Down", "Where the Surplus Actually Comes From",
-    "Rebalancing the Split", "Making the Calls", "Six-Month Test Protocol", "Program Design Constraints",
-    "The Actual Decision", "Your First Cycle", "Cycle Preconditions", "The Case For",
-    "Fitting It Into 45 Minutes", "Personal Trainer App Spec", "Fixing Ankle Dorsiflexion",
-    "Loaded vs Static Ankle", "The Attractiveness Target", "The Exercise Screen", "The Program",
-    "What the Physique Can and Cannot Buy", "Why Hasn't Mass Followed Strength",
-    "Two-Year Body Composition Plan", "When To Train", "Volume Is the Variable", "What Muscle Actually Buys",
-]
-
-# Known-good vault-relative filename fixups for extraction-agent notes text that
-# omitted the harm-reduction/ subfolder or abbreviated a filename. Applied to
-# facts_batch*.json in the data/ directory before this script ever runs --
-# this dict exists only so future extraction batches can reuse the same fixups
-# without re-deriving them.
-HARM_REDUCTION_FILES = {
-    "AAS Cardiovascular Risk.md", "AAS Decision Framework.md", "AAS Emergency Red Flags.md",
-    "AAS Endocrine Management.md", "AAS Liver and Kidney.md", "AAS Mental Health and Dependence.md",
-    "AAS Myths Checked Against Evidence.md", "AAS Supply Testing and Legal Exposure.md",
-    "AAS and Ankylosing Spondylitis.md", "AAS and the Law.md", "Ancillary Compounds Reference.md",
-    "Bloodwork and Health Markers.md", "Cumulative Cycle Risk.md",
-}
 
 
-def resolve_origin_path(notes_text, vault):
+@dataclass(frozen=True)
+class Hints:
+    """What the author's data teaches the ingest about their vault, kept in `fact_hints.json` in the private data
+    dir (never in this repo): an absent file is `NO_HINTS`, and only the generic pronoun rule applies.
+
+    fingerprints     regular expressions; a fact whose statement or notes match one is about the owner
+    personal_notes   substrings of a fact's `notes` naming the vault notes whose original claims are about the owner
+    note_folders     {folder: [file names]}: notes the extraction agents wrote without their subfolder
+    whole_titles     note titles that contain a comma, which the comma-terminated path rule cannot read
+    """
+    fingerprints: tuple = ()
+    personal_notes: tuple = ()
+    note_folders: tuple = ()      # ((folder, (file names)), ...)
+    whole_titles: tuple = ()
+
+    @property
+    def fingerprint_re(self):
+        return re.compile("|".join(f"(?:{p})" for p in self.fingerprints), re.IGNORECASE) if self.fingerprints else None
+
+    def folder_of(self, file_name):
+        for folder, names in self.note_folders:
+            if file_name in names:
+                return folder
+        return None
+
+
+NO_HINTS = Hints()
+HINT_KEYS = ("fingerprints", "personal_notes", "note_folders", "whole_titles")
+
+
+def parse_hints(data, source="fact hints"):
+    """`Hints` from the parsed JSON of fact_hints.json, or ValueError naming `source` and the problem."""
+    if not isinstance(data, dict):
+        raise ValueError(f"{source}: must be a JSON object with the keys {list(HINT_KEYS)}")
+    unknown = [k for k in data if k not in HINT_KEYS and k != "version"]
+    if unknown:
+        raise ValueError(f"{source}: unknown key(s) {unknown}; known: {list(HINT_KEYS)}")
+
+    def texts(key):
+        value = data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+            raise ValueError(f"{source}: `{key}` must be a list of non-blank strings")
+        return tuple(value)
+
+    fingerprints = texts("fingerprints")
+    for pattern in fingerprints:
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise ValueError(f"{source}: fingerprint {pattern!r} is not a valid regular expression ({e})") from None
+    folders = data.get("note_folders", {})
+    if not isinstance(folders, dict) or not all(isinstance(k, str) and k.strip() and isinstance(v, list)
+                                                and all(isinstance(n, str) and n.strip() for n in v) for k, v in folders.items()):
+        raise ValueError(f"{source}: `note_folders` must map a folder name to a list of file names")
+    return Hints(fingerprints=fingerprints, personal_notes=texts("personal_notes"),
+                 note_folders=tuple((k, tuple(v)) for k, v in sorted(folders.items())), whole_titles=texts("whole_titles"))
+
+
+def resolve_origin_path(notes_text, vault, hints=NO_HINTS):
     """Extract the vault .md file a batch-extracted fact's `notes` references."""
     if not notes_text:
         return None
     m = re.search(r"(" + re.escape(vault) + r"/[^,]+?\.md)", notes_text)
     if m:
         return m.group(1)
-    if notes_text.startswith("harm-reduction/"):
-        m = re.match(r"^(harm-reduction/[^,]+?\.md)", notes_text)
-        if m:
-            return f"{vault}/{m.group(1)}"
     m = re.match(r'^([A-Za-z0-9][^,]*?\.md)', notes_text)
     if m:
         fname = m.group(1)
-        if fname in HARM_REDUCTION_FILES:
-            return f"{vault}/harm-reduction/{fname}"
-        return f"{vault}/{fname}"
-    # filenames containing a comma (e.g. "Volume Is the Variable, Not Frequency.md")
-    # defeat the comma-terminated regex above -- fall back to a known list.
-    for known in ["Volume Is the Variable, Not Frequency.md"]:
+        folder = hints.folder_of(fname)
+        return f"{vault}/{folder}/{fname}" if folder else f"{vault}/{fname}"
+    # a title with a comma defeats the comma-terminated pattern above: the hints list those titles
+    for known in hints.whole_titles:
         if notes_text.startswith(known):
             return f"{vault}/{known}"
     return None
 
 
-def classify_is_personal(statement, notes, is_original_claim, measured_link):
+def classify_is_personal(statement, notes, is_original_claim, measured_link, hints=NO_HINTS):
     text = f"{statement or ''} {notes or ''}"
     if measured_link:
         return 1
     if PRONOUN_RE.search(text):
         return 1
-    if FINGERPRINT_RE.search(text):
+    fingerprint = hints.fingerprint_re
+    if fingerprint is not None and fingerprint.search(text):
         return 1
-    if is_original_claim and any(f in (notes or "") for f in TOP_LEVEL_PERSONAL_FILES):
+    if is_original_claim and any(f in (notes or "") for f in hints.personal_notes):
         return 1
     return 0
 

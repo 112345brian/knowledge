@@ -13,7 +13,7 @@ import sqlite3, json, os, sys
 
 from ingest import fact_ingest_rules
 import fixity_store
-from ingest.shared import get_or_create_vault_file
+from ingest.shared import get_or_create_vault_file, load_hints
 import revisions
 import revisions_store
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
@@ -50,6 +50,7 @@ def get_or_create_subject(cur, name, cache):
 def run(con):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
     rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    hints = load_hints(DATA_DIR)   # the author's vault hints (fact_hints.json), or none
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -74,11 +75,11 @@ def run(con):
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
-        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), VAULT)
+        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), VAULT, hints)
         origin_file_id = get_or_create_vault_file(cur, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
-        is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
+        is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric, hints)
 
         baseline = item.get("extracted_from_sha256")
         if baseline is not None and not fixity_store.valid_sha256(baseline):

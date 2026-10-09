@@ -26,6 +26,7 @@ import sys
 from ingest import backfill_source_keys
 import fixity_store
 from ingest import fact_ingest_rules
+from ingest.shared import load_hints
 import revisions
 import revisions_store
 
@@ -35,7 +36,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def _resolver():
     """`notes -> vault file path or None`: the same rule the facts step uses (fact_ingest_rules.resolve_origin_path)."""
     from paths import BODYBUILDING_VAULT
-    return lambda notes: fact_ingest_rules.resolve_origin_path(notes, BODYBUILDING_VAULT)
+    hints = load_hints()
+    return lambda notes: fact_ingest_rules.resolve_origin_path(notes, BODYBUILDING_VAULT, hints)
 
 
 def make_adder(resolve, unresolved):

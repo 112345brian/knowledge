@@ -256,6 +256,15 @@ null,
 ],
 [
 1,
+"input:data/fact_hints.json",
+"present",
+"1576164fbe0b814753f5cf1e7eff2853e7ecdb610985d35ba30e10b6c688d2a6",
+229,
+"<MTIME>",
+"2026-10-01T00:00:00+00:00"
+],
+[
+1,
 "input:data/fact_revisions.jsonl",
 "present",
 "26ff3030ccd538a6a2f8be5dc913631bc0dff1d7f736e3eaffe2a65405857b08",

@@ -1,11 +1,32 @@
 """Small helpers shared across the core ingest scripts -- author/publisher/vault-file
 normalization (get-or-create against a dimension table, never repeated text)."""
+from ingest import fact_ingest_rules
 from ingest.fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
 from ingest.source_ingest_rules import split_authors
 
 import acquisition_store
 import fixity_store
 import identifiers
+
+
+HINTS_FILENAME = "fact_hints.json"
+
+
+def load_hints(data_dir=None):
+    """The author's fact-ingest hints from fact_hints.json in the private data dir (see fact_ingest_rules.Hints), or
+    NO_HINTS when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
+    import json
+    import os
+    from paths import PRIVATE_DATA_DIR
+    path = os.path.join(PRIVATE_DATA_DIR if data_dir is None else data_dir, HINTS_FILENAME)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return fact_ingest_rules.NO_HINTS
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{path} is not valid JSON ({e})") from e
+    return fact_ingest_rules.parse_hints(data, path)
 
 
 def get_or_create(cur, table, name_col, name):

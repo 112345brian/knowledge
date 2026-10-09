@@ -684,6 +684,7 @@ depends_on = [
     "acquisition_store",
     "fixity_store",
     "identifiers",
+    "paths",
 ]
 
 [[modules]]
@@ -871,6 +872,7 @@ depends_on = [
     "revisions_store",
     "ingest.fact_ingest_rules",
     "paths",
+    "ingest.shared",
 ]
 
 [[modules]]
