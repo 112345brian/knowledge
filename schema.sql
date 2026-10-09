@@ -393,12 +393,23 @@ CREATE TABLE claims (
     -- How the cited facts (claim_facts) support the statement. Nullable and forward-only: set it on
     -- new claims; the claims that existed before this column are deliberately NOT backfilled, and
     -- NULL means "not classified", never a default type.
-    inference_type TEXT CHECK (inference_type IN ('deductive','inductive','abductive'))
+    inference_type TEXT CHECK (inference_type IN ('deductive','inductive','abductive')),
+    -- Toulmin structure (#44), both optional and forward-only like inference_type. warrant: WHY the cited
+    -- grounds support the claim. qualifier: how far the claim holds ("usually", "in adults"). Blank text is
+    -- stored as NULL by the seeding step, and the CHECKs refuse it.
+    warrant   TEXT CHECK (warrant IS NULL OR length(trim(warrant, char(32, 9, 10, 11, 12, 13))) > 0),
+    qualifier TEXT CHECK (qualifier IS NULL OR length(trim(qualifier, char(32, 9, 10, 11, 12, 13))) > 0)
 );
 
 CREATE TABLE claim_facts (
     claim_id    INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
     fact_id     INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+    -- The fact's part in the argument (#44): grounds (default; what existing rows are), backing (supports the
+    -- warrant) or rebuttal (counter-evidence). A stale grounds/backing fact weakens the claim; a stale
+    -- rebuttal only strengthens it, so claims_audit reports it as information. One role per (claim, fact);
+    -- the same fact may be grounds for one claim and a rebuttal of another. note: why this fact is linked.
+    role        TEXT NOT NULL DEFAULT 'grounds' CHECK (role IN ('grounds','backing','rebuttal')),
+    note        TEXT CHECK (note IS NULL OR length(trim(note, char(32, 9, 10, 11, 12, 13))) > 0),
     PRIMARY KEY (claim_id, fact_id)
 );
 
@@ -407,7 +418,7 @@ CREATE TABLE claim_facts (
 -- free text that is only sometimes a date, so claims_audit.audit_claims() does that part in Python.
 CREATE VIEW v_claims_with_stale_premises AS
 SELECT
-    c.id AS claim_id, c.statement AS claim_statement, c.inference_type,
+    c.id AS claim_id, c.statement AS claim_statement, c.inference_type, cf.role,
     f.id AS fact_id, f.statement AS fact_statement, f.status AS reason,
     f.superseded_by_fact_id, f.trust_rationale, f.notes AS fact_notes
 FROM claims c

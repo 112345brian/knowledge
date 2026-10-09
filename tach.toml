@@ -407,7 +407,7 @@ depends_on = ["_shared", "fixity", "paths", "privacy", "revisions"]
 [[modules]]
 path = "05_seed_claims"
 layer = "pipeline"
-depends_on = []
+depends_on = ["claims_audit"]
 
 [[modules]]
 path = "06_seed_subject_hierarchy"

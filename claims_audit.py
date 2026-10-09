@@ -9,6 +9,12 @@ month, YYYY the end of that year). recheck_by is free text elsewhere ("next pane
 and text that is not an ISO date is never flagged: it is returned by unparseable_rechecks() so the
 caller can surface it instead of silently skipping it.
 
+Premises have a role (#44): `grounds` (the default; every claim_facts row that existed before the column) and
+`backing` weaken the claim when stale, so they keep the reasons above and severity "weakens". A stale
+`rebuttal` (counter-evidence) only strengthens the claim, so it is reported with a distinct reason
+(`rebuttal_superseded`, `rebuttal_retracted`, `rebuttal_past_recheck_by`) and severity "info"; callers that
+decide an exit status or a warning must look at `severity`, not just count rows (a test scans for it).
+
 audit_claims() never writes. A claim with no facts, or whose facts are all active and current, yields
 no rows. A fact cited by several claims yields one row per claim.
 """
@@ -20,6 +26,9 @@ from datetime import date
 import clock
 
 REASONS = ("superseded", "retracted", "past_recheck_by")
+ROLES = ("grounds", "backing", "rebuttal")  # keep in sync with the CHECK on claim_facts.role
+SEVERITIES = ("weakens", "info")
+REBUTTAL_REASONS = tuple("rebuttal_" + r for r in REASONS)
 _ISO = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?(?:[T ].*)?$")
 
 
@@ -50,14 +59,16 @@ def _today(today):
 def audit_claims(db, today=None):
     """Return a list of dicts, ordered by claim_id then fact_id, one per (claim, stale premise):
     claim_id, claim_statement, inference_type, fact_id, fact_statement, reason, recheck_by,
-    superseded_by_fact_id, trust_rationale, notes. `db` is an open sqlite3 connection."""
+    superseded_by_fact_id, trust_rationale, notes, plus role (grounds | backing | rebuttal), severity
+    ("weakens" for grounds/backing, "info" for a rebuttal, whose reason is prefixed "rebuttal_") and the link's
+    note (why the fact is cited). `db` is an open sqlite3 connection."""
     today = _today(today)
     old_factory, db.row_factory = db.row_factory, sqlite3.Row
     try:
         rows = db.execute(
             """SELECT c.id AS claim_id, c.statement AS claim_statement, c.inference_type,
                       f.id AS fact_id, f.statement AS fact_statement, f.status, f.recheck_by,
-                      f.superseded_by_fact_id, f.trust_rationale, f.notes
+                      f.superseded_by_fact_id, f.trust_rationale, f.notes, cf.role, cf.note AS link_note
                FROM claims c JOIN claim_facts cf ON cf.claim_id = c.id JOIN facts f ON f.id = cf.fact_id
                ORDER BY c.id, f.id""").fetchall()
     finally:
@@ -71,10 +82,13 @@ def audit_claims(db, today=None):
             if due is None or due >= today:
                 continue
             reason = "past_recheck_by"
+        rebuttal = r["role"] == "rebuttal"
         out.append({
+            "role": r["role"], "severity": "info" if rebuttal else "weakens", "link_note": r["link_note"],
             "claim_id": r["claim_id"], "claim_statement": r["claim_statement"],
             "inference_type": r["inference_type"], "fact_id": r["fact_id"],
-            "fact_statement": r["fact_statement"], "reason": reason, "recheck_by": r["recheck_by"],
+            "fact_statement": r["fact_statement"], "reason": ("rebuttal_" + reason) if rebuttal else reason,
+            "recheck_by": r["recheck_by"],
             "superseded_by_fact_id": r["superseded_by_fact_id"],
             "trust_rationale": r["trust_rationale"], "notes": r["notes"]})
     return out

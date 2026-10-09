@@ -445,7 +445,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
         prev = r
 
 
-@app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when any are found.")
+@app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when a grounds/backing premise is stale; a stale rebuttal is listed as information only (it strengthens the claim).")
 def cmd_audit_claims(as_json: bool = JSON_OPT):
     def run(con):
         return claims_audit.audit_claims(con), claims_audit.unparseable_rechecks(con)
@@ -461,16 +461,21 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
         for r in rows:
             kind = f" ({r['inference_type']})" if r["inference_type"] else ""
             print(f"claim #{r['claim_id']}{kind}: {r['claim_statement']}")
-            line = f"  fact #{r['fact_id']} {r['reason']}"
-            if r["reason"] == "past_recheck_by":
+            role = "" if r["role"] == "grounds" else f" [{r['role']}]"
+            line = f"  fact #{r['fact_id']}{role} {r['reason']}"
+            if r["reason"].endswith("past_recheck_by"):
                 line += f" ({r['recheck_by']})"
             elif r["superseded_by_fact_id"]:
                 line += f" (by fact #{r['superseded_by_fact_id']})"
+            if r["severity"] == "info":
+                line += " -- informational: a stale rebuttal only strengthens the claim"
             print(f"{line}: {r['fact_statement']}")
+            if r["link_note"]:
+                print(f"    linked because: {r['link_note']}")
     if unparsed and not as_json:
         ids = ", ".join(f"#{u['fact_id']} ({u['recheck_by']!r})" for u in unparsed)
         print(f"note: {len(unparsed)} cited fact(s) have a recheck_by that is not an ISO date, so the audit cannot judge them: {ids}", file=sys.stderr)
-    if rows:
+    if any(r["severity"] == "weakens" for r in rows):
         raise typer.Exit(1)
 
 
