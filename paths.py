@@ -1,0 +1,53 @@
+"""Loads path values from a private data checkout instead of hardcoding
+machine-specific paths here. The private values and fact/source data live
+outside this repository.
+
+Every script that needs a path imports it from here, never inline.
+
+If the private data checkout isn't available, this import fails with a
+clear ModuleNotFoundError.
+
+Set KNOWLEDGE_PRIVATE_DIR to point at the checkout from anywhere else, e.g. a
+`.claude/worktrees/*` git worktree where the sibling path doesn't exist. When
+it is set it wins, and a bad value is an error, never a silent fallback.
+"""
+import os
+import sys
+
+_ENV_VAR = "KNOWLEDGE_PRIVATE_DIR"
+_SIBLING_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "knowledge-private")
+)
+_override = os.environ.get(_ENV_VAR)
+_PRIVATE_DIR = os.path.abspath(os.path.expanduser(_override)) if _override else _SIBLING_DIR
+
+if not os.path.isfile(os.path.join(_PRIVATE_DIR, "local_paths.py")):
+    _source = f"{_ENV_VAR}={_override!r}" if _override else "the sibling default"
+    raise ModuleNotFoundError(
+        f"local_paths.py not found in {_PRIVATE_DIR} (from {_source}). Set {_ENV_VAR} to "
+        f"your knowledge-private checkout, or check it out at {_SIBLING_DIR}.",
+        name="local_paths",
+    )
+if _PRIVATE_DIR not in sys.path:
+    sys.path.insert(0, _PRIVATE_DIR)
+
+import local_paths as _local  # noqa: E402
+from local_paths import (  # noqa: E402
+    KNOWLEDGE_DB_DIR,
+    BODYBUILDING_VAULT,
+    HEALTH_DIR,
+    PRIVATE_DATA_DIR,
+)
+
+# Optional client sources (see build_rules.CLIENT_SOURCES): which of them this checkout builds, and the input
+# files they read. A checkout that does not use a source defines neither its name nor its paths, and the build
+# never looks for them.
+_declared = getattr(_local, "CLIENT_SOURCES", None)
+# A local_paths.py written before CLIENT_SOURCES existed has no such name but does define the music inputs: it
+# built everything then, so it keeps doing so (build.py says it is guessing). A config that names the sources, or
+# defines no music inputs, is taken at its word.
+CLIENT_SOURCES_IMPLICIT = _declared is None and bool(getattr(_local, "CONCERTS_CSV", None))
+CLIENT_SOURCES = ("concerts", "ratings", "scrobbles", "measurements", "claims") if CLIENT_SOURCES_IMPLICIT else tuple(_declared or ())
+CONCERTS_CSV = getattr(_local, "CONCERTS_CSV", None)
+RYM_EXPORT_CSV = getattr(_local, "RYM_EXPORT_CSV", None)
+SCROBBLES_JSON = getattr(_local, "SCROBBLES_JSON", None)

@@ -1,0 +1,16 @@
+"""Application boundary for Git operations on the private data repository.
+
+The concrete subprocess implementation lives in ``private_git.py``. Composition roots inject
+that adapter through ``Ports.git``; use cases and adapters depend on this protocol instead.
+"""
+from typing import Any, Optional, Protocol
+
+
+class PrivateGit(Protocol):
+    PrivateGitError: Any
+
+    def find_repo(self, directory) -> Optional[str]: ...
+    def ensure_clean_tree(self, repo_dir) -> None: ...
+    def commit_private_change(self, paths, message, repo_dir) -> str: ...
+    def is_detached(self, repo_dir) -> bool: ...
+    def describe_repo(self, directory) -> dict: ...

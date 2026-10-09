@@ -1,0 +1,628 @@
+[project]
+name = "knowledge"
+version = "0.1.0"
+description = "Personal knowledge base pipeline (schema.sql + ingest scripts -> knowledge.db) with a CLI."
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "mypy>=1.11",
+    "pytest>=8",
+    "pytest-xdist>=3.8.0",
+    "tach>=0.35.2",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Run in parallel by default (about 40 s instead of about 4 min for the whole suite; many tests are
+# subprocess- or temp-git-repo-heavy). Nothing is skipped or marked slow: the architecture tests
+# run every time. Serial run if you need it: `uv run pytest -n 0`.
+addopts = "-n auto"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["ports.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "fact_defaults_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+no_implicit_optional = true
+follow_imports = "silent"
+
+# --------------------------------------------------------------------------------------------
+# import-linter contracts (#36). See README "Architecture enforcement".
+#
+# The repo is flat top-level modules plus the `ingest` and `client` packages, which grimp/import-linter cannot analyse
+# directly (it only accepts packages), so the check runs on a generated shadow package `kn`: every top-level
+# module AND every module of `ingest/` and `client/` becomes `kn.<name>` (the names are unique across both; see
+# tests/arch_check.py, which also rewrites `from ingest import x` / `import ingest.x` to `kn.x`). Run it with
+#     uv run python tests/arch_check.py        # tach + import-linter + git scan
+# or just `uv run pytest tests/test_architecture.py`. Plain `uv run lint-imports` cannot work on
+# a flat repo (it fails with "'x' is a module, not a package").
+#
+# The hexagon, as tach.toml's seven layers (outermost first; a module imports its own layer or a lower one):
+#   serving   the HTTP review page (inbox, mcp_server)            driving adapter
+#   cli       the Typer app (knowledge, cli_*)                    driving adapter
+#   pipeline  build.py and the ingest steps/tools                 driving adapter (batch)
+#   facade    review, lifecycle, add_fact, facts_batch,           composition roots: pick the adapters and
+#             migrate_memory, rules_edit                          bind a use case to them
+#   adapter   *_store, clock, ids, paths, locks, private_git, ... driven adapters (db, files, git, time)
+#   use_case  *_service                                           orchestrate the domain through ports
+#   domain    rules, ports, vocabularies                          pure: no I/O
+# tach.toml holds the per-module import allowlists (and the `paths` / `private_git` allowlists); the
+# contracts here cover what tach cannot: external packages (typer, sqlite3, subprocess), what the domain, the
+# use cases and the driving adapters may not touch, and the library DAG.
+#
+# Lines starting `#planned:` are entries for modules still in flight on other branches. They are
+# inert; delete the `#planned: ` prefix when the module lands (the test tells you which lines).
+# --------------------------------------------------------------------------------------------
+[tool.importlinter]
+root_packages = ["kn"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "libraries-never-import-upward"
+name = "Libraries never import the CLI, serving or pipeline layers"
+# Why: the CLI and the serving layers are thin wrappers over library functions (#34). If a library
+# imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact",
+    "kn.add_fact_service",
+    "kn.add_fact_store",
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
+    "kn.claims_audit",
+    "kn.claims_store",
+    "kn.clock",
+    "kn.fact_ingest_rules",
+    "kn.fact_queries",
+    "kn.fact_rules",
+    "kn.facts_batch",
+    "kn.facts_batch_rules",
+    "kn.facts_batch_service",
+    "kn.ids",
+    "kn.locks",
+    "kn.leak_rules",
+    "kn.leak_test",
+    "kn.leak_scan_store",
+    "kn.lifecycle",
+    "kn.lifecycle_rules",
+    "kn.lifecycle_service",
+    "kn.lifecycle_store",
+    "kn.measurement_rules",
+    "kn.migrate_memory",
+    "kn.migrate_memory_rules",
+    "kn.migrate_memory_service",
+    "kn.migrate_memory_store",
+    "kn.modes",
+    "kn.modes_store",
+    "kn.music_ingest_rules",
+    "kn.new_fact",
+    "kn.normal_db",
+    "kn.normal_rules",
+    "kn.paths",
+    "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
+    "kn.privacy",
+    "kn.privacy_store",
+    "kn.private_git",
+    "kn.review",
+    "kn.review_rules",
+    "kn.review_service",
+    "kn.review_store",
+    "kn.revisions",
+    "kn.revisions_store",
+    "kn.rules_edit_service",
+    "kn.rules_edit",
+    "kn.script_runner",
+    "kn.source_ingest_rules",
+    "kn.timestamps",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
+    "kn.fixity_store",
+    "kn.identifiers",
+    "kn.private_edit_store",
+    "kn.source_status",
+    "kn.source_status_store",
+    "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
+    "kn.textmatch",
+    "kn.validtime",
+]
+forbidden_modules = [
+    # CLI
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
+    "kn.cli_entities",
+    "kn.cli_sources",
+    "kn.cli_subjects",
+    "kn.cli_parity",
+    "kn.knowledge",
+    # serving
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+    # pipeline: build.py and the ingest steps and tools (tach models the steps as ingest.<name>)
+    "kn.shared",
+    "kn.backfill_dates",
+    "kn.backfill_source_keys",
+    "kn.build",
+    "kn.clean_concerts_csv",
+    "kn.export_music_taste",
+    "kn.snapshot_date",
+    "kn.backfill_snapshot_date",
+    "kn.link_fact_measurements",
+    "kn.music_shared",
+    "kn.apply_fact_revisions",
+    "kn.concerts",
+    "kn.facts",
+    "kn.link_entities",
+    "kn.link_source_relations",
+    "kn.literature_sources",
+    "kn.measurements",
+    "kn.music_ratings",
+    "kn.scrobbles",
+    "kn.seed_artist_members",
+    "kn.seed_claims",
+    "kn.seed_general_facts",
+    "kn.seed_sources",
+    "kn.seed_subject_hierarchy",
+    "kn.backfill_extracted_hashes",
+]
+
+[[tool.importlinter.contracts]]
+id = "typer-only-in-knowledge"
+name = "Libraries and the parity registry never import typer (or click)"
+# Why: library functions and cli_parity must stay importable without Typer (build.py and add_fact.py
+# run standalone, #34). Only the Typer app modules (knowledge.py, cli_*.py) may import it; this is the
+# conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact",
+    "kn.add_fact_service",
+    "kn.add_fact_store",
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
+    "kn.claims_audit",
+    "kn.claims_store",
+    "kn.cli_parity",
+    "kn.clock",
+    "kn.fact_ingest_rules",
+    "kn.fact_queries",
+    "kn.fact_rules",
+    "kn.facts_batch",
+    "kn.facts_batch_rules",
+    "kn.facts_batch_service",
+    "kn.ids",
+    "kn.locks",
+    "kn.inbox",
+    "kn.leak_rules",
+    "kn.leak_test",
+    "kn.leak_scan_store",
+    "kn.lifecycle",
+    "kn.lifecycle_rules",
+    "kn.lifecycle_service",
+    "kn.lifecycle_store",
+    "kn.measurement_rules",
+    "kn.migrate_memory",
+    "kn.migrate_memory_rules",
+    "kn.migrate_memory_service",
+    "kn.migrate_memory_store",
+    "kn.modes",
+    "kn.modes_store",
+    "kn.music_ingest_rules",
+    "kn.new_fact",
+    "kn.normal_db",
+    "kn.normal_rules",
+    "kn.paths",
+    "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
+    "kn.privacy",
+    "kn.privacy_store",
+    "kn.private_git",
+    "kn.review",
+    "kn.review_rules",
+    "kn.review_service",
+    "kn.review_store",
+    "kn.revisions",
+    "kn.revisions_store",
+    "kn.rules_edit_service",
+    "kn.rules_edit",
+    "kn.script_runner",
+    "kn.source_ingest_rules",
+    "kn.timestamps",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
+    "kn.fixity_store",
+    "kn.identifiers",
+    "kn.private_edit_store",
+    "kn.source_status",
+    "kn.source_status_store",
+    "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
+    "kn.textmatch",
+    "kn.validtime",
+#planned:     "kn.mcp_server",
+]
+forbidden_modules = ["typer", "click"]
+
+[[tool.importlinter.contracts]]
+id = "cli-never-imports-serving"
+name = "The CLI never imports the serving layers"
+# Why: serving (inbox, mcp_server) sits above the CLI; a CLI module that imported it could pull the
+# server into every command.
+# THE ONE EXCEPTION: `kn.cli_inbox -> kn.inbox`. The `inbox` command has to START the server, so
+# cli_inbox is a launcher (it only calls inbox.serve; its `edit` command uses lifecycle). It is one
+# named edge, ignored below; any other CLI module importing serving, or cli_inbox importing
+# mcp_server, still fails (tests/test_architecture.py negative cases). tach.toml has the matching
+# inline `# tach-ignore inbox` on that same single import line in cli_inbox.py.
+type = "forbidden"
+source_modules = [
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
+    "kn.cli_parity",
+    "kn.knowledge",
+    "kn.cli_entities",
+    "kn.cli_sources",
+    "kn.cli_subjects",
+]
+forbidden_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+ignore_imports = [
+    "kn.cli_inbox -> kn.inbox",   # launcher: the `inbox` command starts the server (see above)
+]
+
+[[tool.importlinter.contracts]]
+id = "serving-never-imports-pipeline"
+name = "Serving never imports the pipeline"
+# Why: the serving layers must not be able to rebuild or ingest; they only use library functions.
+type = "forbidden"
+source_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+forbidden_modules = [
+    "kn.shared",
+    "kn.backfill_dates",
+    "kn.backfill_source_keys",
+    "kn.build",
+    "kn.clean_concerts_csv",
+    "kn.export_music_taste",
+    "kn.snapshot_date",
+    "kn.backfill_snapshot_date",
+    "kn.link_fact_measurements",
+    "kn.music_shared",
+    "kn.apply_fact_revisions",
+    "kn.concerts",
+    "kn.facts",
+    "kn.link_entities",
+    "kn.link_source_relations",
+    "kn.literature_sources",
+    "kn.measurements",
+    "kn.music_ratings",
+    "kn.scrobbles",
+    "kn.seed_artist_members",
+    "kn.seed_claims",
+    "kn.seed_general_facts",
+    "kn.seed_sources",
+    "kn.seed_subject_hierarchy",
+    "kn.backfill_extracted_hashes",
+]
+
+[[tool.importlinter.contracts]]
+id = "serving-reads-facts-through-modes"
+name = "Serving reads facts only through modes"
+# Why: modes is the one place that enforces off/normal/private (#22). A serving module that
+# imported knowledge's query functions, claims_audit, a raw sqlite3 connection, the git helper or
+# the revision/privacy internals could read a private fact in normal mode, or write one around the
+# lifecycle rules.
+# What serving MAY import (everything not listed here): the libraries `review` and `lifecycle`
+# (the sanctioned write path: approve/reject/edit/make-private) and `modes`, plus the standard
+# library. There is NO exception: `inbox` used to import revisions, privacy and private_git
+# directly; that logic now lives in lifecycle / review (#36).
+# Only DIRECT imports are checked (allow_indirect_imports): review and lifecycle legitimately
+# import sqlite3 / revisions / privacy / private_git themselves. Add any future exception as an
+# `ignore_imports` line with a reason, e.g.  "kn.inbox -> kn.revisions"  # why.
+type = "forbidden"
+source_modules = [
+    "kn.inbox",
+#planned:     "kn.mcp_server",
+]
+forbidden_modules = [
+    "kn.add_fact",
+    "kn.add_fact_store",
+    "kn.claims_audit",
+    "kn.claims_store",
+    "kn.facts_batch",
+    "kn.knowledge",
+    "kn.leak_test",
+    "kn.leak_scan_store",
+    "kn.lifecycle_store",
+    "kn.migrate_memory",
+    "kn.migrate_memory_store",
+    "kn.ids",
+    "kn.locks",
+    "kn.fact_queries",
+    "kn.normal_db",
+    "kn.privacy",
+    "kn.privacy_store",
+    "kn.private_git",
+    "kn.review_store",
+    "kn.revisions",
+    "kn.revisions_store",
+    "sqlite3",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "subprocess-allowlist"
+name = "Only private_git (git), script_runner (python scripts) and acquisition (xattr) import subprocess"
+# Why: private_git is the only module that runs git against knowledge-private (lock, clean-tree and
+# detached-HEAD checks live there, #10). This forbids every other module from spawning processes.
+# script_runner.py is the one exception: `knowledge.py build`, `add-fact` and `clean-concerts` shell out to
+# this repo's own scripts through it. LIMIT: import-linter sees imports, not arguments, so a module running
+# git that is allowed subprocess is caught by the `scan_git_usage` AST test in tests/test_architecture.py.
+type = "forbidden"
+source_modules = ["kn"]
+forbidden_modules = ["subprocess"]
+allow_indirect_imports = true   # add_fact -> private_git -> subprocess is the intended path
+# acquisition.py (#46) is the third exception: it runs the read-only macOS `xattr` command (argv list, no
+# shell, a timeout, every failure a silent no-op) to read a file's download URL and time, as the issue specifies.
+# It never writes an attribute and never runs anything else; a test pins the exact argv shapes.
+ignore_imports = [
+    "kn.private_git -> subprocess",
+    "kn.script_runner -> subprocess",
+    "kn.acquisition_store -> subprocess",
+]
+
+[[tool.importlinter.contracts]]
+id = "domain-has-no-infrastructure"
+name = "Domain modules never touch the file system, the database, processes or an adapter"
+# Why (hexagonal architecture): the domain is the hexagon's inside. It holds the rules and decisions
+# and takes plain data in, returns plain data out, so it can be tested without a disk, a database or
+# git, and any driving adapter (CLI, inbox, MCP) or driven adapter (sqlite, files, git) can be
+# swapped without touching it. The adapters live in their own modules and import the domain, never
+# the other way round (the layered contract below already forbids the upward import).
+# DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
+# revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
+# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps, ports and the
+# pipeline's rules (artist_rules, fact_ingest_rules, source_ingest_rules, music_ingest_rules,
+# measurement_rules, build_rules, backfill_rules; the ingest steps and build.py are the ETL adapters). Their
+# adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
+# add_fact_store, migrate_memory_store (normal_db and leak_test are the adapters for their rules).
+# `review`, `lifecycle`, `add_fact`, `facts_batch`, `migrate_memory`, `rules_edit`, `entities` and `subjects` are facades
+# (composition roots) that bind a use case (a *_service) to its adapters.
+# The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
+# module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
+# (tests/test_architecture.py pins it). Direct imports only, because the ADAPTER legitimately
+# imports the domain, and a domain module may import another domain module.
+type = "forbidden"
+source_modules = [
+    "kn.artist_rules",
+    "kn.backfill_rules",
+    "kn.build_rules",
+    "kn.claims_audit",
+    "kn.fact_ingest_rules",
+    "kn.fact_rules",
+    "kn.facts_batch_rules",
+    "kn.leak_rules",
+    "kn.lifecycle_rules",
+    "kn.measurement_rules",
+    "kn.migrate_memory_rules",
+    "kn.modes",
+    "kn.music_ingest_rules",
+    "kn.new_fact",
+    "kn.normal_rules",
+    "kn.ports",
+    "kn.private_git_port",
+    "kn.facts_file_port",
+    "kn.clock_port",
+    "kn.ids_port",
+    "kn.fact_defaults_port",
+    "kn.add_fact_port",
+    "kn.privacy_rules_port",
+    "kn.revisions_port",
+    "kn.review_reads_port",
+    "kn.reviews_port",
+    "kn.lifecycle_reads_port",
+    "kn.memory_files_port",
+    "kn.entity_files_port",
+    "kn.entity_migration_port",
+    "kn.subject_files_port",
+    "kn.entity_queries_port",
+    "kn.privacy",
+    "kn.review_rules",
+    "kn.revisions",
+    "kn.source_ingest_rules",
+    "kn.timestamps",
+    "kn.identifiers",
+    "kn.source_status",
+    "kn.textmatch",
+    "kn.validtime",
+]
+forbidden_modules = [
+    # infrastructure the domain must not touch
+    "sqlite3", "os", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt",
+    "subprocess", "socket", "http", "urllib", "uuid",
+    # adapters and the modules that wrap infrastructure
+    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.add_fact", "kn.lifecycle",
+    "kn.review", "kn.facts_batch", "kn.migrate_memory", "kn.normal_db", "kn.leak_test", "kn.private_git",
+    "kn.paths", "kn.clock",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
+    "kn.source_status_store",
+    "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "use-cases-depend-on-ports"
+name = "Use cases import ports and domain, never an adapter, a facade or infrastructure"
+# Why (hexagonal architecture): a use case (the *_service modules) orchestrates the domain through the
+# protocols in `ports`; it never imports an adapter, so a test can hand it fakes and an adapter can be
+# swapped without touching it. The facades (review, lifecycle, add_fact, facts_batch, migrate_memory) are
+# the composition roots that pick the real adapters. `os` is allowed for os.path string handling only;
+# tests/test_architecture.py checks that no service touches anything else on `os`.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact_service",
+    "kn.facts_batch_service",
+    "kn.lifecycle_service",
+    "kn.migrate_memory_service",
+    "kn.review_service",
+    "kn.rules_edit_service",
+    "kn.entities_service",
+    "kn.subjects_service",
+]
+forbidden_modules = [
+    "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
+    "http", "urllib", "uuid",
+    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.ids", "kn.locks", "kn.private_git",
+    "kn.paths", "kn.clock", "kn.normal_db", "kn.leak_test",
+    "kn.add_fact", "kn.lifecycle", "kn.review", "kn.facts_batch", "kn.migrate_memory",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.entities_store",
+    "kn.entity_migration_store",
+    "kn.entities",
+    "kn.entities_service",
+    "kn.entity_queries_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
+    "kn.source_status_store",
+    "kn.subjects_store",
+    "kn.subjects",
+    "kn.subjects_service",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "driving-adapters-no-infrastructure"
+name = "The CLI and the inbox reach infrastructure only through use cases and read adapters"
+# Why (hexagonal architecture): the Typer app (knowledge, cli_*) and the inbox page are driving adapters:
+# they turn a command or a request into a use-case call and print or render the result. They never open a
+# database, spawn a process or touch files themselves, and never import a write-side adapter; writes go
+# through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit), and reads
+# through the read adapters (fact_queries, which also serves the revision history, claims_store, modes_store).
+# The forbidden list names every store that writes (or is both): privacy_store, private_git, revisions_store,
+# add_fact_store, lifecycle_store, review_store, migrate_memory_store, locks, ...
+type = "forbidden"
+source_modules = [
+    "kn.cli_facts_batch",
+    "kn.cli_inbox",
+    "kn.cli_lifecycle",
+    "kn.cli_migrate",
+    "kn.inbox",
+    "kn.knowledge",
+    "kn.cli_entities",
+    "kn.cli_sources",
+    "kn.cli_subjects",
+]
+forbidden_modules = [
+    "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids", "kn.locks",
+    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store", "kn.revisions_store",
+    "kn.acquisition_store",
+    "kn.build_info_store",
+    "kn.fixity_store",
+    "kn.private_edit_store",
+    "kn.source_status_store",
+]
+allow_indirect_imports = true
+[[tool.importlinter.contracts]]
+id = "libraries-layered"
+name = "Libraries form a DAG (no cycles) in a fixed order"
+# Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
+# Higher entries may import lower ones; entries joined with `|` are independent of each other.
+# Adding a library means choosing its row. The normal DB builder uses leak_scan_store for scans;
+# the leak-test runner calls the normal DB builder, so the dependency is one-way.
+type = "layers"
+containers = ["kn"]
+layers = [
+    "facts_batch | lifecycle | migrate_memory | rules_edit | entities | subjects",
+    "modes_store | claims_store | facts_batch_service",
+    "review | modes | claims_audit | leak_test",
+    "normal_db | lifecycle_service | migrate_memory_service | rules_edit_service | entities_service | subjects_service",
+    "entity_migration_store | entity_queries_store",
+    "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
+    "revisions_store | build_info_store | source_status_store | leak_scan_store",
+    "add_fact",
+    "privacy_store | add_fact_service | fact_ingest_rules | backfill_rules",
+    "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules | source_ingest_rules",
+    "new_fact",
+    "subjects_store",
+    "entities_store",
+    "privacy | source_status | acquisition_store",
+    "private_edit_store",
+    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | locks | artist_rules | music_ingest_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers",
+    "entity_files_port | entity_migration_port | subject_files_port",
+    "private_git_port",
+    "facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",
+]
