@@ -43,6 +43,7 @@ import sys
 import tempfile
 
 import privacy
+import privacy_store
 
 NORMAL_DB_NAME = "knowledge-normal.db"
 
@@ -341,7 +342,7 @@ def main(argv=None):
         print("usage: normal_db.py FULL_DB OUT_DIR   (builds OUT_DIR/knowledge-normal.db)", file=sys.stderr)
         return 2
     try:
-        rules = privacy.load_rules()
+        rules = privacy_store.load_rules()
         path, counts = build_normal_atomic(argv[0], argv[1], rules)
     except Exception as e:
         print(f"error: normal DB build failed: {e}", file=sys.stderr)

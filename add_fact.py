@@ -32,6 +32,7 @@ from typing import List, Optional
 
 import clock
 import privacy
+import privacy_store
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
@@ -348,7 +349,7 @@ def resolve_privacy(fact, data_path, db_path):
     context comes from the db when it has a subjects table (parents for tag inheritance, and the set
     of known subjects) plus subjects already in the facts file; with no usable db the unknown-subject
     rule is not enforced (nothing to compare against). Raises privacy.PrivacyRulesError."""
-    rules = privacy.load_rules(os.path.join(os.path.dirname(os.path.abspath(data_path)), privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(os.path.dirname(os.path.abspath(data_path)), privacy.RULES_FILENAME))
     parents, known = {}, None
     if os.path.exists(db_path):
         try:

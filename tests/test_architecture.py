@@ -314,6 +314,23 @@ CASES = [
      [("tach", ["01_seed_sources", "knowledge"])]),
     ("numbered-script-imports-unlisted-library", "03_ingest_measurements", "import add_fact",
      [("tach", ["03_ingest_measurements", "add_fact"])]),
+    # ---- hexagonal: the domain (privacy) never touches infrastructure or its own adapter
+    ("domain-imports-sqlite", "privacy", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.privacy", "sqlite3", "BROKEN"])]),
+    ("domain-lazy-imports-os", "privacy", "def f():\n    import os",
+     [("import-linter", ["kn.privacy", "os"])]),
+    ("domain-imports-pathlib", "privacy", "from pathlib import Path",
+     [("import-linter", ["kn.privacy", "pathlib"])]),
+    ("domain-imports-subprocess", "privacy", "import subprocess",
+     [("import-linter", ["kn.privacy", "subprocess"])]),
+    ("domain-imports-its-adapter", "privacy", "import privacy_store",
+     [("tach", ["privacy", "privacy_store"]), ("import-linter", ["kn.privacy", "kn.privacy_store"])]),
+    ("domain-imports-clock", "privacy", "import clock",
+     [("tach", ["privacy", "clock"]), ("import-linter", ["kn.privacy", "kn.clock"])]),
+    ("adapter-imports-upward", "privacy_store", "import add_fact",
+     [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
+    ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
+     [("tach", ["inbox", "privacy_store"]), ("import-linter", ["only through modes", "kn.privacy_store"])]),
 ]
 
 
@@ -353,8 +370,26 @@ def test_exception_lists_are_exactly_the_documented_ones():
         "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess"],
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
+    assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
     assert "ignore_imports" not in contracts["serving-reads-facts-through-modes"]
     assert "ignore_imports" not in contracts["serving-never-imports-pipeline"]
+
+
+def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
+    """Hexagonal architecture: the domain list may grow but never shrink or gain an exception.
+    Each domain module must also parse to stdlib-only imports with no open()/print-to-disk calls,
+    which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
+    import ast
+    domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
+    assert {"privacy"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    for name in sorted(domain):
+        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                assert node.func.id not in {"open", "__import__", "exec", "eval"}, f"{name}.py:{node.lineno} calls {node.func.id}()"
+                assert node.func.id != "print", f"{name}.py:{node.lineno}: the domain does not print"
+            if isinstance(node, ast.Attribute) and node.attr in {"import_module"}:
+                raise AssertionError(f"{name}.py:{node.lineno}: dynamic import in the domain")
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():

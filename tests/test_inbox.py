@@ -24,7 +24,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture
 def ib(world, monkeypatch):
-    for m in ("review", "lifecycle", "inbox", "cli_inbox"):
+    for m in ("privacy_store", "review", "lifecycle", "inbox", "cli_inbox"):
         sys.modules.pop(m, None)
     for k, v in GIT_ENV.items():
         monkeypatch.setenv(k, v)
@@ -32,6 +32,7 @@ def ib(world, monkeypatch):
     import lifecycle
     import review
     import privacy
+    import privacy_store
     world.inbox, world.lifecycle, world.review, world.privacy = inbox, lifecycle, review, privacy
     servers = []
 
@@ -46,7 +47,7 @@ def ib(world, monkeypatch):
 
     def start(rules=None, repo=True, snapshot=True):
         if rules is not None:
-            privacy.save_rules(rules, privacy.rules_path(world.env.data_dir))
+            privacy_store.save_rules(rules, privacy_store.rules_path(world.env.data_dir))
         if repo:
             make_repo(world)
         db = rebuild_db() if snapshot else world.env.db

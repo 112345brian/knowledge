@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import privacy
+import privacy_store
 import revisions
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
@@ -124,7 +125,7 @@ def rules_with_db_context(data_dir, db):
     """The privacy rules of `data_dir` plus the subject tree from the db (read-only), as
     `privacy check` does. A missing or odd db only means less context, never a crash.
     Raises privacy.PrivacyRulesError when the rules file is unusable."""
-    rules = privacy.load_rules(privacy.rules_path(data_dir))
+    rules = privacy_store.load_rules(privacy_store.rules_path(data_dir))
     if db is None:
         return rules
     try:

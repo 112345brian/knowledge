@@ -52,6 +52,7 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import privacy
+import privacy_store
 import review
 import revisions
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
@@ -168,7 +169,7 @@ def _floor_resolution(ctx, key, cur):
     entry = ctx["entries"][key]["entry"]
     subject = entry.get("subject")
     try:
-        rules = privacy.load_rules(privacy.rules_path(ctx["data_dir"]))
+        rules = privacy_store.load_rules(privacy_store.rules_path(ctx["data_dir"]))
         with revisions._connection(db) as con:
             rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
     except privacy.PrivacyRulesError as e:

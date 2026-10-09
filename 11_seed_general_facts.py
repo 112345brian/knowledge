@@ -15,6 +15,7 @@ import sqlite3, json, os
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 from _shared import require_date_added
 import privacy
+import privacy_store
 import revisions
 
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}
@@ -36,7 +37,7 @@ def get_or_create_subject(cur, name, domain, cache):
 
 def run(con):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -107,7 +108,7 @@ def run(con):
 
     # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
     # This is the last build step, so subjects' parent_id (step 06) is set and tags inherit.
-    applied = privacy.apply_rules_to_db(con, rules)
+    applied = privacy_store.apply_rules_to_db(con, rules)
     con.commit()
     if applied["raised"]:
         print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")

@@ -124,8 +124,8 @@ def build_normal(full_path, directory, rules=None):
     Privacy rules come from the private data dir (a bad rules file raises: fail closed)."""
     import normal_db
     if rules is None:
-        import privacy
-        rules = privacy.load_rules()
+        import privacy_store
+        rules = privacy_store.load_rules()
     path, counts = normal_db.build_normal_atomic(full_path, directory, rules)
     print(f"Built {path} (leak test passed)")
     print(normal_db.format_counts(counts))

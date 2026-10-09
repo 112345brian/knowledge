@@ -65,6 +65,7 @@ source_modules = [
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
+    "kn.privacy_store",
     "kn.private_git",
     "kn.review",
     "kn.revisions",
@@ -111,6 +112,7 @@ source_modules = [
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
+    "kn.privacy_store",
     "kn.private_git",
     "kn.review",
     "kn.revisions",
@@ -192,6 +194,7 @@ forbidden_modules = [
     "kn.migrate_memory",
     "kn.normal_db",
     "kn.privacy",
+    "kn.privacy_store",
     "kn.private_git",
     "kn.revisions",
     "sqlite3",
@@ -216,6 +219,32 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
+id = "domain-has-no-infrastructure"
+name = "Domain modules never touch the file system, the database, processes or an adapter"
+# Why (hexagonal architecture): the domain is the hexagon's inside. It holds the rules and decisions
+# and takes plain data in, returns plain data out, so it can be tested without a disk, a database or
+# git, and any driving adapter (CLI, inbox, MCP) or driven adapter (sqlite, files, git) can be
+# swapped without touching it. The adapters live in their own modules and import the domain, never
+# the other way round (the layered contract below already forbids the upward import).
+# DOMAIN today: privacy (rules + resolver); its adapter is privacy_store (rules file, db).
+# The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
+# module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
+# (tests/test_architecture.py pins it). Direct imports only, because the ADAPTER legitimately
+# imports the domain, and a domain module may import another domain module.
+type = "forbidden"
+source_modules = [
+    "kn.privacy",
+]
+forbidden_modules = [
+    # infrastructure the domain must not touch
+    "sqlite3", "os", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt",
+    "subprocess", "socket", "http", "urllib", "uuid",
+    # adapters and the modules that wrap infrastructure
+    "kn.privacy_store", "kn.private_git", "kn.paths", "kn.clock",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 id = "libraries-layered"
 name = "Libraries form a DAG (no cycles) in a fixed order"
 # Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
@@ -231,6 +260,7 @@ layers = [
     "leak_test",
     "revisions",
     "add_fact",
+    "privacy_store",
     "privacy | private_git",
     "clock | paths",
 ]

@@ -44,6 +44,7 @@ import add_fact
 import claims_audit
 import private_git
 import privacy
+import privacy_store
 import review
 import revisions
 from paths import KNOWLEDGE_DB_DIR
@@ -560,7 +561,7 @@ class Requested(str, enum.Enum):
 
 def _load_rules():
     try:
-        return privacy.load_rules(privacy.rules_path())
+        return privacy_store.load_rules(privacy_store.rules_path())
     except privacy.PrivacyRulesError as e:
         _fail(e)
 
@@ -607,7 +608,7 @@ def cmd_privacy_check(statement: str,
 
 @privacy_app.command("rules", help="Show the loaded privacy rules (subject tags and keywords).")
 def cmd_privacy_rules(as_json: bool = JSON_OPT):
-    path = privacy.rules_path()
+    path = privacy_store.rules_path()
     rules = _load_rules()
     exists = os.path.exists(path)
     if as_json:
@@ -634,7 +635,7 @@ def _edit_rules(edit, describe, allow_dirty, dry_run):
     load, apply the library edit, refuse on a dirty private repo, write, commit only the rules file.
     `edit(rules) -> (new_rules, changed)`; `describe(old, new) -> (what, commit_message)`.
     An edit that changes nothing writes and commits nothing (and needs no clean tree)."""
-    path = privacy.rules_path()
+    path = privacy_store.rules_path()
     rules = _load_rules()
     try:
         new, changed = edit(rules)
@@ -660,7 +661,7 @@ def _edit_rules(edit, describe, allow_dirty, dry_run):
         print(f"dry run: would {what} in {path}" + (f" and commit {message!r}" if repo else "") + "; nothing written")
         return
     os.makedirs(directory, exist_ok=True)
-    privacy.save_rules(new, path)
+    privacy_store.save_rules(new, path)
     print(f"Updated {path}: {what}.")
     if repo is None:
         return
