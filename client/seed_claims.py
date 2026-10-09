@@ -9,7 +9,7 @@ import sqlite3, os, sys
 
 import claims_audit
 
-from ingest.seed_rules import CLAIMS
+from client.seed_rules import CLAIMS
 
 
 def _blank_to_none(value, what):

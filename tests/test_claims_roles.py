@@ -212,7 +212,7 @@ def test_cli_json_carries_the_role_on_default_rows(tmp_path):
 # ------------------------------------------------------------------ seed_claims
 
 def load_seed():
-    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "ingest", "seed_claims.py"))
+    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "client", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

@@ -7,37 +7,13 @@ Every listed subject is created if it is missing (domain from the file, else the
 subject that already exists keeps the domain it has. An invalid file, an alias that equals a subject
 name, or a duplicate alias fails the build.
 
-Until the file exists, the built-in table below is used and a note is printed, so the build keeps
-working before `python3 -m ingest.export_subjects --apply` has been run and the result committed. After that
-the table is dead code and can be deleted (the export tool and its test are the last users).
+Until the file exists no hierarchy is loaded and a note says so. (A checkout that enables the `claims` client
+source gets the author's built-in tree from client/seed_subject_tree.py until it has run
+`python3 -m client.export_subjects --apply` and committed the result.)
 """
 import sqlite3, os, sys
 
 import subjects_store
-
-from ingest.seed_rules import AAS_CHILDREN, TRAINING_CHILDREN
-
-
-def builtin_entries():
-    """The hierarchy as it was hardcoded before #43, as subjects.json entries (what export_subjects.py writes)."""
-    parents = [subjects_store._entry("anabolic-steroids"), subjects_store._entry("training", domain="health-and-fitness")]
-    kids = [subjects_store._entry(n, parent="anabolic-steroids") for n in AAS_CHILDREN]
-    kids += [subjects_store._entry(n, parent="training") for n in TRAINING_CHILDREN]
-    return parents + kids
-
-
-def run_builtin(con):
-    """The pre-#43 behavior, unchanged: create 'training', then set the two sets of parents."""
-    cur = con.cursor()
-    cur.execute("INSERT OR IGNORE INTO subjects (name, domain) VALUES ('training', 'health-and-fitness')")
-    cur.execute(
-        "UPDATE subjects SET parent_id = (SELECT id FROM subjects WHERE name = 'anabolic-steroids') "
-        f"WHERE name IN ({','.join('?' * len(AAS_CHILDREN))})", AAS_CHILDREN
-    )
-    cur.execute(
-        "UPDATE subjects SET parent_id = (SELECT id FROM subjects WHERE name = 'training') "
-        f"WHERE name IN ({','.join('?' * len(TRAINING_CHILDREN))})", TRAINING_CHILDREN
-    )
 
 
 def run_entries(con, entries):
@@ -65,11 +41,10 @@ def run_entries(con, entries):
 def run(con):
     entries = subjects_store.read_file()  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
-        run_builtin(con)
-        source = "built-in table; subjects.json not found"
-    else:
-        run_entries(con, entries)
-        source = "subjects.json"
+        print("[seed_subject_hierarchy] no subjects.json: no subject hierarchy loaded")
+        return
+    run_entries(con, entries)
+    source = "subjects.json"
     con.commit()
     cur = con.cursor()
     n = cur.execute("SELECT COUNT(*) FROM subjects WHERE parent_id IS NOT NULL").fetchone()[0]

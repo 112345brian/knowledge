@@ -127,6 +127,7 @@ Rules (each one is a failing test or contract if broken):
 | `rules_edit` | facade (composition root) | binds rules_edit_service; also the knowledge privacy commands' read access to the rules |
 | `rules_edit_service` | use case | edit privacy rules |
 | `script_runner` | driven adapter | starts the standalone scripts |
+| `seed_subject_tree` | ETL adapter (driving, batch) | the author's built-in subject tree, used until subjects.json exists (claims source) |
 | `seed_rules` | domain | seed data |
 | `snapshot_date` | ETL adapter (driving, batch) |  |
 | `source_ingest_rules` | domain | citation notes |

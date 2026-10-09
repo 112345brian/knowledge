@@ -280,7 +280,7 @@ layer = "domain"
 depends_on = []
 
 [[modules]]
-path = "ingest.seed_rules"         # DOMAIN: hand-authored claims and the subject tree (pure data)
+path = "client.seed_rules"         # DOMAIN: hand-authored claims and the subject tree (pure data)
 layer = "domain"
 depends_on = []
 
@@ -786,10 +786,10 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.seed_claims"
+path = "client.seed_claims"
 layer = "pipeline"
 depends_on = [
-    "ingest.seed_rules",
+    "client.seed_rules",
     "claims_audit",
 ]
 
@@ -797,7 +797,6 @@ depends_on = [
 path = "ingest.seed_subject_hierarchy"
 layer = "pipeline"
 depends_on = [
-    "ingest.seed_rules",
     "subjects_store",
 ]
 
@@ -875,10 +874,11 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.export_subjects"
+path = "client.export_subjects"
 layer = "pipeline"
 depends_on = [
     "subjects_store",
+    "client.seed_subject_tree",
 ]
 
 [[modules]]
@@ -917,5 +917,13 @@ path = "client.link_fact_measurements"
 layer = "pipeline"
 depends_on = [
     "ingest.facts",
+]
+
+[[modules]]
+path = "client.seed_subject_tree"
+layer = "pipeline"
+depends_on = [
+    "client.seed_rules",
+    "subjects_store",
 ]
 

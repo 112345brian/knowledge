@@ -35,6 +35,14 @@ def load06():
     return mod
 
 
+def load_tree():
+    """client/seed_subject_tree.py: the author's built-in tree (the `claims` client source)."""
+    spec = importlib.util.spec_from_file_location("seed_tree", os.path.join(REPO, "client", "seed_subject_tree.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def new_db():
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
@@ -51,7 +59,7 @@ def tree(con):
 
 def seed_ingested(con, extra=()):
     """The subjects 04 would have created for the real data: the two parents and all 24 children (domain default)."""
-    mod = load06()
+    mod = load_tree()
     for n in ["anabolic-steroids", *mod.AAS_CHILDREN, *mod.TRAINING_CHILDREN, *extra]:
         con.execute("INSERT INTO subjects (name) VALUES (?)", (n,))
     return mod
@@ -80,17 +88,17 @@ def test_builtin_run_leaves_absent_children_absent_and_only_creates_training():
     con = new_db()
     con.execute("INSERT INTO subjects (name) VALUES ('anabolic-steroids')")
     con.execute("INSERT INTO subjects (name) VALUES ('aas-legal')")
-    load06().run_builtin(con)
+    load_tree().run_builtin(con)
     assert set(tree(con)) == {"anabolic-steroids", "aas-legal", "training"}
 
 
 def test_exported_file_and_builtin_table_give_identical_subject_rows(tmp_path):
-    mod = load06()
+    mod, core = load_tree(), load06()
     a, b = new_db(), new_db()
     seed_ingested(a)
     seed_ingested(b)
     mod.run_builtin(a)
-    mod.run_entries(b, subjects_store.parse(subjects_store.to_json(mod.builtin_entries())))
+    core.run_entries(b, subjects_store.parse(subjects_store.to_json(mod.builtin_entries())))
     assert tree(a) == tree(b)
     cols = "name, domain, parent_relation, deprecated, description, replaced_by_subject_id"
     assert sorted(map(tuple, a.execute(f"SELECT {cols} FROM subjects"))) == sorted(map(tuple, b.execute(f"SELECT {cols} FROM subjects")))
@@ -233,13 +241,31 @@ def write_subjects(env, data):
         json.dump(data, f)
 
 
-def test_06_falls_back_to_the_builtin_table_without_a_file(ingest, capsys):
+def test_06_loads_no_hierarchy_without_a_file(ingest, capsys):
     con = ingest.db()
-    mod = seed_ingested(con)
-    mod2 = load06()
-    mod2.run(con)
-    assert "built-in table; subjects.json not found" in capsys.readouterr().out
+    seed_ingested(con)
+    load06().run(con)
+    assert "no subjects.json: no subject hierarchy loaded" in capsys.readouterr().out
+    assert sum(1 for p, _ in tree(con).values() if p) == 0
+
+
+def test_the_claims_source_falls_back_to_the_builtin_tree_without_a_file(ingest, capsys):
+    con = ingest.db()
+    seed_ingested(con)
+    load06().run(con)
+    load_tree().run(con)
+    assert "built-in tree; subjects.json not found" in capsys.readouterr().out
     assert sum(1 for p, _ in tree(con).values() if p) == 24
+
+
+def test_the_builtin_tree_steps_aside_once_subjects_json_exists(ingest, capsys):
+    con = ingest.db()
+    seed_ingested(con)
+    write_subjects(ingest.env, {"version": 1, "subjects": [{"name": "alpha", "domain": "health"}]})
+    load06().run(con)
+    load_tree().run(con)
+    assert "built-in tree is not used" in capsys.readouterr().out
+    assert sum(1 for p, _ in tree(con).values() if p) == 0
 
 
 def test_06_loads_everything_from_the_file(ingest, capsys):
@@ -499,7 +525,7 @@ def test_cli_edits_commit_only_subjects_json_and_refuse_a_dirty_tree(tmp_path):
 # ------------------------------------------------------------------ exporter
 
 def test_export_subjects_dry_run_default_apply_and_no_overwrite(tmp_path):
-    from ingest import export_subjects
+    from client import export_subjects
     d = str(tmp_path / "out")
     assert export_subjects.main(["--data-dir", d]) == 0 and not os.path.exists(d)
     assert export_subjects.main(["--data-dir", d, "--apply"]) == 0

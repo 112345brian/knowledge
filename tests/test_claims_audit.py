@@ -40,7 +40,7 @@ def add_claim(con, statement, fact_ids=(), **cols):
 
 
 def load_seed():
-    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "ingest", "seed_claims.py"))
+    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "client", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

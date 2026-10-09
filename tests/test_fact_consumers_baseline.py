@@ -44,7 +44,7 @@ def test_fts_search_and_update_trigger(ingest):
 
 def test_claims_seeding_matches_facts_by_statement_prefix(ingest):
     con = build(ingest)
-    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "ingest", "seed_claims.py"))
+    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "client", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.CLAIMS = [dict(statement="X", notes="n", fact_match_prefixes=["Whole-body BMD Z-score fell from -0.6"])]
