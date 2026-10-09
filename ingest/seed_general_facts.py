@@ -13,8 +13,8 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
-from _shared import get_or_create_vault_file
-import fact_ingest_rules
+from ingest.shared import get_or_create_vault_file
+from ingest import fact_ingest_rules
 import fixity_store
 import privacy
 import privacy_store
@@ -106,7 +106,7 @@ def run(con):
     con.commit()
     if applied["raised"]:
         print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
-    print(f"[11_seed_general_facts] inserted {inserted}, skipped {skipped} (bad shape)")
+    print(f"[seed_general_facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
     if derived:

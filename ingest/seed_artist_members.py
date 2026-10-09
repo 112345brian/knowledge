@@ -1,4 +1,4 @@
-"""Seed artist_members from the curated ARTIST_MEMBERS dict in _shared.py --
+"""Seed artist_members from the curated ARTIST_MEMBERS dict in shared.py --
 e.g. "Freddie Gibbs & Madlib" and "Madvillain" (a group/collab credit) each
 stay their own artist row (see schema.sql's comment on artist_members for
 why splitting per-credit was tried and reverted), and this records which
@@ -9,7 +9,7 @@ from their own solo credits rather than being created fresh here with
 nothing else attached.
 """
 import sqlite3, os
-from _shared import load_artist_cache, seed_artist_members
+from ingest.shared import load_artist_cache, seed_artist_members
 
 
 def run(con):
@@ -17,7 +17,7 @@ def run(con):
     artist_cache = load_artist_cache(cur)
     inserted = seed_artist_members(cur, artist_cache)
     con.commit()
-    print(f"[10_seed_artist_members] inserted {inserted} artist_members rows")
+    print(f"[seed_artist_members] inserted {inserted} artist_members rows")
 
 
 if __name__ == "__main__":

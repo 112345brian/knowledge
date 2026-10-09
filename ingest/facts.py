@@ -10,10 +10,9 @@ Run after 01/02/03 (needs sources + subjects + measurements to exist).
 """
 import sqlite3, json, os, sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import fact_ingest_rules
+from ingest import fact_ingest_rules
 import fixity_store
-from _shared import get_or_create_vault_file
+from ingest.shared import get_or_create_vault_file
 import revisions
 import revisions_store
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
@@ -128,7 +127,7 @@ def run(con):
     con.commit()
     if applied["raised"]:
         print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")
-    print(f"[04_ingest_facts] inserted {inserted}, skipped {skipped} (bad shape)")
+    print(f"[facts] inserted {inserted}, skipped {skipped} (bad shape)")
     if bad_citekeys:
         print(f"  WARNING -- citekeys referenced but not found in sources: {sorted(bad_citekeys)}")
     if derived:

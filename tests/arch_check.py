@@ -9,8 +9,8 @@ top-level module into `<tmp>/kn/` and rewrites the *project-internal* import sta
 The shadow copy is only ever parsed, never executed. Every import statement (top-level, lazy
 inside a function, TYPE_CHECKING) is rewritten, so lazy imports are seen too.
 
-The numbered scripts (`01_seed_sources.py`, ... `12_apply_fact_revisions.py`) are not valid
-module names, so they cannot be in the shadow. tach models them by file instead (tach.toml).
+The ETL steps and helpers live in ingest/ (a plain directory, listed as a second tach source root); the
+shadow flattens it together with the repo root, so every module is `kn.<name>`.
 
 Run both tools without pytest:   uv run python tests/arch_check.py
 """
@@ -26,21 +26,25 @@ BIN = os.path.dirname(sys.executable)
 PLANNED_PREFIX = "#planned:"
 SHADOW_PKG = "kn"
 
-# Every numbered script, and why import-linter cannot see it. Asserted equal to the files on
-# disk by tests/test_architecture.py, so a new numbered script has to be listed here on purpose.
-NUMBERED_SCRIPTS_EXCLUDED = (
-    "01_seed_sources", "02_ingest_literature_sources", "03_ingest_measurements",
-    "04_ingest_facts", "05_seed_claims", "06_seed_subject_hierarchy", "07_ingest_concerts",
-    "08_ingest_music_ratings", "09_ingest_scrobbles", "10_seed_artist_members",
-    "11_seed_general_facts", "12_apply_fact_revisions", "13_link_entities",
-    "14_link_source_relations",
-)
-NUMBERED_REASON = ("not importable names (they start with a digit); build.py loads them with "
-                   "importlib. tach checks them by file path instead.")
+# The ETL steps and helpers live in ingest/ (a plain directory on the source path, not a package), so their
+# names are bare module names like every other module. Everything below treats the repo root and ingest/ as one
+# flat namespace.
+INGEST_DIR = "ingest"
+
+
+def _source_files(src_dir):
+    """{module stem: path} for the root directory and ingest/."""
+    found = {}
+    for d in (src_dir, os.path.join(src_dir, INGEST_DIR)):
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                if f.endswith(".py") and f != "__init__.py":
+                    found[f[:-3]] = os.path.join(d, f)
+    return found
 
 
 def top_level_stems(src_dir):
-    return sorted(f[:-3] for f in os.listdir(src_dir) if f.endswith(".py"))
+    return sorted(_source_files(src_dir))
 
 
 def importable_stems(src_dir):
@@ -70,6 +74,11 @@ def planned_modules(text):
     return found
 
 
+def _shadow_name(name, pkg):
+    """The shadow name of an imported module: `ingest.x` and `x` are both `kn.x` (the shadow is flat)."""
+    return f"{pkg}.{name[len('ingest.'):] if name.startswith('ingest.') else name}"
+
+
 def _rewrite_internal_imports(source, names, pkg=SHADOW_PKG):
     tree = ast.parse(source)
     lines = source.encode().split(b"\n")
@@ -77,11 +86,13 @@ def _rewrite_internal_imports(source, names, pkg=SHADOW_PKG):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
-                if a.name.split(".")[0] in names:
-                    edits.append((a.lineno - 1, a.col_offset, a.name, f"{pkg}.{a.name}"))
+                if a.name.split(".")[0] in names or a.name.startswith("ingest."):
+                    edits.append((a.lineno - 1, a.col_offset, a.name, _shadow_name(a.name, pkg)))
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            if node.module.split(".")[0] in names:
-                edits.append((node.lineno - 1, node.col_offset, node.module, f"{pkg}.{node.module}"))
+            if node.module == "ingest":
+                edits.append((node.lineno - 1, node.col_offset, node.module, pkg))  # from ingest import x -> from kn import x
+            elif node.module.split(".")[0] in names or node.module.startswith("ingest."):
+                edits.append((node.lineno - 1, node.col_offset, node.module, _shadow_name(node.module, pkg)))
     for ln, col, old, new in sorted(edits, reverse=True):
         line = lines[ln]
         i = line.index(old.encode(), col)  # the module name is the first occurrence after the keyword
@@ -95,8 +106,9 @@ def make_shadow(src_dir, dest_dir):
     pkg = os.path.join(dest_dir, SHADOW_PKG)
     os.makedirs(pkg, exist_ok=True)
     open(os.path.join(pkg, "__init__.py"), "w").close()
+    sources = _source_files(src_dir)
     for n in names:
-        with open(os.path.join(src_dir, n + ".py"), encoding="utf-8") as f:
+        with open(sources[n], encoding="utf-8") as f:
             src = f.read()
         with open(os.path.join(pkg, n + ".py"), "w", encoding="utf-8") as f:
             f.write(_rewrite_internal_imports(src, set(names)))
@@ -130,16 +142,17 @@ def _is_git_word(v):
 
 
 def scan_git_usage(src_dir, allowed=("private_git",)):
-    """AST scan of every top-level .py (numbered scripts included): a command list starting with
+    """AST scan of every .py in the repo root and ingest/: a command list starting with
     "git", a "git ..." string passed to a process-spawning call, or any os.system/os.popen/
     os.exec*/os.spawn* call outside the allowed modules. Returns a list of 'file:line: why'.
     Import-linter already limits who may import `subprocess`; this covers what that cannot,
     i.e. a permitted subprocess user (knowledge.py) quietly running git."""
     problems = []
-    for stem in top_level_stems(src_dir):
+    sources = _source_files(src_dir)
+    for stem in sorted(sources):
         if stem in allowed:
             continue
-        path = os.path.join(src_dir, stem + ".py")
+        path = sources[stem]
         tree = ast.parse(open(path, encoding="utf-8").read())
         for node in ast.walk(tree):
             if isinstance(node, (ast.List, ast.Tuple)) and node.elts:

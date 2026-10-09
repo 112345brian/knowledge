@@ -17,7 +17,6 @@ import os
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import privacy
 import privacy_store
 import revisions
@@ -37,7 +36,7 @@ def run(con):
     if floor["raised"]:
         print(f"  privacy rules raised {len(floor['raised'])} fact(s) to private after revisions")
     total = con.execute("SELECT COUNT(*) FROM fact_revisions").fetchone()[0]
-    print(f"[12_apply_fact_revisions] applied {applied} revisions ({total} rows in fact_revisions incl. implicit revision 1)")
+    print(f"[apply_fact_revisions] applied {applied} revisions ({total} rows in fact_revisions incl. implicit revision 1)")
 
 
 if __name__ == "__main__":

@@ -231,7 +231,7 @@ def run02(ingest, tmp_path, monkeypatch, notes, attrs=None):
         (d / f"{name}.md").write_text(note_text(extra))
     import acquisition_store
     monkeypatch.setattr(acquisition_store, "read_attributes", lambda path, run=None, platform_ok=None: dict(attrs.get(os.path.basename(path), {})) if attrs else {})
-    spec = __import__("importlib.util").util.spec_from_file_location("m02", os.path.join(REPO, "02_ingest_literature_sources.py"))
+    spec = __import__("importlib.util").util.spec_from_file_location("m02", os.path.join(REPO, "ingest", "literature_sources.py"))
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.SRC_DIR = str(d)
@@ -270,7 +270,7 @@ def test_01_manual_sources_take_data_first(ingest, monkeypatch):
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m1", "name": "M", "source_type": "primary", "origin_path": "/x/m1.pdf", "where_from": "https://data.example", "acquired_via": "export"},
                    {"citekey": "m2", "name": "M2", "source_type": "primary"}], f)
-    spec = __import__("importlib.util").util.spec_from_file_location("m01", os.path.join(REPO, "01_seed_sources.py"))
+    spec = __import__("importlib.util").util.spec_from_file_location("m01", os.path.join(REPO, "ingest", "seed_sources.py"))
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     con = ingest.db()

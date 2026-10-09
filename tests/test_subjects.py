@@ -29,7 +29,7 @@ def _restore_modules():
 
 
 def load06():
-    spec = importlib.util.spec_from_file_location("seed06", os.path.join(REPO, "06_seed_subject_hierarchy.py"))
+    spec = importlib.util.spec_from_file_location("seed06", os.path.join(REPO, "ingest", "seed_subject_hierarchy.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -499,7 +499,7 @@ def test_cli_edits_commit_only_subjects_json_and_refuse_a_dirty_tree(tmp_path):
 # ------------------------------------------------------------------ exporter
 
 def test_export_subjects_dry_run_default_apply_and_no_overwrite(tmp_path):
-    import export_subjects
+    from ingest import export_subjects
     d = str(tmp_path / "out")
     assert export_subjects.main(["--data-dir", d]) == 0 and not os.path.exists(d)
     assert export_subjects.main(["--data-dir", d, "--apply"]) == 0

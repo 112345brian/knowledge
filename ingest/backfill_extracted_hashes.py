@@ -2,7 +2,7 @@
 """One-time backfill of the fixity baseline `extracted_from_sha256` onto legacy fact entries (#38).
 
 For each entry in pilot_facts.json and facts_batch1-4.json whose origin file is known (its own
-`origin_path`, or the vault file its `notes` reference, the same rule 04_ingest_facts.py uses), this
+`origin_path`, or the vault file its `notes` reference, the same rule facts.py uses), this
 inserts `"extracted_from_sha256": "<hash>"` computed from the file as it is in the vault NOW. That makes
 the baseline "as of backfill", NOT the true extraction time: a note edited after the fact was extracted
 but before this ran is recorded as unchanged. Say so when you read an audit built on it.
@@ -15,16 +15,16 @@ Same safety properties as backfill_dates.py / backfill_source_keys.py (it reuses
 An entry whose origin file is missing or unreadable is counted and skipped (no hash is invented).
 
 Usage:
-    python3 backfill_extracted_hashes.py                      # dry run on the private data dir
-    python3 backfill_extracted_hashes.py --apply              # write
-    python3 backfill_extracted_hashes.py --data-dir DIR ...   # a copy, for trying it out
+    python3 -m ingest.backfill_extracted_hashes                      # dry run on the private data dir
+    python3 -m ingest.backfill_extracted_hashes --apply              # write
+    python3 -m ingest.backfill_extracted_hashes --data-dir DIR ...   # a copy, for trying it out
 """
 import argparse
 import importlib.util
 import os
 import sys
 
-import backfill_source_keys
+from ingest import backfill_source_keys
 import fixity_store
 import revisions
 import revisions_store
@@ -33,8 +33,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _resolver():
-    """04_ingest_facts.resolve_origin_path (a numbered script is not importable by name)."""
-    spec = importlib.util.spec_from_file_location("ingest_facts", os.path.join(HERE, "04_ingest_facts.py"))
+    """facts.resolve_origin_path ."""
+    spec = importlib.util.spec_from_file_location("facts", os.path.join(HERE, "facts.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.resolve_origin_path

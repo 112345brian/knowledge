@@ -28,6 +28,7 @@ def env(tmp_path, monkeypatch):
     schema = tmp_path / "schema.sql"
     schema.write_text(SCHEMA_SQL)
     monkeypatch.setattr(build, "HERE", str(steps_dir))
+    monkeypatch.setattr(build, "INGEST_DIR", str(steps_dir))
     monkeypatch.setattr(build, "SCHEMA", str(schema))
     monkeypatch.setattr(build, "DB_DIR", str(db_dir))
     monkeypatch.setattr(build, "LIVE_DB", str(db_dir / "knowledge.db"))

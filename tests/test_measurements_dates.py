@@ -1,4 +1,4 @@
-"""03_ingest_measurements.py: the dates it stamps (issue #35). Runs on a tiny fixture vault db
+"""measurements.py: the dates it stamps (issue #35). Runs on a tiny fixture vault db
 built here; nothing reads the real vault or knowledge-private data."""
 import importlib.util
 import os
@@ -57,10 +57,10 @@ def make_vault(path):
 def m03(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "add_fact_store", "new_fact", "snapshot_date", "revisions", "revisions_store", "backfill_source_keys", "backfill_dates"):
+    for m in ("paths", "local_paths", "shared", "add_fact", "add_fact_store", "new_fact", "snapshot_date", "revisions", "revisions_store", "backfill_source_keys", "backfill_dates"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
-    spec = importlib.util.spec_from_file_location("ing_03", os.path.join(REPO, "03_ingest_measurements.py"))
+    spec = importlib.util.spec_from_file_location("ing_03", os.path.join(REPO, "ingest", "measurements.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     vault = str(tmp_path / "bodybuilding.db")
@@ -130,11 +130,11 @@ def test_a_missing_or_bad_snapshot_file_fails_the_build_and_names_the_file(m03, 
         m03.build()
     assert "measurements_snapshot.json" in str(e.value)
     if content is None:
-        assert "backfill_dates.py" in str(e.value)
+        assert "ingest.backfill_dates" in str(e.value)
 
 
 def test_backfill_dates_output_is_what_03_reads(m03, tmp_path):
-    import backfill_dates
+    from ingest import backfill_dates
     backfill_dates.backfill_dates(m03.env.data_dir, apply=True)
     con = m03.build()
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}

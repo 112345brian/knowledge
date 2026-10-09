@@ -24,7 +24,7 @@ def validate_fact(ports, fact, db_path=None):
 
 
 def build_entry(ports, fact, visibility=None):
-    """The JSON entry 11_seed_general_facts.py expects (see new_fact.build_entry). `visibility` is the
+    """The JSON entry seed_general_facts.py expects (see new_fact.build_entry). `visibility` is the
     resolved value from privacy.resolve_visibility (append_fact passes it); left None it falls back
     to the caller's request."""
     origin = fact.origin_path.strip() if fact.origin_path and fact.origin_path.strip() else None

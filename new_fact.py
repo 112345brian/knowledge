@@ -2,7 +2,7 @@
 
 `NewFact` is the shape the CLI, the MCP tools and tests share; `check_fact` is every validation rule
 that needs no outside information; `build_entry` turns a checked fact into the JSON entry that
-11_seed_general_facts.py expects. The time and the fresh source_key are passed in. The adapter is
+seed_general_facts.py expects. The time and the fresh source_key are passed in. The adapter is
 `add_fact_store` (locked JSON file, citekey and subject lookups); `add_fact` is the use case and the
 `python3 add_fact.py` script.
 """
@@ -136,7 +136,7 @@ def check_fact(fact):
 
 
 def build_entry(fact, visibility, source_key, now_iso, origin_sha256=None):
-    """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format.
+    """The JSON entry seed_general_facts.py expects. Key order is part of the file format.
     `visibility` is the resolved value from privacy.resolve_visibility (None = the caller's request);
     `source_key` is the fresh identity (used unless the fact carries one), `now_iso` the time and
     `origin_sha256` the hash of `fact.origin_path` when the adapter could read it (#38)."""

@@ -2,7 +2,7 @@
 
 How an artist name from RYM, Last.fm or a hand-typed concert list is canonicalized: HTML-unescaped, then
 mapped through the curated alias table, then compared case-insensitively. The curated membership table of
-group credits lives here too. `_shared` (the adapter) does the get-or-create against the db.
+group credits lives here too. `shared` (the adapter) does the get-or-create against the db.
 """
 import html
 

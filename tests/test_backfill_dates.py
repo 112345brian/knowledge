@@ -18,7 +18,7 @@ SNAP = "measurements_snapshot.json"
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "backfill_source_keys",
+    for m in ("paths", "local_paths", "shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "backfill_source_keys",
               "backfill_dates", "snapshot_date"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
@@ -26,7 +26,7 @@ def world(tmp_path, monkeypatch):
 
 
 def run(world, data_dir, *flags):
-    return subprocess.run([sys.executable, os.path.join(REPO, "backfill_dates.py"), "--data-dir", data_dir, *flags],
+    return subprocess.run([sys.executable, "-m", "ingest.backfill_dates", "--data-dir", data_dir, *flags],
                           env=world.env, capture_output=True, text=True, cwd=REPO)
 
 
@@ -200,7 +200,7 @@ def test_a_malformed_snapshot_file_blocks_every_write(world, tmp_path, bad):
 
 
 def test_it_does_not_touch_the_source_key_machinery_unless_asked(world, tmp_path):
-    import backfill_dates
+    from ingest import backfill_dates
     d = str(tmp_path / "copy")
     fixture_files(d)
     backfill_dates.backfill_dates(d, apply=True)
@@ -208,7 +208,7 @@ def test_it_does_not_touch_the_source_key_machinery_unless_asked(world, tmp_path
 
 
 def test_source_keys_then_dates_equals_dates_then_source_keys(world, tmp_path):
-    import backfill_source_keys
+    from ingest import backfill_source_keys
     a, b = str(tmp_path / "a"), str(tmp_path / "b")
     fixture_files(a)
     fixture_files(b)
@@ -230,7 +230,7 @@ def test_a_concurrent_add_fact_append_is_not_lost(world, tmp_path):
               "sys.exit(0 if r.ok else 1)")
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=world.env, cwd=REPO,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) for i in range(4)]
-    procs.append(subprocess.Popen([sys.executable, os.path.join(REPO, "backfill_dates.py"), "--data-dir", d, "--apply"],
+    procs.append(subprocess.Popen([sys.executable, "-m", "ingest.backfill_dates", "--data-dir", d, "--apply"],
                                   env=world.env, cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
     assert all(p.wait() == 0 for p in procs)
     run(world, d, "--apply")

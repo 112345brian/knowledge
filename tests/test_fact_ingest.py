@@ -1,4 +1,4 @@
-"""04_ingest_facts.py and 11_seed_general_facts.py: what they write into `facts`.
+"""facts.py and seed_general_facts.py: what they write into `facts`.
 
 Characterization first (issues #19/#20/#24 change these rows), then the new guarantees.
 Fixture JSON only; nothing here reads the real knowledge-private data.
@@ -21,20 +21,20 @@ LEGACY_11 = "2026-09-26"
 def ingest(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact"):
+    for m in ("paths", "local_paths", "shared", "add_fact"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
 
     def load(name):
-        spec = importlib.util.spec_from_file_location("ing_" + name, os.path.join(REPO, name))
+        spec = importlib.util.spec_from_file_location("ing_" + name, os.path.join(REPO, "ingest", name))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
 
     class Ctx:
         env = e
-        mod04 = load("04_ingest_facts.py")
-        mod11 = load("11_seed_general_facts.py")
+        mod04 = load("facts.py")
+        mod11 = load("seed_general_facts.py")
 
         @staticmethod
         def write(name, items):
@@ -106,7 +106,7 @@ def test_an_entry_without_date_added_fails_the_build_naming_file_and_entry(inges
         getattr(ingest, run)(items, stamp=False)
     msg = str(e.value)
     assert f"{fname}[1]" in msg and "The undated one." in msg and "no `date_added`" in msg
-    assert "backfill_dates.py" in msg
+    assert "ingest.backfill_dates" in msg
 
 
 @pytest.mark.parametrize("run", ["run04", "run11"])
@@ -169,8 +169,8 @@ def test_04_honors_each_entrys_stored_date_added(ingest):
 
 def test_no_hardcoded_date_constants_left_in_the_ingest_scripts():
     import re
-    for name in ("03_ingest_measurements.py", "04_ingest_facts.py", "11_seed_general_facts.py"):
-        text = open(os.path.join(REPO, name)).read()
+    for name in ("measurements.py", "facts.py", "seed_general_facts.py"):
+        text = open(os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)).read()
         assert "TODAY =" not in text and "TODAY=" not in text, name
         assert "LEGACY_DATE_ADDED" not in text, name
         # nor any literal ISO date assigned or used as a default

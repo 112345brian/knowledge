@@ -11,7 +11,7 @@ module's layer there agrees with its role in the table below. This table is chec
 exactly once, and the *domain* and *use case* rows must equal the contract lists.
 
 ```
-driving adapters (knowledge, cli_*, inbox, build + numbered ETL scripts)
+driving adapters (knowledge, cli_*, inbox, build + the `ingest` package)
         |  call
         v
 facades (review, lifecycle, add_fact, facts_batch, migrate_memory)   <- composition roots: pick the adapters
@@ -37,21 +37,21 @@ Rules (each one is a failing test or contract if broken):
 
 | Module | Role | What it is |
 | --- | --- | --- |
-| `01_seed_sources` | ETL adapter (driving, batch) |  |
-| `02_ingest_literature_sources` | ETL adapter (driving, batch) |  |
-| `03_ingest_measurements` | ETL adapter (driving, batch) |  |
-| `04_ingest_facts` | ETL adapter (driving, batch) |  |
-| `05_seed_claims` | ETL adapter (driving, batch) |  |
-| `06_seed_subject_hierarchy` | ETL adapter (driving, batch) |  |
-| `07_ingest_concerts` | ETL adapter (driving, batch) |  |
-| `08_ingest_music_ratings` | ETL adapter (driving, batch) |  |
-| `09_ingest_scrobbles` | ETL adapter (driving, batch) |  |
-| `10_seed_artist_members` | ETL adapter (driving, batch) |  |
-| `11_seed_general_facts` | ETL adapter (driving, batch) |  |
-| `12_apply_fact_revisions` | ETL adapter (driving, batch) |  |
-| `13_link_entities` | ETL adapter (driving, batch) |  |
-| `14_link_source_relations` | ETL adapter (driving, batch) |  |
-| `_shared` | ETL adapter (driving, batch) |  |
+| `seed_sources` | ETL adapter (driving, batch) |  |
+| `literature_sources` | ETL adapter (driving, batch) |  |
+| `measurements` | ETL adapter (driving, batch) |  |
+| `facts` | ETL adapter (driving, batch) |  |
+| `seed_claims` | ETL adapter (driving, batch) |  |
+| `seed_subject_hierarchy` | ETL adapter (driving, batch) |  |
+| `concerts` | ETL adapter (driving, batch) |  |
+| `music_ratings` | ETL adapter (driving, batch) |  |
+| `scrobbles` | ETL adapter (driving, batch) |  |
+| `seed_artist_members` | ETL adapter (driving, batch) |  |
+| `seed_general_facts` | ETL adapter (driving, batch) |  |
+| `apply_fact_revisions` | ETL adapter (driving, batch) |  |
+| `link_entities` | ETL adapter (driving, batch) |  |
+| `link_source_relations` | ETL adapter (driving, batch) |  |
+| `shared` | ETL adapter (driving, batch) |  |
 | `acquisition_store` | driven adapter | custodial history from macOS file attributes (read-only xattr) |
 | `add_fact` | facade (composition root) | binds add_fact_service; also the add_fact.py script |
 | `add_fact_service` | use case | add one fact |

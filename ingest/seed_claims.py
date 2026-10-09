@@ -7,10 +7,9 @@ A claim may also carry a `warrant` (why the cited grounds support it) and a `qua
 qualifier and note are stored as NULL; an unknown role fails the build."""
 import sqlite3, os, sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import claims_audit
 
-from seed_rules import CLAIMS
+from ingest.seed_rules import CLAIMS
 
 
 def _blank_to_none(value, what):
@@ -49,7 +48,7 @@ def run(con):
                 (claim_id, role, note, prefix + "%")
             )
     con.commit()
-    print(f"[05_seed_claims] inserted {len(CLAIMS)} claims")
+    print(f"[seed_claims] inserted {len(CLAIMS)} claims")
 
 
 if __name__ == "__main__":

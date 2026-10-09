@@ -6,12 +6,12 @@ read as a report -- see export_music_taste_summary() in an earlier version
 of this script if a human-readable digest is what's wanted instead.
 
 Read-only, not part of the build pipeline (it queries knowledge.db, it
-doesn't build it) -- run anytime after 08_ingest_music_ratings.py has
+doesn't build it) -- run anytime after music_ratings.py has
 populated `albums`.
 
 Usage:
-    python3 export_music_taste.py                    # JSON to stdout
-    python3 export_music_taste.py -o taste.json       # JSON to a file
+    python3 -m ingest.export_music_taste                    # JSON to stdout
+    python3 -m ingest.export_music_taste -o taste.json       # JSON to a file
 """
 import sqlite3, os, sys, json, argparse
 

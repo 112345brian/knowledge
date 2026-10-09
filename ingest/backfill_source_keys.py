@@ -18,9 +18,9 @@ Safe by construction:
     exactly the old parsed content, and removing the inserted text must give the old bytes
 
 Usage:
-    python3 backfill_source_keys.py                       # dry run on the private data dir
-    python3 backfill_source_keys.py --apply               # write
-    python3 backfill_source_keys.py --data-dir DIR ...    # a copy, for trying it out
+    python3 -m ingest.backfill_source_keys                       # dry run on the private data dir
+    python3 -m ingest.backfill_source_keys --apply               # write
+    python3 -m ingest.backfill_source_keys --data-dir DIR ...    # a copy, for trying it out
 
 Extension point (used by backfill_dates.py, #35): pass `extra_adders` to `backfill()` -- each is
 a callable (entry, filename, index) -> {key: value} of keys to insert for that entry; keys the
@@ -31,11 +31,11 @@ import json
 import os
 import sys
 
-import backfill_rules
+from ingest import backfill_rules
 import revisions
 import revisions_store
 from add_fact_store import file_lock, lock_path
-from backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
+from ingest.backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
 
 
 def _backfill_file(path, name, adders, apply):

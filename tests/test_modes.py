@@ -576,13 +576,13 @@ FACT_READERS_ALLOWED = {
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
-    "entities_store.py", "13_link_entities.py",
+    "entities_store.py", "link_entities.py",
     # CLI-only audit over the full local db (like claims_store): which cited sources were retracted or replaced
     "source_status_store.py",
     # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table
     "build_info_store.py",
     # build/ingest pipeline: writes the tables, never serves tool results
-    "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
+    "facts.py", "seed_claims.py", "seed_general_facts.py", "apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",
     # build-time checker: scans the full db for private markers, never serves tool results
     "leak_test.py",

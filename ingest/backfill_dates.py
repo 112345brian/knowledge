@@ -7,7 +7,7 @@ and a missing date can become a build error. It inserts `"date_added": "<date>"`
 of every entry in pilot_facts.json, facts_batch1-4.json and general_facts.json that has none,
 using the date the constant stood for (revisions.ENTRY_FILES: 2026-09-11, or 2026-09-26 for
 general_facts.json), so no stored date changes. It also writes measurements_snapshot.json
-(`{"synced_at": "2026-09-11"}`) if absent: the date 03_ingest_measurements.py stamps on its rows,
+(`{"synced_at": "2026-09-11"}`) if absent: the date measurements.py stamps on its rows,
 for the same reason (the vault db has no per-row load timestamp).
 
 It reuses backfill_source_keys.py's machinery, so the safety properties are the same:
@@ -23,23 +23,23 @@ It reuses backfill_source_keys.py's machinery, so the safety properties are the 
 Does not touch source_key (run backfill_source_keys.py for that; the two are independent).
 
 Usage:
-    python3 backfill_dates.py                       # dry run on the private data dir
-    python3 backfill_dates.py --apply               # write
-    python3 backfill_dates.py --data-dir DIR ...    # a copy, for trying it out
+    python3 -m ingest.backfill_dates                       # dry run on the private data dir
+    python3 -m ingest.backfill_dates --apply               # write
+    python3 -m ingest.backfill_dates --data-dir DIR ...    # a copy, for trying it out
 """
 import argparse
 import json
 import os
 import sys
 
-import backfill_rules
-import backfill_source_keys
+from ingest import backfill_rules
+from ingest import backfill_source_keys
 import revisions
 import revisions_store
 from add_fact_store import file_lock, lock_path
-from snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
+from ingest.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
 
-# What 03_ingest_measurements.py's `TODAY` constant stood for.
+# What measurements.py's `TODAY` constant stood for.
 MEASUREMENTS_LEGACY_DATE = "2026-09-11"
 FILE_DATES = dict(revisions.ENTRY_FILES)
 

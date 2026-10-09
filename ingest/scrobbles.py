@@ -8,8 +8,8 @@ per play -- 153k scrobbles collapse to ~30k distinct tracks (avg 5
 plays/track), so each gets one `tracks` row; and the source file path
 (previously repeated as ~80 bytes of text on all 153k rows, 12MB+ of pure
 duplication) gets one `import_sources` row instead. Same get-or-create /
-delete-by-source idempotency pattern as 07_ingest_concerts.py and
-08_ingest_music_ratings.py otherwise.
+delete-by-source idempotency pattern as concerts.py and
+music_ratings.py otherwise.
 
 At ~150k rows this is far bigger than any other single ingest in this db, so
 artist and track lookups are batched through in-memory caches instead of one
@@ -21,7 +21,7 @@ Sweatshirt") or a duo alongside its own members ("Madvillain, Madlib, MF
 DOOM") -- there's no safe general rule for splitting that, so each such
 string just becomes its own artist row like any other, and real membership
 facts ("Madvillain's members are Madlib and MF DOOM") are curated separately
-in artist_members (see ARTIST_MEMBERS in _shared.py), not derived here.
+in artist_members (see ARTIST_MEMBERS in shared.py), not derived here.
 
 NOTE: iter_scrobbles() and the artist-cache helpers are duplicated (not
 imported) in a sibling personal project's import_scrobbles.py, which
@@ -30,8 +30,8 @@ the two repos are independent on purpose -- but it means a parsing fix here
 (e.g. if Last.fm changes its export shape) needs to be made there too.
 """
 import sqlite3, json, os
-from _shared import load_artist_cache, get_or_create_artist, get_or_create
-import music_ingest_rules
+from ingest.shared import load_artist_cache, get_or_create_artist, get_or_create
+from ingest import music_ingest_rules
 from paths import SCROBBLES_JSON
 
 SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)
@@ -56,7 +56,7 @@ def run(con):
     cur = con.cursor()
 
     if not os.path.exists(SCROBBLES_PATH):
-        print(f"[09_ingest_scrobbles] {SCROBBLES_PATH} not found, skipping")
+        print(f"[scrobbles] {SCROBBLES_PATH} not found, skipping")
         return
 
     import_source_id = get_or_create(cur, "import_sources", "path", SCROBBLES_PATH)
@@ -89,7 +89,7 @@ def run(con):
     )
 
     con.commit()
-    print(f"[09_ingest_scrobbles] parsed {len(scrobbles)} scrobbles, {new_artists} new artists, {new_tracks} new tracks")
+    print(f"[scrobbles] parsed {len(scrobbles)} scrobbles, {new_artists} new artists, {new_tracks} new tracks")
     print(f"  scrobbles: {cur.execute('SELECT COUNT(*) FROM scrobbles').fetchone()[0]}, "
           f"tracks: {cur.execute('SELECT COUNT(*) FROM tracks').fetchone()[0]}, "
           f"artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}")

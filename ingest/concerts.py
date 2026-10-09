@@ -13,8 +13,8 @@ festivals become orphaned only if nothing else references them, which is
 fine -- they're just not re-created if already present).
 """
 import sqlite3, csv, os
-from _shared import load_artist_cache, get_or_create_artist
-import music_ingest_rules
+from ingest.shared import load_artist_cache, get_or_create_artist
+from ingest import music_ingest_rules
 from paths import CONCERTS_CSV
 
 CSV_PATH = os.path.expanduser(CONCERTS_CSV)
@@ -66,7 +66,7 @@ def run(con):
             inserted += 1
 
     con.commit()
-    print(f"[07_ingest_concerts] inserted {inserted} concert_attendances")
+    print(f"[concerts] inserted {inserted} concert_attendances")
     print(f"  artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}, "
           f"venues: {cur.execute('SELECT COUNT(*) FROM venues').fetchone()[0]}, "
           f"festivals: {cur.execute('SELECT COUNT(*) FROM festivals').fetchone()[0]}")

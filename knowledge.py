@@ -31,7 +31,7 @@ command and tests/test_cli_parity.py fails when a registered command is
 missing or a future MCP tool / inbox action has no registry entry.
 
 `build`, `add-fact`, and `clean-concerts` are thin dispatches to the existing
-standalone scripts (build.py, add_fact.py, clean_concerts_csv.py) -- those
+standalone scripts (build.py, add_fact.py, ingest/clean_concerts_csv.py) -- those
 still run fine on their own, without typer; this just gives one name to
 remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
@@ -142,7 +142,7 @@ def cmd_add_fact(ctx: typer.Context):
 
 @app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
 def cmd_clean_concerts():
-    raise typer.Exit(script_runner.run_script("clean_concerts_csv.py"))
+    raise typer.Exit(script_runner.run_module("ingest.clean_concerts_csv"))
 
 
 @app.command("search", help="Full-text search over facts (statement/trust_rationale/notes).")

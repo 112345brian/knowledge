@@ -4,7 +4,7 @@ A fact entry in the JSON data files is never edited after it is written. The ent
 the implicit revision 1 (its original state). Every later change appends one line to
 `fact_revisions.jsonl` in the private data dir: a full snapshot of the mutable fields plus
 {source_key, revision, changed_at, changed_via, session_id, change_reason}. The build
-(`12_apply_fact_revisions.py`) validates the log, fills the `fact_revisions` table and writes
+(`apply_fact_revisions.py`) validates the log, fills the `fact_revisions` table and writes
 each fact's latest revision into the `facts` row.
 
 This module is the DOMAIN: the rules for entries, keys, freshness, the log format and the next

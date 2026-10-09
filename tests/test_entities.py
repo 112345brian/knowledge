@@ -277,7 +277,7 @@ def test_add_fact_stores_private_when_it_mentions_a_private_entity(tmp_path):
 # ------------------------------------------------------------------ build step 13
 
 def load13():
-    spec = importlib.util.spec_from_file_location("link13", os.path.join(REPO, "13_link_entities.py"))
+    spec = importlib.util.spec_from_file_location("link13", os.path.join(REPO, "ingest", "link_entities.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

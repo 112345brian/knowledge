@@ -127,5 +127,5 @@ def require_date_added(item, filename, index):
         what = "has no `date_added`" if "date_added" not in item else f"has an invalid `date_added` {value!r}"
         raise ValueError(
             f"{filename}[{index}] ({str(item.get('statement') or '')[:60]!r}) {what}. A date is never invented: "
-            f"set it by hand, or for the original entries run `python3 backfill_dates.py --apply`.") from None
+            f"set it by hand, or for the original entries run `python3 -m ingest.backfill_dates --apply`.") from None
     return value

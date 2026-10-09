@@ -30,7 +30,7 @@ def _restore_modules():
 
 
 def load(name, tag="m"):
-    spec = importlib.util.spec_from_file_location(f"{tag}_{name}", os.path.join(REPO, name))
+    spec = importlib.util.spec_from_file_location(f"{tag}_{name}", os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -60,7 +60,7 @@ def new_db():
 
 
 def run02(ingest, tmp_path, notes, con=None):
-    mod = load("02_ingest_literature_sources.py")
+    mod = load("literature_sources.py")
     mod.SRC_DIR = write_vault(tmp_path, notes)
     con = con or ingest.db()
     mod.run(con)
@@ -82,7 +82,7 @@ def test_02_legacy_notes_are_active_with_a_null_status_date_and_counts_are_uncha
 def test_01_manual_sources_without_status_fields_are_active(ingest):
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m1", "name": "Manual one", "source_type": "primary", "published_date": "2026-01-01"}], f)
-    mod = load("01_seed_sources.py")
+    mod = load("seed_sources.py")
     con = ingest.db()
     mod.run(con)
     r = con.execute("SELECT * FROM sources").fetchone()
@@ -120,14 +120,14 @@ def test_01_reads_status_fields_from_manual_sources_json(ingest):
         json.dump([{"citekey": "m1", "name": "M", "source_type": "primary", "status": "expression-of-concern",
                     "status_date": "2024", "status_note": "see journal", "edition": "1st", "original_published_date": "1999"}], f)
     con = ingest.db()
-    load("01_seed_sources.py").run(con)
+    load("seed_sources.py").run(con)
     r = con.execute("SELECT * FROM sources").fetchone()
     assert (r["status"], r["status_date"], r["status_note"], r["edition"], r["original_published_date"]) == \
         ("expression-of-concern", "2024", "see journal", "1st", "1999")
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m2", "name": "M", "source_type": "primary", "status": "banned"}], f)
     with pytest.raises(Exception, match="m2") as e:
-        load("01_seed_sources.py").run(ingest.db())
+        load("seed_sources.py").run(ingest.db())
     assert type(e.value).__name__ == "SourceStatusError"
 
 
@@ -207,13 +207,13 @@ def run14(ingest, tmp_path, notes, manual=None):
     if manual is not None:
         with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
             json.dump(manual, f)
-        load("01_seed_sources.py").run(con)
-    mod14 = load("14_link_source_relations.py")
+        load("seed_sources.py").run(con)
+    mod14 = load("link_source_relations.py")
     real = mod14._load
 
     def patched(filename):
         m = real(filename)
-        if filename.startswith("02_"):
+        if filename.startswith("literature_sources"):
             m.SRC_DIR = mod02.SRC_DIR
         return m
     mod14._load = patched

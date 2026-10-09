@@ -446,7 +446,7 @@ def test_normal_db_copies_freshness_with_the_same_checks():
 def _py_sources():
     for name in sorted(os.listdir(REPO)):
         if name.endswith(".py"):
-            yield name, os.path.join(REPO, name)
+            yield name, os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)
 
 
 def test_every_production_NewFact_call_names_its_freshness_inputs():

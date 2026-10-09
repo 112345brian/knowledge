@@ -1,6 +1,6 @@
 """#1: claims.inference_type + stale-premise audit.
 
-Part 1 pins what the claims schema and 05_seed_claims.py did BEFORE this change (these passed on the
+Part 1 pins what the claims schema and seed_claims.py did BEFORE this change (these passed on the
 old code). Part 2 covers the new behaviour. Superseded/retracted facts are written directly into a
 fixture db built from the real schema.sql, since nothing in the pipeline can set that status yet (#8).
 """
@@ -40,7 +40,7 @@ def add_claim(con, statement, fact_ids=(), **cols):
 
 
 def load_seed():
-    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "05_seed_claims.py"))
+    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "ingest", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

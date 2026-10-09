@@ -231,7 +231,7 @@ def test_11_links_an_origin_path(ingest, tmp_path):
 
 
 def test_02_fills_the_source_fixity_columns(ingest, tmp_path, monkeypatch):
-    spec = importlib.util.spec_from_file_location("ing_02", os.path.join(REPO, "02_ingest_literature_sources.py"))
+    spec = importlib.util.spec_from_file_location("ing_02", os.path.join(REPO, "ingest", "literature_sources.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     d = tmp_path / "sources"
@@ -270,7 +270,7 @@ def test_add_fact_unreadable_or_absent_origin_records_no_hash(tmp_path):
 # ------------------------------------------------------------------ backfill tool
 
 def test_backfill_dry_run_apply_idempotent_and_byte_preserving(tmp_path):
-    import backfill_extracted_hashes as bf
+    from ingest import backfill_extracted_hashes as bf
     data = tmp_path / "data"
     note = write(tmp_path / "vault" / "n.md", b"note body")
     items = [{"subject": "a", "statement": "One.", "trust_level": "low", "origin_path": note},

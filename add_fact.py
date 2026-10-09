@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Append one ad hoc fact to general_facts.json (in knowledge-private, not
-this repo), enforcing the shape 11_seed_general_facts.py expects (valid
+this repo), enforcing the shape seed_general_facts.py expects (valid
 trust_level, kebab-case subject name, a real source citekey if one is
 given). This is the sanctioned way to add a "raw", not-project-specific
 fact -- one with no vault or bodybuilding project behind it -- without

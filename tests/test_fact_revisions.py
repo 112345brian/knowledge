@@ -31,12 +31,12 @@ def entry(key="k1", statement="Original statement.", **kw):
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "fact_rules"):
+    for m in ("paths", "local_paths", "shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "fact_rules"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
 
     def load(name):
-        spec = importlib.util.spec_from_file_location("w_" + name, os.path.join(REPO, name))
+        spec = importlib.util.spec_from_file_location("w_" + name, os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
@@ -50,9 +50,9 @@ def world(tmp_path, monkeypatch):
         rv = revisions
         rs = revisions_store
         af = add_fact
-        mod04 = load("04_ingest_facts.py")
-        mod11 = load("11_seed_general_facts.py")
-        mod12 = load("12_apply_fact_revisions.py")
+        mod04 = load("facts.py")
+        mod11 = load("seed_general_facts.py")
+        mod12 = load("apply_fact_revisions.py")
         log = os.path.join(e.data_dir, "fact_revisions.jsonl")
 
         @staticmethod
@@ -101,7 +101,7 @@ def test_legacy_dates_are_what_backfill_dates_writes_and_no_longer_live_in_the_i
     dates = dict(world.rv.ENTRY_FILES)
     assert dates["pilot_facts.json"] == dates["facts_batch3.json"] == "2026-09-11"
     assert dates["general_facts.json"] == "2026-09-26"
-    import backfill_dates
+    from ingest import backfill_dates
     assert backfill_dates.FILE_DATES == dates
     assert not hasattr(world.mod04, "LEGACY_DATE_ADDED") and not hasattr(world.mod11, "LEGACY_DATE_ADDED")
 
@@ -149,7 +149,7 @@ def test_ingest_stores_the_key_and_an_implicit_revision_1(world):
 def test_legacy_entries_without_a_key_get_a_derived_key_and_their_backfilled_date(world):
     legacy = {"subject": "alpha", "statement": "Old fact.", "trust_level": "high"}
     world.seed(pilot=[dict(legacy)], general=[dict(legacy, freshness="no-decay", recheck_rationale="no decay")])  # #7: only the pilot entry is legacy
-    import backfill_dates
+    from ingest import backfill_dates
     backfill_dates.backfill_dates(world.env.data_dir, apply=True)  # #35: the date lives in the data now
     con = world.build()
     rows = con.execute("SELECT f.source_key, r.changed_at, r.changed_via FROM facts f JOIN fact_revisions r ON r.fact_id = f.id ORDER BY f.id").fetchall()
@@ -471,8 +471,8 @@ def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(wo
     import build
     world.seed(general=[entry("k1")])
     write_log(world, rec(revision=5))
-    assert "12_apply_fact_revisions.py" in build.STEPS
-    assert build.STEPS.index("12_apply_fact_revisions.py") > build.STEPS.index("11_seed_general_facts.py")
+    assert "apply_fact_revisions.py" in build.STEPS
+    assert build.STEPS.index("apply_fact_revisions.py") > build.STEPS.index("seed_general_facts.py")
     with pytest.raises(world.rv.RevisionError):  # build.build wraps a step exception in BuildError(stage=step name)
         world.build()
 
@@ -497,7 +497,7 @@ def test_untouched_facts_keep_exactly_one_revision_and_unchanged_content(world):
 # ---------------------------------------------------------------- backfill
 
 def run_backfill(world, data_dir, *flags):
-    return subprocess.run([sys.executable, os.path.join(REPO, "backfill_source_keys.py"), "--data-dir", data_dir, *flags],
+    return subprocess.run([sys.executable, "-m", "ingest.backfill_source_keys", "--data-dir", data_dir, *flags],
                           env=world.env.env, capture_output=True, text=True, cwd=REPO)
 
 
@@ -616,7 +616,7 @@ def test_backfill_refuses_bad_input_without_writing(world, tmp_path):
 
 
 def test_extension_hook_can_add_more_keys_for_issue_35(world, tmp_path):
-    import backfill_source_keys as bk
+    from ingest import backfill_source_keys as bk
     d = str(tmp_path / "copy")
     os.makedirs(d)
     open(os.path.join(d, "pilot_facts.json"), "w").write(json.dumps([{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "keep"},
@@ -639,7 +639,7 @@ def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=env, cwd=REPO) for i in range(6)]
-    procs.append(subprocess.Popen([sys.executable, os.path.join(REPO, "backfill_source_keys.py"), "--data-dir", d, "--apply"], env=env, cwd=REPO,
+    procs.append(subprocess.Popen([sys.executable, "-m", "ingest.backfill_source_keys", "--data-dir", d, "--apply"], env=env, cwd=REPO,
                                   stdout=subprocess.DEVNULL))
     assert [p.wait() for p in procs] == [0] * 7
     run_backfill(world, d, "--apply")

@@ -21,8 +21,8 @@ rather than carried into empty columns.
 Idempotent: re-running deletes and re-inserts this source file's own albums.
 """
 import sqlite3, csv, os
-from _shared import load_artist_cache, get_or_create_artist, get_or_create
-import music_ingest_rules
+from ingest.shared import load_artist_cache, get_or_create_artist, get_or_create
+from ingest import music_ingest_rules
 from paths import RYM_EXPORT_CSV
 
 CSV_PATH = os.path.expanduser(RYM_EXPORT_CSV)
@@ -51,7 +51,7 @@ def run(con):
             inserted += 1
 
     con.commit()
-    print(f"[08_ingest_music_ratings] inserted {inserted} albums")
+    print(f"[music_ratings] inserted {inserted} albums")
     print(f"  artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}")
 
 

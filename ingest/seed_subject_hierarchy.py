@@ -1,5 +1,5 @@
 """Load the subject hierarchy (#43): parents, relation types, descriptions, aliases, deprecations.
-Run after 04_ingest_facts.py (subjects are created on the fly during fact ingestion, so they must
+Run after facts.py (subjects are created on the fly during fact ingestion, so they must
 exist first) and before 11, which resolves aliases.
 
 Source of truth: `subjects.json` in knowledge-private (see subjects.py for the format and rules).
@@ -8,15 +8,14 @@ subject that already exists keeps the domain it has. An invalid file, an alias t
 name, or a duplicate alias fails the build.
 
 Until the file exists, the built-in table below is used and a note is printed, so the build keeps
-working before `python3 export_subjects.py --apply` has been run and the result committed. After that
+working before `python3 -m ingest.export_subjects --apply` has been run and the result committed. After that
 the table is dead code and can be deleted (the export tool and its test are the last users).
 """
 import sqlite3, os, sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import subjects_store
 
-from seed_rules import AAS_CHILDREN, TRAINING_CHILDREN
+from ingest.seed_rules import AAS_CHILDREN, TRAINING_CHILDREN
 
 
 def builtin_entries():
@@ -74,7 +73,7 @@ def run(con):
     con.commit()
     cur = con.cursor()
     n = cur.execute("SELECT COUNT(*) FROM subjects WHERE parent_id IS NOT NULL").fetchone()[0]
-    print(f"[06_seed_subject_hierarchy] {n} subjects now have a parent ({source})")
+    print(f"[seed_subject_hierarchy] {n} subjects now have a parent ({source})")
     if entries is not None:
         a = cur.execute("SELECT COUNT(*) FROM subject_aliases").fetchone()[0]
         d = cur.execute("SELECT COUNT(*) FROM subjects WHERE deprecated = 1").fetchone()[0]

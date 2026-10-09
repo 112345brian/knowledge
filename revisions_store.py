@@ -135,7 +135,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
 
 
 def apply_revisions(con, revisions_path):
-    """Used by 12_apply_fact_revisions.py. Validates the log against the facts and revision-1
+    """Used by apply_fact_revisions.py. Validates the log against the facts and revision-1
     rows already in `con`, inserts revisions >= 2 and writes each touched fact's latest
     revision into `facts`. Raises RevisionError (naming path:line) on any violation.
     Returns the number of revisions applied."""

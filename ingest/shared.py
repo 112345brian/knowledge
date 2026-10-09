@@ -1,8 +1,8 @@
 """Small helpers shared across ingest scripts -- author/publisher/vault-file
 normalization (get-or-create against a dimension table, never repeated text)."""
-from fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
-from source_ingest_rules import split_authors
-from artist_rules import ARTIST_ALIASES, ARTIST_MEMBERS, artist_key, canonical_artist_name  # noqa: F401  (re-exported for the ingest scripts)
+from ingest.fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
+from ingest.source_ingest_rules import split_authors
+from ingest.artist_rules import ARTIST_ALIASES, ARTIST_MEMBERS, artist_key, canonical_artist_name  # noqa: F401  (re-exported for the ingest scripts)
 
 import acquisition_store
 import fixity_store

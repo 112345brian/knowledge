@@ -28,8 +28,14 @@ def _read(path):
         return f.read()
 
 
+def _bare(name):
+    """`ingest.shared` -> `shared`: tach names the ingest package's modules with the package, the import-linter
+    shadow, the architecture map and the tests use the bare module name (they are unique across the repo)."""
+    return name[len("ingest."):] if name.startswith("ingest.") else name
+
+
 def _tach_modules(text):
-    return {m["path"]: m for m in tomllib.loads(text)["modules"]}
+    return {_bare(m["path"]): m for m in tomllib.loads(text)["modules"]}
 
 
 def _il_contracts(text):
@@ -57,14 +63,14 @@ def test_git_only_runs_inside_private_git():
 HEXAGON_LAYERS = ("facade", "adapter", "use_case", "domain")  # the library side of tach.toml, outermost first
 
 
-def test_numbered_scripts_are_listed_and_modelled_by_tach():
-    on_disk = sorted(s for s in ac.top_level_stems(REPO) if not s.isidentifier())
-    assert on_disk == sorted(ac.NUMBERED_SCRIPTS_EXCLUDED), (
-        "numbered scripts changed: update NUMBERED_SCRIPTS_EXCLUDED in tests/arch_check.py and "
-        "add/remove the module in tach.toml. " + ac.NUMBERED_REASON)
+def test_ingest_package_holds_only_modules_tach_knows_under_their_package_name():
+    """ingest/ is a package of ETL steps, helpers and their rules. Each module is classified in tach.toml as
+    `ingest.<name>`, and a bare name exists in only one of the repo root and the package."""
+    raw = {m["path"] for m in tomllib.loads(_read(TACH_TOML))["modules"]}
     modules = _tach_modules(_read(TACH_TOML))
-    for s in on_disk:
-        assert s in modules and modules[s]["layer"] == "pipeline", f"{s} must be a pipeline module in tach.toml"
+    in_ingest = {f[:-3] for f in os.listdir(os.path.join(REPO, "ingest")) if f.endswith(".py") and f != "__init__.py"}
+    assert in_ingest and {f"ingest.{n}" for n in in_ingest} <= raw, sorted(in_ingest)
+    assert not {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")} & in_ingest, "a module exists in both places"
 
 
 def test_every_module_is_classified_in_both_configs():
@@ -104,7 +110,7 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
     """Every `#planned:` line that mentions a not-yet-existing module must be activated when that
     module's file lands, so merging a module cannot silently skip its layer and import rules."""
     planned = {name for _, name in ac.planned_modules(_read(TACH_TOML))}
-    landed = sorted(n for n in planned if os.path.exists(os.path.join(REPO, n + ".py")))
+    landed = sorted(n for n in planned if n in ac.top_level_stems(REPO))
     stale = []
     for path in (TACH_TOML, PYPROJECT):
         for lineno, line in enumerate(_read(path).splitlines(), 1):
@@ -142,10 +148,12 @@ def tree(tmp_path):
     # Baseline = the maximal legal graph: every module imports exactly what tach.toml lets it
     # import (tach `exact = true` also rejects declared-but-unused dependencies), plus the
     # documented subprocess / lazy-cycle exceptions.
+    (d / "ingest").mkdir()
+    (d / "ingest" / "__init__.py").write_text("")
     for name, mod in _tach_modules(tach_text).items():
         lines = [f"import {dep}" for dep in mod["depends_on"]]
         lines.append(BASELINE_CODE.get(name, ""))
-        (d / f"{name}.py").write_text("\n".join(lines) + "\n")
+        _module_path(d, name).write_text("\n".join(lines) + "\n")
     return d
 
 
@@ -155,8 +163,16 @@ def _check(tree, tool):
     return ac.run_import_linter(str(tree), str(tree / "pyproject.toml"))
 
 
+_INGEST_MODULES = {f[:-3] for f in os.listdir(os.path.join(REPO, "ingest")) if f.endswith(".py") and f != "__init__.py"}
+
+
+def _module_path(tree, module):
+    """Where a synthetic module lives: ingest/ for the ETL modules, the root for the rest."""
+    return tree / ("ingest" if module in _INGEST_MODULES else ".") / f"{module}.py"
+
+
 def _offend(tree, module, code):
-    p = tree / f"{module}.py"
+    p = _module_path(tree, module)
     p.write_text((p.read_text() if p.exists() else "") + code + "\n")
 
 
@@ -288,16 +304,16 @@ CASES = [
      [("tach", ["cli_migrate", "lifecycle"])]),
     ("pipeline-imports-lifecycle", "build", "import lifecycle",
      [("tach", ["build", "lifecycle"])]),
-    ("numbered-script-imports-inbox", "04_ingest_facts", "import inbox",
-     [("tach", ["04_ingest_facts", "inbox"])]),
+    ("ingest-step-imports-inbox", "facts", "import inbox",
+     [("tach", ["facts", "inbox"])]),
     ("paths-from-non-allowlisted-lib", "modes", "import paths",
      [("tach", ["modes", "paths"])]),
     ("paths-lazy-from-import", "claims_audit", "def f():\n    from paths import PRIVATE_DATA_DIR",
      [("tach", ["claims_audit", "paths"])]),
     ("paths-from-serving", "inbox", "import paths",
      [("tach", ["inbox", "paths"])]),
-    ("paths-from-script-not-allowlisted", "10_seed_artist_members", "import paths",
-     [("tach", ["10_seed_artist_members", "paths"])]),
+    ("paths-from-script-not-allowlisted", "seed_artist_members", "import paths",
+     [("tach", ["seed_artist_members", "paths"])]),
     ("private-git-from-non-allowlisted-module", "claims_audit", "import private_git",
      [("tach", ["claims_audit", "private_git"])]),
     ("subprocess-in-library", "review", "import subprocess",
@@ -314,10 +330,10 @@ CASES = [
      [("tach", ["clock", "paths"]), ("import-linter", ["kn.clock", "kn.paths"])]),
     ("lib-typechecking-import-of-cli", "modes", "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import knowledge",
      [("import-linter", ["kn.modes", "kn.knowledge"])]),
-    ("numbered-script-imports-cli", "01_seed_sources", "import knowledge",
-     [("tach", ["01_seed_sources", "knowledge"])]),
-    ("numbered-script-imports-unlisted-library", "03_ingest_measurements", "import add_fact",
-     [("tach", ["03_ingest_measurements", "add_fact"])]),
+    ("ingest-step-imports-cli", "seed_sources", "import knowledge",
+     [("tach", ["seed_sources", "knowledge"])]),
+    ("ingest-step-imports-unlisted-library", "measurements", "import add_fact",
+     [("tach", ["measurements", "add_fact"])]),
     # ---- hexagonal: the domain (privacy) never touches infrastructure or its own adapter
     ("domain-imports-sqlite", "privacy", "import sqlite3",
      [("import-linter", ["never touch the file system", "kn.privacy", "sqlite3", "BROKEN"])]),
@@ -481,8 +497,8 @@ CASES = [
      [("tach", ["backfill_rules", "add_fact_store"]), ("import-linter", ["kn.backfill_rules", "kn.add_fact_store"])]),
     ("domain-seed-rules-imports-subprocess", "seed_rules", "import subprocess",
      [("import-linter", ["kn.seed_rules", "subprocess"])]),
-    ("ingest-script-imports-a-store", "07_ingest_concerts", "import revisions_store",
-     [("tach", ["07_ingest_concerts", "revisions_store"])]),
+    ("ingest-script-imports-a-store", "concerts", "import revisions_store",
+     [("tach", ["concerts", "revisions_store"])]),
     ("build-imports-a-use-case", "build", "import review_service",
      [("tach", ["build", "review_service"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
@@ -504,7 +520,7 @@ def test_violation_is_reported(tree, case):
 
 
 def _repo_py_files():
-    return [os.path.join(REPO, f) for f in sorted(os.listdir(REPO)) if f.endswith(".py")]
+    return [p for _, p in sorted(ac._source_files(REPO).items())]
 
 
 def test_the_only_tach_ignore_is_the_cli_inbox_launcher_import():
@@ -548,7 +564,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
                "artist_rules", "fact_ingest_rules", "source_ingest_rules", "music_ingest_rules", "seed_rules",
                "measurement_rules", "build_rules", "backfill_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
-        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        tree = ast.parse(_read(ac._source_files(REPO)[name]))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 assert node.func.id not in {"open", "__import__", "exec", "eval"}, f"{name}.py:{node.lineno} calls {node.func.id}()"
@@ -580,7 +596,7 @@ def _architecture_roles():
 def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     """docs/architecture.md says what each module is; it must not drift from the code or the contracts."""
     roles = _architecture_roles()
-    on_disk = {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")}
+    on_disk = set(ac.top_level_stems(REPO))
     assert set(roles) == on_disk, f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk)}"
     contracts = _il_contracts(_read(PYPROJECT))
     domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}

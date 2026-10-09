@@ -1,14 +1,13 @@
 """Parse every citation note's (sources/*.md, see paths.py -> BODYBUILDING_VAULT)
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
-risk of misreading. Run after 01_seed_sources.py.
+risk of misreading. Run after seed_sources.py.
 """
 import sqlite3, os, glob, sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acquisition_store
 import fixity_store
-import source_ingest_rules
-from _shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
+from ingest import source_ingest_rules
+from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 from paths import BODYBUILDING_VAULT as VAULT
 
 SRC_DIR = os.path.expanduser(f"{VAULT}/sources")
@@ -56,7 +55,7 @@ def run(con):
         existing.add(r["citekey"])
         inserted += 1
     con.commit()
-    print(f"[02_ingest_literature_sources] parsed {len(rows)} files, inserted {inserted} new sources")
+    print(f"[literature_sources] parsed {len(rows)} files, inserted {inserted} new sources")
 
 
 if __name__ == "__main__":

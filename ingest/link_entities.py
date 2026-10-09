@@ -12,7 +12,6 @@ import os
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import entities_store
 from paths import PRIVATE_DATA_DIR as DATA_DIR
 
@@ -20,7 +19,7 @@ from paths import PRIVATE_DATA_DIR as DATA_DIR
 def run(con):
     found = entities_store.read_file(os.path.join(DATA_DIR, entities_store.ENTITIES_FILENAME))
     if found is None:
-        print("[13_link_entities] no entities.json; no entities")
+        print("[link_entities] no entities.json; no entities")
         return
     result = entities_store.link_facts(con, found)
     if result["unprotected"]:
@@ -28,7 +27,7 @@ def run(con):
                          "refusing to build (the privacy pass should have raised them)")
     con.commit()
     private = sum(1 for e in found if e["private"])
-    print(f"[13_link_entities] {result['entities']} entities ({private} private), {result['links']} fact links")
+    print(f"[link_entities] {result['entities']} entities ({private} private), {result['links']} fact links")
 
 
 if __name__ == "__main__":

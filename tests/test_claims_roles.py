@@ -209,10 +209,10 @@ def test_cli_json_carries_the_role_on_default_rows(tmp_path):
     assert (row["role"], row["severity"], row["reason"], row["link_note"]) == ("grounds", "weakens", "superseded", None)
 
 
-# ------------------------------------------------------------------ 05_seed_claims
+# ------------------------------------------------------------------ seed_claims
 
 def load_seed():
-    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "05_seed_claims.py"))
+    spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "ingest", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

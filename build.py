@@ -23,6 +23,7 @@ import build_rules
 from paths import KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+INGEST_DIR = os.path.join(HERE, "ingest")  # the ETL steps (the `ingest` package) live here
 DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
 LIVE_DB = os.path.join(DB_DIR, "knowledge.db")
 SCHEMA = os.path.join(HERE, "schema.sql")
@@ -67,7 +68,7 @@ def build(target_path):
             raise BuildError("schema", e) from e
         for step in STEPS:
             try:
-                mod = load_module(os.path.join(HERE, step))
+                mod = load_module(os.path.join(INGEST_DIR, step))
                 mod.run(con)
             except Exception as e:
                 raise BuildError(step, e) from e

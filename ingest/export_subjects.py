@@ -12,8 +12,8 @@ the tests build with the built-in table and with this file and compare the subje
 Commit the result in knowledge-private yourself (or let `subject ...` commits start from it).
 
 Usage:
-    python3 export_subjects.py              # dry run
-    python3 export_subjects.py --apply
+    python3 -m ingest.export_subjects              # dry run
+    python3 -m ingest.export_subjects --apply
 """
 import argparse
 import importlib.util
@@ -26,7 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def builtin_entries():
-    spec = importlib.util.spec_from_file_location("seed_subject_hierarchy", os.path.join(HERE, "06_seed_subject_hierarchy.py"))
+    spec = importlib.util.spec_from_file_location("seed_subject_hierarchy", os.path.join(HERE, "seed_subject_hierarchy.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.builtin_entries()

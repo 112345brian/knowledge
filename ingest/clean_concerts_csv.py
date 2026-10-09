@@ -11,7 +11,7 @@ through unchanged.
 """
 import csv, os
 
-import music_ingest_rules
+from ingest import music_ingest_rules
 from paths import CONCERTS_CSV
 
 CSV_PATH = os.path.expanduser(CONCERTS_CSV)

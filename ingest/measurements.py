@@ -7,15 +7,15 @@ per-meal logs go into their own event tables instead (`training_sets`,
 `food_log_entries`, `meal_log_entries`) with `exercises`/`foods` as proper
 entity tables -- a set or a food-log line is one event with several
 co-occurring attributes, not independent measurements sharing a date.
-Run after 01_seed_sources.py (needs its citekeys to exist).
+Run after seed_sources.py (needs its citekeys to exist).
 
 Source: the bodybuilding vault's own bodybuilding.db (see paths.py -> BODYBUILDING_VAULT)
 """
 import sqlite3, os
 
-import measurement_rules
+from ingest import measurement_rules
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
-from snapshot_date import read_snapshot_date
+from ingest.snapshot_date import read_snapshot_date
 
 VAULT_DB = os.path.expanduser(f"{VAULT}/bodybuilding.db")
 # The vault db has no per-row load timestamp (only the date each reading was taken), so the
@@ -72,7 +72,7 @@ def insert_measurement(cur, *, subject, metric, value, unit, measured_at, source
 def get_source_id(cur, citekey):
     row = cur.execute("SELECT id FROM sources WHERE citekey = ?", (citekey,)).fetchone()
     if not row:
-        raise RuntimeError(f"source citekey not found: {citekey} (run 01_seed_sources.py first)")
+        raise RuntimeError(f"source citekey not found: {citekey} (run seed_sources.py first)")
     return row[0]
 
 
@@ -261,7 +261,7 @@ def run(con):
     n_foods = cur.execute("SELECT COUNT(*) FROM food_log_entries").fetchone()[0]
     n_meals = cur.execute("SELECT COUNT(*) FROM meal_log_entries").fetchone()[0]
     n_volume = cur.execute("SELECT COUNT(*) FROM muscle_volume_weekly").fetchone()[0]
-    print(f"[03_ingest_measurements] inserted {inserted} measurement rows "
+    print(f"[measurements] inserted {inserted} measurement rows "
           f"({len(_subject_cache)} subjects, {len(_metric_cache)} metrics touched)")
     print(f"  plus {n_sets} training_sets ({len(_exercise_cache)} exercises), "
           f"{n_foods} food_log_entries ({len(_food_cache)} foods), {n_meals} meal_log_entries, "

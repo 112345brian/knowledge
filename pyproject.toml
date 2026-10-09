@@ -20,6 +20,7 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 # Run in parallel by default (about 40 s instead of about 4 min for the whole suite; many tests are
 # subprocess- or temp-git-repo-heavy). Nothing is skipped or marked slow: the architecture tests
 # run every time. Serial run if you need it: `uv run pytest -n 0`.
@@ -128,13 +129,27 @@ forbidden_modules = [
     "kn.inbox",
 #planned:     "kn.mcp_server",
     # pipeline / ingest (the numbered scripts are not importable, see tach.toml)
-    "kn._shared",
+    "kn.shared",
     "kn.backfill_dates",
     "kn.backfill_source_keys",
     "kn.build",
     "kn.clean_concerts_csv",
     "kn.export_music_taste",
     "kn.snapshot_date",
+    "kn.apply_fact_revisions",
+    "kn.concerts",
+    "kn.facts",
+    "kn.link_entities",
+    "kn.link_source_relations",
+    "kn.literature_sources",
+    "kn.measurements",
+    "kn.music_ratings",
+    "kn.scrobbles",
+    "kn.seed_artist_members",
+    "kn.seed_claims",
+    "kn.seed_general_facts",
+    "kn.seed_sources",
+    "kn.seed_subject_hierarchy",
     "kn.cli_entities",
     "kn.cli_sources",
     "kn.cli_subjects",
@@ -257,13 +272,27 @@ source_modules = [
 #planned:     "kn.mcp_server",
 ]
 forbidden_modules = [
-    "kn._shared",
+    "kn.shared",
     "kn.backfill_dates",
     "kn.backfill_source_keys",
     "kn.build",
     "kn.clean_concerts_csv",
     "kn.export_music_taste",
     "kn.snapshot_date",
+    "kn.apply_fact_revisions",
+    "kn.concerts",
+    "kn.facts",
+    "kn.link_entities",
+    "kn.link_source_relations",
+    "kn.literature_sources",
+    "kn.measurements",
+    "kn.music_ratings",
+    "kn.scrobbles",
+    "kn.seed_artist_members",
+    "kn.seed_claims",
+    "kn.seed_general_facts",
+    "kn.seed_sources",
+    "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
     "kn.export_subjects",
 ]

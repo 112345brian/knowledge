@@ -30,10 +30,10 @@ def _load(filename):
 def collect():
     """[(source citekey, relation, related citekey)] from manual_sources.json and the vault notes."""
     rels = []
-    for s in _load("01_seed_sources.py").load_sources():
+    for s in _load("seed_sources.py").load_sources():
         for rel, key in (("replaces", "replaces"), ("is-version-of", "is_version_of")):
             rels.extend((s["citekey"], rel, t) for t in source_status.as_list(s.get(key)))
-    rels.extend(r for row in _load("02_ingest_literature_sources.py").parse_all() for r in row["relations"])
+    rels.extend(r for row in _load("literature_sources.py").parse_all() for r in row["relations"])
     return rels
 
 
@@ -44,7 +44,7 @@ def run(con):
         con.execute("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (?, ?, ?)", (ids[a], rel, ids[b]))
     con.commit()
     counts = dict(con.execute("SELECT status, COUNT(*) FROM sources GROUP BY status"))
-    print(f"[14_link_source_relations] {len(rels)} relations; sources by status: {counts}")
+    print(f"[link_source_relations] {len(rels)} relations; sources by status: {counts}")
 
 
 if __name__ == "__main__":
