@@ -36,7 +36,7 @@ from ingest import backfill_rules
 from ingest import backfill_source_keys
 import revisions
 import revisions_store
-from add_fact_store import file_lock, lock_path
+import locks
 from ingest.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
 
 # What measurements.py's `TODAY` constant stood for.
@@ -68,7 +68,7 @@ def find_problems(data_dir):
 def _write_snapshot(data_dir, apply):
     """Create measurements_snapshot.json if absent. Returns 1 if it was (or would be) written."""
     path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
-    with file_lock(lock_path(path)):
+    with locks.file_lock(locks.lock_path(path)):
         if os.path.exists(path):
             return 0
         if apply:

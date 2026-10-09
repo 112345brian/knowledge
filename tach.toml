@@ -77,6 +77,17 @@ layer = "adapter"
 depends_on = []
 
 [[modules]]
+path = "rules_edit"   # FACADE (composition root): binds rules_edit_service to privacy_store and private_git
+layer = "facade"
+depends_on = [
+    "ports",
+    "privacy",
+    "privacy_store",
+    "private_git",
+    "rules_edit_service",
+]
+
+[[modules]]
 path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
 layer = "use_case"
 depends_on = []
@@ -118,12 +129,18 @@ depends_on = [
 ]
 
 [[modules]]
+path = "locks"   # ADAPTER: the inter-process file lock (sidecar in the temp dir) shared by the data-file writers
+layer = "adapter"
+depends_on = []
+
+[[modules]]
 path = "add_fact_store" # ADAPTER for add_fact: the locked JSON array file, citekey and subject lookups
 layer = "adapter"
 depends_on = [
     "new_fact",
     "fixity_store",
     "subjects_store",
+    "locks",
 ]
 
 [[modules]]
@@ -169,10 +186,10 @@ depends_on = [
 path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and its lock, the clock, the db
 layer = "adapter"
 depends_on = [
-    "add_fact_store",   # the inter-process file lock
     "clock",
     "paths",            # lazy
     "revisions",
+    "locks",
 ]
 
 [[modules]]
@@ -555,14 +572,11 @@ depends_on = [
     "cli_lifecycle",        # registration lines (CLI-internal)
     "cli_migrate",        # registration lines (CLI-internal)
     "fact_queries",
-    "ports",
     "privacy",
-    "privacy_store",
-    "private_git",
     "review",
+    "rules_edit",
     "revisions",
     "revisions_store",
-    "rules_edit_service",
     "script_runner",
     "cli_entities",
     "cli_sources",
@@ -693,22 +707,22 @@ depends_on = [
 path = "ingest.backfill_source_keys"
 layer = "pipeline"
 depends_on = [
-    "add_fact_store",
     "ingest.backfill_rules",
     "revisions",
     "revisions_store",
+    "locks",
 ]
 
 [[modules]]
 path = "ingest.backfill_dates"
 layer = "pipeline"
 depends_on = [
-    "add_fact_store",
     "ingest.backfill_rules",
     "ingest.backfill_source_keys",
     "revisions",
     "revisions_store",
     "ingest.snapshot_date",
+    "locks",
 ]
 
 [[modules]]

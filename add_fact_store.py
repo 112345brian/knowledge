@@ -2,49 +2,16 @@
 (a source citekey, the subject tree). The rules are in `new_fact`; the use case is `add_fact`.
 """
 import contextlib
-import hashlib
 import json
 import os
 import sqlite3
 import stat
-import tempfile
 import uuid
 
 import fixity_store
+import locks
 import subjects_store
 from new_fact import DataFileError
-
-
-def lock_path(path):
-    """Lock sidecar in the system temp dir, keyed by the data file's real path, so no lock file
-    ever appears inside knowledge-private (it would break the clean-tree check in issue #10)."""
-    key = hashlib.sha1(os.path.realpath(path).encode()).hexdigest()
-    directory = os.path.join(tempfile.gettempdir(), "knowledge-locks")
-    os.makedirs(directory, exist_ok=True)
-    return os.path.join(directory, key + ".lock")
-
-
-@contextlib.contextmanager
-def file_lock(lock_path):
-    """Exclusive inter-process lock on a sidecar file (fcntl on POSIX, msvcrt on Windows)."""
-    f = open(lock_path, "a+")
-    try:
-        if os.name == "nt":
-            import msvcrt
-            f.seek(0)
-            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        yield
-    finally:
-        try:
-            if os.name == "nt":
-                import msvcrt
-                f.seek(0)
-                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-        finally:
-            f.close()
 
 
 def read_array(path):
@@ -85,7 +52,7 @@ def append_record(path, record):
     """Append one record to a JSON array file: locked, read inside the lock, written to a temp
     file and swapped in with os.replace, so a crash leaves the old file or the new one, never half.
     Generic on purpose -- other append-only JSON files reuse it. Returns the new total."""
-    with file_lock(lock_path(path)):
+    with locks.file_lock(locks.lock_path(path)):
         items = read_array(path)
         items.append(record)
         atomic_write_json(path, items)
@@ -102,7 +69,7 @@ def append_records(path, records, reject=None):
     and returns a reason string to skip that record, or None to accept it. Nothing is written when
     no record is accepted. Returns (total, rejected) where `rejected` is a list of
     (index_in_records, reason) and `total` is the length of the file afterwards."""
-    with file_lock(lock_path(path)):
+    with locks.file_lock(locks.lock_path(path)):
         items = read_array(path)
         rejected, accepted = [], 0
         for index, record in enumerate(records):

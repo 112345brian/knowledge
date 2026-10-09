@@ -603,7 +603,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
     assert {n for n, r in roles.items() if r == "domain"} == domain
     assert {n for n, r in roles.items() if r == "use case"} == services
-    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory"}
+    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}

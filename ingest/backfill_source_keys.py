@@ -34,13 +34,13 @@ import sys
 from ingest import backfill_rules
 import revisions
 import revisions_store
-from add_fact_store import file_lock, lock_path
+import locks
 from ingest.backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
 
 
 def _backfill_file(path, name, adders, apply):
     """Returns the number of entries changed in this file."""
-    with file_lock(lock_path(path)):
+    with locks.file_lock(locks.lock_path(path)):
         with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
         items = revisions_store.read_array(path)

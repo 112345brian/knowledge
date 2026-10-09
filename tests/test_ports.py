@@ -21,11 +21,8 @@ SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_ba
 def test_every_facade_binds_adapters_that_satisfy_the_protocols():
     import add_fact, add_fact_store, clock, ids, lifecycle, lifecycle_store, migrate_memory, migrate_memory_store
     import facts_batch, private_git, privacy_store, review, review_store, revisions_store
-    import knowledge
-    assert knowledge.RULES_PORTS.rules.__name__ == "privacy_store" and knowledge.RULES_PORTS.git.__name__ == "private_git"  # not `is`: fixtures re-import modules
-    for name in ("rules", "git"):
-        assert ports.conformance_problems(name, getattr(knowledge.RULES_PORTS, name)) == [], f"knowledge.RULES_PORTS.{name}"
-    for facade in (review, lifecycle, add_fact, facts_batch, migrate_memory):
+    import rules_edit
+    for facade in (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit):
         bundle = facade.PORTS
         for name in ports.PORT_PROTOCOLS:
             adapter = getattr(bundle, name)

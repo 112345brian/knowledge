@@ -98,6 +98,7 @@ Rules (each one is a failing test or contract if broken):
 | `lifecycle_service` | use case | supersede / retract / set-visibility / edit |
 | `lifecycle_store` | driven adapter | rules + subject tree for the floor |
 | `measurement_rules` | domain | vault rows to measurements |
+| `locks` | driven adapter | inter-process file lock for the data-file writers |
 | `migrate_memory` | facade (composition root) | binds migrate_memory_service |
 | `migrate_memory_rules` | domain | memory-file rules |
 | `migrate_memory_service` | use case | memory migration |
@@ -120,6 +121,7 @@ Rules (each one is a failing test or contract if broken):
 | `review_store` | driven adapter | pending rows, states |
 | `revisions` | domain | entries, keys, log format, next revision |
 | `revisions_store` | driven adapter | entry files, log file, lock, db |
+| `rules_edit` | facade (composition root) | binds rules_edit_service; also the knowledge privacy commands' read access to the rules |
 | `rules_edit_service` | use case | edit privacy rules |
 | `script_runner` | driven adapter | starts the standalone scripts |
 | `seed_rules` | domain | seed data |

@@ -45,18 +45,15 @@ import typer
 import claims_store
 import fact_queries
 import validtime
-import private_git
 import privacy
-import privacy_store
 import review
 import revisions
 import revisions_store
-import rules_edit_service
+import rules_edit
 import script_runner
 from fact_rules import KIND_VALUES
 from fact_queries import (DB_PATH, DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
                           fact_as_of, get_fact, list_facts, list_subjects, search_facts)
-from ports import Ports
 
 class Trust(str, enum.Enum):
     verified = "verified"
@@ -572,7 +569,7 @@ class Requested(str, enum.Enum):
 
 def _load_rules():
     try:
-        return privacy_store.load_rules(privacy_store.rules_path())
+        return rules_edit.load_rules()
     except privacy.PrivacyRulesError as e:
         _fail(e)
 
@@ -606,9 +603,9 @@ def cmd_privacy_check(statement: str,
 
 @privacy_app.command("rules", help="Show the loaded privacy rules (subject tags and keywords).")
 def cmd_privacy_rules(as_json: bool = JSON_OPT):
-    path = privacy_store.rules_path()
+    path = rules_edit.rules_path()
     rules = _load_rules()
-    exists = privacy_store.rules_file_exists(path)
+    exists = rules_edit.rules_file_exists(path)
     if as_json:
         _emit_json({"path": path, "exists": exists, "version": privacy.VERSION,
                     "subject_tags": dict(sorted(rules.subject_tags.items())), "keywords": sorted(rules.keywords)})
@@ -628,16 +625,14 @@ def cmd_privacy_rules(as_json: bool = JSON_OPT):
         print("keywords: (none)")
 
 
-RULES_PORTS = Ports(rules=privacy_store, git=private_git)
-
 
 def _edit_rules(edit, describe, allow_dirty, dry_run):
-    """Shared body of the rules-editing commands: run rules_edit_service.edit_rules and print what it did."""
+    """Shared body of the rules-editing commands: run rules_edit.edit_rules and print what it did."""
     try:
-        res = rules_edit_service.edit_rules(RULES_PORTS, edit, describe, allow_dirty, dry_run)
+        res = rules_edit.edit_rules(edit, describe, allow_dirty, dry_run)
     except privacy.PrivacyRulesError as e:
         _fail(e)
-    except private_git.PrivateGitError as e:
+    except rules_edit.PrivateGitError as e:
         _fail(e)
     if not res.changed:
         print(f"no change: {res.path} already has this rule state")
