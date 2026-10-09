@@ -77,7 +77,7 @@ def parse_snapshot_text(text, path):
 
 def missing_snapshot_message(path):
     return (f"{path} is missing: the measurements snapshot date is not stored in the data yet. "
-            f"Run backfill_dates.py --apply (see the README, 'Dates'); a date is never invented.")
+            f"Run `python3 -m ingest.backfill_dates --apply` (see the README, 'Dates'); a date is never invented.")
 
 
 @dataclass
