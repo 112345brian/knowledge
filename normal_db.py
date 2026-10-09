@@ -97,6 +97,7 @@ CREATE TABLE facts (
     source_key             TEXT UNIQUE,
     freshness              TEXT NOT NULL CHECK (freshness IN ('recheck','no-decay','unreviewed')),
     kind                   TEXT NOT NULL CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
+    applies_to             TEXT CHECK (applies_to IS NULL OR length(trim(applies_to, char(32, 9, 10, 11, 12, 13))) > 0),
     valid_from             TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     valid_to               TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     CHECK (valid_from IS NULL OR valid_to IS NULL OR substr(valid_from, 1, min(length(valid_from), length(valid_to))) <= substr(valid_to, 1, min(length(valid_from), length(valid_to)))),
@@ -121,6 +122,7 @@ CREATE TABLE fact_revisions (
     recheck_rationale  TEXT,
     freshness          TEXT,
     kind               TEXT NOT NULL CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
+    applies_to         TEXT CHECK (applies_to IS NULL OR length(trim(applies_to, char(32, 9, 10, 11, 12, 13))) > 0),
     valid_from         TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     valid_to           TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     CHECK (valid_from IS NULL OR valid_to IS NULL OR substr(valid_from, 1, min(length(valid_from), length(valid_to))) <= substr(valid_to, 1, min(length(valid_from), length(valid_to)))),
@@ -135,7 +137,7 @@ CREATE TABLE fact_sources (
     PRIMARY KEY (fact_id, source_id)
 );
 CREATE INDEX idx_fact_sources_source ON fact_sources(source_id);
-CREATE VIRTUAL TABLE facts_fts USING fts5(statement, trust_rationale, content='facts', content_rowid='id');
+CREATE VIRTUAL TABLE facts_fts USING fts5(statement, trust_rationale, applies_to, content='facts', content_rowid='id');
 CREATE VIRTUAL TABLE sources_fts USING fts5(name, description, content='sources', content_rowid='id');
 CREATE VIRTUAL TABLE authors_fts USING fts5(name, content='authors', content_rowid='id');
 CREATE VIEW v_subjects AS
@@ -197,10 +199,10 @@ def populate(out, full, rules):
     fact_keys, subject_ids = set(), set()
     cols = ("id, subject_id, statement, is_original_claim, trust_level, trust_rationale, status, "
             "superseded_by_fact_id, date_added, last_reviewed_at, recheck_by, recheck_rationale, "
-            "visibility, source_key, freshness, kind, valid_from, valid_to")
-    # cols: r[5] trust_rationale, r[11] recheck_rationale (both copied)
+            "visibility, source_key, freshness, kind, valid_from, valid_to, applies_to")
+    # cols: r[5] trust_rationale, r[11] recheck_rationale, r[18] applies_to (all copied, so all privacy-scanned)
     facts = [r for r in full.execute(f"SELECT {cols} FROM facts WHERE visibility = 'normal' ORDER BY id")
-             if passes(r[1], r[2], r[12], extra=(r[5], r[11], *cite_text.get(r[0], ())))]
+             if passes(r[1], r[2], r[12], extra=(r[5], r[11], r[18], *cite_text.get(r[0], ())))]
     fact_ids = {r[0] for r in facts}
     for r in facts:
         r = list(r)
@@ -209,7 +211,7 @@ def populate(out, full, rules):
         subject_ids.update(_chain_ids(r[1], parents))
         if r[13] is not None:
             fact_keys.add(r[13])
-        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(18)})", r)
+        out.execute(f"INSERT INTO facts ({cols}) VALUES ({_qmarks(19)})", r)
 
     # 2. subjects (used + ancestors), parents first is not required (FKs are checked at commit)
     for sid in sorted(subject_ids):
@@ -219,16 +221,16 @@ def populate(out, full, rules):
 
     # 3. revisions: of an included fact, only revisions that are themselves normal and pass the rules
     rcols = ("id, fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, "
-             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness, kind, valid_from, valid_to")
+             "trust_rationale, status, visibility, superseded_by, recheck_by, recheck_rationale, freshness, kind, valid_from, valid_to, applies_to")
     subject_of = {r[0]: r[1] for r in facts}
     for r in full.execute(f"SELECT {rcols} FROM fact_revisions WHERE visibility = 'normal' ORDER BY id"):
-        # rcols: r[8] trust_rationale, r[13] recheck_rationale
-        if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10], extra=(r[8], r[13])):
+        # rcols: r[8] trust_rationale, r[13] recheck_rationale, r[18] applies_to
+        if r[1] not in fact_ids or not passes(subject_of[r[1]], r[6], r[10], extra=(r[8], r[13], r[18])):
             continue
         r = list(r)
         if r[11] not in fact_keys:
             r[11] = None
-        out.execute(f"INSERT INTO fact_revisions ({rcols}) VALUES ({_qmarks(18)})", r)
+        out.execute(f"INSERT INTO fact_revisions ({rcols}) VALUES ({_qmarks(19)})", r)
 
     # 4. citations of included facts, and only the sources they cite
     source_ids = set()

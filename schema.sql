@@ -194,6 +194,11 @@ CREATE TABLE facts (
     -- (no Feb 30) is checked by validtime.py in the writers and the ingest. A past valid_to does not
     -- change status: validity is not retraction.
     valid_from              TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
+    -- Applicability (#45): who or what the fact applies to ("adult men", "type 2 diabetes"), short free
+    -- text taken from the source or the user, never inferred. NULL = unknown/unstated, which is NOT the
+    -- same as an explicit "general". Blank text is normalized to NULL by the writers. Mutable via a
+    -- revision (#30) and part of the facts FTS.
+    applies_to              TEXT CHECK (applies_to IS NULL OR length(trim(applies_to, char(32, 9, 10, 11, 12, 13))) > 0),
     valid_to                TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     extracted_from_sha256   TEXT CHECK (extracted_from_sha256 IS NULL OR length(extracted_from_sha256) = 64),
     -- Freshness (#7): every fact either has a recheck_by or explicitly asserts it does not decay.
@@ -249,6 +254,7 @@ CREATE TABLE fact_revisions (
     freshness        TEXT,
     kind             TEXT NOT NULL DEFAULT 'unclassified' CHECK (kind IN ('observation','measurement','decision','preference','plan','definition','inference','rule','lesson','unclassified')),
     valid_from       TEXT CHECK (valid_from IS NULL OR valid_from GLOB '[0-9][0-9][0-9][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_from GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
+    applies_to       TEXT CHECK (applies_to IS NULL OR length(trim(applies_to, char(32, 9, 10, 11, 12, 13))) > 0),
     valid_to         TEXT CHECK (valid_to IS NULL OR valid_to GLOB '[0-9][0-9][0-9][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]' OR valid_to GLOB '[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]'),
     notes            TEXT,
     CHECK (valid_from IS NULL OR valid_to IS NULL OR substr(valid_from, 1, min(length(valid_from), length(valid_to))) <= substr(valid_to, 1, min(length(valid_from), length(valid_to)))),
@@ -652,7 +658,7 @@ LEFT JOIN subjects p ON p.id = s.parent_id;
 CREATE VIEW v_facts AS
 SELECT
     f.id, sub.name AS subject, f.statement, f.is_original_claim, f.is_personal,
-    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness, f.kind, f.valid_from, f.valid_to,
+    f.trust_level, f.trust_rationale, f.status, f.recheck_by, f.recheck_rationale, f.freshness, f.kind, f.valid_from, f.valid_to, f.applies_to,
     vf.path AS origin_path, f.notes, f.date_added, f.last_reviewed_at
 FROM facts f
 JOIN subjects sub ON sub.id = f.subject_id
@@ -663,15 +669,15 @@ LEFT JOIN vault_files vf ON vf.id = f.origin_file_id;
 -- built-in module has it; this machine's `sqlite3` CLI does not).
 -- ============================================================
 CREATE VIRTUAL TABLE facts_fts USING fts5(
-  statement, trust_rationale, notes, content='facts', content_rowid='id'
+  statement, trust_rationale, notes, applies_to, content='facts', content_rowid='id'
 );
 CREATE TRIGGER facts_fts_ai AFTER INSERT ON facts BEGIN
-  INSERT INTO facts_fts(rowid, statement, trust_rationale, notes) VALUES (new.id, new.statement, new.trust_rationale, new.notes);
+  INSERT INTO facts_fts(rowid, statement, trust_rationale, notes, applies_to) VALUES (new.id, new.statement, new.trust_rationale, new.notes, new.applies_to);
 END;
 CREATE TRIGGER facts_fts_ad AFTER DELETE ON facts BEGIN
-  INSERT INTO facts_fts(facts_fts, rowid, statement, trust_rationale, notes) VALUES ('delete', old.id, old.statement, old.trust_rationale, old.notes);
+  INSERT INTO facts_fts(facts_fts, rowid, statement, trust_rationale, notes, applies_to) VALUES ('delete', old.id, old.statement, old.trust_rationale, old.notes, old.applies_to);
 END;
 CREATE TRIGGER facts_fts_au AFTER UPDATE ON facts BEGIN
-  INSERT INTO facts_fts(facts_fts, rowid, statement, trust_rationale, notes) VALUES ('delete', old.id, old.statement, old.trust_rationale, old.notes);
-  INSERT INTO facts_fts(rowid, statement, trust_rationale, notes) VALUES (new.id, new.statement, new.trust_rationale, new.notes);
+  INSERT INTO facts_fts(facts_fts, rowid, statement, trust_rationale, notes, applies_to) VALUES ('delete', old.id, old.statement, old.trust_rationale, old.notes, old.applies_to);
+  INSERT INTO facts_fts(rowid, statement, trust_rationale, notes, applies_to) VALUES (new.id, new.statement, new.trust_rationale, new.notes, new.applies_to);
 END;

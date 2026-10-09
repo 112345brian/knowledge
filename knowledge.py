@@ -136,7 +136,7 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
 def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -152,7 +152,7 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
 
 def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.statement
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
@@ -239,7 +239,8 @@ def _print_fact_lines(rows):
         return
     for r in rows:
         flag = "" if r["status"] == "active" else f" [{r['status']}]"
-        print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']}){flag}  {r['statement']}")
+        applies = f"  (applies to: {r['applies_to']})" if r.get("applies_to") else ""
+        print(f"#{r['id']:<5} [{r['subject']}] ({r['trust_level']}){flag}  {r['statement']}{applies}")
 
 
 JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON instead of text.")
@@ -306,7 +307,7 @@ def fact_as_of(con, fact_id, as_of):
 def _print_revision_state(r):
     print(f"\n{r['statement']}\n")
     for label, key in (("Trust rationale", "trust_rationale"), ("Notes", "notes"), ("Superseded by", "superseded_by"),
-                       ("Freshness", "freshness"), ("Kind", "kind")):
+                       ("Freshness", "freshness"), ("Kind", "kind"), ("Applies to", "applies_to")):
         if r[key]:
             print(f"{label}: {r[key]}")
     if r["recheck_by"]:
@@ -379,6 +380,8 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
     if f["recheck_by"]:
         print(f"Recheck by: {f['recheck_by']}" + (f"  ({f['recheck_rationale']})" if f["recheck_rationale"] else ""))
     _print_validity(f, valid_at, verdict)
+    if f["applies_to"]:
+        print(f"Applies to: {f['applies_to']}")
     if f["source_key"]:
         print(f"Source key: {f['source_key']}")
     if f["captured_via"] or f["session_id"] or f["captured_at"]:

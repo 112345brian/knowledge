@@ -81,6 +81,7 @@ def parse_args(argv):
                    help="What kind of assertion this is (default: unclassified). Self-reported guidance.")
     p.add_argument("--valid-from", dest="valid_from", help="When the fact became true: YYYY, YYYY-MM or YYYY-MM-DD (#40). Omit if unknown.")
     p.add_argument("--valid-to", dest="valid_to", help="When it stopped being true (same formats; same value as --valid-from for a point in time). Omit if still true as far as known.")
+    p.add_argument("--applies-to", dest="applies_to", help="Who or what the fact applies to (a population or condition the source states, e.g. 'adult men'); never guess one (#45).")
     p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
@@ -115,6 +116,8 @@ class NewFact:
     # Valid time (#40): when the fact was true. YYYY / YYYY-MM / YYYY-MM-DD or None; see validtime.py.
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
+    # Applicability (#45): short free text, only what a source or the user stated. Blank counts as absent.
+    applies_to: Optional[str] = None
     trust_rationale: Optional[str] = None
     notes: Optional[str] = None
     recheck_by: Optional[str] = None
@@ -171,6 +174,8 @@ def validate_fact(fact, db_path=None):
     if not isinstance(fact.kind, str) or fact.kind not in KIND_VALUES:
         errors.append(f"kind {fact.kind!r} must be one of {list(KIND_VALUES)}")
     errors.extend(validtime.problems(fact.valid_from, fact.valid_to))
+    if fact.applies_to is not None and not isinstance(fact.applies_to, str):
+        errors.append("applies_to must be text")
     if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
@@ -260,6 +265,8 @@ def build_entry(fact, visibility=None):
             continue  # blank counts as absent (a no_decay fact may carry a blank one)
         if value:
             entry[key] = value
+    if isinstance(fact.applies_to, str) and fact.applies_to.strip():
+        entry["applies_to"] = fact.applies_to.strip()
     if fact.origin_path and fact.origin_path.strip():
         entry["origin_path"] = fact.origin_path.strip()
         fp = fixity.fingerprint(entry["origin_path"])
@@ -398,7 +405,7 @@ def resolve_privacy(fact, data_path, db_path):
     return privacy.resolve_visibility(fact.subject, fact.statement, fact.visibility,
                                       rules.with_context(parents=parents, known_subjects=known),
                                       extra_text=(fact.notes, fact.trust_rationale, fact.recheck_rationale,
-                                                  fact.source_quote, fact.source_locator))
+                                                  fact.source_quote, fact.source_locator, fact.applies_to))
 
 
 def append_fact(fact, data_path=None, db_path=None):
@@ -427,7 +434,7 @@ def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
         statement=args.statement, subject=args.subject, trust_level=args.trust_level, no_decay=args.no_decay, domain=args.domain,
-        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind, valid_from=args.valid_from, valid_to=args.valid_to,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind, valid_from=args.valid_from, valid_to=args.valid_to, applies_to=args.applies_to,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
         source_locator=args.source_locator, source_quote=args.source_quote, origin_path=args.origin_path,

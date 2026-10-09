@@ -329,7 +329,7 @@ def apply_rules_to_db(con, rules):
     raised = []
     rows = con.execute(
         """SELECT f.id, s.name, f.statement, f.visibility, f.notes, f.trust_rationale, f.recheck_rationale,
-                  f.source_quote,
+                  f.source_quote, f.applies_to,
                   (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
                    FROM fact_sources fs WHERE fs.fact_id = f.id)
            FROM facts f JOIN subjects s ON s.id = f.subject_id""").fetchall()

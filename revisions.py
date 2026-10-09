@@ -40,7 +40,7 @@ from add_fact import (FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST,
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
-                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "valid_from", "valid_to", "notes")
+                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "valid_from", "valid_to", "applies_to", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
 # (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
@@ -208,6 +208,24 @@ def entry_validity(entry):
     return vf, vt
 
 
+def clean_applies_to(value):
+    """Normalize an applicability value (#45): None and blank/whitespace-only text become None, other text
+    is stripped. Raises ValueError for a non-string."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"applies_to must be text, not {type(value).__name__}")
+    return value.strip() or None
+
+
+def entry_applies_to(entry):
+    """The entry's applies_to, normalized; RevisionError for a non-string."""
+    try:
+        return clean_applies_to(entry.get("applies_to"))
+    except ValueError as e:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: {e}") from None
+
+
 def entry_snapshot(entry):
     """The mutable fields of a JSON entry: what revision 1 says."""
     snap = {f: entry.get(f) for f in MUTABLE_FIELDS}
@@ -216,6 +234,7 @@ def entry_snapshot(entry):
     snap["visibility"] = entry.get("visibility") or "private"
     snap["kind"] = entry_kind(entry)
     snap["valid_from"], snap["valid_to"] = entry_validity(entry)
+    snap["applies_to"] = entry_applies_to(entry)
     return snap
 
 
@@ -302,6 +321,8 @@ def validate_record_shape(rec):
     if rec["superseded_by"] is not None and rec["superseded_by"] == rec["source_key"]:
         errs.append("superseded_by points at the fact itself")
     errs.extend(validtime.problems(rec["valid_from"], rec["valid_to"]))
+    if rec["applies_to"] is not None and not (isinstance(rec["applies_to"], str) and rec["applies_to"].strip()):
+        errs.append("applies_to must be null or non-blank text (blank is normalized to null before it is written)")
     if rec["kind"] not in KIND_VALUES:
         errs.append(f"kind {rec['kind']!r} must be one of {list(KIND_VALUES)}")
     for k in ("trust_rationale", "recheck_by", "recheck_rationale", "freshness", "notes"):
@@ -418,6 +439,11 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     errors = []
     if not isinstance(changes, dict) or not changes:
         return RevisionResult(False, ["changes must be a non-empty dict of mutable fields"])
+    if isinstance(changes, dict) and "applies_to" in changes:
+        try:
+            changes = {**changes, "applies_to": clean_applies_to(changes["applies_to"])}
+        except ValueError as e:
+            return RevisionResult(False, [str(e)])
     unknown = [k for k in changes if k not in MUTABLE_FIELDS]
     if unknown:
         errors.append(f"cannot change {unknown}; mutable fields are {list(MUTABLE_FIELDS)}")

@@ -463,7 +463,7 @@ def edit_fact(ref, reason, statement=None, trust_level=None, trust_rationale=Non
         merged = {**current, **ch}
         res = privacy.resolve_visibility(subject, merged["statement"], current["visibility"], rules,
                                          extra_text=(merged.get("notes"), merged.get("trust_rationale"),
-                                                     merged.get("recheck_rationale")))
+                                                     merged.get("recheck_rationale"), merged.get("applies_to")))
         if res.visibility == "private" and current["visibility"] != "private":
             ch["visibility"] = "private"
             adjust.notes.append(f"visibility raised to private: {res.explain()}")

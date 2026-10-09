@@ -87,13 +87,13 @@ def run(con):
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
                                    captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
-                                   origin_file_id, extracted_from_sha256, kind, valid_from, valid_to)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   origin_file_id, extracted_from_sha256, kind, valid_from, valid_to, applies_to)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, item.get("notes"),
              item.get("recheck_by"), item.get("recheck_rationale"), visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["freshness"], origin_file_id, baseline, revisions.entry_kind(item), *revisions.entry_validity(item))
+             status, key, eff["freshness"], origin_file_id, baseline, revisions.entry_kind(item), *revisions.entry_validity(item), revisions.entry_applies_to(item))
         )
         fact_id = cur.lastrowid
         revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
