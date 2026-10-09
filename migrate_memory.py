@@ -1,6 +1,7 @@
 """Import Claude Code memory files as private, pending facts (issue #29).
 
-Library only: nothing here prints or exits (the Typer command lives in cli_migrate.py).
+Library only: nothing here prints or exits (the Typer command lives in cli_migrate.py). This module is
+the facade: it binds the use case in `migrate_memory_service` to the real adapters and keeps the public API.
 
 Source: `<root>/*/memory/*.md`, root defaulting to ~/.claude/projects. Index files named
 `MEMORY.md` are skipped and counted. Symlinked files and symlinked project folders are never
@@ -38,93 +39,21 @@ stored in the entry's notes. A run is serialized against other migrate runs with
 the system temp dir (keyed by the data file). It cannot be held across append_fact's own lock,
 so a concurrent add_fact still just appends its own random-keyed entry.
 """
-import contextlib
-import os
-
 import add_fact
 import clock
+import migrate_memory_service
 import migrate_memory_store
 import private_git
-import revisions
 from migrate_memory_rules import (ACTIONS, CAPTURED_VIA, FACT_TYPES, FileResult, HASH_MARKER, HASH_RE,  # noqa: F401  (the public API)
                                   MAX_FILE_BYTES, MemoryFile, MigrationReport, QUOTE_LINES, QUOTE_MAX, RECHECK_DAYS,
                                   SKIPPED_TYPES, STATEMENT_MAX, _collapse, _field, build_fact, make_quote,
                                   make_statement, parse_frontmatter, parse_modified, plan_file, recheck_date,
                                   source_key_for, subject_for)
+from migrate_memory_service import DEFAULT_ROOT  # noqa: F401
 from migrate_memory_store import discover, existing_entries, read_memory_file  # noqa: F401  (the public API)
+from ports import Ports, bind
 
-DEFAULT_ROOT = "~/.claude/projects"
+PORTS = Ports(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
+              defaults=add_fact._Defaults())
 
-
-def migrate(root=None, data_path=None, db_path=None, dry_run=False, allow_dirty=False, today=None):
-    """Plan and (unless dry_run) perform the import. Returns a MigrationReport; never prints or
-    exits. Writes at most `data_path` and one commit of exactly that file."""
-    root = DEFAULT_ROOT if root is None else root
-    data_path = add_fact.DATA_PATH if data_path is None else data_path
-    db_path = add_fact.DB_PATH if db_path is None else db_path
-    report = MigrationReport(root=os.path.abspath(os.path.expanduser(root)), dry_run=dry_run)
-    if not os.path.isdir(report.root):
-        report.refused = f"memory root {report.root} is not a directory"
-        return report
-    found, report.index_files, links = discover(root)
-    for project, name, why in links:
-        report.files.append(FileResult(project, name, None, "skipped-symlink", why))
-
-    lock = contextlib.nullcontext() if dry_run else migrate_memory_store.run_lock(data_path)
-    with lock:
-        try:
-            existing = existing_entries(os.path.dirname(os.path.abspath(data_path)))
-        except (revisions.RevisionError, OSError) as e:
-            report.refused = f"cannot read the existing facts: {e}"
-            return report
-        todo = []   # (FileResult, NewFact)
-        seen_keys = {}
-        today = today or clock.now().date()
-        for project, name, path in found:
-            mf = read_memory_file(path, project, name)
-            res, fact, truncated = plan_file(mf, project, name, existing, seen_keys, today)
-            report.files.append(res)
-            if fact is None:
-                continue
-            errors, _ = add_fact.validate_fact(fact, db_path)
-            if errors:
-                res.detail = "; ".join(errors)
-                continue
-            res.action = "would-add"
-            res.detail = "statement cut, full text in notes" if truncated else ""
-            todo.append((res, fact))
-
-        if dry_run or not todo:
-            return report
-
-        repo = None
-        try:
-            repo = private_git.find_repo(os.path.dirname(os.path.abspath(data_path)))
-            if repo is None:
-                report.not_in_git = True
-            elif not allow_dirty:
-                private_git.ensure_clean_tree(repo)
-        except private_git.PrivateGitError as e:
-            report.refused = str(e)
-            for res, _ in todo:
-                res.action, res.detail = "problem", "not written: run refused"
-            return report
-
-        written = 0
-        try:
-            for res, fact in todo:
-                result = add_fact.append_fact(fact, data_path=data_path, db_path=db_path)
-                if not result.ok:
-                    res.action, res.detail = "problem", "; ".join(result.errors)
-                    continue
-                res.action = "added"
-                written += 1
-        finally:
-            if written and repo is not None:
-                message = f"migrate-memory: {written} pending fact{'s' if written != 1 else ''}"
-                try:
-                    report.commit = private_git.commit_private_change([data_path], message, repo)
-                    report.detached = private_git.is_detached(repo)
-                except private_git.PrivateGitError as e:
-                    report.commit_error = str(e)
-    return report
+migrate = bind(migrate_memory_service.migrate, PORTS)

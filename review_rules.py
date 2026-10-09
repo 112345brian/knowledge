@@ -9,7 +9,6 @@ from typing import List, Optional
 
 import privacy
 
-NO_ROW = object()  # review_store.source_key_for_id: "there is no such fact" (as opposed to None = no source_key)
 OUTCOMES = ("approved", "rejected", "skipped", "unknown", "error")
 
 
@@ -74,9 +73,10 @@ def parse_ref(ref):
     return "key", text
 
 
-def key_from_id_row(fact_id, source_key, states):
-    """(source_key | None, problem | None) for a fact id whose db row gave `source_key` (None = no row)."""
-    if source_key is NO_ROW:
+def key_from_id_row(fact_id, found, source_key, states):
+    """(source_key | None, problem | None) for a fact id: `found` says whether the db has that fact,
+    `source_key` is its key (None when it has none)."""
+    if not found:
         return None, f"no fact with id {fact_id}"
     if source_key is None or source_key not in states:
         return None, f"fact {fact_id} has no source_key in the data files"

@@ -542,7 +542,7 @@ def test_no_caller_discards_an_append_fact_result():
 
 
 def test_migrate_memory_reads_ok_from_every_append_fact_result():
-    tree = ast.parse(open(os.path.join(REPO, "migrate_memory.py"), encoding="utf-8").read())
+    tree = ast.parse(open(os.path.join(REPO, "migrate_memory_service.py"), encoding="utf-8").read())
     assigned = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
                 and getattr(n.value.func, "attr", None) == "append_fact"]
     assert assigned, "expected migrate_memory to call append_fact"

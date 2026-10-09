@@ -55,6 +55,7 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 type = "forbidden"
 source_modules = [
     "kn.add_fact",
+    "kn.add_fact_service",
     "kn.add_fact_store",
     "kn.claims_audit",
     "kn.claims_store",
@@ -62,13 +63,17 @@ source_modules = [
     "kn.fact_rules",
     "kn.facts_batch",
     "kn.facts_batch_rules",
+    "kn.facts_batch_service",
+    "kn.ids",
     "kn.leak_rules",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.lifecycle_rules",
+    "kn.lifecycle_service",
     "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.migrate_memory_rules",
+    "kn.migrate_memory_service",
     "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
@@ -76,11 +81,13 @@ source_modules = [
     "kn.normal_db",
     "kn.normal_rules",
     "kn.paths",
+    "kn.ports",
     "kn.privacy",
     "kn.privacy_store",
     "kn.private_git",
     "kn.review",
     "kn.review_rules",
+    "kn.review_service",
     "kn.review_store",
     "kn.revisions",
     "kn.revisions_store",
@@ -116,6 +123,7 @@ name = "Libraries and the parity registry never import typer (or click)"
 type = "forbidden"
 source_modules = [
     "kn.add_fact",
+    "kn.add_fact_service",
     "kn.add_fact_store",
     "kn.claims_audit",
     "kn.claims_store",
@@ -124,14 +132,18 @@ source_modules = [
     "kn.fact_rules",
     "kn.facts_batch",
     "kn.facts_batch_rules",
+    "kn.facts_batch_service",
+    "kn.ids",
     "kn.inbox",
     "kn.leak_rules",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.lifecycle_rules",
+    "kn.lifecycle_service",
     "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.migrate_memory_rules",
+    "kn.migrate_memory_service",
     "kn.migrate_memory_store",
     "kn.modes",
     "kn.modes_store",
@@ -139,11 +151,13 @@ source_modules = [
     "kn.normal_db",
     "kn.normal_rules",
     "kn.paths",
+    "kn.ports",
     "kn.privacy",
     "kn.privacy_store",
     "kn.private_git",
     "kn.review",
     "kn.review_rules",
+    "kn.review_service",
     "kn.review_store",
     "kn.revisions",
     "kn.revisions_store",
@@ -228,6 +242,7 @@ forbidden_modules = [
     "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.migrate_memory_store",
+    "kn.ids",
     "kn.normal_db",
     "kn.privacy",
     "kn.privacy_store",
@@ -286,6 +301,7 @@ source_modules = [
     "kn.modes",
     "kn.new_fact",
     "kn.normal_rules",
+    "kn.ports",
     "kn.privacy",
     "kn.review_rules",
     "kn.revisions",
@@ -304,6 +320,32 @@ forbidden_modules = [
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
+id = "use-cases-depend-on-ports"
+name = "Use cases import ports and domain, never an adapter, a facade or infrastructure"
+# Why (hexagonal architecture): a use case (the *_service modules) orchestrates the domain through the
+# protocols in `ports`; it never imports an adapter, so a test can hand it fakes and an adapter can be
+# swapped without touching it. The facades (review, lifecycle, add_fact, facts_batch, migrate_memory) are
+# the composition roots that pick the real adapters. `os` is allowed for os.path string handling only;
+# tests/test_architecture.py checks that no service touches anything else on `os`.
+type = "forbidden"
+source_modules = [
+    "kn.add_fact_service",
+    "kn.facts_batch_service",
+    "kn.lifecycle_service",
+    "kn.migrate_memory_service",
+    "kn.review_service",
+]
+forbidden_modules = [
+    "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
+    "http", "urllib", "uuid",
+    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.ids", "kn.private_git",
+    "kn.paths", "kn.clock", "kn.normal_db", "kn.leak_test",
+    "kn.add_fact", "kn.lifecycle", "kn.review", "kn.facts_batch", "kn.migrate_memory",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 id = "libraries-layered"
 name = "Libraries form a DAG (no cycles) in a fixed order"
 # Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
@@ -315,17 +357,17 @@ type = "layers"
 containers = ["kn"]
 layers = [
     "facts_batch | lifecycle | migrate_memory",
-    "modes_store | claims_store",
+    "modes_store | claims_store | facts_batch_service",
     "review | modes | claims_audit | normal_db",
-    "leak_test",
-    "review_store | lifecycle_store | migrate_memory_store",
+    "leak_test | lifecycle_service | migrate_memory_service",
+    "review_store | lifecycle_store | migrate_memory_store | review_service",
     "revisions_store",
     "add_fact",
-    "privacy_store",
+    "privacy_store | add_fact_service",
     "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules",
     "new_fact",
     "privacy | private_git",
-    "clock | paths | timestamps | fact_rules | leak_rules",
+    "clock | paths | timestamps | fact_rules | leak_rules | ports | ids",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

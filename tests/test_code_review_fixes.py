@@ -45,7 +45,7 @@ def write_rules(world, tags=None, keywords=(NAME.lower(),)):
 
 @pytest.fixture
 def mods(world):
-    names = ("privacy", "privacy_store", "review", "review_store", "review_rules", "lifecycle", "lifecycle_rules", "lifecycle_store", "normal_db")
+    names = ("privacy", "privacy_store", "review", "review_service", "review_store", "review_rules", "lifecycle", "lifecycle_service", "lifecycle_rules", "lifecycle_store", "normal_db")
     saved = {m: sys.modules.pop(m) for m in names if m in sys.modules}
     import privacy, privacy_store, review, lifecycle, normal_db
     yield types.SimpleNamespace(privacy=privacy, privacy_store=privacy_store, review=review, lifecycle=lifecycle, normal_db=normal_db)

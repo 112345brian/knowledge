@@ -13,6 +13,20 @@ import revisions_store
 from migrate_memory_rules import MAX_FILE_BYTES, MemoryFile, parse_memory_bytes
 
 
+def absolute_root(root):
+    """The memory root as an absolute path (~ expanded)."""
+    return os.path.abspath(os.path.expanduser(root))
+
+
+def root_exists(root):
+    return os.path.isdir(root)
+
+
+def data_dir_of(data_path):
+    """The directory a facts file lives in."""
+    return os.path.dirname(os.path.abspath(data_path))
+
+
 def read_memory_file(path, project, filename):
     mf = MemoryFile(project=project, filename=filename)
     try:

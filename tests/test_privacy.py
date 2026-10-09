@@ -410,7 +410,7 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
     fact entry must reference `privacy`."""
     offenders = []
     for name in sorted(os.listdir(REPO)):
-        if not name.endswith(".py") or name == "privacy.py":
+        if not name.endswith(".py") or name in ("privacy.py", "ports.py"):  # ports.py only declares the AddFact protocol
             continue
         src = open(os.path.join(REPO, name)).read()
         if ("INSERT INTO facts" in src or "def build_entry" in src) and "privacy." not in src:
@@ -419,7 +419,7 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
 
 
 def test_add_fact_passes_the_resolved_value_to_build_entry():
-    tree = ast.parse(open(os.path.join(REPO, "add_fact.py")).read())
+    tree = ast.parse(open(os.path.join(REPO, "add_fact_service.py")).read())
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "append_fact")
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "build_entry"]
     assert calls and all(any(k.arg == "visibility" for k in c.keywords) for c in calls)

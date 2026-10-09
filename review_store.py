@@ -1,17 +1,21 @@
 """Adapter for review (#6): the reads behind the review queue. The pending rows and subject tree come
 from the built db, the current states from the entry files and the revision log. The decisions are
-in `review_rules`; the use case is `review`.
+in `review_rules`; the use cases are `review_service` and `lifecycle_service`.
 """
 import os
 
 import revisions
 import revisions_store
-import review_rules
 
 
 def default_data_dir():
     """The private data directory the revision log lives in (what `data_dir=None` means)."""
     return revisions_store.default_data_dir()
+
+
+def db_exists(db_path):
+    """Whether the built db file is there."""
+    return os.path.exists(db_path)
 
 
 def list_pending(db):
@@ -51,7 +55,7 @@ def subject_parents(db):
 
 
 def source_key_for_id(db, fact_id):
-    """The source_key of fact `fact_id` (None if the fact has none), or review_rules.NO_ROW if there is no such fact."""
+    """(found, source_key): whether the db has fact `fact_id`, and its source_key (None if it has none)."""
     with revisions_store.connection(db) as con:
         row = con.execute("SELECT source_key FROM facts WHERE id = ?", (fact_id,)).fetchone()
-    return review_rules.NO_ROW if row is None else row[0]
+    return (False, None) if row is None else (True, row[0])

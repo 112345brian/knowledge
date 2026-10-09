@@ -19,7 +19,7 @@ GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 @pytest.fixture
 def rw(world, monkeypatch):
     """The world fixture plus the review module, imported after it so both share `revisions`."""
-    for _m in ("review", "review_store", "review_rules"):
+    for _m in ("review", "review_service", "review_store", "review_rules"):
         sys.modules.pop(_m, None)
     import review
     world.review = review

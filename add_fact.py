@@ -25,17 +25,20 @@ honestly considered trust level (cross-checked against an ID vs. typed from memo
 only enforces that one of the two is present; it cannot judge whether a fact really does not
 decay. Staleness only: a fact that was wrong when typed is --trust's job.
 """
-import argparse, os, sys, uuid
+import argparse, os, sys
 
-import clock
+import add_fact_service
 import add_fact_store
-import new_fact
-import privacy
+import clock
+import ids
+import new_fact  # noqa: F401  (add_fact.new_fact)
+import privacy  # noqa: F401  (kept importable as add_fact.privacy)
 import privacy_store
 from add_fact_store import append_record, append_records  # noqa: F401  (re-exported: facts_batch, tests)
 from fact_rules import FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE  # noqa: F401  (re-exported: callers use add_fact.VALID_TRUST etc.)
 from new_fact import (AddResult, DATE_RE, DataFileError, NewFact, SUBJECT_RE, VALID_NEW_STATUS)  # noqa: F401  (re-exported)
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
+from ports import Ports, bind
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,8 +46,17 @@ DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 
 
+class _Defaults:
+    """Where the facts file and the db are, read from this module on every call (tests repoint them)."""
+    data_path = property(lambda self: DATA_PATH)
+    db_path = property(lambda self: DB_PATH)
+
+
+PORTS = Ports(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids, defaults=_Defaults())
+
+
 def new_source_key():
-    return "f-" + uuid.uuid4().hex[:12]
+    return ids.new_source_key()
 
 
 def parse_args(argv):
@@ -73,61 +85,10 @@ def parse_args(argv):
     return p.parse_args(argv)
 
 
-def validate_fact(fact, db_path=None):
-    """Returns (errors, notes). Never prints. Same rules and messages the CLI has always had."""
-    db_path = DB_PATH if db_path is None else db_path
-    errors, notes = new_fact.check_fact(fact), []
-    if fact.source_citekey:
-        error, note = add_fact_store.citekey_problem(db_path, fact.source_citekey)
-        if error:
-            errors.append(error)
-        if note:
-            notes.append(note)
-    return errors, notes
-
-
-def build_entry(fact, visibility=None):
-    """The JSON entry 11_seed_general_facts.py expects (see new_fact.build_entry). `visibility` is the
-    resolved value from privacy.resolve_visibility (append_fact passes it); left None it falls back
-    to the caller's request."""
-    return new_fact.build_entry(fact, visibility, new_source_key(), clock.now_iso())
-
-
-def resolve_privacy(fact, data_path, db_path):
-    """The privacy rules (privacy_rules.json next to the data file) applied to one fact. Subject
-    context comes from the db when it has a subjects table (parents for tag inheritance, and the set
-    of known subjects) plus subjects already in the facts file; with no usable db the unknown-subject
-    rule is not enforced (nothing to compare against). Raises privacy.PrivacyRulesError."""
-    rules = privacy_store.load_rules(os.path.join(os.path.dirname(os.path.abspath(data_path)), privacy.RULES_FILENAME))
-    parents, known = add_fact_store.subject_tree(db_path)
-    if known is not None:
-        known |= add_fact_store.file_subjects(data_path)
-    return privacy.resolve_visibility(fact.subject, fact.statement, fact.visibility,
-                                      rules.with_context(parents=parents, known_subjects=known),
-                                      extra_text=(fact.notes, fact.trust_rationale, fact.recheck_rationale,
-                                                  fact.source_quote, fact.source_locator))
-
-
-def append_fact(fact, data_path=None, db_path=None):
-    """Validate and append one fact. Returns an AddResult; never prints or exits. The stored
-    visibility is the most restrictive of the request, the subject tag and the keyword list (#31)."""
-    data_path = DATA_PATH if data_path is None else data_path
-    db_path = DB_PATH if db_path is None else db_path
-    errors, notes = validate_fact(fact, db_path)
-    if errors:
-        return AddResult(ok=False, errors=errors, notes=notes)
-    try:
-        resolution = resolve_privacy(fact, data_path, db_path)
-    except (privacy.PrivacyRulesError, DataFileError) as e:
-        return AddResult(ok=False, errors=[str(e)], notes=notes)
-    entry = build_entry(fact, visibility=resolution.visibility)
-    try:
-        total = append_record(data_path, entry)
-    except DataFileError as e:
-        return AddResult(ok=False, errors=[str(e)], notes=notes)
-    except OSError as e:
-        return AddResult(ok=False, errors=[f"could not write {data_path}: {e}"], notes=notes)
-    return AddResult(ok=True, notes=notes, entry=entry, total=total, privacy=resolution)
+validate_fact = bind(add_fact_service.validate_fact, PORTS)
+build_entry = bind(add_fact_service.build_entry, PORTS)
+resolve_privacy = bind(add_fact_service.resolve_privacy, PORTS)
+append_fact = bind(add_fact_service.append_fact, PORTS)
 
 
 def main(argv=None):

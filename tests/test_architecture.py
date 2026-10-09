@@ -411,6 +411,28 @@ CASES = [
      [("tach", ["leak_rules", "leak_test"]), ("import-linter", ["kn.leak_rules", "kn.leak_test"])]),
     ("serving-imports-migrate-memory-store", "inbox", "import migrate_memory_store",
      [("tach", ["inbox", "migrate_memory_store"]), ("import-linter", ["only through modes", "kn.migrate_memory_store"])]),
+    ("service-imports-adapter", "review_service", "import revisions_store",
+     [("tach", ["review_service", "revisions_store"]), ("import-linter", ["never an adapter", "kn.review_service", "kn.revisions_store"])]),
+    ("service-lazy-imports-adapter", "lifecycle_service", "def f():\n    import lifecycle_store",
+     [("tach", ["lifecycle_service", "lifecycle_store"]), ("import-linter", ["kn.lifecycle_service", "kn.lifecycle_store"])]),
+    ("service-imports-git-adapter", "lifecycle_service", "import private_git",
+     [("tach", ["lifecycle_service", "private_git"]), ("import-linter", ["kn.lifecycle_service", "kn.private_git"])]),
+    ("service-imports-its-facade", "add_fact_service", "import add_fact",
+     [("tach", ["add_fact_service", "add_fact"]), ("import-linter", ["kn.add_fact_service", "kn.add_fact"])]),
+    ("service-imports-clock", "facts_batch_service", "import clock",
+     [("tach", ["facts_batch_service", "clock"]), ("import-linter", ["kn.facts_batch_service", "kn.clock"])]),
+    ("service-imports-sqlite", "migrate_memory_service", "import sqlite3",
+     [("import-linter", ["never an adapter", "kn.migrate_memory_service", "sqlite3"])]),
+    ("service-imports-subprocess", "review_service", "def f():\n    import subprocess",
+     [("import-linter", ["kn.review_service", "subprocess"])]),
+    ("service-imports-uuid", "add_fact_service", "import uuid",
+     [("import-linter", ["kn.add_fact_service", "uuid"])]),
+    ("ports-imports-sqlite", "ports", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.ports", "sqlite3"])]),
+    ("ports-imports-an-adapter", "ports", "import revisions_store",
+     [("tach", ["ports", "revisions_store"]), ("import-linter", ["kn.ports", "kn.revisions_store"])]),
+    ("ids-adapter-imports-upward", "ids", "import add_fact",
+     [("tach", ["ids", "add_fact"]), ("import-linter", ["kn.ids", "kn.add_fact"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -455,6 +477,7 @@ def test_exception_lists_are_exactly_the_documented_ones():
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
     assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
+    assert "ignore_imports" not in contracts["use-cases-depend-on-ports"]
     assert "ignore_imports" not in contracts["serving-reads-facts-through-modes"]
     assert "ignore_imports" not in contracts["serving-never-imports-pipeline"]
 
@@ -466,7 +489,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
     assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules",
-               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules", "ports"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):
@@ -475,6 +498,16 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
                 assert node.func.id != "print", f"{name}.py:{node.lineno}: the domain does not print"
             if isinstance(node, ast.Attribute) and node.attr in {"import_module"}:
                 raise AssertionError(f"{name}.py:{node.lineno}: dynamic import in the domain")
+
+
+def test_use_case_list_is_pinned_and_matches_the_ports_test():
+    """The *_service modules are the use cases; each must be under the use-cases-depend-on-ports contract."""
+    contracts = _il_contracts(_read(PYPROJECT))
+    listed = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
+    on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
+    assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
+    assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
+                      "migrate_memory_service"}
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():

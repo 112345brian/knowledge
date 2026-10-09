@@ -152,3 +152,8 @@ def subject_tree(db_path):
 def file_subjects(data_path):
     """The subjects already named in the facts file."""
     return {e["subject"] for e in read_array(data_path) if isinstance(e, dict) and isinstance(e.get("subject"), str)}
+
+
+def data_dir_of(data_path):
+    """The directory a facts file lives in (relative paths resolve against the current directory)."""
+    return os.path.dirname(os.path.abspath(data_path))

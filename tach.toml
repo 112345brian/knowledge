@@ -49,6 +49,16 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "ports"  # DOMAIN: the port protocols the use cases depend on, and bind() (pure)
+layer = "library"
+depends_on = []
+
+[[modules]]
+path = "ids"          # ADAPTER: fresh identifiers (randomness)
+layer = "library"
+depends_on = []
+
+[[modules]]
 path = "paths"          # the only module that knows personal paths
 layer = "library"
 depends_on = []
@@ -88,17 +98,28 @@ depends_on = [
 ]
 
 [[modules]]
-path = "add_fact"       # USE CASE (and the `python3 add_fact.py` script): wires the adapters to the rules
+path = "add_fact"       # FACADE + the `python3 add_fact.py` script: binds add_fact_service to the real adapters
 layer = "library"
 depends_on = [
+    "add_fact_service",
     "add_fact_store",
     "clock",
     "fact_rules",
+    "ids",
     "new_fact",
     "paths",
+    "ports",
     "privacy",
     "privacy_store",
     "private_git",
+]
+
+[[modules]]
+path = "add_fact_service"  # USE CASE: add one fact, through ports only
+layer = "library"
+depends_on = [
+    "new_fact",
+    "privacy",
 ]
 
 [[modules]]
@@ -135,22 +156,32 @@ depends_on = [
 path = "review_store"   # ADAPTER for review: pending rows, subject tree, current states
 layer = "library"
 depends_on = [
-    "review_rules",
     "revisions",
     "revisions_store",
 ]
 
 [[modules]]
-path = "review"         # USE CASE: orchestrates the adapters and applies review_rules
+path = "review"         # FACADE (composition root): binds review_service to the real adapters
 layer = "library"
 depends_on = [
+    "ports",
     "privacy",
     "privacy_store",
     "private_git",
     "review_rules",
+    "review_service",
     "review_store",
     "revisions",
     "revisions_store",
+]
+
+[[modules]]
+path = "review_service"  # USE CASE: review, through ports only
+layer = "library"
+depends_on = [
+    "privacy",
+    "review_rules",
+    "revisions",
 ]
 
 [[modules]]
@@ -236,17 +267,28 @@ depends_on = [
 ]
 
 [[modules]]
-path = "lifecycle"      # USE CASE #8 supersede/retract, #23 set-visibility, #33 edit_fact (moved out of inbox, #36)
+path = "lifecycle"      # FACADE (composition root): binds lifecycle_service to the real adapters
 layer = "library"
 depends_on = [
     "lifecycle_rules",
+    "lifecycle_service",
     "lifecycle_store",
+    "ports",
     "privacy",
     "private_git",
     "review",
-    "review_store",
     "revisions",
     "revisions_store",
+]
+
+[[modules]]
+path = "lifecycle_service"  # USE CASE: supersede/retract/set-visibility/edit, through ports only
+layer = "library"
+depends_on = [
+    "lifecycle_rules",
+    "privacy",
+    "review_rules",
+    "revisions",
 ]
 
 [[modules]]
@@ -257,15 +299,26 @@ depends_on = [
 ]
 
 [[modules]]
-path = "facts_batch"    # USE CASE #32 add_facts batch + `register facts`: reads the file and the mode, resolves privacy, writes
+path = "facts_batch"    # FACADE (composition root): binds facts_batch_service to the real adapters
 layer = "library"
 depends_on = [
     "add_fact",
     "add_fact_store",
     "facts_batch_rules",
+    "facts_batch_service",
     "modes",
-    "privacy",
+    "ports",
     "private_git",
+]
+
+[[modules]]
+path = "facts_batch_service"  # USE CASE: batch add_facts, through ports only
+layer = "library"
+depends_on = [
+    "facts_batch_rules",
+    "modes",
+    "new_fact",
+    "privacy",
 ]
 
 [[modules]]
@@ -285,14 +338,23 @@ depends_on = [
 ]
 
 [[modules]]
-path = "migrate_memory" # USE CASE #29: validates, appends through add_fact, commits
+path = "migrate_memory" # FACADE (composition root): binds migrate_memory_service to the real adapters
 layer = "library"
 depends_on = [
     "add_fact",
     "clock",
     "migrate_memory_rules",
+    "migrate_memory_service",
     "migrate_memory_store",
+    "ports",
     "private_git",
+]
+
+[[modules]]
+path = "migrate_memory_service"  # USE CASE: migrate memory files, through ports only
+layer = "library"
+depends_on = [
+    "migrate_memory_rules",
     "revisions",
 ]
 

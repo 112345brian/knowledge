@@ -21,7 +21,7 @@ KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 @pytest.fixture
 def lw(rw):
     """The review world plus lifecycle (imported after it so every module shares one `revisions`)."""
-    for _m in ("lifecycle", "lifecycle_rules", "lifecycle_store"):
+    for _m in ("lifecycle", "lifecycle_service", "lifecycle_rules", "lifecycle_store"):
         sys.modules.pop(_m, None)
     import lifecycle
     rw.lc = lifecycle
@@ -368,7 +368,7 @@ def test_no_caller_discards_a_lifecycle_result_and_every_append_revision_result_
                     offenders.append(f"{rel}:{node.lineno} discards lifecycle.{called}")
                 if called == "append_revision" and owner in ("revisions", "revisions_store", "rv", "rs", "w"):
                     offenders.append(f"{rel}:{node.lineno} discards append_revision")
-        if rel in ("lifecycle.py", "review.py"):  # production callers of append_revision must read `.ok`
+        if rel in ("lifecycle.py", "review.py", "lifecycle_service.py", "review_service.py"):  # production callers of append_revision must read `.ok`
             for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
                 calls = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
                          and getattr(n.value.func, "attr", None) == "append_revision"]
