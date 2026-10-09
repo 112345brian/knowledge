@@ -20,12 +20,12 @@ Usage:
     python3 -m ingest.backfill_extracted_hashes --data-dir DIR ...   # a copy, for trying it out
 """
 import argparse
-import importlib.util
 import os
 import sys
 
 from ingest import backfill_source_keys
 import fixity_store
+from ingest import fact_ingest_rules
 import revisions
 import revisions_store
 
@@ -33,11 +33,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _resolver():
-    """facts.resolve_origin_path ."""
-    spec = importlib.util.spec_from_file_location("facts", os.path.join(HERE, "facts.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.resolve_origin_path
+    """`notes -> vault file path or None`: the same rule the facts step uses (fact_ingest_rules.resolve_origin_path)."""
+    from paths import BODYBUILDING_VAULT
+    return lambda notes: fact_ingest_rules.resolve_origin_path(notes, BODYBUILDING_VAULT)
 
 
 def make_adder(resolve, unresolved):

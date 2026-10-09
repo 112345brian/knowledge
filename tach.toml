@@ -869,6 +869,8 @@ depends_on = [
     "fixity_store",
     "revisions",
     "revisions_store",
+    "ingest.fact_ingest_rules",
+    "paths",
 ]
 
 [[modules]]

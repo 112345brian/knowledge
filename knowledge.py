@@ -416,7 +416,7 @@ def cmd_audit_sources(as_json: bool = JSON_OPT):
             print(f"  {r['statement']}")
     if unbaselined and not as_json:
         print(f"note: {len(unbaselined)} fact(s) cite a source file but have no recorded baseline hash, so the audit cannot judge them "
-              f"(run backfill_extracted_hashes.py).", file=sys.stderr)
+              f"(run `python3 -m ingest.backfill_extracted_hashes`).", file=sys.stderr)
     if rows:
         raise typer.Exit(1)
 

@@ -296,6 +296,17 @@ def test_backfill_dry_run_apply_idempotent_and_byte_preserving(tmp_path):
     assert res["pilot_facts.json"] == 0  # idempotent
 
 
+def test_backfill_default_resolver_is_the_facts_step_rule():
+    """The tool used to look the resolver up on a step module and crashed when the rule moved: the default
+    must be the rule the facts step applies."""
+    import paths
+    from ingest import backfill_extracted_hashes as bf, fact_ingest_rules
+    resolve = bf._resolver()
+    assert resolve(None) is None
+    notes = "Some Note.md, extracted 2026-01-01"
+    assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, paths.BODYBUILDING_VAULT) != None  # noqa: E711
+
+
 # ------------------------------------------------------------------ CLI
 
 def test_audit_sources_cli_exit_codes_and_json(tmp_path):
