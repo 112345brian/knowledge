@@ -72,9 +72,12 @@ def fingerprint(path):
 FINGERPRINT_COLUMNS = ("content_sha256", "size_bytes", "file_mtime", "mime_type", "file_state")
 
 
-def _index_roots(search_roots, wanted_exts):
-    """{sha256: path} for every file under the roots with one of the wanted extensions."""
-    found = {}
+def _index_roots(search_roots, wanted_exts, wanted_hashes, known=None):
+    """{sha256: path} for files under the roots with one of the wanted extensions, looking only for
+    `wanted_hashes`: the walk stops as soon as every one of them has been found, and a path whose hash is already
+    in `known` ({path: sha256 or None}) is not read again."""
+    found, remaining = {}, set(wanted_hashes)
+    known = known or {}
     for root in search_roots:
         for dirpath, _dirs, files in os.walk(_expand(root)):
             for name in sorted(files):
@@ -82,9 +85,15 @@ def _index_roots(search_roots, wanted_exts):
                     continue
                 full = os.path.join(dirpath, name)
                 try:
-                    found.setdefault(sha256_of(full), full)
+                    h = known[full] if full in known else sha256_of(full)
                 except OSError:
                     continue
+                if h is None:
+                    continue
+                found.setdefault(h, full)
+                remaining.discard(h)
+                if not remaining:
+                    return found
     return found
 
 
@@ -131,9 +140,10 @@ def audit_sources(db, search_roots=()):
             h = current(p)
             if h is not None:
                 by_hash.setdefault(h, p)
-        if search_roots:
+        wanted = {r["baseline_sha256"] for r in gone} - set(by_hash)   # not already found among the known vault files
+        if search_roots and wanted:
             exts = {os.path.splitext(r["path"])[1].lower() for r in gone}
-            for h, p in _index_roots(search_roots, exts).items():
+            for h, p in _index_roots(search_roots, exts, wanted, cache).items():
                 by_hash.setdefault(h, p)
         for rec in gone:
             target = by_hash.get(rec["baseline_sha256"])

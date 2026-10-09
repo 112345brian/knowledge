@@ -326,3 +326,19 @@ def test_the_normal_db_has_none_of_the_custodial_columns_and_the_leak_test_has_a
         con.commit()
         con.close()
         assert leak_test.scan_against_full(path, full)
+
+
+# ------------------------------------------------------------------ no work when the data is complete
+
+def test_resolve_starts_no_xattr_when_the_data_already_has_both_fields():
+    calls = []
+    data = {"acquired_at": WHEN, "acquired_via": "manual", "where_from": "https://example.org/x", "acquired_note": None}
+    assert aq.resolve(data, "/f", run=fake_run({aq.QUARANTINE: QUARANTINE_5F3E1C2A}, calls), platform_ok=True) == data
+    assert calls == []
+
+
+def test_resolve_still_reads_the_attributes_for_a_missing_field():
+    calls = []
+    data = {"acquired_at": WHEN, "acquired_via": None, "where_from": None, "acquired_note": None}
+    out = aq.resolve(data, "/f", run=fake_run({aq.WHERE_FROMS: plist_hex(["https://example.org/a.pdf"])}, calls), platform_ok=True)
+    assert out["where_from"] == "https://example.org/a.pdf" and calls

@@ -28,7 +28,10 @@ def get_or_create_vault_file(cur, path):
     A file that cannot be read gets file_state 'missing' and no hash; this never raises for a bad path."""
     if not path:
         return None
-    file_id = get_or_create(cur, "vault_files", "path", path)
+    row = cur.execute("SELECT id, file_state FROM vault_files WHERE path = ?", (path,)).fetchone()
+    if row is not None and row[1] is not None:
+        return row[0]   # already recorded this build: a file is hashed and its attributes read once, not once per fact
+    file_id = row[0] if row is not None else get_or_create(cur, "vault_files", "path", path)
     fp = fixity_store.fingerprint(path)
     # #46: a vault file has no data record, so its custodial history comes from the macOS file attributes
     # alone (a no-op elsewhere); acquisition_store.resolve marks anything it fills in acquired_note.

@@ -323,3 +323,80 @@ def test_audit_sources_cli_exit_codes_and_json(tmp_path):
     r = env.cli("audit-sources", "--json")
     out = json.loads(r.stdout)
     assert r.returncode == 1 and out["changed_sources"][0]["reason"] == "changed" and "no_baseline" in out
+
+
+# ------------------------------------------------------------------ the work done, not just the result
+
+def test_the_moved_file_search_is_skipped_when_a_known_vault_file_already_has_the_hash(tmp_path, monkeypatch):
+    con = make_db()
+    old = write(tmp_path / "a.md", b"one")
+    add_fact(con, 1, old, sha(b"one"))
+    os.rename(old, str(tmp_path / "c.md"))
+    con.execute("INSERT INTO vault_files (path) VALUES (?)", (str(tmp_path / "c.md"),))
+    monkeypatch.setattr(fixity_store, "_index_roots", lambda *a, **k: pytest.fail("walked the vault for nothing"))
+    (row,) = fixity_store.audit_sources(con, search_roots=[str(tmp_path)])
+    assert row["reason"] == "moved" and row["moved_to"] == str(tmp_path / "c.md")
+
+
+def test_the_moved_file_search_stops_at_the_last_wanted_hash(tmp_path, monkeypatch):
+    con = make_db()
+    old = write(tmp_path / "gone.md", b"target")
+    add_fact(con, 1, old, sha(b"target"))
+    os.remove(old)
+    for i in range(30):                       # "a00.md" .. "a29.md" sort before "z.md"; the target sits in "b.md"
+        write(tmp_path / "vault" / f"a{i:02d}.md", f"other {i}".encode())
+    write(tmp_path / "vault" / "b.md", b"target")
+    for i in range(30):
+        write(tmp_path / "vault" / f"c{i:02d}.md", f"after {i}".encode())
+    hashed = []
+    real = fixity_store.sha256_of
+    monkeypatch.setattr(fixity_store, "sha256_of", lambda p: hashed.append(p) or real(p))
+    (row,) = fixity_store.audit_sources(con, search_roots=[str(tmp_path / "vault")])
+    assert (row["reason"], row["moved_to"]) == ("moved", str(tmp_path / "vault" / "b.md"))
+    after = [p for p in hashed if os.path.basename(p).startswith("c")]
+    assert not after, f"kept hashing after the target was found: {len(after)} files"
+    assert len(hashed) <= 32            # 30 files before the target + the target + the failed lookup of the missing file
+
+
+def test_the_moved_file_search_does_not_reread_files_it_already_hashed(tmp_path, monkeypatch):
+    con = make_db()
+    gone = write(tmp_path / "gone.md", b"target")
+    add_fact(con, 1, gone, sha(b"target"))
+    os.remove(gone)
+    known = write(tmp_path / "known.md", b"not the target")
+    con.execute("INSERT INTO vault_files (path) VALUES (?)", (known,))
+    write(tmp_path / "vault" / "other.md", b"also not")
+    hashed = []
+    real = fixity_store.sha256_of
+    monkeypatch.setattr(fixity_store, "sha256_of", lambda p: hashed.append(p) or real(p))
+    (row,) = fixity_store.audit_sources(con, search_roots=[str(tmp_path)])
+    assert row["reason"] == "missing"
+    assert hashed.count(known) == 1, "hashed once for the known-path lookup, never again by the walk"
+
+
+def test_a_vault_file_cited_by_many_facts_is_hashed_and_read_for_attributes_once(tmp_path, monkeypatch):
+    import acquisition_store
+    from ingest import shared
+    note = write(tmp_path / "n.md", b"note body")
+    con = sqlite3.connect(":memory:")
+    con.executescript(open(os.path.join(REPO, "schema.sql")).read())
+    cur = con.cursor()
+    fingerprints, attr_reads = [], []
+    real_fp, real_resolve = fixity_store.fingerprint, acquisition_store.resolve
+    monkeypatch.setattr(fixity_store, "fingerprint", lambda p: fingerprints.append(p) or real_fp(p))
+    monkeypatch.setattr(acquisition_store, "resolve", lambda d, p, **k: attr_reads.append(p) or real_resolve(d, p, **k))
+    ids = {shared.get_or_create_vault_file(cur, note) for _ in range(5)}
+    assert len(ids) == 1 and fingerprints == [note] and attr_reads == [note]
+    row = con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()
+    assert tuple(row) == (sha(b"note body"), "present")
+
+
+def test_a_vault_file_row_created_without_a_fingerprint_is_still_filled_in(tmp_path):
+    from ingest import shared
+    note = write(tmp_path / "n.md", b"body")
+    con = sqlite3.connect(":memory:")
+    con.executescript(open(os.path.join(REPO, "schema.sql")).read())
+    cur = con.cursor()
+    cur.execute("INSERT INTO vault_files (path) VALUES (?)", (note,))
+    shared.get_or_create_vault_file(cur, note)
+    assert tuple(con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()) == (sha(b"body"), "present")

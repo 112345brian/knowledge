@@ -151,7 +151,10 @@ def resolve(data, path, run=None, platform_ok=None):
     see normalize_data) wins field by field; the file attributes fill the gaps and are marked in acquired_note.
     With no data and no attributes everything stays None."""
     out = dict(data)
-    attrs = read_attributes(path, run=run, platform_ok=platform_ok)
+    # The attributes only fill gaps: when the data already has both fields there is nothing to read (and no
+    # xattr subprocess to start).
+    attrs = (read_attributes(path, run=run, platform_ok=platform_ok)
+             if any(out.get(k) is None for k in ("where_from", "acquired_at")) else {})
     used = [k for k in ("where_from", "acquired_at") if out.get(k) is None and attrs.get(k)]
     for k in used:
         out[k] = attrs[k]
