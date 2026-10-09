@@ -87,8 +87,34 @@ def derive_markers(full_path):
             add("vault path", p)
         for (p,) in full.execute("SELECT origin_path FROM sources"):
             add("source origin_path", p)
+        for (a, b) in full.execute("SELECT code_commit, private_commit FROM build_info"):      # #47
+            add("code commit", a)
+            add("private commit", b)
+        for (k,) in full.execute("SELECT input_key FROM build_inputs"):
+            add("build input key", k)
+        for (n,) in full.execute("SELECT status_note FROM sources"):      # #41: a notice URL may be private; never copied
+            add("source status note", n)
+        for (u,) in full.execute("SELECT where_from FROM sources UNION SELECT where_from FROM vault_files"):   # #46: download URLs reveal interests
+            add("where_from URL", u)
+        # #38 fixity: hashes identify private files and must never reach the normal DB.
+        for (h,) in full.execute("SELECT content_sha256 FROM vault_files UNION SELECT content_sha256 FROM sources "
+                                 "UNION SELECT extracted_from_sha256 FROM facts"):
+            add("file hash", h)
         for (n,) in full.execute("SELECT name FROM subjects WHERE private = 1"):
             add("private subject name", n)
+        # #43: a private subject's description and aliases are as private as its name
+        # #42: a private entity's name, aliases, notes and id are as private as the facts that mention it
+        for (n, norm, key, ext, notes) in full.execute("SELECT canonical_name, name_norm, entity_key, external_id, notes FROM entities WHERE private = 1"):
+            for label, value in (("private entity name", n), ("private entity name (normalized)", norm), ("private entity key", key),
+                                 ("private entity external id", ext), ("private entity notes", notes)):
+                add(label, value)
+        for (a, an) in full.execute("SELECT a.alias, a.alias_norm FROM entity_aliases a JOIN entities e ON e.id = a.entity_id WHERE e.private = 1"):
+            add("private entity alias", a)
+            add("private entity alias (normalized)", an)
+        for (d,) in full.execute("SELECT description FROM subjects WHERE private = 1"):
+            add("private subject description", d)
+        for (a,) in full.execute("SELECT a.alias FROM subject_aliases a JOIN subjects s ON s.id = a.subject_id WHERE s.private = 1"):
+            add("private subject alias", a)
         return markers
     finally:
         full.close()
@@ -105,7 +131,18 @@ MARKERS = {
     "rules-file name in untagged subject": "Marnoq Fothergill",
     "private fact source quote": "quenchwhistle verbatim private quote",
     "private subject name": "zephyr-family-matters",
+    "private entity name": "Quillon Fernsby",
+    "private entity alias": "Q-Fern-Alias",
+    "private entity notes": "fernsby-secret-notes about a relative",
+    "private subject description": "quillfeather-secret-description of the family topic",
+    "private subject alias": "zephyr-secret-alias",
+    "where_from URL": "https://private.example/ws-download-9921/secret-topic.pdf",
+    "code commit": "9d1c0ffee5badc0de1234567890abcdef1234567",
+    "private commit": "7a3b0ffee5badc0de1234567890abcdef7654321",
+    "build input key": "input:scrobbles-json-zq7",
+    "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
+    "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
     "claim text": "Therefore Grumbleton should change his life",
     "private fact notes": "plover-notes-private-scribble",
     "private source origin path": "Vault/sources/zinnia-private-origin.md",
@@ -130,7 +167,17 @@ def build_fixture(directory):
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (3, ?, 'life', NULL, 1)", (M["private subject name"],))
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (4, 'underchild', 'life', 3, 1)")
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (5, 'untagged-topic', 'health', NULL, 0)")
-    ex("INSERT INTO vault_files (id, path) VALUES (1, ?)", (M["vault path"],))
+    ex("UPDATE subjects SET description = ? WHERE id = 3", (M["private subject description"],))
+    ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (3, ?)", (M["private subject alias"],))
+    ex("UPDATE subjects SET description = 'Sleep habits and duration', parent_relation = 'part-of' WHERE id = 2")
+    ex("INSERT INTO subject_aliases (subject_id, alias) VALUES (2, 'rest')")
+    ex("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, notes) VALUES (1, 'quillon-fernsby', ?, ?, 'person', 1, ?)",
+       (M["private entity name"], M["private entity name"].casefold(), M["private entity notes"]))
+    ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (1, ?, ?)", (M["private entity alias"], M["private entity alias"].casefold()))
+    ex("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, external_id, notes) VALUES (2, 'acme-labs', 'Acme Labs', 'acme labs', 'organization', 0, 'wikidata:Q1', 'A public lab')")
+    ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, 'Acme', 'acme')")
+    ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state, where_from) VALUES (1, ?, ?, 10, 'present', ?)",
+       (M["vault path"], M["file hash"], M["where_from URL"]))
     ex("INSERT INTO publishers (id, name) VALUES (1, 'Journal of Fixtures')")
     ex("INSERT INTO publishers (id, name) VALUES (2, 'Private Press')")
     ex("INSERT INTO authors (id, name) VALUES (1, 'A. Public'), (2, 'P. Rivate')")
@@ -139,6 +186,13 @@ def build_fixture(directory):
     ex("INSERT INTO sources (id, citekey, name, source_type, publisher_id, origin_path) VALUES "
        "(2, 'priv2021', 'Only cited privately', 'primary', 2, 'x')")
     ex("INSERT INTO source_authors (source_id, author_id) VALUES (1, 1), (2, 2)")
+    ex("UPDATE sources SET status = 'corrected', status_date = '2025-03', status_note = ?, edition = '2nd edition' WHERE id = 1", (M["source status note"],))
+    ex("INSERT INTO build_info (id, built_at, schema_version, code_commit, private_commit, python_version) VALUES (1, '2026-10-08T00:00:00+00:00', 1, ?, ?, '3.13.5')",
+       (M["code commit"], M["private commit"]))
+    ex("INSERT INTO build_inputs (build_id, input_key, state, read_at) VALUES (1, ?, 'missing', '2026-10-08T00:00:00+00:00')", (M["build input key"],))
+    ex("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (1, 'replaces', 2)")
+    ex("UPDATE sources SET acquired_at = '2026-01-02T03:04:05+00:00', acquired_via = 'download', where_from = ?, "
+       "acquired_note = 'from macOS file attributes: where_from' WHERE id = 1", (M["where_from URL"],))
 
     def fact(fid, subject, statement, vis, key, notes=None, quote=None, origin=None, personal=1):
         ex("INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, visibility, source_key, notes, "
@@ -157,6 +211,12 @@ def build_fixture(directory):
     fact(5, 4, M["private-subject fact under normal-looking fact"], "normal", "k-floor-1")
     fact(6, 3, "Another private-subject fact about the family", "private", "k-priv-3")
     fact(7, 1, M["unicode private"], "private", "k-priv-4")
+    # #42: the private fact mentions the private entity; the normal fact mentions the public one
+    ex("INSERT INTO fact_entities (fact_id, entity_id) VALUES (3, 1)")
+    ex("INSERT INTO fact_entities (fact_id, entity_id) VALUES (1, 2)")
+    # #38: a normal fact and a normal-included source both carry the hash; neither column is copied
+    ex("UPDATE facts SET extracted_from_sha256 = ? WHERE id = 1", (M["file hash"],))
+    ex("UPDATE sources SET content_sha256 = ?, size_bytes = 10, file_state = 'present' WHERE id = 1", (M["file hash"],))
     # history: older revision private, current normal; and older normal, current private
     ex("INSERT INTO fact_revisions (fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, status, visibility) "
        "VALUES (1, 'k-normal-1', 2, '2026-02-01T00:00:00+00:00', 'cli', 'Creatine monohydrate is well studied for strength.', 'high', 'active', 'normal')")

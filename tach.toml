@@ -1,15 +1,28 @@
-# tach module boundaries for the flat-module `knowledge` repo (#36).
+# tach module boundaries for the flat-module `knowledge` repo (#36), laid out as a hexagon.
 #
-# Read the README "Architecture enforcement" section first. Summary:
+# Read the README "Architecture enforcement" section and docs/architecture.md first. Summary:
 #   * Every top-level module (and every numbered script) is one tach module.
 #   * `depends_on` is a deny-by-default ALLOWLIST: an import not listed here fails
 #     `uv run tach check`. That is how "`paths` is imported only by an allowlist" and
 #     "`private_git` is imported only by add_fact / review / knowledge" are enforced.
-#   * `layer` adds the direction rule on top: serving > cli > pipeline > library. A module may
-#     only import from its own or a lower layer, so a library can never import the CLI, the
-#     serving layer or the pipeline (the issue's "libraries never import up"). NOTE the order:
-#     "pipeline" sits ABOVE "library" because the ingest scripts and build.py consume the
-#     libraries (revisions, privacy, normal_db), never the reverse.
+#   * `layer` adds the direction rule on top. The layers are the hexagon, outermost first, and a module
+#     may only import from its own layer or a lower one:
+#
+#       serving    the HTTP review page (inbox)                       driving adapter
+#       cli        the Typer app (knowledge, cli_*)                   driving adapter
+#       pipeline   build.py, the numbered ETL scripts, backfill_*     driving adapter (batch)
+#       facade     add_fact, review, lifecycle, facts_batch,          composition roots: pick the adapters
+#                  migrate_memory                                     and bind a use case to them
+#       adapter    *_store, clock, ids, paths, private_git, ...       driven adapters (db, files, git, time)
+#       use_case   *_service                                          orchestrate the domain through ports
+#       domain     rules, `ports` (the protocols), vocabularies       pure: no I/O, imports nothing above it
+#
+#     `use_case` sits BELOW `adapter` on purpose: that makes "a use case never imports an adapter" a layer
+#     violation (the hexagon's central rule), while an adapter that called a use case would fall to the
+#     `depends_on` allowlist. The domain is the lowest layer, so it can import nothing but itself. What a
+#     layer cannot say (domain modules may not import `os`/`sqlite3`, the CLI may not import infrastructure)
+#     is in the import-linter contracts in pyproject.toml, and tests/test_architecture.py checks that every
+#     module's layer here agrees with its row in docs/architecture.md.
 #   * root_module = "forbid": a .py file that is not listed below is an error, so a new module
 #     cannot be added without choosing its layer and its allowed imports.
 #
@@ -25,7 +38,7 @@
 
 source_roots = ["."]
 exclude = ["tests", "docs", ".venv", "**/__pycache__"]
-layers = ["serving", "cli", "pipeline", "library"]
+layers = ["serving", "cli", "pipeline", "facade", "adapter", "use_case", "domain"]
 root_module = "forbid"
 # Without this, tach lets a higher layer import ANY lower layer without declaring it, which would
 # switch the allowlists off for the CLI, serving and pipeline (e.g. any script could import paths).
@@ -45,71 +58,77 @@ forbid_circular_dependencies = false
 
 [[modules]]
 path = "clock"
-layer = "library"
+layer = "adapter"
 depends_on = []
 
 [[modules]]
 path = "ports"  # DOMAIN: the port protocols the use cases depend on, and bind() (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "ids"          # ADAPTER: fresh identifiers (randomness)
-layer = "library"
+layer = "adapter"
 depends_on = []
 
 [[modules]]
 path = "script_runner"      # ADAPTER: starts this repo's standalone scripts (the only subprocess in the CLI path)
-layer = "library"
+layer = "adapter"
 depends_on = []
 
 [[modules]]
 path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = []
 
 [[modules]]
 path = "paths"          # the only module that knows personal paths
-layer = "library"
+layer = "adapter"
 depends_on = []
 
 [[modules]]
 path = "private_git"    # the only module that runs git against knowledge-private
-layer = "library"
+layer = "adapter"
 depends_on = []
 
 [[modules]]
 path = "privacy"        # DOMAIN: pure rules + resolver, no file/db/git access (import-linter "domain-has-no-infrastructure")
-layer = "library"
-depends_on = []
+layer = "domain"
+depends_on = [
+    "textmatch",
+]
 
 [[modules]]
 path = "privacy_store"  # ADAPTER for privacy: rules file (load/save) and the db (apply_rules_to_db)
-layer = "library"
+layer = "adapter"
 depends_on = [
     "paths",            # lazy import of PRIVATE_DATA_DIR, so the module imports without a private repo
     "privacy",
+    "entities",
 ]
 
 [[modules]]
 path = "new_fact"       # DOMAIN: NewFact, the validation rules and build_entry (pure; time and key passed in)
-layer = "library"
+layer = "domain"
 depends_on = [
     "fact_rules",
     "privacy",
     "timestamps",
+    "validtime",
 ]
 
 [[modules]]
 path = "add_fact_store" # ADAPTER for add_fact: the locked JSON array file, citekey and subject lookups
-layer = "library"
+layer = "adapter"
 depends_on = [
     "new_fact",
+    "fixity",
+    "subjects",
 ]
 
 [[modules]]
 path = "add_fact"       # FACADE + the `python3 add_fact.py` script: binds add_fact_service to the real adapters
-layer = "library"
+layer = "facade"
 depends_on = [
     "add_fact_service",
     "add_fact_store",
@@ -126,7 +145,7 @@ depends_on = [
 
 [[modules]]
 path = "add_fact_service"  # USE CASE: add one fact, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = [
     "new_fact",
     "privacy",
@@ -134,20 +153,21 @@ depends_on = [
 
 [[modules]]
 path = "fact_rules"     # DOMAIN: pure vocabulary (allowed values, key shapes) shared by add_fact and revisions
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "revisions"      # DOMAIN: entries, keys, freshness, log format, the next revision (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "fact_rules",
     "timestamps",
+    "validtime",
 ]
 
 [[modules]]
 path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and its lock, the clock, the db
-layer = "library"
+layer = "adapter"
 depends_on = [
     "add_fact_store",   # the inter-process file lock
     "clock",
@@ -157,24 +177,30 @@ depends_on = [
 
 [[modules]]
 path = "fact_queries"      # ADAPTER: the CLI's read-only queries on the built knowledge.db
-layer = "library"
+layer = "adapter"
 depends_on = [
     "add_fact_store",
     "new_fact",
     "paths",
     "revisions_store",
+    "build_info",
+    "entities",
+    "fixity",
+    "identifiers",
+    "source_status_store",
+    "validtime",
 ]
 
 [[modules]]
 path = "review_rules"   # DOMAIN: review result types and the pure decisions behind the queue
-layer = "library"
+layer = "domain"
 depends_on = [
     "privacy",
 ]
 
 [[modules]]
 path = "review_store"   # ADAPTER for review: pending rows, subject tree, current states
-layer = "library"
+layer = "adapter"
 depends_on = [
     "revisions",
     "revisions_store",
@@ -182,7 +208,7 @@ depends_on = [
 
 [[modules]]
 path = "review"         # FACADE (composition root): binds review_service to the real adapters
-layer = "library"
+layer = "facade"
 depends_on = [
     "ports",
     "privacy",
@@ -197,7 +223,7 @@ depends_on = [
 
 [[modules]]
 path = "review_service"  # USE CASE: review, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = [
     "privacy",
     "review_rules",
@@ -206,17 +232,17 @@ depends_on = [
 
 [[modules]]
 path = "timestamps"     # DOMAIN: pure revision-time parsing, shared by revisions (storage) and modes (policy)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "fact_rules",
     "revisions",
@@ -224,39 +250,41 @@ depends_on = [
 
 [[modules]]
 path = "source_ingest_rules"  # DOMAIN: citation-note parsing to a sources row, byline split (pure)
-layer = "library"
-depends_on = []
+layer = "domain"
+depends_on = [
+    "source_status",
+]
 
 [[modules]]
 path = "music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "seed_rules"         # DOMAIN: hand-authored claims and the subject tree (pure data)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "backfill_rules"     # DOMAIN: byte-preserving key insertion into JSON array text (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "revisions",
 ]
 
 [[modules]]
 path = "modes"          # DOMAIN: mode rules and write gating, pure (the SQL is in modes_store)
-layer = "library"
+layer = "domain"
 depends_on = [
     "privacy",
     "timestamps",
@@ -264,20 +292,23 @@ depends_on = [
 
 [[modules]]
 path = "modes_store"    # ADAPTER for modes: the only serving-side reader of facts
-layer = "library"
+layer = "adapter"
 depends_on = [
     "modes",
     "timestamps",
+    "entities",
+    "identifiers",
+    "validtime",
 ]
 
 [[modules]]
 path = "claims_audit"   # DOMAIN: the staleness rules, pure (no clock, no db)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "claims_store"   # ADAPTER for claims_audit: reads claims/facts and the clock
-layer = "library"
+layer = "adapter"
 depends_on = [
     "claims_audit",
     "clock",
@@ -285,14 +316,14 @@ depends_on = [
 
 [[modules]]
 path = "normal_rules"   # DOMAIN: the normal tier's table/column whitelist and which rows may enter (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "privacy",
 ]
 
 [[modules]]
 path = "normal_db"      # ADAPTER (and script): the SQL copy and the file swap for knowledge-normal.db
-layer = "library"
+layer = "adapter"
 depends_on = [
     "leak_test",        # lazy, to leak-check the DB it just built
     "normal_rules",
@@ -301,12 +332,12 @@ depends_on = [
 
 [[modules]]
 path = "leak_rules"     # DOMAIN: how a private marker is matched and which derived strings count (pure)
-layer = "library"
+layer = "domain"
 depends_on = []
 
 [[modules]]
 path = "leak_test"      # ADAPTER (and script): reads the db files, derives markers from the full DB
-layer = "library"
+layer = "adapter"
 depends_on = [
     "leak_rules",
     "normal_db",        # lazy, self_test() builds a fixture normal DB. The one documented
@@ -316,7 +347,7 @@ depends_on = [
 
 [[modules]]
 path = "lifecycle_rules" # DOMAIN: lifecycle result types and the supersede/retract/set-visibility/edit decisions (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "fact_rules",
     "privacy",
@@ -324,7 +355,7 @@ depends_on = [
 
 [[modules]]
 path = "lifecycle_store" # ADAPTER for lifecycle: rules file + subject tree for the privacy floor, entry subjects
-layer = "library"
+layer = "adapter"
 depends_on = [
     "privacy",
     "privacy_store",
@@ -333,7 +364,7 @@ depends_on = [
 
 [[modules]]
 path = "lifecycle"      # FACADE (composition root): binds lifecycle_service to the real adapters
-layer = "library"
+layer = "facade"
 depends_on = [
     "lifecycle_rules",
     "lifecycle_service",
@@ -348,7 +379,7 @@ depends_on = [
 
 [[modules]]
 path = "lifecycle_service"  # USE CASE: supersede/retract/set-visibility/edit, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = [
     "lifecycle_rules",
     "privacy",
@@ -358,14 +389,14 @@ depends_on = [
 
 [[modules]]
 path = "facts_batch_rules" # DOMAIN: batch result types, item parsing, the duplicate test (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "new_fact",
 ]
 
 [[modules]]
 path = "facts_batch"    # FACADE (composition root): binds facts_batch_service to the real adapters
-layer = "library"
+layer = "facade"
 depends_on = [
     "add_fact",
     "add_fact_store",
@@ -378,7 +409,7 @@ depends_on = [
 
 [[modules]]
 path = "facts_batch_service"  # USE CASE: batch add_facts, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = [
     "facts_batch_rules",
     "modes",
@@ -388,14 +419,14 @@ depends_on = [
 
 [[modules]]
 path = "migrate_memory_rules" # DOMAIN: memory-file parsing, the mapping to a NewFact, the per-file decision (pure)
-layer = "library"
+layer = "domain"
 depends_on = [
     "new_fact",
 ]
 
 [[modules]]
 path = "migrate_memory_store" # ADAPTER for migrate_memory: finds/reads the files, the run lock, existing source keys
-layer = "library"
+layer = "adapter"
 depends_on = [
     "migrate_memory_rules",
     "revisions",
@@ -404,7 +435,7 @@ depends_on = [
 
 [[modules]]
 path = "migrate_memory" # FACADE (composition root): binds migrate_memory_service to the real adapters
-layer = "library"
+layer = "facade"
 depends_on = [
     "add_fact",
     "clock",
@@ -417,10 +448,94 @@ depends_on = [
 
 [[modules]]
 path = "migrate_memory_service"  # USE CASE: migrate memory files, through ports only
-layer = "library"
+layer = "use_case"
 depends_on = [
     "migrate_memory_rules",
     "revisions",
+]
+
+[[modules]]
+path = "identifiers"   # #48 DOI / ISBN / ISSN / PMID / arXiv normalization and checksums (pure)
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "source_status"   # #41 source status vocabulary, relation checks, replacement chains (pure)
+layer = "domain"
+depends_on = [
+    "validtime",
+]
+
+[[modules]]
+path = "textmatch"   # #42 literal whole-word matching, shared by privacy keywords and entity aliases (pure)
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "validtime"   # #40 valid-time dates: parsing, ordering, containment (pure; also the SQL fragment)
+layer = "domain"
+depends_on = []
+
+[[modules]]
+path = "source_status_store"   # ADAPTER for source_status: the fact -> source audit SQL
+layer = "adapter"
+depends_on = [
+    "source_status",
+]
+
+[[modules]]
+path = "fixity"   # ADAPTER #38 file fingerprints (reads files) and the changed-since-extraction audit
+layer = "adapter"
+depends_on = []
+
+[[modules]]
+path = "build_info"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
+layer = "adapter"
+depends_on = [
+    "clock",
+    "fixity",
+    "private_git",
+]
+
+[[modules]]
+path = "acquisition"   # ADAPTER #46 custodial history: data first, macOS file attributes fill gaps (read-only xattr)
+layer = "adapter"
+depends_on = [
+    "validtime",
+]
+
+[[modules]]
+path = "private_edit"   # ADAPTER #43/#42 the shared load-edit-write-commit flow for hand-curated files in knowledge-private
+layer = "adapter"
+depends_on = [
+    "private_git",
+]
+
+[[modules]]
+path = "entities"   # ADAPTER #42 entities.json: validation, term matching, edits, linking
+layer = "adapter"
+depends_on = [
+    "paths",
+    "private_edit",
+    "textmatch",
+]
+
+[[modules]]
+path = "entity_tools"   # ADAPTER #42 keywords -> private entities (touches privacy_rules.json and entities.json together)
+layer = "adapter"
+depends_on = [
+    "entities",
+    "privacy",
+    "private_edit",
+    "privacy_store",
+]
+
+[[modules]]
+path = "subjects"   # ADAPTER #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
+layer = "adapter"
+depends_on = [
+    "paths",
+    "private_edit",
 ]
 
 # ===================================================================== CLI
@@ -449,6 +564,11 @@ depends_on = [
     "revisions_store",
     "rules_edit_service",
     "script_runner",
+    "cli_entities",
+    "cli_sources",
+    "cli_subjects",
+    "fact_rules",
+    "validtime",
 ]
 
 [[modules]]
@@ -462,12 +582,16 @@ depends_on = [
 [[modules]]
 path = "cli_migrate"
 layer = "cli"
-depends_on = ["migrate_memory"]
+depends_on = [
+    "migrate_memory",
+]
 
 [[modules]]
 path = "cli_facts_batch"
 layer = "cli"
-depends_on = ["facts_batch"]
+depends_on = [
+    "facts_batch",
+]
 
 # cli_inbox is the ONE documented exception to "the CLI never imports serving": the `inbox` command
 # has to START the server, so it imports `inbox` and calls inbox.serve (a launcher, nothing else).
@@ -483,6 +607,30 @@ path = "cli_inbox"
 layer = "cli"
 depends_on = [
     "lifecycle",        # `edit` -> lifecycle.edit_fact
+]
+
+[[modules]]
+path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
+layer = "cli"
+depends_on = [
+    "entities",
+    "entity_tools",
+    "knowledge",
+]
+
+[[modules]]
+path = "cli_sources"   # source ids (#48)
+layer = "cli"
+depends_on = [
+    "knowledge",
+]
+
+[[modules]]
+path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
+layer = "cli"
+depends_on = [
+    "knowledge",
+    "subjects",
 ]
 
 # ===================================================================== serving (highest)
@@ -514,94 +662,219 @@ depends_on = [
 [[modules]]
 path = "_shared"
 layer = "pipeline"
-depends_on = ["artist_rules", "fact_ingest_rules", "source_ingest_rules"]
+depends_on = [
+    "artist_rules",
+    "fact_ingest_rules",
+    "source_ingest_rules",
+    "acquisition",
+    "fixity",
+    "identifiers",
+]
 
 [[modules]]
 path = "snapshot_date"
 layer = "pipeline"
-depends_on = ["measurement_rules"]
+depends_on = [
+    "measurement_rules",
+]
 
 [[modules]]
 path = "build"
 layer = "pipeline"
-depends_on = ["build_rules", "normal_db", "paths", "privacy_store"]
+depends_on = [
+    "build_rules",
+    "normal_db",
+    "paths",
+    "privacy_store",
+    "build_info",
+]
 
 [[modules]]
 path = "backfill_source_keys"
 layer = "pipeline"
-depends_on = ["add_fact_store", "backfill_rules", "revisions", "revisions_store"]
+depends_on = [
+    "add_fact_store",
+    "backfill_rules",
+    "revisions",
+    "revisions_store",
+]
 
 [[modules]]
 path = "backfill_dates"
 layer = "pipeline"
-depends_on = ["add_fact_store", "backfill_rules", "backfill_source_keys", "revisions", "revisions_store", "snapshot_date"]
+depends_on = [
+    "add_fact_store",
+    "backfill_rules",
+    "backfill_source_keys",
+    "revisions",
+    "revisions_store",
+    "snapshot_date",
+]
 
 [[modules]]
 path = "clean_concerts_csv"
 layer = "pipeline"
-depends_on = ["music_ingest_rules", "paths"]
+depends_on = [
+    "music_ingest_rules",
+    "paths",
+]
 
 [[modules]]
 path = "export_music_taste"
 layer = "pipeline"
-depends_on = ["paths"]
+depends_on = [
+    "paths",
+]
 
 [[modules]]
 path = "01_seed_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "source_ingest_rules"]
+depends_on = [
+    "_shared",
+    "paths",
+    "source_ingest_rules",
+    "acquisition",
+    "source_status",
+]
 
 [[modules]]
 path = "02_ingest_literature_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "source_ingest_rules"]
+depends_on = [
+    "_shared",
+    "paths",
+    "source_ingest_rules",
+    "acquisition",
+    "fixity",
+]
 
 [[modules]]
 path = "03_ingest_measurements"
 layer = "pipeline"
-depends_on = ["measurement_rules", "paths", "snapshot_date"]
+depends_on = [
+    "measurement_rules",
+    "paths",
+    "snapshot_date",
+]
 
 [[modules]]
 path = "04_ingest_facts"
 layer = "pipeline"
-depends_on = ["_shared", "fact_ingest_rules", "paths", "privacy", "privacy_store", "revisions", "revisions_store"]
+depends_on = [
+    "_shared",
+    "fact_ingest_rules",
+    "paths",
+    "privacy",
+    "privacy_store",
+    "revisions",
+    "revisions_store",
+    "fixity",
+]
 
 [[modules]]
 path = "05_seed_claims"
 layer = "pipeline"
-depends_on = ["seed_rules"]
+depends_on = [
+    "seed_rules",
+    "claims_audit",
+]
 
 [[modules]]
 path = "06_seed_subject_hierarchy"
 layer = "pipeline"
-depends_on = ["seed_rules"]
+depends_on = [
+    "seed_rules",
+    "subjects",
+]
 
 [[modules]]
 path = "07_ingest_concerts"
 layer = "pipeline"
-depends_on = ["_shared", "music_ingest_rules", "paths"]
+depends_on = [
+    "_shared",
+    "music_ingest_rules",
+    "paths",
+]
 
 [[modules]]
 path = "08_ingest_music_ratings"
 layer = "pipeline"
-depends_on = ["_shared", "music_ingest_rules", "paths"]
+depends_on = [
+    "_shared",
+    "music_ingest_rules",
+    "paths",
+]
 
 [[modules]]
 path = "09_ingest_scrobbles"
 layer = "pipeline"
-depends_on = ["_shared", "music_ingest_rules", "paths"]
+depends_on = [
+    "_shared",
+    "music_ingest_rules",
+    "paths",
+]
 
 [[modules]]
 path = "10_seed_artist_members"
 layer = "pipeline"
-depends_on = ["_shared"]
+depends_on = [
+    "_shared",
+]
 
 [[modules]]
 path = "11_seed_general_facts"
 layer = "pipeline"
-depends_on = ["fact_ingest_rules", "paths", "privacy", "privacy_store", "revisions", "revisions_store"]
+depends_on = [
+    "fact_ingest_rules",
+    "paths",
+    "privacy",
+    "privacy_store",
+    "revisions",
+    "revisions_store",
+    "_shared",
+    "fixity",
+]
 
 [[modules]]
 path = "12_apply_fact_revisions"
 layer = "pipeline"
-depends_on = ["paths", "privacy", "revisions", "privacy_store", "revisions_store"]
+depends_on = [
+    "paths",
+    "privacy",
+    "revisions",
+    "privacy_store",
+    "revisions_store",
+]
+
+[[modules]]
+path = "backfill_extracted_hashes"
+layer = "pipeline"
+depends_on = [
+    "backfill_source_keys",
+    "fixity",
+    "revisions",
+    "revisions_store",
+]
+
+[[modules]]
+path = "export_subjects"
+layer = "pipeline"
+depends_on = [
+    "subjects",
+]
+
+[[modules]]
+path = "13_link_entities"
+layer = "pipeline"
+depends_on = [
+    "entities",
+    "paths",
+]
+
+[[modules]]
+path = "14_link_source_relations"
+layer = "pipeline"
+depends_on = [
+    "source_status",
+]
+

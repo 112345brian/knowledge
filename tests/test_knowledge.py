@@ -136,7 +136,7 @@ def test_search_leading_dash_is_a_cli_option_and_fts_column_filter(env):
 
 def test_show_full(env):
     assert ok(env.cli("show", "1")) == (
-        "Fact #1  [protein]  trust=high  personal=False  visibility=private  status=active\n"
+        "Fact #1  [protein]  trust=high  personal=False  visibility=private  status=active  kind=unclassified\n"
         "\nProtein intake of 1.6 g/kg maximizes hypertrophy\n\n"
         "Trust rationale: meta-analysis\n"
         "Notes: see review\n"
@@ -150,11 +150,11 @@ def test_show_full(env):
 
 def test_show_minimal_and_partial_recheck(env):
     assert ok(env.cli("show", "2")) == (
-        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=private  status=active\n"
+        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=private  status=active  kind=unclassified\n"
         "\nCreatine monohydrate is effective\n\n"
     )
     assert ok(env.cli("show", "3")) == (
-        "Fact #3  [protein]  trust=low  personal=True  visibility=private  status=active\n"
+        "Fact #3  [protein]  trust=low  personal=True  visibility=private  status=active  kind=unclassified\n"
         "\nI feel best on 2 g/kg protein\n\n"
         "Trust rationale: self report\n"
         "Recheck by: 2027-02-02\n"
@@ -278,7 +278,7 @@ def test_functions_return_dicts_and_never_print_or_exit(lib, capsys):
     con = lib.connect()
     hits = lib.search_facts(con, "protein", personal=False)
     assert {h["id"] for h in hits} == {1}
-    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "statement"}
+    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "applies_to", "statement"}
     assert [r["id"] for r in lib.list_facts(con, status="active", personal=True)] == [3]
     assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]  # active only (#6)
     assert [r["id"] for r in lib.list_facts(con, status="superseded")] == [4]
@@ -311,7 +311,7 @@ def test_json_flag_on_every_read_command(env):
     import json
     hits = json.loads(ok(env.cli("search", "protein", "--not-personal", "--json")))
     assert {h["id"] for h in hits} == {1}
-    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "statement"}
+    assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "applies_to", "statement"}
     assert json.loads(ok(env.cli("search", "zzzznothing", "--json"))) == []
     assert [r["id"] for r in json.loads(ok(env.cli("facts", "--status", "active", "--json")))] == [1, 2, 3]
     assert json.loads(ok(env.cli("facts", "--subject", "nope", "--json"))) == []
@@ -349,7 +349,7 @@ def test_show_prints_visibility_source_key_and_provenance(env):
     con.commit()
     con.close()
     assert ok(env.cli("show", "2")) == (
-        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=normal  status=active\n"
+        "Fact #2  [nutrition]  trust=verified  personal=False  visibility=normal  status=active  kind=unclassified\n"
         "\nCreatine monohydrate is effective\n\n"
         "Source key: f-abc123def456\n"
         "Captured: via=mcp  session=sess-9  at=2026-09-30T10:00:00+00:00\n"

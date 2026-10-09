@@ -215,7 +215,7 @@ def privacy_floor_note(current, changes, subject, rules):
     merged = {**current, **changes}
     res = privacy.resolve_visibility(subject, merged["statement"], current["visibility"], rules,
                                      extra_text=(merged.get("notes"), merged.get("trust_rationale"),
-                                                 merged.get("recheck_rationale")))
+                                                 merged.get("recheck_rationale"), merged.get("applies_to")))
     if res.visibility == "private" and current["visibility"] != "private":
         return {**changes, "visibility": "private"}, f"visibility raised to private: {res.explain()}"
     return changes, None

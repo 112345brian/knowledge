@@ -21,14 +21,16 @@ def _today(today):
 def audit_claims(db, today=None):
     """Return a list of dicts, ordered by claim_id then fact_id, one per (claim, stale premise):
     claim_id, claim_statement, inference_type, fact_id, fact_statement, reason, recheck_by,
-    superseded_by_fact_id, trust_rationale, notes. `db` is an open sqlite3 connection."""
+    superseded_by_fact_id, trust_rationale, notes, plus role (grounds | backing | rebuttal), severity
+    ("weakens" for grounds/backing, "info" for a rebuttal, whose reason is prefixed "rebuttal_") and the link's
+    note (why the fact is cited). `db` is an open sqlite3 connection."""
     today = _today(today)
     old_factory, db.row_factory = db.row_factory, sqlite3.Row
     try:
         rows = db.execute(
             """SELECT c.id AS claim_id, c.statement AS claim_statement, c.inference_type,
                       f.id AS fact_id, f.statement AS fact_statement, f.status, f.recheck_by,
-                      f.superseded_by_fact_id, f.trust_rationale, f.notes
+                      f.superseded_by_fact_id, f.trust_rationale, f.notes, cf.role, cf.note AS link_note
                FROM claims c JOIN claim_facts cf ON cf.claim_id = c.id JOIN facts f ON f.id = cf.fact_id
                ORDER BY c.id, f.id""").fetchall()
     finally:

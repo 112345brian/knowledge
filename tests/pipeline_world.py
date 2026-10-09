@@ -66,7 +66,7 @@ authors:
 year: {year}
 journal: {journal}
 url: https://example.org/{key}
-doi: 10.1/{key}
+doi: 10.1000/{key}
 pmid: 123{n}
 source-type: {stype}
 domain: {domain}
@@ -165,7 +165,8 @@ def build_world(root):
            json.dumps({"source_key": "g-3", "revision": 2, "changed_at": "2026-09-13T00:00:00+00:00", "changed_via": "cli",
                        "session_id": None, "change_reason": "approve", "statement": "Normal one.", "trust_level": "medium",
                        "trust_rationale": None, "status": "active", "visibility": "normal", "superseded_by": None,
-                       "recheck_by": "2027-01-01", "recheck_rationale": None, "freshness": "recheck", "notes": None}) + "\n")
+                       "recheck_by": "2027-01-01", "recheck_rationale": None, "freshness": "recheck", "kind": "unclassified",
+                       "valid_from": None, "valid_to": None, "applies_to": None, "notes": None}) + "\n")
 
     # --- music
     with open(concerts, "w", encoding="utf-8-sig", newline="") as f:
@@ -208,7 +209,9 @@ for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type =
     if name.endswith(('_data', '_idx', '_docsize', '_config', '_content')) or name.startswith('sqlite_'):
         continue
     cols = [r[1] for r in con.execute(f'PRAGMA table_info("{name}")')]
-    rows = [["<TS>" if isinstance(v, str) and TS.match(v) else v for v in r] for r in con.execute(f'SELECT * FROM "{name}"')]
+    # file_mtime is the real mtime of a file the test just wrote, so it differs on every run
+    rows = [["<TS>" if isinstance(v, str) and TS.match(v) else ("<MTIME>" if cols[i] == "file_mtime" and v is not None else v)
+             for i, v in enumerate(r)] for r in con.execute(f'SELECT * FROM "{name}"')]
     rows.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
     dump[name] = {"columns": cols, "rows": rows}
 print("@@DUMP@@" + json.dumps(dump, sort_keys=True, default=str))

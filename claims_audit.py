@@ -10,6 +10,12 @@ month, YYYY the end of that year). recheck_by is free text elsewhere ("next pane
 and text that is not an ISO date is never flagged: it is returned by `claims_store.unparseable_rechecks()` so the
 caller can surface it instead of silently skipping it.
 
+Premises have a role (#44): `grounds` (the default; every claim_facts row that existed before the column) and
+`backing` weaken the claim when stale, so they keep the reasons above and severity "weakens". A stale
+`rebuttal` (counter-evidence) only strengthens the claim, so it is reported with a distinct reason
+(`rebuttal_superseded`, `rebuttal_retracted`, `rebuttal_past_recheck_by`) and severity "info"; callers that
+decide an exit status or a warning must look at `severity`, not just count rows (a test scans for it).
+
 `claims_store.audit_claims()` never writes. A claim with no facts, or whose facts are all active and current, yields
 no rows. A fact cited by several claims yields one row per claim.
 """
@@ -18,6 +24,9 @@ import re
 from datetime import date
 
 REASONS = ("superseded", "retracted", "past_recheck_by")
+ROLES = ("grounds", "backing", "rebuttal")  # keep in sync with the CHECK on claim_facts.role
+SEVERITIES = ("weakens", "info")
+REBUTTAL_REASONS = tuple("rebuttal_" + r for r in REASONS)
 _ISO = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?(?:[T ].*)?$")
 
 
@@ -50,11 +59,16 @@ def stale_reason(status, recheck_by, today):
 
 
 def finding(row, reason):
-    """The audit row for one (claim, stale premise). `row` has the audit query's columns."""
+    """The audit row for one (claim, stale premise). `row` has the audit query's columns, including the premise's
+    role (grounds | backing | rebuttal) and the link's note. A rebuttal only strengthens the claim when stale, so it
+    gets a "rebuttal_" reason and severity "info"; any other role is "weakens"."""
+    rebuttal = row["role"] == "rebuttal"
     return {
+        "role": row["role"], "severity": "info" if rebuttal else "weakens", "link_note": row["link_note"],
         "claim_id": row["claim_id"], "claim_statement": row["claim_statement"],
         "inference_type": row["inference_type"], "fact_id": row["fact_id"],
-        "fact_statement": row["fact_statement"], "reason": reason, "recheck_by": row["recheck_by"],
+        "fact_statement": row["fact_statement"], "reason": ("rebuttal_" + reason) if rebuttal else reason,
+        "recheck_by": row["recheck_by"],
         "superseded_by_fact_id": row["superseded_by_fact_id"],
         "trust_rationale": row["trust_rationale"], "notes": row["notes"]}
 

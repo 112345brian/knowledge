@@ -27,7 +27,9 @@ def build_entry(ports, fact, visibility=None):
     """The JSON entry 11_seed_general_facts.py expects (see new_fact.build_entry). `visibility` is the
     resolved value from privacy.resolve_visibility (append_fact passes it); left None it falls back
     to the caller's request."""
-    return new_fact.build_entry(fact, visibility, ports.ids.new_source_key(), ports.clock.now_iso())
+    origin = fact.origin_path.strip() if fact.origin_path and fact.origin_path.strip() else None
+    return new_fact.build_entry(fact, visibility, ports.ids.new_source_key(), ports.clock.now_iso(),
+                                origin_sha256=ports.facts_file.file_sha256(origin) if origin else None)
 
 
 def resolve_privacy(ports, fact, data_path, db_path):
@@ -42,7 +44,17 @@ def resolve_privacy(ports, fact, data_path, db_path):
     return privacy.resolve_visibility(fact.subject, fact.statement, fact.visibility,
                                       rules.with_context(parents=parents, known_subjects=known),
                                       extra_text=(fact.notes, fact.trust_rationale, fact.recheck_rationale,
-                                                  fact.source_quote, fact.source_locator))
+                                                  fact.source_quote, fact.source_locator, fact.applies_to))
+
+
+def canonicalize_subject(ports, fact, data_path):
+    """#43: file the fact under its canonical subject. An alias is rewritten in place (`fact.subject`) and
+    reported in the returned notes; a deprecated subject is refused with the replacement named. With no
+    subjects.json beside the data file nothing changes. Returns (notes, error_or_None); never raises."""
+    canon, notes, error = ports.facts_file.canonical_subject(data_path, fact.subject)
+    if error is None:
+        fact.subject = canon
+    return notes, error
 
 
 def append_fact(ports, fact, data_path=None, db_path=None):
@@ -53,6 +65,10 @@ def append_fact(ports, fact, data_path=None, db_path=None):
     errors, notes = validate_fact(ports, fact, db_path)
     if errors:
         return AddResult(ok=False, errors=errors, notes=notes)
+    subject_notes, subject_error = canonicalize_subject(ports, fact, data_path)
+    notes = notes + subject_notes
+    if subject_error:
+        return AddResult(ok=False, errors=[subject_error], notes=notes)
     try:
         resolution = resolve_privacy(ports, fact, data_path, db_path)
     except (privacy.PrivacyRulesError, DataFileError) as e:

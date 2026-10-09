@@ -104,6 +104,13 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
         if not errors:
             fact = facts_batch_rules.build_fact(fields, requested_default, captured_via, session_id, status)
             errors, notes = ports.add_fact.validate_fact(fact, db_path)
+            if not errors:
+                subject_notes, subject_error = ports.add_fact.canonicalize_subject(fact, data_path)
+                notes = notes + subject_notes
+                if subject_error:
+                    errors = [subject_error]
+                else:
+                    item.subject = fact.subject
             result.notes.extend(n for n in notes if n not in result.notes)
         item.errors = errors
         facts.append(fact if not errors else None)

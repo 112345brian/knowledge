@@ -10,6 +10,8 @@ import stat
 import tempfile
 import uuid
 
+import fixity
+import subjects
 from new_fact import DataFileError
 
 
@@ -157,3 +159,23 @@ def file_subjects(data_path):
 def data_dir_of(data_path):
     """The directory a facts file lives in (relative paths resolve against the current directory)."""
     return os.path.dirname(os.path.abspath(data_path))
+
+
+def file_sha256(path):
+    """The SHA-256 of the file a fact was extracted from (#38), or None when it is unreadable."""
+    return fixity.fingerprint(path)["content_sha256"] or None
+
+
+def canonical_subject(data_path, subject):
+    """(canonical subject, notes, error) for a new fact's subject against subjects.json beside the facts file
+    (#43). An alias is replaced by its canonical name and noted; a deprecated subject is an error naming the
+    replacement. With no subjects.json the subject is unchanged. Never raises."""
+    path = os.path.join(data_dir_of(data_path), subjects.SUBJECTS_FILENAME)
+    try:
+        entries = subjects.read_file(path)
+    except subjects.SubjectsError as e:
+        return subject, [], str(e)
+    if not entries:
+        return subject, [], None
+    canon, notes, error = subjects.check_new_fact(subject, entries)
+    return (subject if error else canon), notes, error

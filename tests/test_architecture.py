@@ -54,6 +54,9 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
+HEXAGON_LAYERS = ("facade", "adapter", "use_case", "domain")  # the library side of tach.toml, outermost first
+
+
 def test_numbered_scripts_are_listed_and_modelled_by_tach():
     on_disk = sorted(s for s in ac.top_level_stems(REPO) if not s.isidentifier())
     assert on_disk == sorted(ac.NUMBERED_SCRIPTS_EXCLUDED), (
@@ -80,12 +83,12 @@ def test_every_module_is_classified_in_both_configs():
 
 @pytest.mark.parametrize("enable", [False, True], ids=["live", "with-planned"])
 def test_configs_agree_on_what_a_library_is(enable):
-    """The library list is written in three places (tach layer=library, the two import-linter
-    contracts); they must not drift apart."""
+    """The library list is written in three places (every tach layer below `pipeline`: facade, adapter, use_case
+    and domain; and the two import-linter contracts); they must not drift apart."""
     t, p = _read(TACH_TOML), _read(PYPROJECT)
     if enable:
         t, p = ac.enable_planned(t), ac.enable_planned(p)
-    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] == "library"}
+    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in HEXAGON_LAYERS}
     c = _il_contracts(p)
     up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]}
     assert up == tach_libs
@@ -122,6 +125,7 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
 BASELINE_CODE = {
     "private_git": "import subprocess\n",
     "script_runner": "import subprocess\n",
+    "acquisition": "import subprocess\n",   # #46: the read-only macOS `xattr` reader
     # THE one CLI -> serving exception (launcher), exactly as written in the real cli_inbox.py.
     "cli_inbox": "import inbox  # tach-ignore inbox\n",
 }
@@ -306,8 +310,8 @@ CASES = [
      [("tach", ["revisions", "review"]), ("import-linter", ["form a DAG", "kn.revisions", "kn.review"])]),
     ("library-cycle-lazy", "private_git", "def f():\n    import add_fact",
      [("tach", ["private_git", "add_fact"]), ("import-linter", ["kn.private_git", "kn.add_fact"])]),
-    ("independent-siblings-import-each-other", "privacy", "import private_git",
-     [("tach", ["privacy", "private_git"]), ("import-linter", ["kn.privacy", "kn.private_git"])]),
+    ("independent-siblings-import-each-other", "clock", "import paths",
+     [("tach", ["clock", "paths"]), ("import-linter", ["kn.clock", "kn.paths"])]),
     ("lib-typechecking-import-of-cli", "modes", "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import knowledge",
      [("import-linter", ["kn.modes", "kn.knowledge"])]),
     ("numbered-script-imports-cli", "01_seed_sources", "import knowledge",
@@ -521,7 +525,10 @@ def test_exception_lists_are_exactly_the_documented_ones():
     ignores = {cid: c.get("ignore_imports", []) for cid, c in contracts.items() if c.get("ignore_imports")}
     assert ignores == {
         "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
-        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.script_runner -> subprocess"],
+        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.script_runner -> subprocess", "kn.acquisition -> subprocess"],
+        # the #42/#43 commands still edit entities.json / subjects.json through the mixed modules (see pyproject.toml)
+        "driving-adapters-no-infrastructure": ["kn.cli_entities -> kn.entities", "kn.cli_entities -> kn.entity_tools",
+                                               "kn.cli_subjects -> kn.subjects"],
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
     assert "ignore_imports" not in contracts["domain-has-no-infrastructure"]
@@ -585,6 +592,27 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}
     assert {r for r in roles.values() if not r.startswith("facade")} <= allowed
+
+
+def test_tach_layers_are_the_hexagon():
+    """tach.toml's layers are the hexagon, outermost first, and each module sits in the layer its role in
+    docs/architecture.md names. `use_case` is below `adapter`, so a use case importing an adapter is a layer
+    violation, not just a missing allowlist entry."""
+    cfg = _read(TACH_TOML)
+    layers = re.search(r"^layers = \[(.*?)\]", cfg, re.M).group(1)
+    assert [x.strip().strip('"') for x in layers.split(",")] == [
+        "serving", "cli", "pipeline", "facade", "adapter", "use_case", "domain"]
+    expected = {"domain": "domain", "use case": "use_case", "driven adapter": "adapter",
+                "ETL adapter (driving, batch)": "pipeline"}
+    tach = _tach_modules(cfg)
+    for name, role in _architecture_roles().items():
+        layer = tach[name]["layer"]
+        if role.startswith("facade"):
+            assert layer == "facade", f"{name} is a facade but tach has it in {layer}"
+        elif role == "driving adapter":
+            assert layer in ("cli", "serving"), f"{name} is a driving adapter but tach has it in {layer}"
+        else:
+            assert layer == expected[role], f"{name} is a {role} but tach has it in {layer}"
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():

@@ -96,7 +96,8 @@ def test_the_vocabulary_is_gone_and_the_schema_comment_states_the_caveats_plainl
 
 
 def test_no_trace_of_the_old_volatility_scale_in_the_repo():
-    banned = ("volatil", "'unclassified'", "stable vs", "static vs")
+    # ('unclassified' used to be banned here as the old volatility value; #39 reuses the word as a fact kind.)
+    banned = ("volatil", "stable vs", "static vs")
     offenders = []
     for root, dirs, files in os.walk(REPO):
         dirs[:] = [d for d in dirs if d not in (".git", ".venv", "__pycache__", ".pytest_cache", ".claude", ".tach", "node_modules")]

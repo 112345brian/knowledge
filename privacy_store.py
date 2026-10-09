@@ -10,7 +10,9 @@ import json
 import os
 import stat
 import uuid
+from dataclasses import replace
 
+import entities as entities_lib
 from privacy import PrivacyRulesError, Rules, RULES_FILENAME, VERSION, parse_rules, resolve_visibility, subject_chain
 
 
@@ -29,12 +31,24 @@ def load_rules(path=None):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return Rules()
+        return _with_entities(Rules(), path)
     except json.JSONDecodeError as e:
         raise PrivacyRulesError(f"{path} is not valid JSON ({e}); left untouched") from e
     except (OSError, UnicodeDecodeError) as e:
         raise PrivacyRulesError(f"could not read {path}: {e}") from e
-    return parse_rules(data, source=path)
+    return _with_entities(parse_rules(data, source=path), path)
+
+
+def _with_entities(rules, rules_file):
+    """`rules` plus the private entities from entities.json beside the rules file (#42). An absent file
+    adds none; a corrupt one raises, so a broken entity list fails closed instead of silently matching nothing."""
+    try:
+        found = entities_lib.read_file(os.path.join(os.path.dirname(os.path.abspath(rules_file)), entities_lib.ENTITIES_FILENAME))
+    except entities_lib.EntitiesError as e:
+        raise PrivacyRulesError(str(e)) from None
+    if not found:
+        return rules
+    return replace(rules, entities=entities_lib.private_terms(found))
 
 
 def save_rules(rules, path):
@@ -84,7 +98,7 @@ def apply_rules_to_db(con, rules):
     raised = []
     rows = con.execute(
         """SELECT f.id, s.name, f.statement, f.visibility, f.notes, f.trust_rationale, f.recheck_rationale,
-                  f.source_quote,
+                  f.source_quote, f.applies_to,
                   (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
                    FROM fact_sources fs WHERE fs.fact_id = f.id)
            FROM facts f JOIN subjects s ON s.id = f.subject_id""").fetchall()

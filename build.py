@@ -47,6 +47,13 @@ class BuildError(Exception):
         self.cause = cause
 
 
+def record_build_info(con):
+    """#47: which inputs and code produced this db (build_info / build_inputs)."""
+    import build_info, paths
+    build_info.record(con, paths, HERE, paths.PRIVATE_DATA_DIR)
+    con.commit()
+
+
 def build(target_path):
     if os.path.exists(target_path):
         os.remove(target_path)
@@ -64,6 +71,10 @@ def build(target_path):
                 mod.run(con)
             except Exception as e:
                 raise BuildError(step, e) from e
+        try:
+            record_build_info(con)
+        except Exception as e:
+            raise BuildError("build_info", e) from e
         con.execute("VACUUM;")
         con.execute("ANALYZE;")
     finally:

@@ -84,7 +84,7 @@ def test_subjects_count_active_facts_by_default(env):
 
 def test_show_by_explicit_id_displays_any_status(env):
     out = ok(env.cli("show", "6"))
-    assert out.splitlines()[0] == "Fact #6  [protein]  trust=low  personal=False  visibility=private  status=pending"
+    assert out.splitlines()[0] == "Fact #6  [protein]  trust=low  personal=False  visibility=private  status=pending  kind=unclassified"
     assert json.loads(ok(env.cli("show", "7", "--json")))["status"] == "pending"
     assert "status=superseded" in ok(env.cli("show", "4"))
     assert "status=retracted" in ok(env.cli("show", "5"))

@@ -60,6 +60,21 @@ def ensure_clean_tree(repo_dir):
             f"Commit or discard them first (or pass --allow-dirty for a deliberate batch edit):\n{shown}{more}")
 
 
+def describe_repo(directory):
+    """{'commit': full sha or None, 'dirty': bool or None} for the git repo containing `directory`; both None when
+    it is not in a repo, has no commit, or git is missing. Read-only (rev-parse, status); never raises."""
+    try:
+        repo = find_repo(directory)
+        if repo is None:
+            return {"commit": None, "dirty": None}
+        head = _git(repo, "rev-parse", "HEAD")
+        status = _git(repo, "status", "--porcelain", "--untracked-files=all")
+        commit = head.stdout.strip() if head.returncode == 0 and head.stdout.strip() else None
+        return {"commit": commit, "dirty": bool(status.stdout.strip()) if status.returncode == 0 else None}
+    except PrivateGitError:
+        return {"commit": None, "dirty": None}
+
+
 def is_detached(repo_dir):
     """True when HEAD is detached: commits made there are easy to lose, so callers may warn."""
     return _git(repo_dir, "symbolic-ref", "-q", "HEAD").returncode != 0

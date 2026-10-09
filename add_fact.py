@@ -35,7 +35,7 @@ import new_fact  # noqa: F401  (add_fact.new_fact)
 import privacy  # noqa: F401  (kept importable as add_fact.privacy)
 import privacy_store
 from add_fact_store import append_record, append_records  # noqa: F401  (re-exported: facts_batch, tests)
-from fact_rules import FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE  # noqa: F401  (re-exported: callers use add_fact.VALID_TRUST etc.)
+from fact_rules import FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE  # noqa: F401  (re-exported: callers use add_fact.VALID_TRUST etc.)
 from new_fact import (AddResult, DATE_RE, DataFileError, NewFact, SUBJECT_RE, VALID_NEW_STATUS)  # noqa: F401  (re-exported)
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from ports import Ports, bind
@@ -70,6 +70,11 @@ def parse_args(argv):
     p.add_argument("--no-decay", action="store_true", dest="no_decay",
                    help="Assert this fact does not decay (a birthdate, a completed purchase); requires --recheck-rationale "
                         "and excludes --recheck-by. It does NOT justify --trust verified.")
+    p.add_argument("--kind", default="unclassified", choices=KIND_VALUES,
+                   help="What kind of assertion this is (default: unclassified). Self-reported guidance.")
+    p.add_argument("--valid-from", dest="valid_from", help="When the fact became true: YYYY, YYYY-MM or YYYY-MM-DD (#40). Omit if unknown.")
+    p.add_argument("--valid-to", dest="valid_to", help="When it stopped being true (same formats; same value as --valid-from for a point in time). Omit if still true as far as known.")
+    p.add_argument("--applies-to", dest="applies_to", help="Who or what the fact applies to (a population or condition the source states, e.g. 'adult men'); never guess one (#45).")
     p.add_argument("--visibility", default="private", help="private (default) or normal. Only 'normal' facts may leave the local machine; when unsure, leave it private.")
     p.add_argument("--trust-rationale")
     p.add_argument("--notes")
@@ -77,6 +82,7 @@ def parse_args(argv):
     p.add_argument("--recheck-rationale", help="Why this recheck date; with --no-decay, why the fact does not decay (required).")
     p.add_argument("--source-citekey", help="Must already exist in the `sources` table.")
     p.add_argument("--source-locator")
+    p.add_argument("--origin-path", help="The file this fact was extracted from; its SHA-256 is recorded as the fixity baseline (#38) when the file is readable.")
     p.add_argument("--source-quote", help="The words that justified the fact (with --captured-via, no --source-citekey is needed).")
     p.add_argument("--captured-via", help="Where the fact came from: cli, mcp, migrate-memory, ... With 'mcp', --session-id and --source-quote are required.")
     p.add_argument("--session-id", help="The conversation/session the fact was captured in.")
@@ -88,6 +94,7 @@ def parse_args(argv):
 validate_fact = bind(add_fact_service.validate_fact, PORTS)
 build_entry = bind(add_fact_service.build_entry, PORTS)
 resolve_privacy = bind(add_fact_service.resolve_privacy, PORTS)
+canonicalize_subject = bind(add_fact_service.canonicalize_subject, PORTS)
 append_fact = bind(add_fact_service.append_fact, PORTS)
 
 
@@ -95,10 +102,10 @@ def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     fact = NewFact(
         statement=args.statement, subject=args.subject, trust_level=args.trust_level, no_decay=args.no_decay, domain=args.domain,
-        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility,
+        is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility, kind=args.kind, valid_from=args.valid_from, valid_to=args.valid_to, applies_to=args.applies_to,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
-        source_locator=args.source_locator, source_quote=args.source_quote,
+        source_locator=args.source_locator, source_quote=args.source_quote, origin_path=args.origin_path,
         captured_via=args.captured_via, session_id=args.session_id,
     )
     # Git safety net (#10): only when the data file lives in a git repo (a non-git data dir,

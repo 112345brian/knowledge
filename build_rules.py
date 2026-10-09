@@ -20,10 +20,12 @@ STEPS = [
     "10_seed_artist_members.py",
     "11_seed_general_facts.py",
     "12_apply_fact_revisions.py",
+    "13_link_entities.py",
+    "14_link_source_relations.py",
 ]
 
 REPORT_TABLES = ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                 "vault_files", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
+                 "vault_files", "source_identifiers", "build_info", "build_inputs", "source_relations", "entities", "entity_aliases", "fact_entities", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
                  "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                  "muscles", "muscle_volume_weekly",
                  "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",

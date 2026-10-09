@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import privacy  # noqa: F401  (the AddResult.privacy annotation)
-from fact_rules import SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
+import validtime
+from fact_rules import KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
 from timestamps import has_offset
 
 # A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
@@ -35,6 +36,12 @@ class NewFact:
     is_original_claim: bool = False
     is_personal: bool = True
     visibility: str = "private"
+    kind: str = "unclassified"   # #39, one of KIND_VALUES
+    # Valid time (#40): when the fact was true. YYYY / YYYY-MM / YYYY-MM-DD or None; see validtime.py.
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    # Applicability (#45): short free text, only what a source or the user stated. Blank counts as absent.
+    applies_to: Optional[str] = None
     trust_rationale: Optional[str] = None
     notes: Optional[str] = None
     recheck_by: Optional[str] = None
@@ -42,6 +49,9 @@ class NewFact:
     source_citekey: Optional[str] = None
     source_locator: Optional[str] = None
     source_quote: Optional[str] = None
+    # The file the fact was extracted from (#38). Its SHA-256 is written to the entry as
+    # `extracted_from_sha256` when the file is readable; an unreadable file records no hash.
+    origin_path: Optional[str] = None
     # Provenance. All optional except that captured_via="mcp" requires session_id and source_quote.
     # captured_at is stamped from the clock when captured_via is set and it is left None.
     captured_via: Optional[str] = None
@@ -75,6 +85,11 @@ def check_fact(fact):
     errors = []
     if fact.trust_level not in VALID_TRUST:
         errors.append(f"trust_level {fact.trust_level!r} must be one of {sorted(VALID_TRUST)}")
+    if not isinstance(fact.kind, str) or fact.kind not in KIND_VALUES:
+        errors.append(f"kind {fact.kind!r} must be one of {list(KIND_VALUES)}")
+    errors.extend(validtime.problems(fact.valid_from, fact.valid_to))
+    if fact.applies_to is not None and not isinstance(fact.applies_to, str):
+        errors.append("applies_to must be text")
     if not isinstance(fact.visibility, str) or fact.visibility not in VALID_VISIBILITY:
         errors.append(f"visibility {fact.visibility!r} must be one of {sorted(VALID_VISIBILITY)}")
     if not isinstance(fact.status, str) or fact.status not in VALID_NEW_STATUS:
@@ -120,10 +135,11 @@ def check_fact(fact):
     return errors
 
 
-def build_entry(fact, visibility, source_key, now_iso):
+def build_entry(fact, visibility, source_key, now_iso, origin_sha256=None):
     """The JSON entry 11_seed_general_facts.py expects. Key order is part of the file format.
     `visibility` is the resolved value from privacy.resolve_visibility (None = the caller's request);
-    `source_key` is the fresh identity (used unless the fact carries one) and `now_iso` the time."""
+    `source_key` is the fresh identity (used unless the fact carries one), `now_iso` the time and
+    `origin_sha256` the hash of `fact.origin_path` when the adapter could read it (#38)."""
     entry = {
         "source_key": fact.source_key or source_key,
         "subject": fact.subject,
@@ -135,7 +151,11 @@ def build_entry(fact, visibility, source_key, now_iso):
         "visibility": fact.visibility if visibility is None else visibility,
         "status": fact.status,
         "freshness": "no-decay" if fact.no_decay else "recheck",
+        "kind": fact.kind,
     }
+    for key in ("valid_from", "valid_to"):
+        if getattr(fact, key) is not None:
+            entry[key] = getattr(fact, key)
     if fact.domain != "general":
         entry["domain"] = fact.domain
     for key in ("trust_rationale", "notes", "recheck_by", "recheck_rationale",
@@ -145,6 +165,12 @@ def build_entry(fact, visibility, source_key, now_iso):
             continue  # blank counts as absent (a no_decay fact may carry a blank one)
         if value:
             entry[key] = value
+    if isinstance(fact.applies_to, str) and fact.applies_to.strip():
+        entry["applies_to"] = fact.applies_to.strip()
+    if fact.origin_path and fact.origin_path.strip():
+        entry["origin_path"] = fact.origin_path.strip()
+        if origin_sha256:
+            entry["extracted_from_sha256"] = origin_sha256
     if fact.captured_via:
         entry["captured_via"] = fact.captured_via
         if fact.session_id:

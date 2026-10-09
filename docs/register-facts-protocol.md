@@ -20,10 +20,15 @@ CLI `knowledge.py add-facts`, MCP tool `add_facts` from #2).
 
 ## Rules the protocol depends on
 
+- **`applies_to` is copied, never inferred.** When the user or a cited source states who or what a
+  fact holds for ("in adult men", "for type 2 diabetes"), put those words in `applies_to`. If nothing
+  was stated, leave it out (unknown); do not write "general" unless the source says the fact is general.
 - **Dates stay as stated.** "Next week" and "March 14" are stored as those words. The tool never
   resolves a date, and Claude must not either (the #14 spike saw it invent `2026-10-09`).
-- **Claude picks only the subject.** Trust level, visibility and everything else are not Claude's
-  decision. `make 2 private` is the only way a fact is made more private by hand; the stored
+- **Claude picks the subject and the kind.** The kind (#39: observation, measurement, decision,
+  preference, plan, definition, inference, rule, lesson, or `unclassified` when unsure) is
+  self-reported guidance, shown on each line so the user can change it. Trust level, visibility and
+  everything else are not Claude's decision. `make 2 private` is the only way a fact is made more private by hand; the stored
   visibility is always the most restrictive of the request, the subject tag and the keyword list
   (#31), and a new subject is private until it exists (fail closed).
 - **Never ask permission mid-conversation.** Nothing is saved until the user has seen the numbered
@@ -61,9 +66,9 @@ KEY RULE: save facts only through `register facts`. Never save, and never ask wh
 
 When the user says "register facts" (or accepts your offer at the end of a long chat):
 1. Scan the conversation for durable facts the user stated about themselves, their plans or their world. Skip questions, hypotheticals and anything you said.
-2. Show a numbered list. Each line: the statement in the user's own words, the subject (lowercase-kebab), its freshness (a recheck_by date: ask the user when, never invent one; or, only if it truly never changes like a birthdate, no_decay true plus a recheck_rationale saying why), and the visibility with the rule, taken from a dry run. Do not guess the visibility.
+2. Show a numbered list. Each line: the statement in the user's own words, the subject (lowercase-kebab), its applies_to (only when the user or a source stated a population or condition; never infer one), its kind (observation, measurement, decision, preference, plan, definition, inference, rule or lesson; unsure means unclassified), its freshness (a recheck_by date: ask the user when, never invent one; or, only if it truly never changes like a birthdate, no_decay true plus a recheck_rationale saying why), and the visibility with the rule, taken from a dry run. Do not guess the visibility.
 3. Wait. The user replies "yes", "drop 3", "make 2 private" or "change 4 to ...". Apply it and re-list if anything changed. Do not write yet.
-4. Call add_facts ONCE with the final list. Every item needs a recheck_by, or no_decay true with a recheck_rationale. Do not set visibility or trust unless the user asked ("make 2 private" sets visibility private).
+4. Call add_facts ONCE with the final list. Every item needs a recheck_by, or no_decay true with a recheck_rationale, and a kind. Do not set visibility or trust unless the user asked ("make 2 private" sets visibility private).
 
 Keep dates and numbers exactly as stated ("next week" stays "next week"; never write a date you worked out). A coffee preference is an ordinary fact: list it. The tool decides privacy, not you.
 

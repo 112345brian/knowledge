@@ -7,9 +7,15 @@ import pathlib
 import sqlite3
 
 import add_fact_store
+import build_info
+import entities
+import fixity
+import identifiers
 import revisions_store
+import source_status_store
+import validtime
 from new_fact import DataFileError
-from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
+from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
 FACTS_FILE = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
@@ -65,16 +71,32 @@ def _visible_statuses(include_pending):
     return ("active", "pending") if include_pending else ("active",)
 
 
-def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False):
+def _filters(sql, params, subject=None, trust=None, status=None, personal=None, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Append the shared fact filters. `personal` is True / False / None (no filter).
     An explicit `status` wins and `include_pending` is then ignored; without one only
     active facts (and pending ones when `include_pending`) match."""
-    if subject:
-        sql += " AND sub.name = ?"
-        params.append(subject)
+    if subject:  # a subject's alias (#43) selects the same facts as its name
+        sql += " AND (sub.name = ? OR sub.id IN (SELECT subject_id FROM subject_aliases WHERE alias = ?))"
+        params.extend([subject, subject])
     if trust:
         sql += " AND f.trust_level = ?"
         params.append(trust)
+    if kind:
+        sql += " AND f.kind = ?"
+        params.append(kind)
+    if identifier is not None:
+        clause, extra = identifiers.filter_clause(identifier)
+        sql += clause
+        params.extend(extra)
+    if entity is not None:
+        clause, extra = entities.filter_clause(entity)
+        sql += clause
+        params.extend(extra)
+    if valid_at is not None:
+        if not validtime.is_valid_date(valid_at):
+            raise ValueError(f"valid_at {valid_at!r} must be a real date, YYYY-MM-DD")
+        sql += " AND " + validtime.sql_valid_at()
+        params.extend([valid_at, valid_at])
     if status:
         sql += " AND f.status = ?"
         params.append(status)
@@ -89,10 +111,10 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
     return sql
 
 
-def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False):
+def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -100,19 +122,19 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
     """
     params = [terms]
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity, identifier=identifier)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False):
+def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.statement
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,
-                   include_pending=include_pending)
+                   include_pending=include_pending, kind=kind, valid_at=valid_at, entity=entity, identifier=identifier)
     sql += " ORDER BY f.id LIMIT ?"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -168,3 +190,21 @@ def fact_as_of(con, fact_id, as_of):
 
 
 QueryError = sqlite3.OperationalError  # raised for FTS syntax errors and for a db built with an older schema
+
+
+def audit_sources(con):
+    """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
+    return fixity.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity.unbaselined_facts(con)
+
+
+def audit_source_status(con):
+    """(facts citing a retracted / doubtful / superseded source, sources superseded with no replacement) (#41)."""
+    return source_status_store.audit_source_status(con), source_status_store.superseded_without_replacement(con)
+
+
+def latest_build_info(con):
+    """The latest build row and its input manifest (#47), or None; see build_info.latest."""
+    return build_info.latest(con)
+
+
+compare_build_info = build_info.compare

@@ -106,6 +106,9 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     retracted by another process between the check and the write is never silently re-activated."""
     data_dir = default_data_dir() if data_dir is None else data_dir
     revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
+    changes, bad = revisions.normalize_changes(changes)
+    if bad:
+        return RevisionResult(False, [bad])
     errors = revisions.check_request(changes, reason, via, session_id, expect)
     if errors:
         return RevisionResult(False, errors)

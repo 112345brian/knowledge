@@ -161,7 +161,8 @@ def _full(tmp_path, populate=None):
 def test_no_normal_facts_gives_an_empty_but_valid_db(tmp_path):
     full = _full(tmp_path, lambda c: c.execute("UPDATE facts SET visibility = 'private'"))
     path, counts = normal_db.build_normal_atomic(full, str(tmp_path), rules())
-    assert set(counts.values()) == {0} and set(counts) == set(normal_db.TABLES)
+    assert set(counts) == set(normal_db.TABLES)
+    assert {t: n for t, n in counts.items() if n} == {"build_info": 1}        # #47: the build stamp is not a fact
     assert q(path, "SELECT * FROM v_subjects") == []
     assert q(path, "PRAGMA integrity_check") == [("ok",)]
 

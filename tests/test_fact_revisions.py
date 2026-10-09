@@ -406,7 +406,7 @@ def rec(key="k1", revision=2, at=T2, **kw):
     r = {"source_key": key, "revision": revision, "changed_at": at, "changed_via": "cli", "session_id": None,
          "change_reason": "r", "statement": "Original statement.", "trust_level": "low", "trust_rationale": None,
          "status": "active", "visibility": "private", "superseded_by": None, "recheck_by": None,
-         "recheck_rationale": "no decay", "freshness": "no-decay", "notes": None}
+         "recheck_rationale": "no decay", "freshness": "no-decay", "kind": "unclassified", "valid_from": None, "valid_to": None, "applies_to": None, "notes": None}
     r.update(kw)
     return r
 

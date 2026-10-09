@@ -32,7 +32,8 @@ NUMBERED_SCRIPTS_EXCLUDED = (
     "01_seed_sources", "02_ingest_literature_sources", "03_ingest_measurements",
     "04_ingest_facts", "05_seed_claims", "06_seed_subject_hierarchy", "07_ingest_concerts",
     "08_ingest_music_ratings", "09_ingest_scrobbles", "10_seed_artist_members",
-    "11_seed_general_facts", "12_apply_fact_revisions",
+    "11_seed_general_facts", "12_apply_fact_revisions", "13_link_entities",
+    "14_link_source_relations",
 )
 NUMBERED_REASON = ("not importable names (they start with a digit); build.py loads them with "
                    "importlib. tach checks them by file path instead.")

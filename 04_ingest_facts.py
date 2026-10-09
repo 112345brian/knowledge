@@ -11,8 +11,9 @@ Run after 01/02/03 (needs sources + subjects + measurements to exist).
 import sqlite3, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shared import get_or_create_vault_file
 import fact_ingest_rules
+import fixity
+from _shared import get_or_create_vault_file
 import revisions
 import revisions_store
 from paths import BODYBUILDING_VAULT as VAULT, PRIVATE_DATA_DIR as DATA_DIR
@@ -79,6 +80,9 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric)
 
+        baseline = item.get("extracted_from_sha256")
+        if baseline is not None and not fixity.valid_sha256(baseline):
+            raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
         date_added = fact_ingest_rules.require_date_added(item, *item["_where"])
         # #7: the entry's own freshness, or for a legacy entry (original files, no provenance)
         # 'recheck' if it has a recheck_by, else 'unreviewed' plus the "predates this field" note.
@@ -87,12 +91,13 @@ def run(con):
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
-                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
+                                   extracted_from_sha256, kind, valid_from, valid_to, applies_to)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, eff.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["freshness"])
+             status, key, eff["freshness"], baseline, revisions.entry_kind(item), *revisions.entry_validity(item), revisions.entry_applies_to(item))
         )
         fact_id = cur.lastrowid
         revisions_store.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, item["_where"][0]))

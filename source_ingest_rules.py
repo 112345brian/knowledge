@@ -6,6 +6,8 @@ read the notes and the JSON and write the rows; they call these.
 """
 import re
 
+import source_status
+
 TYPE_MAP = {
     "peer-reviewed-study": "primary", "primary": "primary", "primary-research": "primary",
     "case-report": "primary", "case-series": "primary", "conference-abstract": "primary",
@@ -111,8 +113,21 @@ def note_to_source_row(base, text, vault):
         desc_parts.append(f'quoted: "{quote}"')
     description = " | ".join(desc_parts)
 
+    where = f"{base}: source {citekey!r}"
+    status_fields = source_status.normalize_fields({
+        "status": fm.get("source-status"), "status_date": fm.get("source-status-date"), "status_note": fm.get("source-status-note"),
+        "edition": fm.get("edition"), "original_published_date": fm.get("original-published-date"),
+    }, where)
+    relations = [(citekey, rel, target) for rel in ("replaces", "is-version-of")
+                 for target in source_status.as_list(fm.get(rel))]
+
     return dict(
-        citekey=citekey, name=name, source_type=stype, author=author_str,
+        citekey=citekey, relations=relations, **status_fields,
+        # raw inputs for the adapter: identifiers are checked there, the custodial fields are resolved against the file
+        raw_identifiers={k: fm.get(k) for k in ("doi", "pmid", "pmcid", "isbn", "issn", "arxiv")},
+        raw_acquired={"acquired_at": fm.get("acquired-at"), "acquired_via": fm.get("acquired-via"),
+                      "where_from": fm.get("where-from"), "acquired_note": fm.get("acquired-note")},
+        where=where, name=name, source_type=stype, author=author_str,
         publisher=journal, url=url, published_date=year, description=description,
         origin_path=f"{vault}/sources/{base}",
     )

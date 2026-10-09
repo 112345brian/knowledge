@@ -4,7 +4,8 @@ fact is; this module computes it, and a caller's request can only raise it.
     stored visibility = the most restrictive of
       1. what the caller asked for ('private' or 'normal'),
       2. the tag on the fact's subject, or on any ancestor (subjects form a tree via parent_id),
-      3. a keyword/name list matched on WHOLE words, case-insensitively.
+      3. a keyword/name list matched on WHOLE words, case-insensitively,
+      4. a private entity (entities.json, #42) whose name or alias appears as a whole word.
     An unknown subject is private (fail closed).
 
 This is word matching plus subject tags. It is NOT semantic detection: nicknames, pronouns and
@@ -29,11 +30,11 @@ applying rules to a db live in the adapter `privacy_store`. The edit helpers (ta
 untag_subject, add_keyword, remove_keyword) return new rules and never write; the CLI saves them
 through privacy_store and wraps that with private_git (#10).
 """
-import functools
 import re
-import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import Dict, FrozenSet, List, Optional, Tuple
+
+import textmatch
 
 RULES_FILENAME = "privacy_rules.json"
 VERSION = 1
@@ -51,6 +52,9 @@ class PrivacyRulesError(Exception):
 class Rules:
     subject_tags: Dict[str, str] = field(default_factory=dict)
     keywords: Tuple[str, ...] = ()
+    # Private entities (#42), read from entities.json next to the rules file: ((canonical_name, terms), ...).
+    # Not part of the rules file itself; save_rules never writes them.
+    entities: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     # Context a caller attaches for resolution (not stored in the rules file):
     parents: Dict[str, Optional[str]] = field(default_factory=dict)  # subject name -> parent name
     known_subjects: Optional[FrozenSet[str]] = None  # None = do not enforce the unknown-subject rule
@@ -63,7 +67,7 @@ class Rules:
 
 @dataclass(frozen=True)
 class Reason:
-    kind: str    # 'requested' | 'subject-tag' | 'keyword' | 'unknown-subject' | 'cycle'
+    kind: str    # 'requested' | 'subject-tag' | 'keyword' | 'entity' | 'unknown-subject' | 'cycle'
     detail: str
     forces_private: bool
 
@@ -92,16 +96,10 @@ class Resolution:
 
 
 def _normalize_keyword(raw):
-    if not isinstance(raw, str):
-        raise PrivacyRulesError(f"keyword {raw!r} must be a string")
-    kw = " ".join(unicodedata.normalize("NFC", raw).split()).casefold()
-    if not kw:
-        raise PrivacyRulesError("keyword is empty or blank")
-    if any(unicodedata.category(c) in ("Cc", "Cf") for c in kw):
-        raise PrivacyRulesError(f"keyword {raw!r} contains control characters")
-    if not re.search(r"\w", kw):
-        raise PrivacyRulesError(f"keyword {raw!r} has no letters or digits, so it can never match a whole word")
-    return kw
+    try:
+        return textmatch.normalize_term(raw)
+    except ValueError as e:
+        raise PrivacyRulesError(f"keyword {e}") from None
 
 
 def _validate_subject(name):
@@ -171,21 +169,9 @@ def remove_keyword(rules, keyword):
 
 # ----------------------------------------------------------------- the resolver
 
-@functools.lru_cache(maxsize=512)
-def _keyword_re(kw):
-    # Whole word: not preceded/followed by a letter, digit or underscore. Punctuation, hyphens and
-    # apostrophes are boundaries ("mom's", "Mom,", "mary-jane" all hit "mom"/"mary"). The keyword is
-    # escaped, so regex metacharacters in a rule are literal; spaces match any whitespace run.
-    body = r"\s+".join(re.escape(part) for part in kw.split(" "))
-    return re.compile(r"(?<!\w)" + body + r"(?!\w)", re.IGNORECASE)
-
-
 def match_keywords(statement, keywords):
-    """The listed keywords found as whole words in `statement`, in list order."""
-    if not statement:
-        return []
-    text = unicodedata.normalize("NFC", statement)
-    return [k for k in keywords if _keyword_re(k).search(text)]
+    """The listed keywords found as whole words in `statement`, in list order (textmatch.find_terms)."""
+    return textmatch.find_terms(statement, keywords)
 
 
 def subject_chain(subject, rules):
@@ -243,6 +229,14 @@ def resolve_visibility(subject, statement, requested, rules, extra_text=None) ->
             if kw not in in_statement:
                 reasons.append(Reason("keyword", f"another field of the fact (notes, rationale, quote or citation) "
                                                  f"contains the listed word {kw!r}", True))
+
+    other_text = "\n".join(t for t in (extra_text or ()) if isinstance(t, str) and t)
+    for name, name_terms in rules.entities:
+        if textmatch.find_terms(statement if isinstance(statement, str) else "", name_terms):
+            reasons.append(Reason("entity", f"the statement mentions the private entity {name!r}", True))
+        elif textmatch.find_terms(other_text, name_terms):
+            reasons.append(Reason("entity", f"another field of the fact (notes, rationale, quote or citation) "
+                                            f"mentions the private entity {name!r}", True))
 
     visibility = "private" if any(r.forces_private for r in reasons) else "normal"
     return Resolution(visibility, tuple(reasons))

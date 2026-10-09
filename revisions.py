@@ -27,13 +27,14 @@ import json
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from fact_rules import FRESHNESS_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
+import validtime
+from fact_rules import FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
 from timestamps import has_offset, parse_as_of, parse_timestamp  # noqa: F401  (re-exported: callers use revisions.parse_timestamp)
 
 REVISIONS_FILENAME = "fact_revisions.jsonl"
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
-                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "notes")
+                  "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "valid_from", "valid_to", "applies_to", "notes")
 META_FIELDS = ("source_key", "revision", "changed_at", "changed_via", "session_id", "change_reason")
 REVISION_KEYS = META_FIELDS + MUTABLE_FIELDS  # on-disk key order is part of the format
 # (file, the date backfill_dates.py writes onto entries that have no date_added). The build no
@@ -138,12 +139,54 @@ def effective_entry(entry, file=None):
     return entry
 
 
+def entry_kind(entry):
+    """The entry's `kind` (#39); an entry without the key (every legacy entry) is 'unclassified'.
+    Raises RevisionError for a present-but-invalid value (null and blank included): never a silent default."""
+    if "kind" not in entry:
+        return "unclassified"
+    kind = entry["kind"]
+    if not isinstance(kind, str) or kind not in KIND_VALUES:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: kind {kind!r} must be one of {list(KIND_VALUES)}")
+    return kind
+
+
+def entry_validity(entry):
+    """(valid_from, valid_to) of an entry (#40); absent keys are None. Raises RevisionError for a value that
+    is not a real YYYY / YYYY-MM / YYYY-MM-DD, or a valid_to before the valid_from (null and blank included)."""
+    vf, vt = entry.get("valid_from"), entry.get("valid_to")
+    bad = validtime.problems(vf, vt)
+    if bad:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: " + "; ".join(bad))
+    return vf, vt
+
+
+def clean_applies_to(value):
+    """Normalize an applicability value (#45): None and blank/whitespace-only text become None, other text
+    is stripped. Raises ValueError for a non-string."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"applies_to must be text, not {type(value).__name__}")
+    return value.strip() or None
+
+
+def entry_applies_to(entry):
+    """The entry's applies_to, normalized; RevisionError for a non-string."""
+    try:
+        return clean_applies_to(entry.get("applies_to"))
+    except ValueError as e:
+        raise RevisionError(f"fact {(entry.get('statement') or '')[:60]!r}: {e}") from None
+
+
 def entry_snapshot(entry):
     """The mutable fields of a JSON entry: what revision 1 says."""
     snap = {f: entry.get(f) for f in MUTABLE_FIELDS}
     snap["statement"] = (entry.get("statement") or "").strip()
     snap["status"] = entry.get("status") or "active"
     snap["visibility"] = entry.get("visibility") or "private"
+    snap["kind"] = entry_kind(entry)
+    snap["valid_from"], snap["valid_to"] = entry_validity(entry)
+    snap["applies_to"] = entry_applies_to(entry)
     return snap
 
 
@@ -200,6 +243,11 @@ def validate_record_shape(rec):
         errs.append(f"superseded_by {rec['superseded_by']!r} must be null or a source_key")
     if rec["superseded_by"] is not None and rec["superseded_by"] == rec["source_key"]:
         errs.append("superseded_by points at the fact itself")
+    errs.extend(validtime.problems(rec["valid_from"], rec["valid_to"]))
+    if rec["applies_to"] is not None and not (isinstance(rec["applies_to"], str) and rec["applies_to"].strip()):
+        errs.append("applies_to must be null or non-blank text (blank is normalized to null before it is written)")
+    if rec["kind"] not in KIND_VALUES:
+        errs.append(f"kind {rec['kind']!r} must be one of {list(KIND_VALUES)}")
     for k in ("trust_rationale", "recheck_by", "recheck_rationale", "freshness", "notes"):
         if rec[k] is not None and not isinstance(rec[k], str):
             errs.append(f"{k} must be null or a string")
@@ -302,6 +350,17 @@ def log_line(rev):
 
 
 # --------------------------------------------------------------------------- next revision
+
+def normalize_changes(changes):
+    """`changes` with a blank/whitespace `applies_to` turned into None (#45), or (None, error) for a non-string.
+    Returns (changes, error_or_None); anything that is not a dict passes through for check_request to refuse."""
+    if isinstance(changes, dict) and "applies_to" in changes:
+        try:
+            return {**changes, "applies_to": clean_applies_to(changes["applies_to"])}, None
+        except ValueError as e:
+            return changes, str(e)
+    return changes, None
+
 
 def check_request(changes, reason, via, session_id, expect):
     """Problems with the arguments of an append, before anything is read (a list, empty when fine)."""
