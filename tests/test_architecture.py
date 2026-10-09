@@ -122,6 +122,7 @@ def test_planned_entries_are_uncommented_once_the_module_exists():
 BASELINE_CODE = {
     "private_git": "import subprocess\n",
     "knowledge": "import subprocess\n",
+    "acquisition": "import subprocess\n",   # #46: the read-only macOS `xattr` reader
     # THE one CLI -> serving exception (launcher), exactly as written in the real cli_inbox.py.
     "cli_inbox": "import inbox  # tach-ignore inbox\n",
 }
@@ -350,7 +351,7 @@ def test_exception_lists_are_exactly_the_documented_ones():
     ignores = {cid: c.get("ignore_imports", []) for cid, c in contracts.items() if c.get("ignore_imports")}
     assert ignores == {
         "cli-never-imports-serving": ["kn.cli_inbox -> kn.inbox"],
-        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess"],
+        "subprocess-allowlist": ["kn.private_git -> subprocess", "kn.knowledge -> subprocess", "kn.acquisition -> subprocess"],
         "libraries-layered": ["kn.leak_test -> kn.normal_db"],
     }, ignores
     assert "ignore_imports" not in contracts["serving-reads-facts-through-modes"]

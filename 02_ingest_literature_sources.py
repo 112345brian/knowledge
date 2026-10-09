@@ -5,6 +5,7 @@ risk of misreading. Run after 01_seed_sources.py.
 import sqlite3, os, re, glob, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import acquisition
 import fixity
 import source_status
 from _shared import link_authors, get_or_create_publisher
@@ -125,11 +126,14 @@ def parse_all():
             "status": fm.get("source-status"), "status_date": fm.get("source-status-date"), "status_note": fm.get("source-status-note"),
             "edition": fm.get("edition"), "original_published_date": fm.get("original-published-date"),
         }, f"{base}: source {citekey!r}")
+        acquired = acquisition.resolve(acquisition.normalize_data({
+            "acquired_at": fm.get("acquired-at"), "acquired_via": fm.get("acquired-via"), "where_from": fm.get("where-from"),
+            "acquired_note": fm.get("acquired-note")}, f"{base}: source {citekey!r}"), os.path.join(SRC_DIR, base))
         relations = [(citekey, rel, target) for rel, key in (("replaces", "replaces"), ("is-version-of", "is-version-of"))
                      for target in source_status.as_list(fm.get(key))]
 
         rows.append(dict(
-            citekey=citekey, relations=relations, **status_fields, name=name, source_type=stype, author=author_str,
+            citekey=citekey, relations=relations, **status_fields, **acquired, name=name, source_type=stype, author=author_str,
             publisher=journal, url=url, published_date=year, description=description,
             origin_path=f"{VAULT}/sources/{base}",
             **fixity.fingerprint(fp),
@@ -150,10 +154,12 @@ def run(con):
         cur.execute(
             """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
                                     content_sha256, size_bytes, file_mtime, mime_type, file_state,
-                                    status, status_date, status_note, edition, original_published_date)
+                                    status, status_date, status_note, edition, original_published_date,
+                                    acquired_at, acquired_via, where_from, acquired_note)
                VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, '2026-09-11', :description, :origin_path,
                        :content_sha256, :size_bytes, :file_mtime, :mime_type, :file_state,
-                       :status, :status_date, :status_note, :edition, :original_published_date)""",
+                       :status, :status_date, :status_note, :edition, :original_published_date,
+                       :acquired_at, :acquired_via, :where_from, :acquired_note)""",
             row,
         )
         link_authors(cur, cur.lastrowid, r["author"])

@@ -54,6 +54,7 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.acquisition",
     "kn.add_fact",
     "kn.claims_audit",
     "kn.clock",
@@ -110,6 +111,7 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.acquisition",
     "kn.add_fact",
     "kn.claims_audit",
     "kn.clock",
@@ -222,7 +224,7 @@ allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "subprocess-allowlist"
-name = "Only private_git (git) and knowledge (python scripts) import subprocess"
+name = "Only private_git (git), knowledge (python scripts) and acquisition (xattr) import subprocess"
 # Why: private_git is the only module that runs git against knowledge-private (lock, clean-tree and
 # detached-HEAD checks live there, #10). This forbids every other module from spawning processes.
 # knowledge.py is the one exception: `build`, `add-fact` and `clean-concerts` shell out to this
@@ -232,9 +234,13 @@ type = "forbidden"
 source_modules = ["kn"]
 forbidden_modules = ["subprocess"]
 allow_indirect_imports = true   # add_fact -> private_git -> subprocess is the intended path
+# acquisition.py (#46) is the third exception: it runs the read-only macOS `xattr` command (argv list, no
+# shell, a timeout, every failure a silent no-op) to read a file's download URL and time, as the issue specifies.
+# It never writes an attribute and never runs anything else; a test pins the exact argv shapes.
 ignore_imports = [
     "kn.private_git -> subprocess",
     "kn.knowledge -> subprocess",
+    "kn.acquisition -> subprocess",
 ]
 
 [[tool.importlinter.contracts]]
@@ -249,7 +255,7 @@ type = "layers"
 containers = ["kn"]
 layers = [
     "facts_batch | lifecycle | migrate_memory | entity_tools",
-    "review | modes | claims_audit | normal_db | source_status",
+    "review | modes | claims_audit | normal_db | source_status | acquisition",
     "leak_test",
     "revisions",
     "add_fact",

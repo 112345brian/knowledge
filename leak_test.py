@@ -116,6 +116,8 @@ def derive_markers(full_path):
             add("source origin_path", p)
         for (n,) in full.execute("SELECT status_note FROM sources"):      # #41: a notice URL may be private; never copied
             add("source status note", n)
+        for (u,) in full.execute("SELECT where_from FROM sources UNION SELECT where_from FROM vault_files"):   # #46: download URLs reveal interests
+            add("where_from URL", u)
         # #38 fixity: hashes identify private files and must never reach the normal DB.
         for (h,) in full.execute("SELECT content_sha256 FROM vault_files UNION SELECT content_sha256 FROM sources "
                                  "UNION SELECT extracted_from_sha256 FROM facts"):
@@ -156,6 +158,7 @@ MARKERS = {
     "private entity notes": "fernsby-secret-notes about a relative",
     "private subject description": "quillfeather-secret-description of the family topic",
     "private subject alias": "zephyr-secret-alias",
+    "where_from URL": "https://private.example/ws-download-9921/secret-topic.pdf",
     "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
@@ -192,8 +195,8 @@ def build_fixture(directory):
     ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (1, ?, ?)", (M["private entity alias"], M["private entity alias"].casefold()))
     ex("INSERT INTO entities (id, entity_key, canonical_name, name_norm, type, private, external_id, notes) VALUES (2, 'acme-labs', 'Acme Labs', 'acme labs', 'organization', 0, 'wikidata:Q1', 'A public lab')")
     ex("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, 'Acme', 'acme')")
-    ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state) VALUES (1, ?, ?, 10, 'present')",
-       (M["vault path"], M["file hash"]))
+    ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state, where_from) VALUES (1, ?, ?, 10, 'present', ?)",
+       (M["vault path"], M["file hash"], M["where_from URL"]))
     ex("INSERT INTO publishers (id, name) VALUES (1, 'Journal of Fixtures')")
     ex("INSERT INTO publishers (id, name) VALUES (2, 'Private Press')")
     ex("INSERT INTO authors (id, name) VALUES (1, 'A. Public'), (2, 'P. Rivate')")
@@ -204,6 +207,8 @@ def build_fixture(directory):
     ex("INSERT INTO source_authors (source_id, author_id) VALUES (1, 1), (2, 2)")
     ex("UPDATE sources SET status = 'corrected', status_date = '2025-03', status_note = ?, edition = '2nd edition' WHERE id = 1", (M["source status note"],))
     ex("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (1, 'replaces', 2)")
+    ex("UPDATE sources SET acquired_at = '2026-01-02T03:04:05+00:00', acquired_via = 'download', where_from = ?, "
+       "acquired_note = 'from macOS file attributes: where_from' WHERE id = 1", (M["where_from URL"],))
 
     def fact(fid, subject, statement, vis, key, notes=None, quote=None, origin=None, personal=1):
         ex("INSERT INTO facts (id, subject_id, statement, is_personal, trust_level, visibility, source_key, notes, "

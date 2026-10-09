@@ -26,7 +26,9 @@ What goes in (everything else is absent, not empty):
                    private fact's citation of the same source is not copied.
   sources          only sources cited by an included fact (name, citekey, type, url, dates,
                    description, status and edition (#41)). LEFT OUT: origin_path (vault file path), created_at, status_date,
-                   status_note (may hold a private URL), original_published_date, source_relations, and the fixity columns
+                   status_note (may hold a private URL), original_published_date, source_relations, the custodial-history
+                   columns (acquired_at, acquired_via, where_from, acquired_note: a download URL reveals interests, #46)
+                   and the fixity columns
                    (content_sha256, size_bytes, file_mtime, mime_type, file_state; #38).
   authors, source_authors, publishers   only those reachable from an included source.
   subjects         subjects used by included facts plus their parent chain (id, name, domain,

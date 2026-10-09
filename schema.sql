@@ -111,7 +111,14 @@ CREATE TABLE sources (
     size_bytes      INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
     file_mtime      TEXT,
     mime_type       TEXT,
-    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing'))
+    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing')),
+    -- Custodial history (#46): when and how the file came into the collection. Values from the data come first;
+    -- the macOS file attributes only fill gaps and are marked in acquired_note (see acquisition.py). NULL =
+    -- not recorded. where_from URLs can reveal private interests, so none of this reaches the normal-only DB.
+    acquired_at     TEXT,
+    acquired_via    TEXT CHECK (acquired_via IS NULL OR acquired_via IN ('download','manual','export','unknown')),
+    where_from      TEXT,
+    acquired_note   TEXT
 );
 CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
 CREATE INDEX idx_sources_origin_path ON sources(origin_path);
@@ -187,7 +194,13 @@ CREATE TABLE vault_files (
     size_bytes      INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
     file_mtime      TEXT,
     mime_type       TEXT,
-    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing'))
+    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing')),
+    -- Custodial history (#46), same columns as sources; filled from the macOS file attributes only (a vault
+    -- file has no data record of its own), marked in acquired_note. NULL = not recorded.
+    acquired_at     TEXT,
+    acquired_via    TEXT CHECK (acquired_via IS NULL OR acquired_via IN ('download','manual','export','unknown')),
+    where_from      TEXT,
+    acquired_note   TEXT
 );
 
 -- ============================================================

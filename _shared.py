@@ -2,6 +2,7 @@
 normalization (get-or-create against a dimension table, never repeated text)."""
 import html
 
+import acquisition
 import fixity
 
 
@@ -26,9 +27,14 @@ def get_or_create_vault_file(cur, path):
         return None
     file_id = get_or_create(cur, "vault_files", "path", path)
     fp = fixity.fingerprint(path)
+    # #46: a vault file has no data record, so its custodial history comes from the macOS file attributes
+    # alone (a no-op elsewhere); acquisition.resolve marks anything it fills in acquired_note.
+    acq = acquisition.resolve({k: None for k in acquisition.COLUMNS}, path)
     cur.execute("UPDATE vault_files SET content_sha256 = :content_sha256, size_bytes = :size_bytes, "
-                "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state WHERE id = :id",
-                {**fp, "id": file_id})
+                "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state, "
+                "acquired_at = :acquired_at, acquired_via = :acquired_via, where_from = :where_from, "
+                "acquired_note = :acquired_note WHERE id = :id",
+                {**fp, **acq, "id": file_id})
     return file_id
 
 

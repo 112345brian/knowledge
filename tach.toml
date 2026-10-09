@@ -54,6 +54,13 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "acquisition"    # #46 custodial history: data first, macOS file attributes fill gaps (read-only, best effort)
+layer = "library"
+depends_on = [
+    "validtime",
+]
+
+[[modules]]
 path = "source_status"  # #41 source status vocabulary, relation checks and the fact -> source audit
 layer = "library"
 depends_on = [
@@ -328,7 +335,7 @@ depends_on = [
 [[modules]]
 path = "_shared"
 layer = "pipeline"
-depends_on = ["fixity"]
+depends_on = ["acquisition", "fixity"]
 
 [[modules]]
 path = "snapshot_date"
@@ -387,12 +394,12 @@ depends_on = ["paths"]
 [[modules]]
 path = "01_seed_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "source_status"]
+depends_on = ["_shared", "acquisition", "paths", "source_status"]
 
 [[modules]]
 path = "02_ingest_literature_sources"
 layer = "pipeline"
-depends_on = ["_shared", "fixity", "paths", "source_status"]
+depends_on = ["_shared", "acquisition", "fixity", "paths", "source_status"]
 
 [[modules]]
 path = "03_ingest_measurements"
