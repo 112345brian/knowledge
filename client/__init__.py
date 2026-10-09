@@ -4,9 +4,13 @@ Each source is enabled per checkout with `CLIENT_SOURCES` in local_paths.py (see
 The core pipeline (`ingest/`) builds a complete knowledge.db without any of them; a source adds its own tables
 (`client/<source>.sql`, applied after schema.sql) and its own build steps.
 
-    music         concerts, album ratings, scrobbles                (concerts, music_ratings, scrobbles, seed_artist_members)
-    measurements  a health/fitness vault's numeric readings
-    claims        hand-authored claims citing facts
+    concerts      a concerts CSV                                  (client/concerts.py)
+    ratings       a RateYourMusic ratings export                  (client/music_ratings.py)
+    scrobbles     a Last.fm scrobbles export                      (client/scrobbles.py)
+    measurements  a health/fitness vault's numeric readings       (client/measurements.py, link_fact_measurements.py)
+    claims        the author's hand-authored claims and subject tree  (client/seed_claims.py, seed_subject_tree.py)
+
+The three music sources share client/music.sql (the artists tables).
 
 Nothing in `ingest/` imports from here. Run a standalone tool as `python3 -m client.<name>`.
 """

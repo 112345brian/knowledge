@@ -1,5 +1,9 @@
 # Architecture map (ports and adapters)
 
+Two sub-packages hold the ETL: `ingest/` is the core pipeline and `client/` the optional client sources (a checkout enables
+them with `CLIENT_SOURCES` in local_paths.py; see the README). Module names are unique across both, so the table below
+uses the bare name; `ingest/` never imports `client/`.
+
 The repo is a hexagon in flat modules. The domain is pure; use cases reach the world only through the port
 protocols in `ports.py`; adapters implement the ports; the facades are the composition roots that bind a use
 case to its adapters; the CLI, the inbox and the ingest scripts are driving adapters. The boundaries are

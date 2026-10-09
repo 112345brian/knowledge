@@ -46,7 +46,12 @@ from local_paths import (  # noqa: E402
 # Optional client sources (see build_rules.CLIENT_SOURCES): which of them this checkout builds, and the input
 # files they read. A checkout that does not use a source defines neither its name nor its paths, and the build
 # never looks for them.
-CLIENT_SOURCES = tuple(getattr(_local, "CLIENT_SOURCES", ()))
+_declared = getattr(_local, "CLIENT_SOURCES", None)
+# A local_paths.py written before CLIENT_SOURCES existed has no such name but does define the music inputs: it
+# built everything then, so it keeps doing so (build.py says it is guessing). A config that names the sources, or
+# defines no music inputs, is taken at its word.
+CLIENT_SOURCES_IMPLICIT = _declared is None and bool(getattr(_local, "CONCERTS_CSV", None))
+CLIENT_SOURCES = ("concerts", "ratings", "scrobbles", "measurements", "claims") if CLIENT_SOURCES_IMPLICIT else tuple(_declared or ())
 CONCERTS_CSV = getattr(_local, "CONCERTS_CSV", None)
 RYM_EXPORT_CSV = getattr(_local, "RYM_EXPORT_CSV", None)
 SCROBBLES_JSON = getattr(_local, "SCROBBLES_JSON", None)

@@ -1,6 +1,6 @@
--- Optional client source `music` (CLIENT_SOURCES in local_paths.py): concerts, album ratings and scrobbles --
+-- Optional client sources `concerts`, `ratings` and `scrobbles` (CLIENT_SOURCES in local_paths.py): concerts, album ratings and scrobbles --
 -- artists, venues, festivals, attendances, albums, tracks and the files they were imported from. Applied
--- after schema.sql by build.py only when the source is enabled; schema.sql knows nothing about these tables.
+-- after schema.sql by build.py when any of the three is enabled; schema.sql knows nothing about these tables.
 
 -- ============================================================
 -- Import sources: which ingest-script source file a row came from, shared

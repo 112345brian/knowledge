@@ -29,9 +29,9 @@ addopts = "-n auto"
 # --------------------------------------------------------------------------------------------
 # import-linter contracts (#36). See README "Architecture enforcement".
 #
-# The repo is flat top-level modules plus the `ingest` package, which grimp/import-linter cannot analyse
+# The repo is flat top-level modules plus the `ingest` and `client` packages, which grimp/import-linter cannot analyse
 # directly (it only accepts packages), so the check runs on a generated shadow package `kn`: every top-level
-# module AND every module of `ingest/` becomes `kn.<name>` (the names are unique across both; see
+# module AND every module of `ingest/` and `client/` becomes `kn.<name>` (the names are unique across both; see
 # tests/arch_check.py, which also rewrites `from ingest import x` / `import ingest.x` to `kn.x`). Run it with
 #     uv run python tests/arch_check.py        # tach + import-linter + git scan
 # or just `uv run pytest tests/test_architecture.py`. Plain `uv run lint-imports` cannot work on

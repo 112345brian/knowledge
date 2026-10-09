@@ -20,7 +20,7 @@ file open keeps a consistent snapshot.
 import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile
 
 import build_rules
-from paths import CLIENT_SOURCES, KNOWLEDGE_DB_DIR
+from paths import CLIENT_SOURCES, CLIENT_SOURCES_IMPLICIT, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
@@ -40,6 +40,17 @@ def schema_sql(sources=None):
         with open(os.path.join(HERE, name)) as f:
             parts.append(f.read())
     return "\n".join(parts)
+
+
+def client_sources_note(sources, implicit=False):
+    """One line saying which optional client sources this build includes (and why, if that was a guess)."""
+    if not sources:
+        return "[build] client sources: none (core only; list them in CLIENT_SOURCES in local_paths.py)"
+    note = f"[build] client sources: {', '.join(sources)}"
+    if implicit:
+        note += ("  (assumed: local_paths.py defines the music inputs but no CLIENT_SOURCES; add "
+                 f"CLIENT_SOURCES = {tuple(sources)!r} to make this explicit)")
+    return note
 
 
 def load_module(path):
@@ -68,6 +79,12 @@ def build(target_path, sources=None):
     """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
     in `sources` (default: this checkout's CLIENT_SOURCES)."""
     sources = build_rules.check_client_sources(CLIENT_SOURCES if sources is None else sources)
+    print(client_sources_note(sources, implicit=CLIENT_SOURCES_IMPLICIT and sources == CLIENT_SOURCES))
+    import paths
+    missing = build_rules.missing_paths(sources, [n for n in ("CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON") if getattr(paths, n, None)])
+    if missing:
+        raise BuildError("config", "client source(s) enabled without their input file: " +
+                         ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
     if os.path.exists(target_path):
         os.remove(target_path)
     con = sqlite3.connect(target_path)

@@ -1,14 +1,14 @@
 # knowledge
 
 This repo (`~/programming/knowledge`) is the pipeline: `schema.sql` + the
-the `ingest/` package (ETL steps) + the CLI. It contains **no personal data and
+`ingest/` package (the core ETL steps) + the optional `client/` sources + the CLI. It contains **no personal data and
 no personal file paths** — those live in a private companion repo,
 `knowledge-private`, expected checked out as a sibling directory
 (`../knowledge-private` relative to this one):
 
 - `knowledge-private/local_paths.py` — every real external path (the health
-  vault, the concerts export, the RYM export, the scrobbles export, and
-  where `knowledge.db` itself lives). This repo's own `paths.py` is a thin
+  vault, where `knowledge.db` itself lives, the inputs of the client sources you
+  use, and `CLIENT_SOURCES`, the list of those sources). This repo's own `paths.py` is a thin
   loader that imports from there; it carries zero personal path strings.
 - `knowledge-private/data/` — the actual fact/source content: hand-authored
   sources (`manual_sources.json`), interpretive facts (`pilot_facts.json`,
@@ -79,15 +79,49 @@ uv run python knowledge.py inbox [--port N] [--no-open]                # local r
 
 ## Pipeline order
 
-1. `schema.sql` — canonical DDL: every table, index, view, FTS5 virtual table + triggers.
-2. `seed_sources.py` — loads `knowledge-private/data/manual_sources.json`: hand-authored sources (DEXA scans, bloodwork panels, a few literature pilots, small manual instruments) that don't come from parsing vault frontmatter or a vault db.
+`build.py` applies `schema.sql`, then runs the steps in `build_rules.PIPELINE` order. The **core** steps (`ingest/`) build a
+complete knowledge.db by themselves; the **client sources** (`client/`) are optional extras a checkout turns on.
+
+Core steps:
+
+1. `schema.sql` — canonical DDL for the core: sources, facts, revisions, subjects, claims, entities, FTS5 tables and triggers. It knows nothing about the client sources.
+2. `seed_sources.py` — loads `knowledge-private/data/manual_sources.json`: hand-authored sources that don't come from parsing vault frontmatter or a vault db.
 3. `literature_sources.py` — mechanically parses the vault's `sources/*.md` frontmatter files into `sources` rows.
-4. `measurements.py` — pulls every structured numeric reading from the vault's own db: DEXA, bloodwork, tape, strength checkpoints, then daily/weekly summaries and the full raw logs (per-set training, per-meal/per-food nutrition, Fitbit, micronutrients). Creates its own `vault-db-*` sources for the raw tables it reads.
-5. `facts.py` — loads `knowledge-private/data/pilot_facts.json` (hand-authored facts) and `facts_batch1-4.json` (facts extracted by background agents reading the vault's synthesis and harm-reduction notes) into `facts`/`fact_sources`/`fact_measurements`. Classifies `is_personal` with a documented heuristic and resolves `origin_path` from each fact's `notes` field.
-6. `seed_claims.py` — hand-authored broader claims and which facts back them.
-7. `seed_subject_hierarchy.py` — arranges `aas-*` subjects under `anabolic-steroids` and `training-*` subjects under a new `training` umbrella.
-8. `seed_general_facts.py` — loads `knowledge-private/data/general_facts.json`: ad hoc facts with no project or vault behind them, added one at a time via `add_fact.py` rather than in a batch. Defaults new subjects to `domain='general'` instead of `health-and-fitness`.
-9. `apply_fact_revisions.py` — reads `knowledge-private/data/fact_revisions.jsonl` (the revision log, see below), validates it and writes `fact_revisions` plus each fact's current state into `facts`. Runs last among the fact steps; a missing or empty log is fine.
+4. `facts.py` — loads `knowledge-private/data/pilot_facts.json` (hand-authored facts) and `facts_batch1-4.json` (facts extracted by background agents reading the vault's notes) into `facts`/`fact_sources`. Classifies `is_personal` with a documented heuristic and resolves `origin_path` from each fact's `notes` field.
+5. `seed_subject_hierarchy.py` — loads `subjects.json` (parents, relation types, aliases, deprecations) when it exists.
+6. `seed_general_facts.py` — loads `knowledge-private/data/general_facts.json`: ad hoc facts with no project or vault behind them, added one at a time via `add_fact.py`. Defaults new subjects to `domain='general'`.
+7. `apply_fact_revisions.py` — reads `knowledge-private/data/fact_revisions.jsonl` (the revision log, see below), validates it and writes `fact_revisions` plus each fact's current state into `facts`. A missing or empty log is fine.
+8. `link_entities.py`, `link_source_relations.py` — the entity links and the source-to-source relations.
+
+### Client sources (`client/`)
+
+Not every client has a concerts export or a scrobbles file, so none of that is in the core. A checkout lists the sources it
+wants in `knowledge-private/local_paths.py`, with the input file each one reads:
+
+```python
+CLIENT_SOURCES = ("concerts", "scrobbles", "measurements")   # () or absent = the core only
+CONCERTS_CSV = "~/…/concerts.csv"           # concerts
+RYM_EXPORT_CSV = "~/…/rym-export.csv"       # ratings
+SCROBBLES_JSON = "~/…/scrobbles.json"       # scrobbles
+```
+
+| Source | Adds | Reads |
+| --- | --- | --- |
+| `concerts` | `concert_attendances`, venues, festivals, artists (`client/music.sql`) | `CONCERTS_CSV` |
+| `ratings` | `albums` (`client/music.sql`) | `RYM_EXPORT_CSV` |
+| `scrobbles` | `tracks`, `scrobbles` (`client/music.sql`) | `SCROBBLES_JSON` |
+| `measurements` | metrics, measurements, training/food/meal logs, muscle volume, and the fact-to-measurement link (`client/measurements.sql`) | the vault's own `bodybuilding.db`, and `measurements_snapshot.json` (`python3 -m client.backfill_snapshot_date --apply` writes it once) |
+| `claims` | the author's hand-authored claims, and their subject tree until `subjects.json` exists | none |
+
+The three music sources share the artists tables, so the first one enabled brings `client/music.sql` and any of them brings
+`seed_artist_members`. The schema fragment of a source is applied only when it is enabled, so a core-only database has 20
+tables instead of 39. A source whose input path is not set stops the build with a message naming it, and `build.py` prints
+which sources a build includes. A `local_paths.py` written before `CLIENT_SOURCES` existed that still defines the music inputs
+is assumed to want every source (the build says so); add the list to make it explicit. Nothing in `ingest/` imports `client/`
+(a test pins that). Steps: `client/measurements.py`, `client/link_fact_measurements.py`, `client/seed_claims.py`,
+`client/seed_subject_tree.py`, `client/concerts.py`, `client/music_ratings.py`, `client/scrobbles.py`,
+`client/seed_artist_members.py`; tools: `python3 -m client.clean_concerts_csv`, `client.export_music_taste`,
+`client.export_subjects`, `client.backfill_snapshot_date`.
 
 ## Inbox (#33)
 
@@ -178,7 +212,7 @@ Run them directly:
 
 tach settings that matter: `layers_explicit_depends_on = true` (otherwise a higher layer may import any lower layer without declaring it, switching the allowlists off), `root_module = "forbid"` (an unlisted `.py` that imports anything is an error), `exact = true` (an unused `depends_on` entry is an error), `ignore_type_checking_imports = false`. Lazy imports inside functions are checked by both tools.
 
-**Adding a module:** pick its layer. (1) `tach.toml`: add a `[[modules]]` block with `layer` and the exact `depends_on`; add it to `knowledge`'s `depends_on` if it is a `cli_*` module; add it to any allowlist that should list it (`paths`, `private_git` importers). (2) `pyproject.toml`: a library goes in the `source_modules` of `libraries-never-import-upward` and `typer-only-in-knowledge` and on a row of `libraries-layered` (a new row, or `|` beside an independent sibling); a CLI/pipeline module goes in the `forbidden_modules` of `libraries-never-import-upward`; a serving module goes in the serving contracts. `tests/test_architecture.py` fails if the configs disagree about what exists. A new ingest step: put it in `ingest/`, list it in `build_rules.STEPS`, add it as `ingest.<name>` (layer `pipeline`) in `tach.toml` and by bare name in the import-linter contracts.
+**Adding a module:** pick its layer. (1) `tach.toml`: add a `[[modules]]` block with `layer` and the exact `depends_on`; add it to `knowledge`'s `depends_on` if it is a `cli_*` module; add it to any allowlist that should list it (`paths`, `private_git` importers). (2) `pyproject.toml`: a library goes in the `source_modules` of `libraries-never-import-upward` and `typer-only-in-knowledge` and on a row of `libraries-layered` (a new row, or `|` beside an independent sibling); a CLI/pipeline module goes in the `forbidden_modules` of `libraries-never-import-upward`; a serving module goes in the serving contracts. `tests/test_architecture.py` fails if the configs disagree about what exists. A new core step: put it in `ingest/`; a new client source's step goes in `client/` with its schema fragment `client/<name>.sql`. Either way list it in `build_rules.PIPELINE` (with the source it belongs to, or None for core), add it as `ingest.<name>` / `client.<name>` (layer `pipeline`) in `tach.toml` and by bare name in the import-linter contracts. `ingest/` must not import `client/`.
 
 **Planned modules.** Only `mcp_server` (#2) is still planned: its entries in both configs are on lines starting `#planned:`. When its file lands, delete the `#planned: ` prefix on its lines and set its `depends_on`/layer row to what it really imports; the test names the exact lines if you forget. The negative tests enable every planned line, so the planned layout itself is exercised. (The wave-4 modules `lifecycle`, `facts_batch`, `migrate_memory`, `cli_lifecycle`, `cli_migrate`, `cli_facts_batch`, `cli_inbox` and `inbox` are active with their real import graph.)
 

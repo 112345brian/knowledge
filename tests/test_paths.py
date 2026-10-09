@@ -97,3 +97,46 @@ def test_env_var_pointing_at_a_dir_without_local_paths_is_an_error(tmp_path):
     r = run_import(code, env_var=str(empty))
     assert r.returncode != 0
     assert str(empty) in r.stderr
+
+
+# ------------------------------------------------------------------ CLIENT_SOURCES
+
+def sources_of(tmp_path, extra_lines, names=NAMES):
+    code = make_tree(tmp_path)
+    private = tmp_path / "knowledge-private"
+    private.mkdir()
+    with open(private / "local_paths.py", "w") as f:
+        for n in names:
+            f.write(f"{n} = {n.lower()!r}\n")
+        f.write(extra_lines)
+    env = dict(os.environ)
+    env.pop("KNOWLEDGE_PRIVATE_DIR", None)
+    r = subprocess.run([sys.executable, "-c", "import paths; print(paths.CLIENT_SOURCES, paths.CLIENT_SOURCES_IMPLICIT, paths.CONCERTS_CSV)"],
+                       cwd=code, env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def test_client_sources_are_taken_as_written(tmp_path):
+    assert sources_of(tmp_path, "CLIENT_SOURCES = ('scrobbles', 'claims')\n") == "('scrobbles', 'claims') False concerts_csv"
+
+
+def test_a_config_with_the_music_inputs_but_no_client_sources_is_assumed_to_want_everything(tmp_path):
+    out = sources_of(tmp_path, "")
+    assert out == "('concerts', 'ratings', 'scrobbles', 'measurements', 'claims') True concerts_csv"
+
+
+def test_a_config_without_music_inputs_and_without_client_sources_builds_the_core_only(tmp_path):
+    core_names = ["KNOWLEDGE_DB_DIR", "BODYBUILDING_VAULT", "HEALTH_DIR", "PRIVATE_DATA_DIR"]
+    assert sources_of(tmp_path, "", names=core_names) == "() False None"
+
+
+def test_an_explicitly_empty_list_means_the_core_only_even_with_music_inputs(tmp_path):
+    assert sources_of(tmp_path, "CLIENT_SOURCES = ()\n") == "() False concerts_csv"
+
+
+def test_the_assumed_list_is_every_known_source():
+    import build_rules
+    text = open(os.path.join(REPO, "paths.py")).read()
+    assert '("concerts", "ratings", "scrobbles", "measurements", "claims")' in text
+    assert tuple(build_rules.CLIENT_SOURCES) == ("concerts", "ratings", "scrobbles", "measurements", "claims")

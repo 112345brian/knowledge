@@ -14,7 +14,7 @@ import csv, os
 from client import music_ingest_rules
 from paths import CONCERTS_CSV
 
-CSV_PATH = os.path.expanduser(CONCERTS_CSV)
+CSV_PATH = os.path.expanduser(CONCERTS_CSV) if CONCERTS_CSV else None
 
 
 def clean():
@@ -34,4 +34,6 @@ def clean():
 
 
 if __name__ == "__main__":
+    if CSV_PATH is None:
+        sys.exit("error: CONCERTS_CSV is not set in local_paths.py (the `concerts` client source is not configured)")
     clean()

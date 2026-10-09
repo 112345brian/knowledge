@@ -9,14 +9,27 @@ BACKUP_PREFIX = "knowledge.db.bak-"
 
 # The optional client sources: data a given client may or may not have and want in knowledge.db. A checkout
 # enables the ones it uses with CLIENT_SOURCES in local_paths.py (see paths.py); the core pipeline needs none.
-#   music         concerts, album ratings, scrobbles           (client/music.sql)
-#   measurements  a health/fitness vault's numeric readings   (client/measurements.sql)
-#   claims        hand-authored claims citing facts
-CLIENT_SOURCES = ("music", "measurements", "claims")
-SCHEMA_FRAGMENTS = {"music": "client/music.sql", "measurements": "client/measurements.sql"}
+#   concerts      a concerts CSV                                   (CONCERTS_CSV)
+#   ratings       a RateYourMusic ratings export                   (RYM_EXPORT_CSV)
+#   scrobbles     a Last.fm scrobbles export                       (SCROBBLES_JSON)
+#   measurements  a health/fitness vault's numeric readings       (bodybuilding.db in BODYBUILDING_VAULT)
+#   claims        the author's hand-authored claims and subject tree
+# concerts, ratings and scrobbles share the artists tables, so the first one enabled brings client/music.sql.
+CLIENT_SOURCES = ("concerts", "ratings", "scrobbles", "measurements", "claims")
+MUSIC_SOURCES = ("concerts", "ratings", "scrobbles")
 
-# Every build step in run order, with the client source it belongs to (None = core). Paths are relative to the
-# repo root. A step runs when its source is None or enabled; the order is the same either way.
+# (schema file, the sources that need it): applied after schema.sql when any of its sources is enabled.
+SCHEMA_FRAGMENTS = (
+    ("client/music.sql", MUSIC_SOURCES),
+    ("client/measurements.sql", ("measurements",)),
+)
+
+# The local_paths.py name of the input file each source reads; a source whose path is not set cannot be built.
+REQUIRED_PATHS = {"concerts": "CONCERTS_CSV", "ratings": "RYM_EXPORT_CSV", "scrobbles": "SCROBBLES_JSON"}
+
+# Every build step in run order, with the client source(s) it belongs to: None = core, a name, or a tuple meaning
+# "any of these". Paths are relative to the repo root. A step runs when its source is None or enabled; the order
+# is the same either way.
 PIPELINE = (
     ("ingest/seed_sources.py", None),
     ("ingest/literature_sources.py", None),
@@ -26,10 +39,10 @@ PIPELINE = (
     ("client/seed_claims.py", "claims"),
     ("ingest/seed_subject_hierarchy.py", None),
     ("client/seed_subject_tree.py", "claims"),
-    ("client/concerts.py", "music"),
-    ("client/music_ratings.py", "music"),
-    ("client/scrobbles.py", "music"),
-    ("client/seed_artist_members.py", "music"),
+    ("client/concerts.py", "concerts"),
+    ("client/music_ratings.py", "ratings"),
+    ("client/scrobbles.py", "scrobbles"),
+    ("client/seed_artist_members.py", MUSIC_SOURCES),
     ("ingest/seed_general_facts.py", None),
     ("ingest/apply_fact_revisions.py", None),
     ("ingest/link_entities.py", None),
@@ -55,16 +68,27 @@ def check_client_sources(names):
     return names
 
 
+def _wanted(source, enabled):
+    return source is None or any(n in enabled for n in ((source,) if isinstance(source, str) else source))
+
+
 def steps_for(enabled):
     """The step files to run, in order, for the enabled client sources."""
     enabled = check_client_sources(enabled)
-    return [path for path, source in PIPELINE if source is None or source in enabled]
+    return [path for path, source in PIPELINE if _wanted(source, enabled)]
 
 
 def schema_files(enabled):
     """The schema files to apply, in order: schema.sql, then the fragment of each enabled source."""
     enabled = check_client_sources(enabled)
-    return ["schema.sql"] + [SCHEMA_FRAGMENTS[n] for n in CLIENT_SOURCES if n in enabled and n in SCHEMA_FRAGMENTS]
+    return ["schema.sql"] + [path for path, needed_by in SCHEMA_FRAGMENTS if _wanted(needed_by, enabled)]
+
+
+def missing_paths(enabled, defined):
+    """[(source, local_paths name)] for enabled sources whose input path is not set. `defined` is the set of
+    names that have a value."""
+    enabled = check_client_sources(enabled)
+    return [(n, REQUIRED_PATHS[n]) for n in enabled if n in REQUIRED_PATHS and REQUIRED_PATHS[n] not in set(defined)]
 
 
 def report_tables(existing):

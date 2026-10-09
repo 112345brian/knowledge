@@ -92,8 +92,9 @@ def _entry(key, subject, statement, **kw):
     return e
 
 
-def build_world(root):
-    """Write every input under `root` and return the environment dict for a subprocess."""
+def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements", "claims")):
+    """Write every input under `root` and return the environment dict for a subprocess. `sources` is the
+    CLIENT_SOURCES the world's local_paths.py enables (the inputs are always written, enabled or not)."""
     root = str(root)
     private = os.path.join(root, "knowledge-private")
     data = os.path.join(root, "data")
@@ -107,7 +108,7 @@ def build_world(root):
     _write(os.path.join(private, "local_paths.py"),
            f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\nBODYBUILDING_VAULT = {vault!r}\n"
            f"HEALTH_DIR = {os.path.join(root, 'health')!r}\nCONCERTS_CSV = {concerts!r}\nRYM_EXPORT_CSV = {rym!r}\n"
-           f"SCROBBLES_JSON = {scrobbles!r}\nCLIENT_SOURCES = ('music', 'measurements', 'claims')\n")
+           f"SCROBBLES_JSON = {scrobbles!r}\nCLIENT_SOURCES = {tuple(sources)!r}\n")
 
     # --- vault: source notes (02) and bodybuilding.db (03)
     notes = [("alpha2020", "primary-research", "Alpha Study", "Smith, J", "Doe, A", 2020, "Journal A", "training"),
@@ -220,9 +221,9 @@ print("@@DUMP@@" + json.dumps(dump, sort_keys=True, default=str))
 """
 
 
-def run_pipeline(root, repo=REPO):
+def run_pipeline(root, repo=REPO, sources=("concerts", "ratings", "scrobbles", "measurements", "claims")):
     """Run every build step in a fresh interpreter against the world under `root`; return the table dump."""
-    env = build_world(root)
+    env = build_world(root, sources)
     out = os.path.join(str(root), "out")
     os.makedirs(out, exist_ok=True)
     p = subprocess.run([sys.executable, "-c", DUMP_SCRIPT, repo, out], env=env, cwd=repo, capture_output=True, text=True)
