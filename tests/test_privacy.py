@@ -423,3 +423,13 @@ def test_add_fact_passes_the_resolved_value_to_build_entry():
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "append_fact")
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "build_entry"]
     assert calls and all(any(k.arg == "visibility" for k in c.keywords) for c in calls)
+
+
+def test_rules_keeps_its_positional_field_order_and_entities_come_last():
+    """`entities` was inserted between keywords and parents, so Rules(tags, kw, parents, known) bound parents to it."""
+    import dataclasses
+    import privacy
+    names = [f.name for f in dataclasses.fields(privacy.Rules)]
+    assert names == ["subject_tags", "keywords", "parents", "known_subjects", "entities"]
+    r = privacy.Rules({"s": "private"}, ("k",), {"c": "p"}, frozenset({"c"}))
+    assert (r.parents, r.known_subjects, r.entities) == ({"c": "p"}, frozenset({"c"}), ())

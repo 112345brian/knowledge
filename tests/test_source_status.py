@@ -69,6 +69,27 @@ def run02(ingest, tmp_path, notes, con=None):
 
 # ------------------------------------------------------------------ pin: legacy ingest
 
+def test_a_very_long_replaces_chain_is_checked_without_recursing():
+    import sys
+    n = sys.getrecursionlimit() * 2
+    chain = [(f"s{i}", "replaces", f"s{i + 1}") for i in range(n)]
+    known = {f"s{i}" for i in range(n + 1)}
+    assert ss.check_relations(chain, known) == chain
+    with pytest.raises(ss.SourceStatusError, match="cycle among sources"):
+        ss.check_relations(chain + [(f"s{n}", "replaces", "s0")], known)
+
+
+def test_cycle_message_names_the_sources_in_order():
+    with pytest.raises(ss.SourceStatusError) as e:
+        ss.check_relations([("a", "replaces", "b"), ("b", "replaces", "c"), ("c", "replaces", "a")], {"a", "b", "c"})
+    assert "a -> b -> c -> a" in str(e.value)
+
+
+def test_diamond_is_not_a_cycle():
+    rels = [("a", "replaces", "b"), ("a", "replaces", "c"), ("b", "replaces", "d"), ("c", "replaces", "d")]
+    assert ss.check_relations(rels, {"a", "b", "c", "d"}) == rels
+
+
 def test_02_legacy_notes_are_active_with_a_null_status_date_and_counts_are_unchanged(ingest, tmp_path):
     con, _ = run02(ingest, tmp_path, {"a2020": {}, "b2021": {"edition": "2nd edition"}})
     assert con.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 2

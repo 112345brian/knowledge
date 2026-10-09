@@ -34,6 +34,20 @@ def test_doi_forms_normalize_to_one_value(raw):
     assert ids.normalize("doi", raw) == "10.1210/jc.2007-1692"
 
 
+@pytest.mark.parametrize("raw, want", [
+    ("10.1002/(SICI)1097-0258(19980430)17:8<873::AID-SIM779>3.0.CO;2-I", "10.1002/(sici)1097-0258(19980430)17:8<873::aid-sim779>3.0.co;2-i"),
+    ("10.1016/0021-9150(95)05529-0", "10.1016/0021-9150(95)05529-0"),
+    ("10.1002/(SICI)1097-4571(199710)48:10<934)", "10.1002/(sici)1097-4571(199710)48:10<934"),   # the final ) has no opener left: punctuation
+    ("see 10.1210/abc(1)).", "10.1210/abc(1)"),                                               # one real ) kept, the stray one and the full stop go
+    ("(10.1210/abc)", "10.1210/abc"),                                                          # a pair around the whole DOI
+    ("<10.1210/abc>", "10.1210/abc"),
+])
+def test_a_closing_bracket_that_belongs_to_the_doi_is_kept(raw, want):
+    if raw.startswith(("see ", "(", "<")):
+        raw = raw.replace("see ", "").strip("(<")
+    assert ids.normalize("doi", raw) == want
+
+
 @pytest.mark.parametrize("raw", ["", "10.12/short-registrant", "11.1210/x", "doi", "10.1210/", "10.1210", "https://example.org/10.1210/x", 5, None])
 def test_bad_dois_are_rejected_naming_the_value(raw):
     with pytest.raises(ids.IdentifierError) as e:
@@ -142,18 +156,37 @@ def test_02_pin_counts_then_identifiers_from_the_fields_the_vault_really_has(ing
 
 @pytest.mark.parametrize("fm, msg", [({"doi": "not-a-doi"}, "doi 'not-a-doi'"), ({"isbn": "978-0-306-40615-8"}, "ISBN-13 check digit"),
                                       ({"pmid": "0123"}, "pmid '0123'"), ({"pmcid": "1234"}, "PMC id")])
-def test_02_a_bad_identifier_fails_the_build_naming_note_and_value(ingest, tmp_path, fm, msg):
-    with pytest.raises(Exception, match=msg) as e:
-        run02(ingest, tmp_path, {"bad2020": fm})
-    assert "bad2020" in str(e.value) and type(e.value).__name__ == "IdentifierError"
+def test_02_a_bad_identifier_is_warned_about_and_skipped_not_fatal(ingest, tmp_path, capsys, fm, msg):
+    con = run02(ingest, tmp_path, {"bad2020": fm, "good2021": {"doi": "10.1210/fine1"}})
+    out = capsys.readouterr().out
+    warning = next(l for l in out.splitlines() if "WARNING" in l and "bad2020" in l)
+    assert msg in warning and "identifier not recorded" in warning
+    assert con.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 2        # the source itself is kept
+    assert table(con) == [("good2021", "doi", "10.1210/fine1")]                    # nothing recorded for the bad value
 
 
-def test_placeholders_mean_no_identifier_but_other_junk_still_fails(ingest, tmp_path):
+def test_one_bad_identifier_does_not_drop_the_sources_other_identifiers(ingest, tmp_path, capsys):
+    con = run02(ingest, tmp_path, {"mixed2020": {"doi": "not-a-doi", "pmid": "19135656"}})
+    assert table(con) == [("mixed2020", "pmid", "19135656")]
+    assert "doi 'not-a-doi'" in capsys.readouterr().out
+
+
+def test_collect_is_strict_by_default_and_lenient_with_a_problems_list():
+    raw = {"doi": "not-a-doi", "pmid": "19135656"}
+    with pytest.raises(ids.IdentifierError, match="src: doi 'not-a-doi'"):
+        ids.collect(raw, "src")
+    problems = []
+    assert ids.collect(raw, "src", problems) == [("pmid", "19135656")]
+    assert len(problems) == 1 and problems[0].startswith("src: doi 'not-a-doi'")
+
+
+def test_placeholders_mean_no_identifier_and_other_junk_is_reported(ingest, tmp_path, capsys):
     con = run02(ingest, tmp_path, {"a2020": {"doi": "n/a", "pmid": "None", "isbn": "-", "pmcid": "TBD"}, "b2021": {"doi": "10.1210/real1"}})
     assert table(con) == [("b2021", "doi", "10.1210/real1")]
     assert all(ids.is_placeholder(p) for p in ("N/A", " na ", "Unknown", "?")) and not ids.is_placeholder("10.1210/x") and not ids.is_placeholder(None)
-    with pytest.raises(Exception, match="doi 'see paper'"):
-        run02(ingest, tmp_path / "again", {"c2022": {"doi": "see paper"}})
+    capsys.readouterr()
+    con2 = run02(ingest, tmp_path / "again", {"c2022": {"doi": "see paper"}})
+    assert table(con2) == [] and "doi 'see paper'" in capsys.readouterr().out
 
 
 def test_duplicates_are_reported_with_both_citekeys_and_not_merged(ingest, tmp_path, capsys):

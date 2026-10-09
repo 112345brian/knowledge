@@ -52,12 +52,13 @@ class PrivacyRulesError(Exception):
 class Rules:
     subject_tags: Dict[str, str] = field(default_factory=dict)
     keywords: Tuple[str, ...] = ()
-    # Private entities (#42), read from entities.json next to the rules file: ((canonical_name, terms), ...).
-    # Not part of the rules file itself; save_rules never writes them.
-    entities: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     # Context a caller attaches for resolution (not stored in the rules file):
     parents: Dict[str, Optional[str]] = field(default_factory=dict)  # subject name -> parent name
     known_subjects: Optional[FrozenSet[str]] = None  # None = do not enforce the unknown-subject rule
+    # Private entities (#42), read from entities.json next to the rules file: ((canonical_name, terms), ...).
+    # Not part of the rules file itself; save_rules never writes them. Last, so the positional order of the
+    # fields that existed before (tags, keywords, parents, known_subjects) is unchanged.
+    entities: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
 
     def with_context(self, parents=None, known_subjects=None):
         return replace(self,

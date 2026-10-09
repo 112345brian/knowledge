@@ -41,10 +41,24 @@ def _isbn13_check(digits12):
     return str((10 - total % 10) % 10)
 
 
+_OPENERS = {")": "(", "]": "[", "}": "{", ">": "<"}
+
+
+def _strip_trailing(v):
+    """`v` without the punctuation a citation puts after a DOI (a full stop, a comma, a closing quote, ...). A closing
+    bracket is only stripped when it has no opener inside the DOI: `10.1002/(SICI)1097-0258` ends in a real `)`."""
+    while v and v[-1] in _TRAILING:
+        opener = _OPENERS.get(v[-1])
+        if opener is not None and v.count(opener) >= v.count(v[-1]):
+            break
+        v = v[:-1]
+    return v
+
+
 def normalize_doi(raw):
     v = raw.strip()
     v = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", v, flags=re.I)
-    v = v.strip().rstrip(_TRAILING).lower()
+    v = _strip_trailing(v.strip()).lower()
     if not re.fullmatch(r"10\.\d{4,9}/\S+", v):
         _fail("doi", raw, "expected 10.NNNN/suffix")
     return v
@@ -166,10 +180,12 @@ def filter_clause(raw, fact_alias="f"):
 ID_FIELDS = (("doi", "doi"), ("isbn", "isbn"), ("issn", "issn"), ("pmid", "pmid"), ("arxiv", "arxiv"))
 
 
-def collect(raw, where):
+def collect(raw, where, problems=None):
     """[(scheme, normalized value)] from a source's data: `raw` maps field names (doi, pmid, pmcid, isbn, issn,
     arxiv; a value or a list) to text. A malformed value or a bad checksum raises IdentifierError
-    naming `where`. Fields that are absent or blank contribute nothing; duplicates collapse."""
+    naming `where`; with a `problems` list it is appended there (as that message) and skipped instead, so the
+    other identifiers of the same source are still collected. Fields that are absent or blank contribute
+    nothing; duplicates collapse."""
     out = []
 
     def values(v):
@@ -182,12 +198,18 @@ def collect(raw, where):
             try:
                 out.append((scheme, normalize(scheme, v if isinstance(v, str) else str(v))))
             except IdentifierError as e:
-                raise IdentifierError(f"{where}: {e}") from None
+                _report(problems, where, e)
     for v in values(raw.get("pmcid")):
         if v is None or (isinstance(v, str) and not v.strip()) or is_placeholder(v):
             continue
         try:
             out.append(("other", pmcid(str(v))))
         except IdentifierError as e:
-            raise IdentifierError(f"{where}: {e}") from None
+            _report(problems, where, e)
     return list(dict.fromkeys(out))
+
+
+def _report(problems, where, error):
+    if problems is None:
+        raise IdentifierError(f"{where}: {error}") from None
+    problems.append(f"{where}: {error}")

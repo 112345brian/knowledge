@@ -102,21 +102,24 @@ def check_relations(relations, known_citekeys):
         for a, r, b in out:
             if r == rel:
                 graph.setdefault(a, []).append(b)
-        state = {}
-
-        def visit(node, path):
-            state[node] = 1
-            for nxt in graph.get(node, ()):
-                if state.get(nxt) == 1:
-                    cycle = path[path.index(nxt):] + [nxt] if nxt in path else [node, nxt]
-                    raise SourceStatusError(f"{rel} cycle among sources: {' -> '.join(cycle)}")
-                if nxt not in state:
-                    visit(nxt, path + [nxt])
-            state[node] = 2
-
+        state = {}   # 1 = on the current path, 2 = fully explored
         for start in list(graph):
-            if start not in state:
-                visit(start, [start])
+            if start in state:
+                continue
+            path, iters = [start], [iter(graph.get(start, ()))]   # an explicit stack: a long chain must not hit the recursion limit
+            state[start] = 1
+            while iters:
+                nxt = next(iters[-1], None)
+                if nxt is None:
+                    state[path.pop()] = 2
+                    iters.pop()
+                elif state.get(nxt) == 1:
+                    cycle = path[path.index(nxt):] + [nxt]
+                    raise SourceStatusError(f"{rel} cycle among sources: {' -> '.join(cycle)}")
+                elif nxt not in state:
+                    state[nxt] = 1
+                    path.append(nxt)
+                    iters.append(iter(graph.get(nxt, ())))
     return out
 
 

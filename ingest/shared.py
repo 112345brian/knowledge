@@ -45,8 +45,14 @@ def get_or_create_vault_file(cur, path):
 
 
 def collect_identifiers(raw, where):
-    """[(scheme, normalized value)] from a source's data; see identifiers.collect."""
-    return identifiers.collect(raw, where)
+    """[(scheme, normalized value)] from a source's data; see identifiers.collect. A malformed identifier is
+    reported as a warning naming `where` and is not recorded; it does not stop the build or the source's other
+    identifiers (a typo in one DOI is a data problem to fix, not a reason to have no knowledge.db)."""
+    problems = []
+    pairs = identifiers.collect(raw, where, problems)
+    for message in problems:
+        print(f"  WARNING -- {message}; identifier not recorded")
+    return pairs
 
 
 def add_source_identifiers(cur, source_id, citekey, pairs):
