@@ -31,6 +31,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import clock
+import fixity
 import privacy
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from private_git import PrivateGitError, commit_private_change, ensure_clean_tree, find_repo, is_detached
@@ -76,6 +77,7 @@ def parse_args(argv):
     p.add_argument("--recheck-rationale", help="Why this recheck date; with --no-decay, why the fact does not decay (required).")
     p.add_argument("--source-citekey", help="Must already exist in the `sources` table.")
     p.add_argument("--source-locator")
+    p.add_argument("--origin-path", help="The file this fact was extracted from; its SHA-256 is recorded as the fixity baseline (#38) when the file is readable.")
     p.add_argument("--source-quote", help="The words that justified the fact (with --captured-via, no --source-citekey is needed).")
     p.add_argument("--captured-via", help="Where the fact came from: cli, mcp, migrate-memory, ... With 'mcp', --session-id and --source-quote are required.")
     p.add_argument("--session-id", help="The conversation/session the fact was captured in.")
@@ -105,6 +107,9 @@ class NewFact:
     source_citekey: Optional[str] = None
     source_locator: Optional[str] = None
     source_quote: Optional[str] = None
+    # The file the fact was extracted from (#38). Its SHA-256 is written to the entry as
+    # `extracted_from_sha256` when the file is readable; an unreadable file records no hash.
+    origin_path: Optional[str] = None
     # Provenance. All optional except that captured_via="mcp" requires session_id and source_quote.
     # captured_at is stamped from the clock when captured_via is set and it is left None.
     captured_via: Optional[str] = None
@@ -233,6 +238,11 @@ def build_entry(fact, visibility=None):
             continue  # blank counts as absent (a no_decay fact may carry a blank one)
         if value:
             entry[key] = value
+    if fact.origin_path and fact.origin_path.strip():
+        entry["origin_path"] = fact.origin_path.strip()
+        fp = fixity.fingerprint(entry["origin_path"])
+        if fp["content_sha256"]:
+            entry["extracted_from_sha256"] = fp["content_sha256"]
     if fact.captured_via:
         entry["captured_via"] = fact.captured_via
         if fact.session_id:
@@ -398,7 +408,7 @@ def main(argv=None):
         is_original_claim=args.is_original_claim, is_personal=args.is_personal, visibility=args.visibility,
         trust_rationale=args.trust_rationale, notes=args.notes, recheck_by=args.recheck_by,
         recheck_rationale=args.recheck_rationale, source_citekey=args.source_citekey,
-        source_locator=args.source_locator, source_quote=args.source_quote,
+        source_locator=args.source_locator, source_quote=args.source_quote, origin_path=args.origin_path,
         captured_via=args.captured_via, session_id=args.session_id,
     )
     # Git safety net (#10): only when the data file lives in a git repo (a non-git data dir,

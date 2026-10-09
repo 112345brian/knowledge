@@ -30,6 +30,7 @@ ACTIONS = {
     "approve": ("approve",),
     "reject": ("reject",),
     "audit_claims": ("audit-claims",),
+    "audit_sources": ("audit-sources",),
     "migrate_memory": ("migrate-memory",),
     "supersede_fact": ("supersede",),
     "retract_fact": ("retract",),

@@ -568,6 +568,8 @@ def _py_files():
 # them). Anything else that wants fact rows must go through modes.py.
 FACT_READERS_ALLOWED = {
     "modes.py", "knowledge.py", "normal_db.py", "revisions.py", "privacy.py", "claims_audit.py", "review.py",
+    # CLI-only audit over the full local db (like claims_audit); never serves tool results
+    "fixity.py",
     # build/ingest pipeline: writes the tables, never serves tool results
     "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",

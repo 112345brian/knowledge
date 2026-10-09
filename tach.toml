@@ -49,6 +49,11 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "fixity"         # #38 file fingerprints and the changed-since-extraction audit
+layer = "library"
+depends_on = []
+
+[[modules]]
 path = "paths"          # the only module that knows personal paths
 layer = "library"
 depends_on = []
@@ -70,6 +75,7 @@ path = "add_fact"
 layer = "library"
 depends_on = [
     "clock",
+    "fixity",
     "paths",
     "privacy",
     "private_git",
@@ -173,6 +179,7 @@ depends_on = [
     "cli_inbox",
     "cli_lifecycle",
     "cli_migrate",
+    "fixity",
     "paths",
     "privacy",
     "private_git",
@@ -242,7 +249,7 @@ depends_on = [
 [[modules]]
 path = "_shared"
 layer = "pipeline"
-depends_on = []
+depends_on = ["fixity"]
 
 [[modules]]
 path = "snapshot_date"
@@ -269,6 +276,11 @@ layer = "pipeline"
 depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date"]
 
 [[modules]]
+path = "backfill_extracted_hashes"
+layer = "pipeline"
+depends_on = ["backfill_source_keys", "fixity", "revisions"]
+
+[[modules]]
 path = "clean_concerts_csv"
 layer = "pipeline"
 depends_on = ["paths"]
@@ -286,7 +298,7 @@ depends_on = ["_shared", "paths"]
 [[modules]]
 path = "02_ingest_literature_sources"
 layer = "pipeline"
-depends_on = ["_shared", "paths"]
+depends_on = ["_shared", "fixity", "paths"]
 
 [[modules]]
 path = "03_ingest_measurements"
@@ -296,7 +308,7 @@ depends_on = ["paths", "snapshot_date"]
 [[modules]]
 path = "04_ingest_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions"]
+depends_on = ["_shared", "fixity", "paths", "privacy", "revisions"]
 
 [[modules]]
 path = "05_seed_claims"
@@ -331,7 +343,7 @@ depends_on = ["_shared"]
 [[modules]]
 path = "11_seed_general_facts"
 layer = "pipeline"
-depends_on = ["_shared", "paths", "privacy", "revisions"]
+depends_on = ["_shared", "fixity", "paths", "privacy", "revisions"]
 
 [[modules]]
 path = "12_apply_fact_revisions"

@@ -58,6 +58,7 @@ source_modules = [
     "kn.claims_audit",
     "kn.clock",
     "kn.facts_batch",
+    "kn.fixity",
     "kn.leak_test",
     "kn.lifecycle",
     "kn.migrate_memory",
@@ -83,6 +84,7 @@ forbidden_modules = [
     # pipeline / ingest (the numbered scripts are not importable, see tach.toml)
     "kn._shared",
     "kn.backfill_dates",
+    "kn.backfill_extracted_hashes",
     "kn.backfill_source_keys",
     "kn.build",
     "kn.clean_concerts_csv",
@@ -103,6 +105,7 @@ source_modules = [
     "kn.clock",
     "kn.cli_parity",
     "kn.facts_batch",
+    "kn.fixity",
     "kn.inbox",
     "kn.leak_test",
     "kn.lifecycle",
@@ -157,6 +160,7 @@ source_modules = [
 forbidden_modules = [
     "kn._shared",
     "kn.backfill_dates",
+    "kn.backfill_extracted_hashes",
     "kn.backfill_source_keys",
     "kn.build",
     "kn.clean_concerts_csv",
@@ -232,7 +236,7 @@ layers = [
     "revisions",
     "add_fact",
     "privacy | private_git",
-    "clock | paths",
+    "clock | paths | fixity",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

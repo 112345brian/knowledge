@@ -13,7 +13,8 @@ depends on it either.
 import sqlite3, json, os
 
 from paths import PRIVATE_DATA_DIR as DATA_DIR
-from _shared import require_date_added
+import fixity
+from _shared import get_or_create_vault_file, require_date_added
 import privacy
 import revisions
 
@@ -75,19 +76,24 @@ def run(con):
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
+        baseline = item.get("extracted_from_sha256")
+        if baseline is not None and not fixity.valid_sha256(baseline):
+            raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
+        origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"))  # #38: optional origin file
         date_added = require_date_added(item, "general_facts.json", index)
         # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, visibility,
-                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
+                                   origin_file_id, extracted_from_sha256)
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, item.get("notes"),
              item.get("recheck_by"), item.get("recheck_rationale"), visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
-             status, key, eff["freshness"])
+             status, key, eff["freshness"], origin_file_id, baseline)
         )
         fact_id = cur.lastrowid
         revisions.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))

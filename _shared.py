@@ -2,6 +2,8 @@
 normalization (get-or-create against a dimension table, never repeated text)."""
 import html
 
+import fixity
+
 
 def get_or_create(cur, table, name_col, name):
     row = cur.execute(f"SELECT id FROM {table} WHERE {name_col} = ?", (name,)).fetchone()
@@ -18,9 +20,16 @@ def get_or_create_publisher(cur, name):
 
 
 def get_or_create_vault_file(cur, path):
+    """The vault_files id for `path`, with its current fixity record (#38) written on first sight.
+    A file that cannot be read gets file_state 'missing' and no hash; this never raises for a bad path."""
     if not path:
         return None
-    return get_or_create(cur, "vault_files", "path", path)
+    file_id = get_or_create(cur, "vault_files", "path", path)
+    fp = fixity.fingerprint(path)
+    cur.execute("UPDATE vault_files SET content_sha256 = :content_sha256, size_bytes = :size_bytes, "
+                "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state WHERE id = :id",
+                {**fp, "id": file_id})
+    return file_id
 
 
 def get_or_create_author(cur, name):

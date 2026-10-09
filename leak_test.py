@@ -114,6 +114,10 @@ def derive_markers(full_path):
             add("vault path", p)
         for (p,) in full.execute("SELECT origin_path FROM sources"):
             add("source origin_path", p)
+        # #38 fixity: hashes identify private files and must never reach the normal DB.
+        for (h,) in full.execute("SELECT content_sha256 FROM vault_files UNION SELECT content_sha256 FROM sources "
+                                 "UNION SELECT extracted_from_sha256 FROM facts"):
+            add("file hash", h)
         for (n,) in full.execute("SELECT name FROM subjects WHERE private = 1"):
             add("private subject name", n)
         return markers
@@ -133,6 +137,7 @@ MARKERS = {
     "private fact source quote": "quenchwhistle verbatim private quote",
     "private subject name": "zephyr-family-matters",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
+    "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
     "claim text": "Therefore Grumbleton should change his life",
     "private fact notes": "plover-notes-private-scribble",
     "private source origin path": "Vault/sources/zinnia-private-origin.md",
@@ -157,7 +162,8 @@ def build_fixture(directory):
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (3, ?, 'life', NULL, 1)", (M["private subject name"],))
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (4, 'underchild', 'life', 3, 1)")
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (5, 'untagged-topic', 'health', NULL, 0)")
-    ex("INSERT INTO vault_files (id, path) VALUES (1, ?)", (M["vault path"],))
+    ex("INSERT INTO vault_files (id, path, content_sha256, size_bytes, file_state) VALUES (1, ?, ?, 10, 'present')",
+       (M["vault path"], M["file hash"]))
     ex("INSERT INTO publishers (id, name) VALUES (1, 'Journal of Fixtures')")
     ex("INSERT INTO publishers (id, name) VALUES (2, 'Private Press')")
     ex("INSERT INTO authors (id, name) VALUES (1, 'A. Public'), (2, 'P. Rivate')")
@@ -184,6 +190,9 @@ def build_fixture(directory):
     fact(5, 4, M["private-subject fact under normal-looking fact"], "normal", "k-floor-1")
     fact(6, 3, "Another private-subject fact about the family", "private", "k-priv-3")
     fact(7, 1, M["unicode private"], "private", "k-priv-4")
+    # #38: a normal fact and a normal-included source both carry the hash; neither column is copied
+    ex("UPDATE facts SET extracted_from_sha256 = ? WHERE id = 1", (M["file hash"],))
+    ex("UPDATE sources SET content_sha256 = ?, size_bytes = 10, file_state = 'present' WHERE id = 1", (M["file hash"],))
     # history: older revision private, current normal; and older normal, current private
     ex("INSERT INTO fact_revisions (fact_id, source_key, revision, changed_at, changed_via, statement, trust_level, status, visibility) "
        "VALUES (1, 'k-normal-1', 2, '2026-02-01T00:00:00+00:00', 'cli', 'Creatine monohydrate is well studied for strength.', 'high', 'active', 'normal')")

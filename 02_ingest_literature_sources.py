@@ -5,6 +5,7 @@ risk of misreading. Run after 01_seed_sources.py.
 import sqlite3, os, re, glob, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fixity
 from _shared import link_authors, get_or_create_publisher
 from paths import BODYBUILDING_VAULT as VAULT
 
@@ -123,6 +124,7 @@ def parse_all():
             citekey=citekey, name=name, source_type=stype, author=author_str,
             publisher=journal, url=url, published_date=year, description=description,
             origin_path=f"{VAULT}/sources/{base}",
+            **fixity.fingerprint(fp),
         ))
     return rows
 
@@ -138,8 +140,10 @@ def run(con):
         row = {k: v for k, v in r.items() if k not in ("author", "publisher")}
         row["publisher_id"] = get_or_create_publisher(cur, r.get("publisher"))
         cur.execute(
-            """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path)
-               VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, '2026-09-11', :description, :origin_path)""",
+            """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
+                                    content_sha256, size_bytes, file_mtime, mime_type, file_state)
+               VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, '2026-09-11', :description, :origin_path,
+                       :content_sha256, :size_bytes, :file_mtime, :mime_type, :file_state)""",
             row,
         )
         link_authors(cur, cur.lastrowid, r["author"])

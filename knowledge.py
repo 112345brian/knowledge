@@ -8,6 +8,7 @@
     knowledge.py show <fact_id> [--as-of DATE] [--json]
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
+    knowledge.py audit-sources [--json]
     knowledge.py privacy check "statement" --subject s [--requested normal|private] [--json]
     knowledge.py privacy rules [--json]
     knowledge.py privacy tag|untag <subject> / add-keyword|remove-keyword <word>  [--allow-dirty] [--dry-run]
@@ -42,11 +43,12 @@ import typer
 
 import add_fact
 import claims_audit
+import fixity
 import private_git
 import privacy
 import review
 import revisions
-from paths import KNOWLEDGE_DB_DIR
+from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
@@ -412,6 +414,32 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
     if unparsed and not as_json:
         ids = ", ".join(f"#{u['fact_id']} ({u['recheck_by']!r})" for u in unparsed)
         print(f"note: {len(unparsed)} cited fact(s) have a recheck_by that is not an ISO date, so the audit cannot judge them: {ids}", file=sys.stderr)
+    if rows:
+        raise typer.Exit(1)
+
+
+@app.command("audit-sources", help="List facts whose source file changed, went missing or moved since the fact was extracted (SHA-256 baseline). Exit 1 when any are found.")
+def cmd_audit_sources(as_json: bool = JSON_OPT):
+    def run(con):
+        return (fixity.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity.unbaselined_facts(con))
+    try:
+        rows, unbaselined = _query(run)
+    except sqlite3.OperationalError as e:
+        _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
+    if as_json:
+        _emit_json({"changed_sources": rows, "no_baseline": unbaselined})
+    elif not rows:
+        print("No source file has changed since extraction.")
+    else:
+        for r in rows:
+            line = f"fact #{r['fact_id']} {r['reason']}: {r['path']}"
+            if r["moved_to"]:
+                line += f" -> {r['moved_to']}"
+            print(line)
+            print(f"  {r['statement']}")
+    if unbaselined and not as_json:
+        print(f"note: {len(unbaselined)} fact(s) cite a source file but have no recorded baseline hash, so the audit cannot judge them "
+              f"(run backfill_extracted_hashes.py).", file=sys.stderr)
     if rows:
         raise typer.Exit(1)
 

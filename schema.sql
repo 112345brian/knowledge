@@ -70,7 +70,14 @@ CREATE TABLE sources (
     description     TEXT,
     origin_path     TEXT,               -- the actual file/table this source came from -- NOT normalized:
                                          -- 450/451 distinct, essentially 1:1 with sources, no repetition to fix
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    -- File fixity (#38): the file as it was when the build read it. NULL hash/size/mtime with
+    -- file_state = 'missing' when the file was absent or unreadable; never an invented hash.
+    content_sha256  TEXT CHECK (content_sha256 IS NULL OR length(content_sha256) = 64),
+    size_bytes      INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+    file_mtime      TEXT,
+    mime_type       TEXT,
+    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing'))
 );
 CREATE UNIQUE INDEX idx_sources_citekey ON sources(citekey);
 CREATE INDEX idx_sources_origin_path ON sources(origin_path);
@@ -128,7 +135,14 @@ CREATE TABLE metrics (
 -- ============================================================
 CREATE TABLE vault_files (
     id      INTEGER PRIMARY KEY,
-    path    TEXT NOT NULL UNIQUE
+    path    TEXT NOT NULL UNIQUE,
+    -- File fixity (#38): the file as it was when the build read it. NULL hash/size/mtime with
+    -- file_state = 'missing' when the file was absent or unreadable; never an invented hash.
+    content_sha256  TEXT CHECK (content_sha256 IS NULL OR length(content_sha256) = 64),
+    size_bytes      INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+    file_mtime      TEXT,
+    mime_type       TEXT,
+    file_state      TEXT CHECK (file_state IS NULL OR file_state IN ('present','missing'))
 );
 
 -- ============================================================
@@ -166,6 +180,9 @@ CREATE TABLE facts (
     -- Stable identity across rebuilds (#30); fact_revisions and fact_revisions.jsonl point at it.
     -- Nullable only so hand-built test rows work; the ingest scripts always set it.
     source_key              TEXT UNIQUE,
+    -- Fixity baseline (#38): the SHA-256 the origin file had when this fact was extracted (see
+    -- fixity.audit_sources). NULL = no baseline recorded. Not part of the revision snapshot.
+    extracted_from_sha256   TEXT CHECK (extracted_from_sha256 IS NULL OR length(extracted_from_sha256) = 64),
     -- Freshness (#7): every fact either has a recheck_by or explicitly asserts it does not decay.
     --   recheck     the fact may go stale; recheck_by is required (first CHECK below).
     --   no-decay    an explicit assertion that the fact does not decay (a birthdate, a completed

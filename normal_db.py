@@ -25,7 +25,8 @@ What goes in (everything else is absent, not empty):
                    belong to a normal fact, so they are as visible as the fact. A quote on a
                    private fact's citation of the same source is not copied.
   sources          only sources cited by an included fact (name, citekey, type, url, dates,
-                   description). LEFT OUT: origin_path (vault file path), created_at.
+                   description). LEFT OUT: origin_path (vault file path), created_at, and the fixity columns
+                   (content_sha256, size_bytes, file_mtime, mime_type, file_state; #38).
   authors, source_authors, publishers   only those reachable from an included source.
   subjects         subjects used by included facts plus their parent chain (id, name, domain,
                    parent_id). LEFT OUT: the `private` flag column (all are non-private).
