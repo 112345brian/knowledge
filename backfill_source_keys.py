@@ -33,7 +33,7 @@ import sys
 
 import revisions
 import revisions_store
-from add_fact import _file_lock, _lock_path
+from add_fact_store import file_lock, lock_path
 
 
 def source_key_adder(keys_by_file):
@@ -113,7 +113,7 @@ def rewrite_text(text, path, additions):
 
 def _backfill_file(path, name, adders, apply):
     """Returns the number of entries changed in this file."""
-    with _file_lock(_lock_path(path)):
+    with file_lock(lock_path(path)):
         with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
         items = revisions_store.read_array(path)

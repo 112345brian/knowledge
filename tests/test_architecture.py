@@ -365,6 +365,28 @@ CASES = [
      [("tach", ["inbox", "revisions_store"]), ("import-linter", ["only through modes", "kn.revisions_store"])]),
     ("serving-imports-review-store", "inbox", "import review_store",
      [("tach", ["inbox", "review_store"]), ("import-linter", ["only through modes", "kn.review_store"])]),
+    ("domain-new-fact-imports-sqlite", "new_fact", "import sqlite3",
+     [("import-linter", ["never touch the file system", "kn.new_fact", "sqlite3"])]),
+    ("domain-new-fact-imports-clock", "new_fact", "import clock",
+     [("tach", ["new_fact", "clock"]), ("import-linter", ["kn.new_fact", "kn.clock"])]),
+    ("domain-new-fact-imports-uuid", "new_fact", "import uuid",
+     [("import-linter", ["kn.new_fact", "uuid"])]),
+    ("domain-new-fact-imports-its-adapter", "new_fact", "import add_fact_store",
+     [("tach", ["new_fact", "add_fact_store"]), ("import-linter", ["kn.new_fact", "kn.add_fact_store"])]),
+    ("domain-lifecycle-rules-imports-sqlite", "lifecycle_rules", "import sqlite3",
+     [("import-linter", ["kn.lifecycle_rules", "sqlite3"])]),
+    ("domain-lifecycle-rules-imports-use-case", "lifecycle_rules", "import lifecycle",
+     [("tach", ["lifecycle_rules", "lifecycle"]), ("import-linter", ["kn.lifecycle_rules", "kn.lifecycle"])]),
+    ("domain-lifecycle-rules-imports-review", "lifecycle_rules", "import review",
+     [("tach", ["lifecycle_rules", "review"]), ("import-linter", ["kn.lifecycle_rules", "kn.review"])]),
+    ("adapter-add-fact-store-imports-upward", "add_fact_store", "import add_fact",
+     [("tach", ["add_fact_store", "add_fact"]), ("import-linter", ["kn.add_fact_store", "kn.add_fact"])]),
+    ("adapter-lifecycle-store-imports-lifecycle", "lifecycle_store", "import lifecycle",
+     [("tach", ["lifecycle_store", "lifecycle"]), ("import-linter", ["kn.lifecycle_store", "kn.lifecycle"])]),
+    ("serving-imports-lifecycle-store", "inbox", "import lifecycle_store",
+     [("tach", ["inbox", "lifecycle_store"]), ("import-linter", ["only through modes", "kn.lifecycle_store"])]),
+    ("serving-imports-add-fact-store", "inbox", "import add_fact_store",
+     [("tach", ["inbox", "add_fact_store"]), ("import-linter", ["only through modes", "kn.add_fact_store"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
      [("tach", ["privacy_store", "add_fact"]), ("import-linter", ["kn.privacy_store", "kn.add_fact"])]),
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
@@ -419,7 +441,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     which catches what import-linter cannot see (importlib, __import__, builtins.open)."""
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
-    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
+    assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
         tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
         for node in ast.walk(tree):

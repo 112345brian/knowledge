@@ -31,7 +31,7 @@ def entry(key="k1", statement="Original statement.", **kw):
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
     monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "_shared", "add_fact", "revisions", "revisions_store", "fact_rules"):
+    for m in ("paths", "local_paths", "_shared", "add_fact", "add_fact_store", "new_fact", "revisions", "revisions_store", "fact_rules"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
 

@@ -50,6 +50,7 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import add_fact
+import add_fact_store
 import modes
 import privacy
 from add_fact import NewFact
@@ -238,7 +239,7 @@ def add_facts(items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session
     if dry_run:
         # Show what a real call would do, duplicates included (read-only look at the file).
         try:
-            existing = {(e.get("subject"), _norm(e["statement"])) for e in add_fact._read_array(data_path)
+            existing = {(e.get("subject"), _norm(e["statement"])) for e in add_fact_store.read_array(data_path)
                         if isinstance(e, dict) and isinstance(e.get("subject"), str) and isinstance(e.get("statement"), str)}
         except add_fact.DataFileError as e:
             result.errors.append(str(e))

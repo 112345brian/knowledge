@@ -19,7 +19,7 @@ import uuid
 
 import clock
 import revisions
-from add_fact import _file_lock, _lock_path
+from add_fact_store import file_lock, lock_path
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
 
 
@@ -110,7 +110,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     if errors:
         return RevisionResult(False, errors)
     try:
-        with _file_lock(_lock_path(revisions_path)):
+        with file_lock(lock_path(revisions_path)):
             entries = load_entries(data_dir)
             records = read_log(revisions_path)
             result = revisions.plan_revision(source_key, changes, reason, via, session_id, expect,

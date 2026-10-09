@@ -55,6 +55,7 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 type = "forbidden"
 source_modules = [
     "kn.add_fact",
+    "kn.add_fact_store",
     "kn.claims_audit",
     "kn.claims_store",
     "kn.clock",
@@ -62,9 +63,12 @@ source_modules = [
     "kn.facts_batch",
     "kn.leak_test",
     "kn.lifecycle",
+    "kn.lifecycle_rules",
+    "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.modes",
     "kn.modes_store",
+    "kn.new_fact",
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
@@ -107,6 +111,7 @@ name = "Libraries and the parity registry never import typer (or click)"
 type = "forbidden"
 source_modules = [
     "kn.add_fact",
+    "kn.add_fact_store",
     "kn.claims_audit",
     "kn.claims_store",
     "kn.cli_parity",
@@ -116,9 +121,12 @@ source_modules = [
     "kn.inbox",
     "kn.leak_test",
     "kn.lifecycle",
+    "kn.lifecycle_rules",
+    "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.modes",
     "kn.modes_store",
+    "kn.new_fact",
     "kn.normal_db",
     "kn.paths",
     "kn.privacy",
@@ -201,11 +209,13 @@ source_modules = [
 ]
 forbidden_modules = [
     "kn.add_fact",
+    "kn.add_fact_store",
     "kn.claims_audit",
     "kn.claims_store",
     "kn.facts_batch",
     "kn.knowledge",
     "kn.leak_test",
+    "kn.lifecycle_store",
     "kn.migrate_memory",
     "kn.normal_db",
     "kn.privacy",
@@ -243,7 +253,11 @@ name = "Domain modules never touch the file system, the database, processes or a
 # git, and any driving adapter (CLI, inbox, MCP) or driven adapter (sqlite, files, git) can be
 # swapped without touching it. The adapters live in their own modules and import the domain, never
 # the other way round (the layered contract below already forbids the upward import).
-# DOMAIN today: privacy (rules + resolver); its adapter is privacy_store (rules file, db).
+# DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
+# revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
+# fact_rules and timestamps. Their adapters: privacy_store, modes_store, claims_store, revisions_store,
+# review_store, lifecycle_store, add_fact_store. `review`, `lifecycle` and `add_fact` are the use cases
+# that wire the adapters to the rules.
 # The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
 # module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
 # (tests/test_architecture.py pins it). Direct imports only, because the ADAPTER legitimately
@@ -253,6 +267,8 @@ source_modules = [
     "kn.claims_audit",
     "kn.fact_rules",
     "kn.modes",
+    "kn.lifecycle_rules",
+    "kn.new_fact",
     "kn.privacy",
     "kn.review_rules",
     "kn.revisions",
@@ -264,7 +280,7 @@ forbidden_modules = [
     "subprocess", "socket", "http", "urllib", "uuid",
     # adapters and the modules that wrap infrastructure
     "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
-    "kn.add_fact", "kn.private_git",
+    "kn.add_fact_store", "kn.lifecycle_store", "kn.add_fact", "kn.lifecycle", "kn.review", "kn.private_git",
     "kn.paths", "kn.clock",
 ]
 allow_indirect_imports = true
@@ -284,11 +300,12 @@ layers = [
     "modes_store | claims_store",
     "review | modes | claims_audit | normal_db",
     "leak_test",
-    "review_store",
+    "review_store | lifecycle_store",
     "revisions_store",
     "add_fact",
     "privacy_store",
-    "revisions | review_rules",
+    "add_fact_store | revisions | review_rules | lifecycle_rules",
+    "new_fact",
     "privacy | private_git",
     "clock | paths | timestamps | fact_rules",
 ]

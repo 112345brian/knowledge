@@ -72,11 +72,29 @@ depends_on = [
 ]
 
 [[modules]]
-path = "add_fact"
+path = "new_fact"       # DOMAIN: NewFact, the validation rules and build_entry (pure; time and key passed in)
 layer = "library"
 depends_on = [
+    "fact_rules",
+    "privacy",
+    "timestamps",
+]
+
+[[modules]]
+path = "add_fact_store" # ADAPTER for add_fact: the locked JSON array file, citekey and subject lookups
+layer = "library"
+depends_on = [
+    "new_fact",
+]
+
+[[modules]]
+path = "add_fact"       # USE CASE (and the `python3 add_fact.py` script): wires the adapters to the rules
+layer = "library"
+depends_on = [
+    "add_fact_store",
     "clock",
     "fact_rules",
+    "new_fact",
     "paths",
     "privacy",
     "privacy_store",
@@ -100,7 +118,7 @@ depends_on = [
 path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and its lock, the clock, the db
 layer = "library"
 depends_on = [
-    "add_fact",         # the inter-process file lock
+    "add_fact_store",   # the inter-process file lock
     "clock",
     "paths",            # lazy
     "revisions",
@@ -188,13 +206,32 @@ depends_on = [
 ]
 
 [[modules]]
-path = "lifecycle"      # #8 supersede/retract, #23 set-visibility, #33 edit_fact (moved out of inbox, #36)
+path = "lifecycle_rules" # DOMAIN: lifecycle result types and the supersede/retract/set-visibility/edit decisions (pure)
+layer = "library"
+depends_on = [
+    "fact_rules",
+    "privacy",
+]
+
+[[modules]]
+path = "lifecycle_store" # ADAPTER for lifecycle: rules file + subject tree for the privacy floor, entry subjects
 layer = "library"
 depends_on = [
     "privacy",
     "privacy_store",
+    "revisions_store",
+]
+
+[[modules]]
+path = "lifecycle"      # USE CASE #8 supersede/retract, #23 set-visibility, #33 edit_fact (moved out of inbox, #36)
+layer = "library"
+depends_on = [
+    "lifecycle_rules",
+    "lifecycle_store",
+    "privacy",
     "private_git",
     "review",
+    "review_store",
     "revisions",
     "revisions_store",
 ]
@@ -204,6 +241,7 @@ path = "facts_batch"    # #32 add_facts batch + `register facts`
 layer = "library"
 depends_on = [
     "add_fact",
+    "add_fact_store",
     "modes",
     "privacy",
     "private_git",
@@ -233,6 +271,7 @@ path = "knowledge"      # the Typer app; the only module that imports typer besi
 layer = "cli"
 depends_on = [
     "add_fact",
+    "add_fact_store",
     "claims_store",
     "cli_facts_batch",  # registration lines (CLI-internal)
     "cli_inbox",
@@ -329,12 +368,12 @@ depends_on = [
 [[modules]]
 path = "backfill_source_keys"
 layer = "pipeline"
-depends_on = ["add_fact", "revisions", "revisions_store"]
+depends_on = ["add_fact_store", "revisions", "revisions_store"]
 
 [[modules]]
 path = "backfill_dates"
 layer = "pipeline"
-depends_on = ["add_fact", "backfill_source_keys", "revisions", "snapshot_date", "revisions_store"]
+depends_on = ["add_fact_store", "backfill_source_keys", "revisions", "snapshot_date", "revisions_store"]
 
 [[modules]]
 path = "clean_concerts_csv"

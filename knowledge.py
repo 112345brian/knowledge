@@ -41,6 +41,7 @@ from typing import List, Optional
 import typer
 
 import add_fact
+import add_fact_store
 import claims_store
 import private_git
 import privacy
@@ -584,7 +585,7 @@ def _db_context(rules):
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= {e["subject"] for e in add_fact._read_array(add_fact.DATA_PATH)
+        known |= {e["subject"] for e in add_fact_store.read_array(add_fact.DATA_PATH)
                   if isinstance(e, dict) and isinstance(e.get("subject"), str)}
     except add_fact.DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check

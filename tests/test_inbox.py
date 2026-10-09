@@ -24,7 +24,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture
 def ib(world, monkeypatch):
-    for m in ("privacy_store", "review", "review_store", "review_rules", "lifecycle", "inbox", "cli_inbox"):
+    for m in ("privacy_store", "review", "review_store", "review_rules", "lifecycle", "lifecycle_rules", "lifecycle_store", "inbox", "cli_inbox"):
         sys.modules.pop(m, None)
     for k, v in GIT_ENV.items():
         monkeypatch.setenv(k, v)

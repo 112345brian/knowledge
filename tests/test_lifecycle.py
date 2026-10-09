@@ -21,7 +21,8 @@ KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 @pytest.fixture
 def lw(rw):
     """The review world plus lifecycle (imported after it so every module shares one `revisions`)."""
-    sys.modules.pop("lifecycle", None)
+    for _m in ("lifecycle", "lifecycle_rules", "lifecycle_store"):
+        sys.modules.pop(_m, None)
     import lifecycle
     rw.lc = lifecycle
     return rw
