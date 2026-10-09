@@ -108,3 +108,42 @@ def test_a_mixed_old_and_new_log_round_trips_as_of(world):
     assert [r["kind"] for r in con.execute("SELECT kind FROM fact_revisions ORDER BY revision")] == ["decision", "decision", "plan"]
     import revisions_store
     assert revisions_store.get_fact_as_of(con, 1, T2)["kind"] == "decision"
+
+
+# ---------------------------------------------------------------- the facts row follows the latest revision
+
+def test_the_facts_row_takes_every_mutable_field_from_the_latest_revision(world):
+    """apply_revisions used to write back only the pre-#39 fields, so a revision that changed kind, valid time or
+    applies_to showed in `show --as-of` and `history` while `facts --kind` / `--valid-at` kept the entry's values."""
+    seed_with_kind(world)
+    assert world.append("k1", {"kind": "plan", "valid_from": "2025", "valid_to": "2026-06", "applies_to": "men"}, at=T2).ok
+    con = world.build()
+    row = con.execute("SELECT kind, valid_from, valid_to, applies_to FROM facts").fetchone()
+    assert tuple(row) == ("plan", "2025", "2026-06", "men")
+    assert tuple(con.execute("SELECT kind, valid_from, valid_to, applies_to FROM fact_revisions ORDER BY revision DESC").fetchone()) == tuple(row)
+
+
+def test_clearing_a_field_in_a_revision_clears_it_on_the_facts_row(world):
+    seed_with_kind(world)
+    assert world.append("k1", {"valid_from": None, "applies_to": None}, at=T2).ok
+    row = world.build().execute("SELECT kind, valid_from, applies_to FROM facts").fetchone()
+    assert tuple(row) == ("decision", None, None)
+
+
+def test_search_follows_a_revised_applies_to(world):
+    seed_with_kind(world)
+    assert world.append("k1", {"applies_to": "postmenopausal women"}, at=T2).ok
+    con = world.build()
+    assert con.execute("SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'postmenopausal'").fetchall()
+    assert not con.execute("SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'adults'").fetchall()
+
+
+def test_every_mutable_field_is_written_back_to_the_facts_table(world):
+    """The guard that would have caught this: each field a revision can change has a facts column that the apply
+    step sets. A new entry in MUTABLE_FIELDS with no write-back fails here."""
+    import inspect
+    import revisions_store
+    src = inspect.getsource(revisions_store.apply_revisions)
+    columns = {"superseded_by": "superseded_by_fact_id"}
+    for field in world.rv.MUTABLE_FIELDS:
+        assert f"{columns.get(field, field)} = ?" in src, f"apply_revisions does not write {field} back to facts"
