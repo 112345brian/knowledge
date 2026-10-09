@@ -471,8 +471,10 @@ def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(wo
     import build
     world.seed(general=[entry("k1")])
     write_log(world, rec(revision=5))
-    assert "apply_fact_revisions.py" in build.STEPS
-    assert build.STEPS.index("apply_fact_revisions.py") > build.STEPS.index("seed_general_facts.py")
+    import build_rules
+    steps = build_rules.steps_for(build_rules.CLIENT_SOURCES)
+    assert "ingest/apply_fact_revisions.py" in steps
+    assert steps.index("ingest/apply_fact_revisions.py") > steps.index("ingest/seed_general_facts.py")
     with pytest.raises(world.rv.RevisionError):  # build.build wraps a step exception in BuildError(stage=step name)
         world.build()
 

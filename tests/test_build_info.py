@@ -20,14 +20,16 @@ import build_info_store as bi
 import private_git
 from test_add_fact import REPO
 
-# Bump rule: when this fails, schema.sql changed. Bump `PRAGMA user_version` in schema.sql, then update BOTH
+# Bump rule: when this fails, schema.sql or a client/*.sql fragment changed. Bump `PRAGMA user_version` in schema.sql, then update BOTH
 # constants below (the version and the fingerprint the failure message prints).
-EXPECTED_SCHEMA_VERSION = 2
-EXPECTED_SCHEMA_FINGERPRINT = '4d7b04b7e5ec57e0'
+EXPECTED_SCHEMA_VERSION = 3
+EXPECTED_SCHEMA_FINGERPRINT = '45c24d8e1828765e'
 
 
 def schema_text():
-    return open(os.path.join(REPO, "schema.sql"), encoding="utf-8").read()
+    """The core schema and every optional client fragment: a change to any of them is a schema change."""
+    from schema_helper import full_schema
+    return full_schema()
 
 
 def fingerprint(sql):

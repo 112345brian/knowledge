@@ -35,12 +35,18 @@ if not os.path.isfile(os.path.join(_PRIVATE_DIR, "local_paths.py")):
 if _PRIVATE_DIR not in sys.path:
     sys.path.insert(0, _PRIVATE_DIR)
 
+import local_paths as _local  # noqa: E402
 from local_paths import (  # noqa: E402
     KNOWLEDGE_DB_DIR,
     BODYBUILDING_VAULT,
     HEALTH_DIR,
-    CONCERTS_CSV,
-    RYM_EXPORT_CSV,
-    SCROBBLES_JSON,
     PRIVATE_DATA_DIR,
 )
+
+# Optional client sources (see build_rules.CLIENT_SOURCES): which of them this checkout builds, and the input
+# files they read. A checkout that does not use a source defines neither its name nor its paths, and the build
+# never looks for them.
+CLIENT_SOURCES = tuple(getattr(_local, "CLIENT_SOURCES", ()))
+CONCERTS_CSV = getattr(_local, "CONCERTS_CSV", None)
+RYM_EXPORT_CSV = getattr(_local, "RYM_EXPORT_CSV", None)
+SCROBBLES_JSON = getattr(_local, "SCROBBLES_JSON", None)

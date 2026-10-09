@@ -22,6 +22,7 @@ import sqlite3
 import sys
 import tempfile
 
+import build_rules
 from leak_rules import (MIN_MARKER_LEN, add_marker, check_markers, format_leaks, leaks_in_bytes,  # noqa: F401  (the public API)
                         leaks_in_cell, variants as _variants)
 
@@ -158,8 +159,9 @@ def build_fixture(directory):
     path = os.path.join(directory, "fixture-full.db")
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys = ON")
-    with open(os.path.join(HERE, "schema.sql")) as f:
-        con.executescript(f.read())
+    for name in build_rules.schema_files(build_rules.CLIENT_SOURCES):   # the fixture holds music rows, so every fragment
+        with open(os.path.join(HERE, name)) as f:
+            con.executescript(f.read())
     M = MARKERS
     ex = con.execute
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (1, 'nutrition', 'health', NULL, 0)")

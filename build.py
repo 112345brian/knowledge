@@ -20,17 +20,26 @@ file open keeps a consistent snapshot.
 import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile
 
 import build_rules
-from paths import KNOWLEDGE_DB_DIR
+from paths import CLIENT_SOURCES, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-INGEST_DIR = os.path.join(HERE, "ingest")  # the ETL steps (the `ingest` package) live here
 DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
 LIVE_DB = os.path.join(DB_DIR, "knowledge.db")
-SCHEMA = os.path.join(HERE, "schema.sql")
 BACKUP_DIR = os.path.join(DB_DIR, "backups")
 KEEP_BACKUPS = build_rules.KEEP_BACKUPS
 
-STEPS = list(build_rules.STEPS)
+STEPS = None   # the step files to run, relative to HERE; None = the core steps plus those of the enabled client sources
+
+
+def schema_sql(sources=None):
+    """The schema text for `sources` (default: this checkout's CLIENT_SOURCES): schema.sql plus the fragment of
+    each enabled client source."""
+    sources = CLIENT_SOURCES if sources is None else sources
+    parts = []
+    for name in build_rules.schema_files(sources):
+        with open(os.path.join(HERE, name)) as f:
+            parts.append(f.read())
+    return "\n".join(parts)
 
 
 def load_module(path):
@@ -55,20 +64,22 @@ def record_build_info(con):
     con.commit()
 
 
-def build(target_path):
+def build(target_path, sources=None):
+    """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
+    in `sources` (default: this checkout's CLIENT_SOURCES)."""
+    sources = build_rules.check_client_sources(CLIENT_SOURCES if sources is None else sources)
     if os.path.exists(target_path):
         os.remove(target_path)
     con = sqlite3.connect(target_path)
     try:
         con.execute("PRAGMA foreign_keys = ON;")
         try:
-            with open(SCHEMA) as f:
-                con.executescript(f.read())
+            con.executescript(schema_sql(sources))
         except Exception as e:
             raise BuildError("schema", e) from e
-        for step in STEPS:
+        for step in (build_rules.steps_for(sources) if STEPS is None else STEPS):
             try:
-                mod = load_module(os.path.join(INGEST_DIR, step))
+                mod = load_module(os.path.join(HERE, step))
                 mod.run(con)
             except Exception as e:
                 raise BuildError(step, e) from e
@@ -129,7 +140,8 @@ def build_normal(full_path, directory, rules=None):
 def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
-    for table in build_rules.REPORT_TABLES:
+    existing = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+    for table in build_rules.report_tables(existing):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
     con.close()

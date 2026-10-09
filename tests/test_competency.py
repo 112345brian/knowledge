@@ -11,6 +11,7 @@ import sqlite3
 import sys
 
 import pytest
+from schema_helper import full_schema
 
 from conftest import REPO
 
@@ -46,7 +47,7 @@ def world(tmp_path):
     con = sqlite3.connect(":memory:", factory=DB)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
-    con.executescript(open(os.path.join(REPO, "schema.sql")).read())
+    con.executescript(full_schema())
     x = con.execute
     x("INSERT INTO subjects (id, name, domain) VALUES (1, 'nutrition', 'health'), (2, 'protein', 'health'), (3, 'family', 'life')")
     x("UPDATE subjects SET parent_id = 1, parent_relation = 'part-of', description = 'Dietary protein' WHERE id = 2")

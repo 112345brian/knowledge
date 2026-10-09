@@ -362,6 +362,7 @@ depends_on = [
     "normal_db",        # lazy, self_test() builds a fixture normal DB. The one documented
                         # library cycle (see import-linter "libraries-layered" ignore_imports).
     "privacy",          # lazy
+    "build_rules",
 ]
 
 [[modules]]

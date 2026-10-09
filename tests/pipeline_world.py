@@ -107,7 +107,7 @@ def build_world(root):
     _write(os.path.join(private, "local_paths.py"),
            f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\nBODYBUILDING_VAULT = {vault!r}\n"
            f"HEALTH_DIR = {os.path.join(root, 'health')!r}\nCONCERTS_CSV = {concerts!r}\nRYM_EXPORT_CSV = {rym!r}\n"
-           f"SCROBBLES_JSON = {scrobbles!r}\n")
+           f"SCROBBLES_JSON = {scrobbles!r}\nCLIENT_SOURCES = ('music', 'measurements', 'claims')\n")
 
     # --- vault: source notes (02) and bodybuilding.db (03)
     notes = [("alpha2020", "primary-research", "Alpha Study", "Smith, J", "Doe, A", 2020, "Journal A", "training"),

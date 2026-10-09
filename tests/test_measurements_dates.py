@@ -6,6 +6,7 @@ import sqlite3
 import sys
 
 import pytest
+from schema_helper import full_schema
 
 from test_add_fact import Env, REPO
 
@@ -76,7 +77,7 @@ def m03(tmp_path, monkeypatch):
             con = sqlite3.connect(":memory:")
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON;")
-            con.executescript(open(os.path.join(REPO, "schema.sql")).read())
+            con.executescript(full_schema())
             for ck in ("bodyspec-dexa-2026-06-17", "bodyspec-dexa-2025-11-15", "labcorp-2025-01-24", "manual-tape-measurements",
                        "strength-checkpoints-script", "unlocated-crp-esr-notes"):
                 con.execute("INSERT INTO sources (citekey, name, source_type) VALUES (?, ?, 'primary')", (ck, ck))

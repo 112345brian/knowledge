@@ -36,10 +36,11 @@ NOTES_KEY = KEY_PREFIX + "vault-source-notes"
 
 def input_paths(paths_module):
     """[(stable key, path)] for every file input the build can read. `paths_module` is paths.py (or a stand-in)."""
-    out = [(KEY_PREFIX + "vault-db", os.path.join(paths_module.BODYBUILDING_VAULT, "bodybuilding.db")),
-           (KEY_PREFIX + "concerts-csv", paths_module.CONCERTS_CSV),
-           (KEY_PREFIX + "rym-export-csv", paths_module.RYM_EXPORT_CSV),
-           (KEY_PREFIX + "scrobbles-json", paths_module.SCROBBLES_JSON)]
+    out = [(KEY_PREFIX + "vault-db", os.path.join(paths_module.BODYBUILDING_VAULT, "bodybuilding.db"))]
+    # The music inputs only exist for a checkout that has them configured (paths.py leaves the others None).
+    out += [(KEY_PREFIX + key, path) for key, path in (("concerts-csv", paths_module.CONCERTS_CSV),
+                                                         ("rym-export-csv", paths_module.RYM_EXPORT_CSV),
+                                                         ("scrobbles-json", paths_module.SCROBBLES_JSON)) if path]
     out += [(KEY_PREFIX + "data/" + name, os.path.join(paths_module.PRIVATE_DATA_DIR, name)) for name in DATA_FILES]
     return out
 
