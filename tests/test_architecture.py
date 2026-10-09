@@ -560,6 +560,33 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
                       "migrate_memory_service", "rules_edit_service"}
 
 
+def _architecture_roles():
+    roles = {}
+    for line in _read(os.path.join(REPO, "docs", "architecture.md")).splitlines():
+        m = re.match(r"^\| `([A-Za-z0-9_]+)` \| ([^|]+?) \|", line)
+        if m:
+            assert m.group(1) not in roles, f"{m.group(1)} is listed twice in docs/architecture.md"
+            roles[m.group(1)] = m.group(2)
+    return roles
+
+
+def test_architecture_map_classifies_every_module_and_matches_the_contracts():
+    """docs/architecture.md says what each module is; it must not drift from the code or the contracts."""
+    roles = _architecture_roles()
+    on_disk = {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")}
+    assert set(roles) == on_disk, f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk)}"
+    contracts = _il_contracts(_read(PYPROJECT))
+    domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
+    services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
+    assert {n for n, r in roles.items() if r == "domain"} == domain
+    assert {n for n, r in roles.items() if r == "use case"} == services
+    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory"}
+    driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
+    assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
+    allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}
+    assert {r for r in roles.values() if not r.startswith("facade")} <= allowed
+
+
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
     """Direct check on the real file, independent of both tools: serving holds no write logic."""
     import ast
