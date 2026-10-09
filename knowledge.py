@@ -48,7 +48,6 @@ import validtime
 import privacy
 import review
 import revisions
-import revisions_store
 import rules_edit
 import script_runner
 from fact_rules import KIND_VALUES
@@ -274,7 +273,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
     if not ref:
         _fail("give a fact id or a source_key")
     key = int(ref) if ref.isascii() and ref.isdigit() else ref
-    rows = _query(revisions_store.get_history, key)
+    rows = _query(fact_queries.get_history, key)
     if not rows:
         _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
     if as_json:

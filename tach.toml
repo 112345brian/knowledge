@@ -1,7 +1,7 @@
 # tach module boundaries for the flat-module `knowledge` repo (#36), laid out as a hexagon.
 #
 # Read the README "Architecture enforcement" section and docs/architecture.md first. Summary:
-#   * Every top-level module (and every numbered script) is one tach module.
+#   * Every top-level module, and every module of the `ingest` package (as `ingest.<name>`), is one tach module.
 #   * `depends_on` is a deny-by-default ALLOWLIST: an import not listed here fails
 #     `uv run tach check`. That is how "`paths` is imported only by an allowlist" and
 #     "`private_git` is imported only by add_fact / review / knowledge" are enforced.
@@ -10,7 +10,7 @@
 #
 #       serving    the HTTP review page (inbox)                       driving adapter
 #       cli        the Typer app (knowledge, cli_*)                   driving adapter
-#       pipeline   build.py, the numbered ETL scripts, backfill_*     driving adapter (batch)
+#       pipeline   build.py, the ingest package (steps, tools)       driving adapter (batch)
 #       facade     add_fact, review, lifecycle, facts_batch,          composition roots: pick the adapters
 #                  migrate_memory                                     and bind a use case to them
 #       adapter    *_store, clock, ids, paths, private_git, ...       driven adapters (db, files, git, time)
@@ -32,8 +32,8 @@
 # numbers if you forget) and adjust depends_on to the real imports. The negative tests run with
 # every planned line enabled, so the planned layout is itself checked.
 #
-# Not expressible here: SQL in strings, importlib/__import__ loads (build.py loads the numbered
-# scripts with importlib: that is the pipeline talking to itself), string-built git commands.
+# Not expressible here: SQL in strings, importlib/__import__ loads (build.py loads the ingest steps
+# with importlib: that is the pipeline talking to itself), string-built git commands.
 # The import-linter contracts (pyproject.toml) and the regex scan tests cover part of that.
 
 source_roots = ["."]
@@ -49,12 +49,14 @@ ignore_type_checking_imports = false
 # Report depends_on entries that are no longer used, so the allowlists cannot silently grow stale.
 exact = true
 # Cycles among libraries are checked by import-linter (pyproject.toml, "libraries-layered"),
-# because there is exactly one documented, lazy exception (normal_db <-> leak_test) and tach
-# has no per-edge cycle exception. Turn this on if that exception ever goes away.
+# because there is one documented, lazy exception (normal_db <-> leak_test) and tach has no per-edge cycle
+# exception. A second, unchecked family exists on the CLI side: cli_lifecycle / cli_entities / cli_sources /
+# cli_subjects lazily `import knowledge` for connect() and DatabaseNotFound, and knowledge registers them.
+# Turn this on once both are gone (see the cycle notes in the review of this config).
 forbid_circular_dependencies = false
 
-# ===================================================================== libraries (lowest)
-# Pure importable functions that return data. No typer, no CLI, no serving, no pipeline.
+# ===================================================================== the hexagon: domain, use cases, adapters, facades
+# Importable modules that return data. No typer, no CLI, no serving, no pipeline.
 
 [[modules]]
 path = "clock"
@@ -576,7 +578,6 @@ depends_on = [
     "review",
     "rules_edit",
     "revisions",
-    "revisions_store",
     "script_runner",
     "cli_entities",
     "cli_sources",
@@ -670,8 +671,8 @@ depends_on = [
 #planned: ]
 
 # ===================================================================== pipeline / ingest
-# build.py, the numbered scripts (01_*.py ... 12_*.py: not importable names, so import-linter
-# cannot see them; tach models them by file) and the backfill/export tools.
+# build.py and the `ingest` package: the ETL steps (run in the order of build_rules.STEPS), their helpers
+# and the backfill/export tools. Their pure rules (`ingest.*_rules`) are domain modules and sit with the others.
 
 [[modules]]
 path = "ingest.shared"

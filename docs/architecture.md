@@ -14,7 +14,7 @@ exactly once, and the *domain* and *use case* rows must equal the contract lists
 driving adapters (knowledge, cli_*, inbox, build + the `ingest` package)
         |  call
         v
-facades (review, lifecycle, add_fact, facts_batch, migrate_memory)   <- composition roots: pick the adapters
+facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit) <- composition roots: pick the adapters
         |  bind
         v
 use cases (*_service)  --uses-->  ports (ports.py)  <--implemented by--  driven adapters (*_store, clock, paths, private_git, ...)

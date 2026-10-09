@@ -29,17 +29,26 @@ addopts = "-n auto"
 # --------------------------------------------------------------------------------------------
 # import-linter contracts (#36). See README "Architecture enforcement".
 #
-# The repo is flat top-level modules, which grimp/import-linter cannot analyse directly (it only
-# accepts packages), so the check runs on a generated shadow package `kn` (one `kn.<module>` per
-# top-level module, imports rewritten; see tests/arch_check.py). Run it with
+# The repo is flat top-level modules plus the `ingest` package, which grimp/import-linter cannot analyse
+# directly (it only accepts packages), so the check runs on a generated shadow package `kn`: every top-level
+# module AND every module of `ingest/` becomes `kn.<name>` (the names are unique across both; see
+# tests/arch_check.py, which also rewrites `from ingest import x` / `import ingest.x` to `kn.x`). Run it with
 #     uv run python tests/arch_check.py        # tach + import-linter + git scan
 # or just `uv run pytest tests/test_architecture.py`. Plain `uv run lint-imports` cannot work on
 # a flat repo (it fails with "'x' is a module, not a package").
 #
-# Layers, top to bottom:  serving (inbox, mcp_server)  >  CLI (knowledge, cli_*)  >
-#   pipeline (build, numbered scripts, backfill_*, ...)  >  libraries.  tach.toml holds the
-#   per-module import allowlists (and the `paths` / `private_git` allowlists); the contracts here
-#   cover what tach cannot: external packages (typer, sqlite3, subprocess) and the library DAG.
+# The hexagon, as tach.toml's seven layers (outermost first; a module imports its own layer or a lower one):
+#   serving   the HTTP review page (inbox, mcp_server)            driving adapter
+#   cli       the Typer app (knowledge, cli_*)                    driving adapter
+#   pipeline  build.py and the ingest steps/tools                 driving adapter (batch)
+#   facade    review, lifecycle, add_fact, facts_batch,           composition roots: pick the adapters and
+#             migrate_memory, rules_edit                          bind a use case to them
+#   adapter   *_store, clock, ids, paths, locks, private_git, ... driven adapters (db, files, git, time)
+#   use_case  *_service                                           orchestrate the domain through ports
+#   domain    rules, ports, vocabularies                          pure: no I/O
+# tach.toml holds the per-module import allowlists (and the `paths` / `private_git` allowlists); the
+# contracts here cover what tach cannot: external packages (typer, sqlite3, subprocess), what the domain, the
+# use cases and the driving adapters may not touch, and the library DAG.
 #
 # Lines starting `#planned:` are entries for modules still in flight on other branches. They are
 # inert; delete the `#planned: ` prefix when the module lands (the test tells you which lines).
@@ -125,12 +134,15 @@ forbidden_modules = [
     "kn.cli_inbox",
     "kn.cli_lifecycle",
     "kn.cli_migrate",
+    "kn.cli_entities",
+    "kn.cli_sources",
+    "kn.cli_subjects",
     "kn.cli_parity",
     "kn.knowledge",
     # serving
     "kn.inbox",
 #planned:     "kn.mcp_server",
-    # pipeline / ingest (the numbered scripts are not importable, see tach.toml)
+    # pipeline: build.py and the ingest steps and tools (tach models the steps as ingest.<name>)
     "kn.shared",
     "kn.backfill_dates",
     "kn.backfill_source_keys",
@@ -152,9 +164,6 @@ forbidden_modules = [
     "kn.seed_general_facts",
     "kn.seed_sources",
     "kn.seed_subject_hierarchy",
-    "kn.cli_entities",
-    "kn.cli_sources",
-    "kn.cli_subjects",
     "kn.backfill_extracted_hashes",
     "kn.export_subjects",
 ]
@@ -378,11 +387,11 @@ name = "Domain modules never touch the file system, the database, processes or a
 # revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
 # facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps, ports and the
 # pipeline's rules (artist_rules, fact_ingest_rules, source_ingest_rules, music_ingest_rules, seed_rules,
-# measurement_rules, build_rules, backfill_rules; the numbered scripts and build.py are the ETL adapters). Their
+# measurement_rules, build_rules, backfill_rules; the ingest steps and build.py are the ETL adapters). Their
 # adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
 # add_fact_store, migrate_memory_store (normal_db and leak_test are the adapters for their rules).
-# `review`, `lifecycle`, `add_fact`, `facts_batch` and `migrate_memory` are the use cases that wire the
-# adapters to the rules.
+# `review`, `lifecycle`, `add_fact`, `facts_batch`, `migrate_memory` and `rules_edit` are the facades
+# (composition roots) that bind a use case (a *_service) to its adapters.
 # The other libraries still mix rules with sqlite3 / os / git and are migrated one at a time. A
 # module joins this list only when it is clean, so the list is a ratchet: it can grow, never shrink
 # (tests/test_architecture.py pins it). Direct imports only, because the ADAPTER legitimately
@@ -477,8 +486,11 @@ name = "The CLI and the inbox reach infrastructure only through use cases and re
 # Why (hexagonal architecture): the Typer app (knowledge, cli_*) and the inbox page are driving adapters:
 # they turn a command or a request into a use-case call and print or render the result. They never open a
 # database, spawn a process or touch files themselves, and never import a write-side adapter; writes go
-# through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory) or a *_service, and
-# reads through the read adapters (fact_queries, claims_store, modes_store, revisions_store's history).
+# through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit), and reads
+# through the read adapters (fact_queries, which also serves the revision history, claims_store, modes_store).
+# The forbidden list names every store that writes (or is both): privacy_store, private_git, revisions_store,
+# add_fact_store, lifecycle_store, review_store, migrate_memory_store, locks, ... Only the three named
+# exceptions below remain.
 type = "forbidden"
 source_modules = [
     "kn.cli_facts_batch",
@@ -494,7 +506,7 @@ source_modules = [
 forbidden_modules = [
     "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
     "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids", "kn.locks",
-    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store",
+    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store", "kn.revisions_store",
     "kn.acquisition_store",
     "kn.build_info_store",
     "kn.fixity_store",
@@ -526,7 +538,7 @@ layers = [
     "facts_batch | lifecycle | migrate_memory | rules_edit | entity_migration_store",
     "modes_store | claims_store | facts_batch_service",
     "review | modes | claims_audit | normal_db",
-    "leak_test | lifecycle_service | migrate_memory_service",
+    "leak_test | lifecycle_service | migrate_memory_service | rules_edit_service",
     "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
     "revisions_store | build_info_store | source_status_store",
     "add_fact",
@@ -537,7 +549,7 @@ layers = [
     "entities_store",
     "privacy | source_status | acquisition_store",
     "private_edit_store",
-    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | locks | rules_edit_service | artist_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers",
+    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | locks | artist_rules | music_ingest_rules | seed_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers",
 ]
 ignore_imports = [
     "kn.leak_test -> kn.normal_db",   # documented lazy cycle, see above

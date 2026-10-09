@@ -39,6 +39,9 @@ def _source_files(src_dir):
         if os.path.isdir(d):
             for f in os.listdir(d):
                 if f.endswith(".py") and f != "__init__.py":
+                    if f[:-3] in found:
+                        raise ValueError(f"module name {f[:-3]!r} exists in both {os.path.dirname(found[f[:-3]]) or '.'} "
+                                         f"and {d}: the flat kn.<name> shadow needs unique names")
                     found[f[:-3]] = os.path.join(d, f)
     return found
 

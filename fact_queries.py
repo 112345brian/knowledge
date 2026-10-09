@@ -208,3 +208,6 @@ def latest_build_info(con):
 
 
 compare_build_info = build_info_store.compare
+
+
+get_history = revisions_store.get_history  # the revisions of a fact, oldest first (knowledge.py history)
