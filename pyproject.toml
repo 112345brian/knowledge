@@ -56,6 +56,7 @@ type = "forbidden"
 source_modules = [
     "kn.acquisition",
     "kn.add_fact",
+    "kn.build_info",
     "kn.claims_audit",
     "kn.clock",
     "kn.entities",
@@ -113,6 +114,7 @@ type = "forbidden"
 source_modules = [
     "kn.acquisition",
     "kn.add_fact",
+    "kn.build_info",
     "kn.claims_audit",
     "kn.clock",
     "kn.cli_parity",
@@ -255,7 +257,7 @@ type = "layers"
 containers = ["kn"]
 layers = [
     "facts_batch | lifecycle | migrate_memory | entity_tools",
-    "review | modes | claims_audit | normal_db | source_status | acquisition",
+    "review | modes | claims_audit | normal_db | source_status | acquisition | build_info",
     "leak_test",
     "revisions",
     "add_fact",

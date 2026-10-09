@@ -114,6 +114,11 @@ def derive_markers(full_path):
             add("vault path", p)
         for (p,) in full.execute("SELECT origin_path FROM sources"):
             add("source origin_path", p)
+        for (a, b) in full.execute("SELECT code_commit, private_commit FROM build_info"):      # #47
+            add("code commit", a)
+            add("private commit", b)
+        for (k,) in full.execute("SELECT input_key FROM build_inputs"):
+            add("build input key", k)
         for (n,) in full.execute("SELECT status_note FROM sources"):      # #41: a notice URL may be private; never copied
             add("source status note", n)
         for (u,) in full.execute("SELECT where_from FROM sources UNION SELECT where_from FROM vault_files"):   # #46: download URLs reveal interests
@@ -159,6 +164,9 @@ MARKERS = {
     "private subject description": "quillfeather-secret-description of the family topic",
     "private subject alias": "zephyr-secret-alias",
     "where_from URL": "https://private.example/ws-download-9921/secret-topic.pdf",
+    "code commit": "9d1c0ffee5badc0de1234567890abcdef1234567",
+    "private commit": "7a3b0ffee5badc0de1234567890abcdef7654321",
+    "build input key": "input:scrobbles-json-zq7",
     "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
@@ -206,6 +214,9 @@ def build_fixture(directory):
        "(2, 'priv2021', 'Only cited privately', 'primary', 2, 'x')")
     ex("INSERT INTO source_authors (source_id, author_id) VALUES (1, 1), (2, 2)")
     ex("UPDATE sources SET status = 'corrected', status_date = '2025-03', status_note = ?, edition = '2nd edition' WHERE id = 1", (M["source status note"],))
+    ex("INSERT INTO build_info (id, built_at, schema_version, code_commit, private_commit, python_version) VALUES (1, '2026-10-08T00:00:00+00:00', 1, ?, ?, '3.13.5')",
+       (M["code commit"], M["private commit"]))
+    ex("INSERT INTO build_inputs (build_id, input_key, state, read_at) VALUES (1, ?, 'missing', '2026-10-08T00:00:00+00:00')", (M["build input key"],))
     ex("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (1, 'replaces', 2)")
     ex("UPDATE sources SET acquired_at = '2026-01-02T03:04:05+00:00', acquired_via = 'download', where_from = ?, "
        "acquired_note = 'from macOS file attributes: where_from' WHERE id = 1", (M["where_from URL"],))

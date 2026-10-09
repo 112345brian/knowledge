@@ -54,6 +54,15 @@ layer = "library"
 depends_on = []
 
 [[modules]]
+path = "build_info"     # #47 which inputs and code produced the db; git state comes from private_git
+layer = "library"
+depends_on = [
+    "clock",
+    "fixity",
+    "private_git",
+]
+
+[[modules]]
 path = "acquisition"    # #46 custodial history: data first, macOS file attributes fill gaps (read-only, best effort)
 layer = "library"
 depends_on = [
@@ -244,6 +253,7 @@ depends_on = [
     "cli_lifecycle",
     "cli_entities",
     "cli_migrate",
+    "build_info",
     "cli_subjects",
     "entities",
     "fixity",
@@ -346,6 +356,7 @@ depends_on = []
 path = "build"
 layer = "pipeline"
 depends_on = [
+    "build_info",       # lazy
     "normal_db",        # lazy
     "paths",
     "privacy",          # lazy

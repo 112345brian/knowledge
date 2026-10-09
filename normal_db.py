@@ -42,6 +42,8 @@ subjects        also description, parent_relation, deprecated, replaced_by_subje
 entities        only NON-private entities that an included fact mentions (key, name, type, external_id, notes), their
                    aliases and the fact_entities links of included facts (#42). A private entity, its aliases, notes
                    and links are never copied; a name, alias or note containing a listed keyword is dropped.
+build_info      the latest row's built_at and schema_version only (#47); commits, dirty flags, versions and build_inputs
+                   (input keys) are never copied.
 Never copied: claims (and their fact links), vault_files, metrics, measurements, fact_measurements,
 exercises, training_sets, foods, food/meal logs, muscles, import_sources, artists, venues,
 festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and the views/triggers
@@ -57,12 +59,17 @@ import privacy
 NORMAL_DB_NAME = "knowledge-normal.db"
 
 # Every table the normal DB may contain (FTS shadow tables are the 'fts' siblings below).
-TABLES = ("subjects", "subject_aliases", "entities", "entity_aliases", "fact_entities", "publishers", "authors", "sources", "source_authors", "facts",
+TABLES = ("build_info", "subjects", "subject_aliases", "entities", "entity_aliases", "fact_entities", "publishers", "authors", "sources", "source_authors", "facts",
           "fact_revisions", "fact_sources")
 FTS_TABLES = ("facts_fts", "sources_fts", "authors_fts")
 VIEWS = ("v_subjects",)
 
 DDL = """
+CREATE TABLE build_info (
+    id              INTEGER PRIMARY KEY,
+    built_at        TEXT NOT NULL,
+    schema_version  INTEGER NOT NULL
+);
 CREATE TABLE subjects (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL UNIQUE,
@@ -342,6 +349,11 @@ def populate(out, full, rules):
                 out.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (?, ?, ?)", (eid, alias, alias_norm))
         for fid in linked[eid]:
             out.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (?, ?)", (fid, eid))
+
+    # 4c. build info (#47): when and under which schema version only; commits, versions and input keys stay out
+    row = full.execute("SELECT id, built_at, schema_version FROM build_info ORDER BY id DESC LIMIT 1").fetchone()
+    if row:
+        out.execute("INSERT INTO build_info (id, built_at, schema_version) VALUES (?, ?, ?)", tuple(row))
 
     # 5. FTS over what was copied
     for fts in FTS_TABLES:

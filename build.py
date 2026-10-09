@@ -61,6 +61,13 @@ class BuildError(Exception):
         self.cause = cause
 
 
+def record_build_info(con):
+    """#47: which inputs and code produced this db (build_info / build_inputs)."""
+    import build_info, paths
+    build_info.record(con, paths, HERE, paths.PRIVATE_DATA_DIR)
+    con.commit()
+
+
 def build(target_path):
     if os.path.exists(target_path):
         os.remove(target_path)
@@ -78,6 +85,10 @@ def build(target_path):
                 mod.run(con)
             except Exception as e:
                 raise BuildError(step, e) from e
+        try:
+            record_build_info(con)
+        except Exception as e:
+            raise BuildError("build_info", e) from e
         con.execute("VACUUM;")
         con.execute("ANALYZE;")
     finally:
@@ -138,7 +149,7 @@ def report(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
     for table in ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                  "vault_files", "source_relations", "entities", "entity_aliases", "fact_entities", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
+                  "vault_files", "build_info", "build_inputs", "source_relations", "entities", "entity_aliases", "fact_entities", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
                   "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
                   "muscles", "muscle_volume_weekly",
                   "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",

@@ -9,6 +9,7 @@
     knowledge.py history <fact_id|source_key> [--json]
     knowledge.py audit-claims [--json]
     knowledge.py audit-sources [--json]
+    knowledge.py build-info [--compare OTHER.db] [--json]
     knowledge.py audit-source-status [--json]
     knowledge.py subject list|show|alias|describe|deprecate ...  [--json]  (subjects.json; see cli_subjects.py)
     knowledge.py entity list|show|add|alias|tag|untag|migrate-keywords ...  [--json]  (entities.json; see cli_entities.py)
@@ -45,6 +46,7 @@ from typing import List, Optional
 import typer
 
 import add_fact
+import build_info
 import claims_audit
 import entities
 import fixity
@@ -476,6 +478,41 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
         ids = ", ".join(f"#{u['fact_id']} ({u['recheck_by']!r})" for u in unparsed)
         print(f"note: {len(unparsed)} cited fact(s) have a recheck_by that is not an ISO date, so the audit cannot judge them: {ids}", file=sys.stderr)
     if any(r["severity"] == "weakens" for r in rows):
+        raise typer.Exit(1)
+
+
+@app.command("build-info", help="Which inputs and code produced this knowledge.db: the latest build row and its input manifest. --compare OTHER.db lists inputs that differ (exit 1 when any).")
+def cmd_build_info(compare: Optional[str] = typer.Option(None, "--compare", help="Another knowledge.db to compare input hashes against."),
+                   as_json: bool = JSON_OPT):
+    try:
+        mine = _query(build_info.latest)
+        other = None
+        if compare is not None:
+            try:
+                con = connect(compare)
+            except DatabaseNotFound as e:
+                _fail(e)
+            try:
+                other = build_info.latest(con)
+            finally:
+                con.close()
+    except sqlite3.OperationalError as e:
+        _fail(f"{e} (rebuild knowledge.db with the current schema)")
+    if mine is None:
+        _fail("this database recorded no build info (rebuild it)")
+    diff = build_info.compare(other, mine) if compare is not None else None
+    if as_json:
+        _emit_json({**mine, "compared_with": compare, "changed_inputs": diff})
+    elif diff is not None:
+        print("No input differs." if not diff else "\n".join(f"{d['key']}: {d['change']}" for d in diff))
+    else:
+        b = mine["build"]
+        print(f"Built {b['built_at']}  schema v{b['schema_version']}  python {b['python_version']}  sqlite {b['sqlite_version']}")
+        for label, c, d in (("code", b["code_commit"], b["code_dirty"]), ("knowledge-private", b["private_commit"], b["private_dirty"])):
+            print(f"{label}: {c or 'not in git'}" + (" (uncommitted changes)" if d else ""))
+        for i in mine["inputs"]:
+            print(f"  {i['input_key']}: " + (f"{i['sha256'][:12]}  {i['size_bytes']} bytes" if i["state"] == "present" else "missing"))
+    if diff:
         raise typer.Exit(1)
 
 

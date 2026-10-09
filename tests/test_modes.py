@@ -576,6 +576,8 @@ FACT_READERS_ALLOWED = {
     "entities.py", "13_link_entities.py",
     # CLI-only audit over the full local db (like claims_audit): which cited sources were retracted or replaced
     "source_status.py",
+    # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table
+    "build_info.py",
     # build/ingest pipeline: writes the tables, never serves tool results
     "04_ingest_facts.py", "05_seed_claims.py", "11_seed_general_facts.py", "12_apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",

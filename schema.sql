@@ -11,6 +11,34 @@
 
 PRAGMA foreign_keys = ON;
 
+-- Schema version (#47): bump this whenever a table, column, constraint, view or trigger below changes.
+-- The build records it in build_info; tests/test_build_info.py fails when the schema changed without a bump.
+PRAGMA user_version = 1;
+
+-- Which inputs and code produced this db (#47); written by the build, see build_info.py. input_key is a stable
+-- name, never a path.
+CREATE TABLE build_info (
+    id              INTEGER PRIMARY KEY,
+    built_at        TEXT NOT NULL,
+    schema_version  INTEGER NOT NULL,
+    code_commit     TEXT,
+    code_dirty      INTEGER CHECK (code_dirty IS NULL OR code_dirty IN (0,1)),
+    private_commit  TEXT,
+    private_dirty   INTEGER CHECK (private_dirty IS NULL OR private_dirty IN (0,1)),
+    python_version  TEXT,
+    sqlite_version  TEXT
+);
+CREATE TABLE build_inputs (
+    build_id    INTEGER NOT NULL REFERENCES build_info(id) ON DELETE CASCADE,
+    input_key   TEXT NOT NULL,
+    state       TEXT NOT NULL CHECK (state IN ('present','missing')),
+    sha256      TEXT CHECK (sha256 IS NULL OR length(sha256) = 64),
+    size_bytes  INTEGER,
+    file_mtime  TEXT,
+    read_at     TEXT NOT NULL,
+    PRIMARY KEY (build_id, input_key)
+);
+
 -- ============================================================
 -- Subjects: topic tags, arranged in a shallow tree (domain -> parent -> subject).
 -- ============================================================

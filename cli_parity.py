@@ -31,6 +31,7 @@ ACTIONS = {
     "reject": ("reject",),
     "audit_claims": ("audit-claims",),
     "audit_sources": ("audit-sources",),
+    "build_info": ("build-info",),
     "audit_source_status": ("audit-source-status",),
     "entity_list": ("entity", "list"),
     "entity_show": ("entity", "show"),
