@@ -1,4 +1,5 @@
 """Adapter for `step_stores_port.StepStores`: the privacy, entity, subject and revision stores, by name."""
+import claims_store
 import entities_store
 import privacy_store
 import revisions_store
@@ -31,3 +32,11 @@ def apply_revisions(con, path):
 
 def insert_revision_row(cur, fact_id, revision):
     return revisions_store.insert_revision_row(cur, fact_id, revision)
+
+
+def insert_claim(cur, claim):
+    return claims_store.insert_claim(cur, claim)
+
+
+def link_claim_premise(cur, claim_id, premise):
+    return claims_store.link_claim_premise(cur, claim_id, premise)
