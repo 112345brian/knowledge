@@ -11,7 +11,6 @@ the step registry.
     which `build.py` supplies because the normal-db builder is part of the pipeline layer).
 """
 import os
-from types import SimpleNamespace
 
 import build_info_store
 import build_rules
@@ -22,7 +21,7 @@ import local_stores
 import private_git
 from build_port import StepResult
 from pipeline_context import StepContext
-from wiring import bind
+from wiring import bind_all
 
 API = ("build_database", "build_to_temp", "rebuild", "check")
 
@@ -135,6 +134,4 @@ def compose(locations, clock, outputs, files=None, code_dir_path=None, registry=
         steps=registry or compose_registry(files, here),
         provenance=provenance or build_info_store.BuildProvenance(locations, here, private_git),
         outputs=outputs)
-    api = SimpleNamespace(**{name: bind(getattr(build_service, name), deps) for name in API})
-    api.deps = deps
-    return api
+    return bind_all(build_service, deps, API)

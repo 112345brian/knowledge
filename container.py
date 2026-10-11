@@ -8,6 +8,7 @@ a use case is asked for.
 from functools import cached_property
 
 import add_fact
+import building
 import clock as clocks
 import entities
 import facts_batch
@@ -80,3 +81,19 @@ class Container:
     @cached_property
     def scripts(self):
         return scripts.compose(self.locations, self.clock)
+
+    @cached_property
+    def build_steps(self):
+        """The step registry of the rebuild: every lane's registrations (`building.register_steps`) applied once."""
+        return building.compose_registry()
+
+    @cached_property
+    def build_sessions(self):
+        """The session factory of the rebuild: the one place a build database is opened, with the step context."""
+        return building.compose_sessions(self.locations, inputs=self.inputs)
+
+    def build_use_case(self, outputs, files=None):
+        """The rebuild use case (`build_service`): `rebuild(emit)`, `check(emit)`, `build_database(path, sources, emit)`.
+        `outputs` is the `build_port.BuildOutputs` the entry point supplies (the normal-db builder is pipeline code)."""
+        return building.compose(self.locations, self.clock, outputs, files=files, registry=self.build_steps,
+                                sessions=self.build_sessions)

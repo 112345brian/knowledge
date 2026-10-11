@@ -371,3 +371,30 @@ def test_the_next_backup_number_is_past_the_highest_even_after_the_oldest_was_pr
     assert build_rules.next_backup_attempt(base, []) == 1
     assert build_rules.next_backup_attempt(base, [base]) == 2
     assert build_rules.next_backup_attempt(base, [f"{base}-6", f"{base}-9", "knowledge.db.bak-20261003T080001-30"]) == 10
+
+
+# ---- composition: the container owns the registry and the session factory, and wiring verifies the ports ----
+
+def test_the_container_owns_one_registry_and_one_session_factory_for_the_rebuild():
+    import container
+    app = container.Container(Locations(knowledge_db_dir="/db", private_data_dir="/data"))
+    assert app.build_steps is app.build_steps and app.build_sessions is app.build_sessions
+    use_case = app.build_use_case(FakeOutputs([]))
+    assert use_case.deps.steps is app.build_steps and use_case.deps.sessions is app.build_sessions
+
+
+def test_composition_rejects_an_adapter_that_does_not_have_the_shape_of_its_port():
+    import container
+    import wiring
+
+    class NoOpen:
+        pass
+    app = container.Container(Locations(knowledge_db_dir="/db", private_data_dir="/data"))
+    with pytest.raises(wiring.PortMismatch, match="sessions: open is missing"):
+        building.compose(app.locations, app.clock, FakeOutputs([]), sessions=NoOpen())
+
+    class RenamedReport:
+        def build_normal(self, full_path, directory): ...
+        def discard_normal(self, directory): ...
+    with pytest.raises(wiring.PortMismatch, match="outputs: report is missing"):
+        building.compose(app.locations, app.clock, RenamedReport())

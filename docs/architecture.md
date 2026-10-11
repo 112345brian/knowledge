@@ -94,6 +94,12 @@ validation, matching and pure edits their files and lists are subject to.
 
 ## Module map
 
+The rebuild (`build_service`, composed by `building`, entered through `build.py`) runs every step through a step
+registry. A step is run the legacy way (its script is loaded and `run(con, ctx)` called) until its subsystem
+registers a handler in `building.register_steps`; the change that registers a handler also removes the step's legacy
+path. A failure in any stage raises `BuildError(stage)`; the swap is one replace of a finished temp file; a failure
+after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
+
 | Module | Role | What it is |
 | --- | --- | --- |
 | `acquisition_rules` | model | an acquisition record's vocabulary and validation (pure) |

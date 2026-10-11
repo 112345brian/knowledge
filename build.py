@@ -20,7 +20,6 @@ file open keeps a consistent snapshot.
 import sys
 
 import build_rules
-import building
 import normal_db
 import privacy_store
 from build_port import NormalBuild
@@ -56,11 +55,12 @@ class NormalOutputs:
 
 
 def compose(locations, clock, files=None):
-    """The build use case for these `locations` and `clock`, wired to the real adapters."""
+    """The build use case for these `locations` and `clock`, wired to the real adapters through the container."""
+    import container
     if files is None:
         import local_buildfiles
         files = local_buildfiles
-    return building.compose(locations, clock, NormalOutputs(files, locations), files=files)
+    return container.Container(locations, clock).build_use_case(NormalOutputs(files, locations), files=files)
 
 
 def build(target_path, locations, clock, files, sources=None):

@@ -17,6 +17,8 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterable, List, Mapping, Union
 
 from add_fact_port import AddFact
+from build_files_port import BuildFiles
+from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
@@ -65,6 +67,8 @@ PORT_PROTOCOLS = {
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries,
+    "files": BuildFiles, "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
+    "outputs": BuildOutputs,
 }
 
 
