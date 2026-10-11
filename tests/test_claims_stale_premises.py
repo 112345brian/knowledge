@@ -9,10 +9,9 @@ from datetime import date
 import pytest
 
 import claims_store as ca
-import clock
 from conftest import REPO
 from test_claims_audit import add_claim, add_fact, load_seed, new_db
-from appctx import locs
+from appctx import frozen, locs
 
 TODAY = "2026-10-03"
 
@@ -117,14 +116,28 @@ def test_superseded_wins_over_past_recheck_by_and_is_one_row():
     assert [r["reason"] for r in ca.audit_claims(con, TODAY)] == ["superseded"]
 
 
-def test_today_defaults_to_the_clock_helper_and_accepts_a_date_object():
+def test_today_is_given_by_the_caller_as_a_string_or_a_date_object():
     con = new_db()
     add_claim(con, "c", [add_fact(con, "f", recheck_by="2026-10-03")])
-    with clock.frozen("2026-10-03T08:00:00+00:00"):
-        assert ca.audit_claims(con) == []
-    with clock.frozen("2026-10-04T08:00:00+00:00"):
-        assert len(ca.audit_claims(con)) == 1
+    assert ca.audit_claims(con, "2026-10-03") == []
+    assert len(ca.audit_claims(con, "2026-10-04")) == 1
     assert len(ca.audit_claims(con, date(2026, 10, 4))) == 1
+
+
+def test_the_read_service_takes_today_from_its_injected_clock():
+    import queries_service
+    from clock import FixedClock
+    from locations import Locations
+    seen = []
+
+    class Reads:
+        def audit_claims(self, db_path, today):
+            seen.append(today)
+            return [], []
+    loc = Locations(knowledge_db_dir="/x", private_data_dir="/x/d", bodybuilding_vault="/x/v", health_dir="/x/h")
+    deps = queries_service.QueriesDeps(fact_reads=Reads(), clock=FixedClock("2026-10-03T23:30:00+00:00"), locations=loc)
+    assert queries_service.audit_claims(deps) == ([], [])
+    assert seen == [date(2026, 10, 3)]
 
 
 def test_unparseable_rechecks_are_reported_not_flagged():

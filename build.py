@@ -63,14 +63,14 @@ class BuildError(Exception):
         self.cause = cause
 
 
-def record_build_info(con, locations):
+def record_build_info(con, locations, clock):
     """#47: which inputs and code produced this db (build_info / build_inputs)."""
     import build_info_store
-    build_info_store.record(con, locations, HERE, private_git)
+    build_info_store.record(con, locations, HERE, private_git, clock)
     con.commit()
 
 
-def build(target_path, locations, sources=None):
+def build(target_path, locations, clock, sources=None):
     """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
     in `sources` (default: the ones these `locations` enable)."""
     sources = build_rules.check_client_sources(locations.client_sources if sources is None else sources)
@@ -97,7 +97,7 @@ def build(target_path, locations, sources=None):
             except Exception as e:
                 raise BuildError(step, e) from e
         try:
-            record_build_info(con, locations)
+            record_build_info(con, locations, clock)
         except Exception as e:
             raise BuildError("build_info", e) from e
         con.execute("VACUUM;")
@@ -106,7 +106,7 @@ def build(target_path, locations, sources=None):
         con.close()
 
 
-def build_to_temp(directory, locations):
+def build_to_temp(directory, locations, clock):
     """Build into a fresh unique temp file in `directory`; return its path.
     On failure the temp file is removed and BuildError propagates."""
     tmp = os.path.join(directory, f"knowledge.db.building-{uuid.uuid4().hex}")
@@ -115,7 +115,7 @@ def build_to_temp(directory, locations):
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     os.close(fd)
     try:
-        build(tmp, locations)
+        build(tmp, locations, clock)
     except BaseException:
         remove_db_files(tmp)
         raise
@@ -161,18 +161,22 @@ def report(path):
     print(f"  file size: {os.path.getsize(path) / 1_000_000:.1f} MB")
 
 
-def main(locations=None, argv=None):
-    """Entry point. `locations` is read from the private checkout (paths.load()) unless the caller gives them."""
+def main(locations=None, argv=None, clock=None):
+    """Entry point. `locations` is read from the private checkout (paths.load()) and `clock` from the environment
+    (KNOWLEDGE_FROZEN_NOW, else the system clock) unless the caller gives them."""
     if locations is None:
         import paths
         locations = paths.load()
+    if clock is None:
+        import clock as clocks
+        clock = clocks.from_environment()
     argv = sys.argv[1:] if argv is None else argv
     check_only = "--check" in argv
     live_db, db_dir, backup_dir = locations.db_path, locations.db_dir, locations.backup_dir
     try:
         if check_only:
             print("Building into a temp file (live DB untouched)...")
-            tmp = build_to_temp(tempfile.gettempdir(), locations)
+            tmp = build_to_temp(tempfile.gettempdir(), locations, clock)
             try:
                 report(tmp)
                 with tempfile.TemporaryDirectory() as nd:
@@ -187,7 +191,7 @@ def main(locations=None, argv=None):
 
         os.makedirs(db_dir, exist_ok=True)
         print(f"Rebuilding {live_db}...")
-        tmp = build_to_temp(db_dir, locations)
+        tmp = build_to_temp(db_dir, locations, clock)
     except BuildError as e:
         print(f"error: build failed in {e.stage}: {e.cause!r}; live DB left untouched", file=sys.stderr)
         sys.exit(1)

@@ -12,7 +12,7 @@ import pytest
 
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 import new_fact
-from appctx import app
+from appctx import app, system_clock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -249,7 +249,7 @@ def test_fact_retracted_by_another_process_after_the_check_is_not_reactivated(rw
     real = w.rs.append_revision
 
     def racing(key, *a, **kw):
-        assert real("p1", {"status": "retracted"}, "x", "cli", data_dir=w.env.data_dir).ok  # someone else gets in first
+        assert real("p1", {"status": "retracted"}, "x", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok  # someone else gets in first
         return real(key, *a, **kw)
     monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
     res = app().review.approve("p1", data_dir=w.env.data_dir, commit=False)
@@ -263,7 +263,7 @@ def test_fact_edited_by_another_process_keeps_its_edit_when_approved(rw, monkeyp
     real = w.rs.append_revision
 
     def racing(key, *a, **kw):
-        assert real("p1", {"statement": "Reworded."}, "x", "cli", data_dir=w.env.data_dir).ok  # still pending, new text
+        assert real("p1", {"statement": "Reworded."}, "x", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok  # still pending, new text
         return real(key, *a, **kw)
     monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
     assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "approved"
@@ -396,7 +396,7 @@ def test_no_caller_discards_the_result_of_approve_or_reject():
 def test_append_revision_expect_precondition(rw):
     w = rw
     w.seed(general=[pend("p1")])
-    bad = w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "active"})
+    bad = w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "active"}, clock=system_clock())
     assert not bad.ok and bad.errors[0].startswith("precondition failed") and not os.path.exists(w.log)
-    assert not w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"bogus": 1}).ok
-    assert w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "pending"}).ok
+    assert not w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"bogus": 1}, clock=system_clock()).ok
+    assert w.rs.append_revision("p1", {"status": "active"}, "r", "cli", data_dir=w.env.data_dir, expect={"status": "pending"}, clock=system_clock()).ok

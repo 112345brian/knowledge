@@ -17,7 +17,6 @@ import sqlite3
 import stat
 import uuid
 
-import clock
 import revisions
 import locks
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
@@ -93,7 +92,7 @@ def atomic_write_text(path, text):
         raise
 
 
-def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
+def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None, *, clock):
     """Append one revision to a fact: locked, validated, atomic. Never raises for bad input and
     never touches the original entry files; returns RevisionResult(ok, errors, revision).
 

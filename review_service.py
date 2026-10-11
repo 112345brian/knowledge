@@ -42,6 +42,7 @@ from privacy_rules_port import Rules
 from private_git_port import PrivateGit
 from review_reads_port import ReviewReads
 from revisions_port import Revisions
+from clock_port import Clock
 from locations import Locations
 
 
@@ -52,6 +53,7 @@ class ReviewDeps:
     revisions: Revisions
     rules: Rules
     reads: ReviewReads
+    clock: Clock
     locations: Locations
 
 def list_pending(deps, db):
@@ -203,7 +205,7 @@ def _transition(deps, refs, to_status, outcome, reason, via, session_id, data_di
 
     for ref, key, pos in todo:
         res = deps.revisions.append_revision(key, {"status": to_status}, reason, via, session_id,
-                                             data_dir=data_dir, expect={"status": "pending"})
+                                             data_dir=data_dir, expect={"status": "pending"}, clock=deps.clock)
         if res.ok:
             add(pos, ItemResult(ref, outcome, key, revision=res.revision))
         elif any(e.startswith("precondition failed") for e in res.errors):

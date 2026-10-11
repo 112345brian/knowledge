@@ -47,7 +47,8 @@ def test_verify_rejects_a_wrong_adapter_a_renamed_method_and_an_unknown_port():
     problems = wiring.conformance_problems("git", Bad())
     assert any("find_repo" in p for p in problems) and any("ensure_clean_tree is missing" in p for p in problems)
     import private_git, privacy_store, review_store, revisions_store
-    ok = dict(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store, locations=loc)
+    ok = dict(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store,
+              clock=FakeClock(), locations=loc)
     assert wiring.verify(review_service.ReviewDeps(**ok)) is not None
     with pytest.raises(wiring.PortMismatch, match="git"):
         wiring.verify(review_service.ReviewDeps(**{**ok, "git": Bad()}))
@@ -102,7 +103,7 @@ class FakeRevisions:
     def __init__(self):
         self.calls = []
 
-    def append_revision(self, key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
+    def append_revision(self, key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None, *, clock):
         import revisions
         self.calls.append((key, changes, reason, expect))
         return revisions.RevisionResult(True, revision={"source_key": key, **changes})
@@ -114,7 +115,7 @@ def test_review_service_approves_against_in_memory_fakes():
     reads = FakeReads({"k1": {"status": "pending"}, "k2": {"status": "active"}})
     fake_rev = FakeRevisions()
     p = review_service.ReviewDeps(git=Untouched("git"), revisions=fake_rev, rules=Untouched("rules"), reads=reads,
-                                  locations=_fake_locations())
+                                  clock=FakeClock(), locations=_fake_locations())
     result = review_service.approve(p, ["k1", "k2", "nope"], reason="ok", commit=False)
     assert [(i.ref, i.outcome) for i in result.items] == [("k1", "approved"), ("k2", "skipped"), ("nope", "unknown")]
     assert fake_rev.calls == [("k1", {"status": "active"}, "ok", {"status": "pending"})]
@@ -128,7 +129,7 @@ def test_review_service_reports_a_failed_write_per_item():
         def append_revision(self, key, *a, **k):
             return revisions.RevisionResult(False, ["disk on fire"])
     p = review_service.ReviewDeps(git=Untouched("git"), revisions=Failing(), rules=Untouched("rules"),
-                                  reads=FakeReads({"k1": {"status": "pending"}}), locations=_fake_locations())
+                                  reads=FakeReads({"k1": {"status": "pending"}}), clock=FakeClock(), locations=_fake_locations())
     (item,) = review_service.approve(p, ["k1"], commit=False).items
     assert item.outcome == "error" and "disk on fire" in item.reason
 
@@ -255,6 +256,10 @@ class FakeRules:
 
 
 class FakeClock:
+    def now(self):
+        import datetime
+        return datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+
     def now_iso(self):
         return "2026-01-01T00:00:00+00:00"
 

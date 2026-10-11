@@ -269,7 +269,7 @@ def hooked(tmp_path, monkeypatch):
     """build.main() with a fake pipeline that makes the fixture full DB, so the real hook runs."""
     db_dir = tmp_path / "db"
     fixture = leak_test.build_fixture(str(tmp_path))
-    monkeypatch.setattr(build, "build", lambda target, locations: shutil.copy(fixture, target))
+    monkeypatch.setattr(build, "build", lambda target, locations, clock: shutil.copy(fixture, target))
     monkeypatch.setattr(build, "report", lambda p: None)
     monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", lambda path=None: rules())
     return db_dir

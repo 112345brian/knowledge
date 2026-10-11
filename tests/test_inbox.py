@@ -18,7 +18,7 @@ import typer.main
 
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import GIT_ENV, git, make_repo, pend
-from appctx import app
+from appctx import app, system_clock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -186,7 +186,7 @@ def test_list_overlays_current_state_not_the_stale_snapshot(ib):
     seed(w)
     srv = w.start()
     assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).ok     # approved after the snapshot
-    assert w.rs.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir).ok
+    assert w.rs.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok
     _, _, page = call(srv)
     assert "Pending p1." not in page and "Edited since the rebuild." in page
     assert '<span class="count">1</span> pending' in page and "already reviewed" in page
@@ -415,7 +415,7 @@ def test_edit_does_not_overwrite_a_concurrent_change(ib, monkeypatch):
 
     def sneaky(key, changes, *a, **kw):
         monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", real)
-        assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir).ok
+        assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok
         return real(key, changes, *a, **kw)
     monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", sneaky)
     res = app().lifecycle.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)

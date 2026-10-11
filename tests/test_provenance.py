@@ -9,11 +9,10 @@ import sqlite3
 
 import pytest
 
-import clock
 from test_add_fact import Env
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
-from appctx import app, locs
+from appctx import app, frozen, locs
 
 FROZEN = "2026-10-03T08:00:00+00:00"
 ISO_UTC = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
@@ -110,7 +109,7 @@ def test_mcp_blank_quote_or_session_is_rejected(af, blank):
 
 def test_mcp_with_full_provenance_is_accepted_and_stamped(af, tmp_path):
     p = tmp_path / "f.json"
-    with clock.frozen(FROZEN):
+    with frozen(FROZEN):
         res = app().add_fact.append_fact(nf(af, **MCP), data_path=str(p), db_path=str(tmp_path / "n.db"))
     assert res.ok, res.errors
     e = json.loads(p.read_text())[0]
@@ -149,7 +148,7 @@ def test_a_quote_without_citekey_is_only_allowed_with_a_captured_via(af):
 
 
 def test_provenance_key_order_is_after_the_existing_keys(af):
-    with clock.frozen(FROZEN):
+    with frozen(FROZEN):
         e = app().add_fact.build_entry(nf(af, **MCP))
     assert list(e)[-4:] == ["source_quote", "captured_via", "session_id", "captured_at"]
 
@@ -178,7 +177,7 @@ def test_cli_mcp_without_session_or_quote_is_rejected_and_writes_nothing(env):
 
 def test_full_round_trip_into_the_db(ingest, af):
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
-    with clock.frozen(FROZEN):
+    with frozen(FROZEN):
         assert app().add_fact.append_fact(nf(af, **MCP), data_path=path, db_path=os.path.join(ingest.env.root, "n.db")).ok
     ingest.mod11.DATA_DIR = ingest.env.data_dir
     con = ingest.db()

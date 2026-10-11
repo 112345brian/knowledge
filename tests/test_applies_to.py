@@ -17,7 +17,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import facts_batch_rules
 import new_fact
 import fact_queries
-from appctx import app
+from appctx import app, system_clock
 
 
 @pytest.fixture(autouse=True)
@@ -152,13 +152,13 @@ def test_append_revision_library_cleans_the_value(tmp_path, monkeypatch):
     (d / "general_facts.json").write_text(json.dumps([{
         "source_key": "k1", "subject": "s", "statement": "Fact.", "trust_level": "low", "date_added": "2026-01-01T00:00:00+00:00",
         "freshness": "no-decay", "recheck_rationale": "r", "status": "active", "visibility": "private"}]))
-    r = revisions_store.append_revision("k1", {"applies_to": "  adults  "}, "scoped", "cli", data_dir=str(d))
+    r = revisions_store.append_revision("k1", {"applies_to": "  adults  "}, "scoped", "cli", data_dir=str(d), clock=system_clock())
     assert r.ok, r.errors
     assert r.revision["applies_to"] == "adults"
-    r = revisions_store.append_revision("k1", {"applies_to": "   "}, "cleared", "cli", data_dir=str(d))
+    r = revisions_store.append_revision("k1", {"applies_to": "   "}, "cleared", "cli", data_dir=str(d), clock=system_clock())
     assert r.ok and r.revision["applies_to"] is None
-    assert not revisions_store.append_revision("k1", {"applies_to": "   "}, "again", "cli", data_dir=str(d)).ok      # already null: no change
-    assert not revisions_store.append_revision("k1", {"applies_to": 5}, "bad", "cli", data_dir=str(d)).ok
+    assert not revisions_store.append_revision("k1", {"applies_to": "   "}, "again", "cli", data_dir=str(d), clock=system_clock()).ok      # already null: no change
+    assert not revisions_store.append_revision("k1", {"applies_to": 5}, "bad", "cli", data_dir=str(d), clock=system_clock()).ok
 
 
 # ------------------------------------------------------------------ search, FTS, rows

@@ -41,8 +41,8 @@ API = ("list_pending", "current_states", "default_data_dir", "rules_with_db_cont
        "approve", "reject")
 
 
-def compose(locations):
+def compose(locations, clock):
     """The review API wired to the real adapters for these `locations`."""
     deps = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store,
-                                     reads=review_store, locations=locations)
+                                     reads=review_store, clock=clock, locations=locations)
     return bind_all(review_service, deps, API)

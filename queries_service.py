@@ -3,6 +3,7 @@
 binds it to the real adapter, and `knowledge.py` is a thin printer over that."""
 from dataclasses import dataclass
 
+from clock_port import Clock
 from fact_reads_port import FactReads
 from locations import Locations
 
@@ -11,6 +12,7 @@ from locations import Locations
 class QueriesDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
     fact_reads: FactReads
+    clock: Clock
     locations: Locations
 
 
@@ -51,7 +53,7 @@ def source_ids(deps, citekey):
 
 def audit_claims(deps):
     """(claims with a stale premise, cited facts whose recheck_by is not an ISO date)."""
-    return deps.fact_reads.audit_claims(deps.locations.db_path)
+    return deps.fact_reads.audit_claims(deps.locations.db_path, deps.clock.now().date())
 
 
 def audit_sources(deps):

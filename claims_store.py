@@ -9,21 +9,18 @@ import sqlite3
 from datetime import date
 
 import claims_audit
-import clock
 
 
 def _today(today):
-    if today is None:
-        return clock.now().date()
     return date.fromisoformat(today) if isinstance(today, str) else today
 
 
-def audit_claims(db, today=None):
+def audit_claims(db, today):
     """Return a list of dicts, ordered by claim_id then fact_id, one per (claim, stale premise):
     claim_id, claim_statement, inference_type, fact_id, fact_statement, reason, recheck_by,
     superseded_by_fact_id, trust_rationale, notes, plus role (grounds | backing | rebuttal), severity
     ("weakens" for grounds/backing, "info" for a rebuttal, whose reason is prefixed "rebuttal_") and the link's
-    note (why the fact is cited). `db` is an open sqlite3 connection."""
+    note (why the fact is cited). `db` is an open sqlite3 connection; `today` is a date or an ISO date string."""
     today = _today(today)
     old_factory, db.row_factory = db.row_factory, sqlite3.Row
     try:

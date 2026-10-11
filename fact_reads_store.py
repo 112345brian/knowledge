@@ -41,8 +41,8 @@ audit_source_status = _one_shot(fact_queries.audit_source_status)
 
 
 @_one_shot
-def audit_claims(con):
-    return claims_store.audit_claims(con), claims_store.unparseable_rechecks(con)
+def audit_claims(con, today):
+    return claims_store.audit_claims(con, today), claims_store.unparseable_rechecks(con)
 
 
 def latest_build_info(db_path):

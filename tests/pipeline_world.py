@@ -223,8 +223,8 @@ TS = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")  # CURRENT_TIMESTAMP d
 sys.path.insert(0, sys.argv[1])
 import build
 out = os.path.join(sys.argv[2], "pipeline.db")
-import paths
-build.build(out, paths.load())
+import paths, clock
+build.build(out, paths.load(), clock.from_environment())
 con = sqlite3.connect(out)
 dump = {}
 for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name"):

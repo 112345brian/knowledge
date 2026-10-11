@@ -10,11 +10,10 @@ import sys
 
 import pytest
 
-import clock
 from test_add_fact import Env, REPO
 import fact_rules
 import new_fact
-from appctx import app, locs
+from appctx import app, fixed_clock, frozen, locs, system_clock
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -85,10 +84,8 @@ def world(tmp_path, monkeypatch):
 
         @classmethod
         def append(cls, key, changes, reason="because", via="cli", session_id=None, at=None):
-            if at is None:
-                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
-            with clock.frozen(at):
-                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
+            clk = system_clock() if at is None else fixed_clock(at)
+            return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir, clock=clk)
 
         @classmethod
         def log_lines(cls):
@@ -273,8 +270,8 @@ def test_a_revision_line_is_a_full_snapshot_with_fixed_key_order(world):
 
 def test_append_uses_the_clock_helper(world):
     world.seed(general=[entry("k1")])
-    with clock.frozen("2026-10-05T01:02:03+00:00"):
-        r = world.rs.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir)
+    r = world.rs.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir,
+                                 clock=fixed_clock("2026-10-05T01:02:03+00:00"))
     assert r.revision["changed_at"] == "2026-10-05T01:02:03+00:00"
 
 
@@ -299,7 +296,7 @@ def test_append_uses_the_clock_helper(world):
 ])
 def test_bad_appends_are_refused_with_a_message_and_write_nothing(world, changes, reason, via, session, needle):
     world.seed(general=[entry("k1"), entry("k2", statement="Other.")])
-    r = world.rs.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir)
+    r = world.rs.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir, clock=system_clock())
     assert not r.ok and any(needle in e for e in r.errors), r.errors
     assert not os.path.exists(world.log)
 
@@ -389,8 +386,9 @@ def test_a_log_without_a_trailing_newline_gets_one_before_the_next_line(world):
 def test_concurrent_appends_from_several_processes_lose_nothing(world):
     world.seed(general=[entry("k1")])
     n = 8
-    script = ("import sys, revisions_store; "
-              "r = revisions_store.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1]); "
+    script = ("import sys, clock, revisions_store; "
+              "r = revisions_store.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1], "
+              "clock=clock.from_environment()); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "KNOWLEDGE_FROZEN_NOW": T3, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, world.env.data_dir, f"note-{i}"], env=env, cwd=REPO,

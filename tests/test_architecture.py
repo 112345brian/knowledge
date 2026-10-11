@@ -744,8 +744,12 @@ def test_no_hidden_global_state_in_the_application():
     assert offenders == [], "\n".join(offenders)
 
 
-def test_the_clock_is_the_only_ambient_value_and_it_is_a_context_variable():
-    assert "contextvars.ContextVar(" in _read(os.path.join(REPO, "clock.py"))
+def test_the_clock_has_no_ambient_value():
+    """Time is a Clock object handed to whoever needs it: no module-level now()/frozen(), no ContextVar."""
+    text = _read(os.path.join(REPO, "clock.py"))
+    assert "contextvars" not in text and "global " not in text
+    import clock
+    assert not any(hasattr(clock, n) for n in ("now", "now_iso", "frozen"))
 
 
 def test_application_services_import_no_system_module():

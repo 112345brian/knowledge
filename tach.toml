@@ -247,7 +247,6 @@ layer = "composition"
 depends_on = [
     "add_fact_service",
     "add_fact_store",
-    "clock",
     "ids",
     "wiring",
     "privacy_store",
@@ -279,7 +278,6 @@ depends_on = [
 path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and its lock, the clock, the db
 layer = "infrastructure"
 depends_on = [
-    "clock",
     "revisions",
     "locks",
 ]
@@ -336,7 +334,7 @@ depends_on = [
 [[modules]]
 path = "review_service"  # USE CASE: review, through ports only
 layer = "application"
-depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port", "fact_state", "locations"]
+depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port", "fact_state", "locations", "clock_port"]
 
 [[modules]]
 path = "timestamps"     # DOMAIN: pure revision-time parsing, shared by revisions (storage) and modes (policy)
@@ -414,7 +412,6 @@ path = "claims_store"   # ADAPTER for claims_audit: reads claims/facts and the c
 layer = "infrastructure"
 depends_on = [
     "claims_audit",
-    "clock",
 ]
 
 [[modules]]
@@ -489,7 +486,7 @@ depends_on = [
 [[modules]]
 path = "lifecycle_service"  # USE CASE: supersede/retract/set-visibility/edit, through ports only
 layer = "application"
-depends_on = ["lifecycle_rules", "privacy", "review_rules", "revisions", "lifecycle_reads_port", "private_git_port", "reviews_port", "revisions_port", "locations"]
+depends_on = ["lifecycle_rules", "privacy", "review_rules", "revisions", "lifecycle_reads_port", "private_git_port", "reviews_port", "revisions_port", "locations", "clock_port"]
 
 [[modules]]
 path = "facts_batch_rules" # DOMAIN: batch result types, item parsing, the duplicate test (pure)
@@ -535,7 +532,6 @@ path = "migrate_memory" # FACADE (composition root): binds migrate_memory_servic
 layer = "composition"
 depends_on = [
     "add_fact",
-    "clock",
     "migrate_memory_service",
     "migrate_memory_store",
     "wiring",
@@ -572,7 +568,7 @@ depends_on = ["claims_store", "fact_queries", "fact_reads_port", "review_store"]
 [[modules]]
 path = "queries_service"   # APPLICATION SERVICE: the read side (search, list, show, history, audits, build info)
 layer = "application"
-depends_on = ["fact_reads_port", "locations"]
+depends_on = ["fact_reads_port", "locations", "clock_port"]
 
 [[modules]]
 path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
@@ -607,7 +603,7 @@ depends_on = ["script_runner_port"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects"]
+depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -645,7 +641,6 @@ depends_on = []
 path = "build_info_store"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
 layer = "infrastructure"
 depends_on = [
-    "clock",
     "fixity_store",
     "private_git_port",
 ]
@@ -865,6 +860,7 @@ depends_on = [
     "paths",
     "privacy_store",
     "build_info_store",
+    "clock",
 ]
 
 [[modules]]

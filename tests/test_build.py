@@ -35,7 +35,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "report", lambda path: None)
     # ...nor the facts tables the normal DB is built from; tests/test_normal_db.py covers that hook
     # ...nor the build_info tables; tests/test_build_info.py covers that hook
-    monkeypatch.setattr(build, "record_build_info", lambda con, locations: None)
+    monkeypatch.setattr(build, "record_build_info", lambda con, locations, clock: None)
     monkeypatch.setattr(build, "build_normal", lambda full, directory, locations, rules=None: None)
 
     class E:

@@ -22,7 +22,6 @@ import os
 import platform
 import sqlite3
 
-import clock
 import fixity_store
 from private_git_port import PrivateGit
 
@@ -72,7 +71,7 @@ def collect_inputs(con, locations):
     return sorted(out, key=lambda kv: kv[0])
 
 
-def record(con, locations, code_dir, git: PrivateGit):
+def record(con, locations, code_dir, git: PrivateGit, clock):
     """Write the build_info row and the build_inputs manifest into `con` (a freshly built db). Does not commit.
     Returns the build_info id."""
     code = git.describe_repo(code_dir)

@@ -9,7 +9,7 @@ API = ("search_facts", "list_facts", "get_fact", "list_subjects", "fact_as_of", 
        "default_db_path")
 
 
-def compose(locations):
+def compose(locations, clock):
     """The read-side API wired to the real read adapter for these `locations`."""
-    deps = queries_service.QueriesDeps(fact_reads=fact_reads_store, locations=locations)
+    deps = queries_service.QueriesDeps(fact_reads=fact_reads_store, clock=clock, locations=locations)
     return bind_all(queries_service, deps, API)

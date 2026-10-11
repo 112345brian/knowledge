@@ -61,6 +61,7 @@ from lifecycle_reads_port import LifecycleReads
 from private_git_port import PrivateGit
 from reviews_port import Reviews
 from revisions_port import Revisions
+from clock_port import Clock
 from locations import Locations
 
 
@@ -71,6 +72,7 @@ class LifecycleDeps:
     revisions: Revisions
     reviews: Reviews
     lifecycle_reads: LifecycleReads
+    clock: Clock
     locations: Locations
 
 _decide_retract = lifecycle_rules.decide_retract
@@ -131,7 +133,7 @@ def _run(deps, verb, ref, by_ref, reason, via, session_id, data_dir, commit, all
 
     for attempt in (1, 2):
         _, changes, expect, outcome = plan
-        res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+        res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect, clock=deps.clock)
         if res.ok:
             result.outcome, result.revision = outcome, res.revision
             break
@@ -239,7 +241,7 @@ def _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow
             return _fail(ref, str(e), source_key=key)
 
     expect = {"status": expect_status or current["status"], **{k: current[k] for k in changes}}
-    res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+    res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect, clock=deps.clock)
     if not res.ok:
         if any(e.startswith("precondition failed") for e in res.errors):
             return ReviseResult(False, "skipped", ref, key,

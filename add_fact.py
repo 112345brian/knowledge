@@ -9,7 +9,6 @@ import os
 
 import add_fact_service
 import add_fact_store
-import clock
 import ids
 import private_git
 import privacy_store
@@ -19,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 API = ("validate_fact", "build_entry", "resolve_privacy", "canonicalize_subject", "append_fact", "record_fact")
 
 
-def compose(locations):
+def compose(locations, clock):
     """The single-fact API wired to the real adapters for these `locations`. `data_file_label()` is the facts
     file as it is shown in messages: relative to this repo."""
     deps = add_fact_service.AddFactDeps(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids,

@@ -40,7 +40,6 @@ the system temp dir (keyed by the data file). It cannot be held across append_fa
 so a concurrent add_fact still just appends its own random-keyed entry.
 """
 import add_fact
-import clock
 import migrate_memory_service
 import migrate_memory_store
 import private_git
@@ -49,10 +48,10 @@ from wiring import bind_all
 API = ("migrate",)
 
 
-def compose(locations, add_fact_api=None):
+def compose(locations, clock, add_fact_api=None):
     """The memory-migration API wired to the real adapters for these `locations`; it adds each fact through
     the single-fact API (pass the one already composed, or one is built)."""
-    add_fact_api = add_fact.compose(locations) if add_fact_api is None else add_fact_api
+    add_fact_api = add_fact.compose(locations, clock) if add_fact_api is None else add_fact_api
     deps = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store,
                                                     add_fact=add_fact_api, locations=locations)
     return bind_all(migrate_memory_service, deps, API)
