@@ -14,23 +14,19 @@ contains), so the current rules are re-applied here, raise-only. History is neve
 the fact itself: every revision snapshot of a private fact is raised to private too.
 """
 import os
-import sqlite3
-import sys
 
 import privacy
+import revision_apply_service
 import revisions
 
 
 def run(con, ctx):
-    path = os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME)
-    applied = ctx.stores.apply_revisions(con, path)
-    rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
-    floor = ctx.stores.apply_privacy_rules(con, rules)
-    con.execute("""UPDATE fact_revisions SET visibility = 'private'
-                   WHERE visibility != 'private'
-                     AND fact_id IN (SELECT id FROM facts WHERE visibility = 'private')""")
-    con.commit()
-    if floor["raised"]:
-        print(f"  privacy rules raised {len(floor['raised'])} fact(s) to private after revisions")
-    total = con.execute("SELECT COUNT(*) FROM fact_revisions").fetchone()[0]
-    print(f"[apply_fact_revisions] applied {applied} revisions ({total} rows in fact_revisions incl. implicit revision 1)")
+    deps = revision_apply_service.RevisionApplyDeps(
+        log=ctx.stores, revision_table=ctx.stores.fact_revision_table(con),
+        privacy_table=ctx.stores.fact_privacy_table(con), rules_reader=ctx.stores)
+    done = revision_apply_service.apply_fact_revisions(
+        deps, os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME),
+        os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
+    if done.raised:
+        print(f"  privacy rules raised {len(done.raised)} fact(s) to private after revisions")
+    print(f"[apply_fact_revisions] applied {done.applied} revisions ({done.total_revisions} rows in fact_revisions incl. implicit revision 1)")
