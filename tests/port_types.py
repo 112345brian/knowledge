@@ -43,3 +43,13 @@ entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
+
+from client.measurements_port import FactMeasurementLinks, MeasurementRepository  # noqa: E402
+from client.vault_reader_port import VaultReader  # noqa: E402
+from client import measurements_store, vault_reader_store  # noqa: E402
+import sqlite3  # noqa: E402
+
+_scratch = sqlite3.connect(":memory:")
+vault_reader: VaultReader = vault_reader_store.SqliteVaultReader(_scratch)
+measurement_repository: MeasurementRepository = measurements_store.SqliteMeasurementRepository(_scratch)
+fact_measurement_links: FactMeasurementLinks = measurements_store.SqliteFactMeasurementLinks(_scratch)

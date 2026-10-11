@@ -400,3 +400,19 @@ def test_links_attach_every_measurement_of_the_metric_to_the_fact(knowledge_db):
     assert links.link_metric(fact_id, "no_such_metric") == 0
     links.commit()
     assert knowledge_db.execute("SELECT COUNT(*) FROM fact_measurements WHERE fact_id = ?", (fact_id,)).fetchone()[0] == 2
+
+
+def test_each_adapter_has_every_member_of_its_port_with_the_same_parameters():
+    """The runtime half of what tests/port_types.py checks for mypy: names and parameter order."""
+    import inspect
+    from client import measurements_port, vault_reader_port
+    pairs = [(vault_reader_port.VaultReader, vault_reader_store.SqliteVaultReader),
+             (measurements_port.MeasurementRepository, measurements_store.SqliteMeasurementRepository),
+             (measurements_port.FactMeasurementLinks, measurements_store.SqliteFactMeasurementLinks)]
+    for proto, impl in pairs:
+        for name, member in inspect.getmembers(proto, inspect.isfunction):
+            if name.startswith("_"):
+                continue
+            assert hasattr(impl, name), f"{impl.__name__} lacks {name}"
+            want = list(inspect.signature(member).parameters)
+            assert list(inspect.signature(getattr(impl, name)).parameters) == want, f"{impl.__name__}.{name}"

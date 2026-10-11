@@ -181,6 +181,10 @@ source_modules = [
     "kn.subjects_service",
     "kn.textmatch",
     "kn.validtime",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 forbidden_modules = [
     # CLI
@@ -229,6 +233,7 @@ forbidden_modules = [
     "kn.seed_sources",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
+    "kn.measurements_service",
 ]
 
 [[tool.importlinter.contracts]]
@@ -349,6 +354,10 @@ source_modules = [
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 forbidden_modules = ["typer", "click"]
 
@@ -424,6 +433,7 @@ forbidden_modules = [
     "kn.seed_sources",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
+    "kn.measurements_service",
 ]
 
 [[tool.importlinter.contracts]]
@@ -653,6 +663,11 @@ forbidden_modules = [
     "kn.subjects",
     "kn.subjects_service",
     "kn.subjects_store",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
+    "kn.measurements_service",
 ]
 allow_indirect_imports = true
 
@@ -732,6 +747,8 @@ source_modules = [
     "kn.source_status",
     "kn.textmatch",
     "kn.validtime",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
 ]
 forbidden_modules = [
     # infrastructure the domain must not touch
@@ -755,6 +772,8 @@ forbidden_modules = [
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true
 
@@ -778,6 +797,7 @@ source_modules = [
     "kn.rules_edit_service",
     "kn.entities_service",
     "kn.subjects_service",
+    "kn.measurements_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -799,6 +819,8 @@ forbidden_modules = [
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true
 
@@ -851,5 +873,7 @@ forbidden_modules = [
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true

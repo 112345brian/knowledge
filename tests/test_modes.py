@@ -580,8 +580,9 @@ FACT_READERS_ALLOWED = {
     "leak_scan_store.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
     "entities_store.py", "link_entities.py",
-    # links facts to the measurements they cite at build time (the `measurements` client source)
-    "link_fact_measurements.py",
+    # links facts to the measurements they cite at build time (the `measurements` client source; the fact-id
+    # lookup of the link step lives in this adapter)
+    "measurements_store.py",
     # CLI-only audit over the full local db (like claims_store): which cited sources were retracted or replaced
     "source_status_store.py",
     # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table
