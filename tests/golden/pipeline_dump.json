@@ -185,7 +185,7 @@
     "2026-10-01T00:00:00+00:00",
     3,
     "<ENV>",
-    1,
+    "<ENV>",
     null,
     null,
     "<ENV>",
@@ -1526,7 +1526,7 @@
     "2025-01-01",
     2,
     "verified",
-    "Lean mass index, derived from the DEXA scan (lean soft tissue / height², bone excluded).",
+    "Lean mass index, derived from the DEXA scan (lean soft tissue / height\u00b2, bone excluded).",
     1,
     "2026-09-11",
     null,
@@ -1734,7 +1734,7 @@
     "2026-01-01",
     1,
     "verified",
-    "Lean mass index, derived from the DEXA scan (lean soft tissue / height², bone excluded).",
+    "Lean mass index, derived from the DEXA scan (lean soft tissue / height\u00b2, bone excluded).",
     1,
     "2026-09-11",
     null,
@@ -2626,14 +2626,14 @@
     12,
     "lmi",
     "LMI",
-    "kg/m²",
+    "kg/m\u00b2",
     null
    ],
    [
     13,
     "almi",
     "ALMI",
-    "kg/m²",
+    "kg/m\u00b2",
     null
    ],
    [
@@ -2913,7 +2913,7 @@
     6,
     "bmd_total_g_cm2",
     "BMD (total)",
-    "g/cm²",
+    "g/cm\u00b2",
     null
    ],
    [

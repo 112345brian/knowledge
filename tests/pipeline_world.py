@@ -234,7 +234,7 @@ for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type =
     # file_mtime is the real mtime of a file the test just wrote, and build_info records the commit and the
     # interpreter, so these differ on every run or machine
     rows = [["<TS>" if isinstance(v, str) and TS.match(v) else ("<MTIME>" if cols[i] == "file_mtime" and v is not None else
-                                                  "<ENV>" if name == "build_info" and cols[i] in ("code_commit", "private_commit", "python_version", "sqlite_version") and v is not None else v)
+                                                  "<ENV>" if name == "build_info" and cols[i] in ("code_commit", "private_commit", "code_dirty", "private_dirty", "python_version", "sqlite_version") and v is not None else v)
              for i, v in enumerate(r)] for r in con.execute(f'SELECT * FROM "{name}"')]
     rows.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
     dump[name] = {"columns": cols, "rows": rows}
