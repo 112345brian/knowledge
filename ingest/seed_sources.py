@@ -18,17 +18,45 @@ import acquisition_store
 from ingest import source_ingest_rules
 import source_status
 from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
-from paths import BODYBUILDING_VAULT as VAULT, HEALTH_DIR as HEALTH, PRIVATE_DATA_DIR
+
+
+PRIVATE_DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
+
+def _data_dir():
+    if PRIVATE_DATA_DIR is not None:
+        return PRIVATE_DATA_DIR
+    import paths
+    return paths.settings().private_data_dir
+
+
+VAULT = None  # None: the configured vault; a caller or test may set a path
+
+def _vault():
+    if VAULT is not None:
+        return VAULT
+    import paths
+    return paths.settings().bodybuilding_vault
+
+
+HEALTH = None  # None: the configured health dir; a caller or test may set a path
+
+def _health():
+    if HEALTH is not None:
+        return HEALTH
+    import paths
+    return paths.settings().health_dir
+
+
 
 FIELDS = ("citekey", "name", "source_type", "author", "publisher", "url",
           "published_date", "retrieved_date", "description", "origin_path")
 
 
 def load_sources():
-    items = json.load(open(os.path.join(PRIVATE_DATA_DIR, "manual_sources.json")))
+    items = json.load(open(os.path.join(_data_dir(), "manual_sources.json")))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], VAULT, HEALTH)
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], _vault(), _health())
     return items
 
 

@@ -12,20 +12,29 @@ through unchanged.
 import csv, os
 
 from client import music_ingest_rules
-from paths import CONCERTS_CSV
 
-CSV_PATH = os.path.expanduser(CONCERTS_CSV) if CONCERTS_CSV else None
+
+CSV_PATH = None  # None: the configured concerts CSV, or None when unset; a caller or test may set a path
+
+def _csv_path():
+    if CSV_PATH is not None:
+        return CSV_PATH
+    import paths
+    return os.path.expanduser(paths.settings().concerts_csv) if paths.settings().concerts_csv else None
+
+
+
 
 
 def clean():
-    with open(CSV_PATH, encoding="utf-8-sig", newline="") as f:
+    with open(_csv_path(), encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
 
     merged = music_ingest_rules.clean_concert_rows(rows)
 
     removed = len(rows) - len(merged)
 
-    with open(CSV_PATH, "w", encoding="utf-8", newline="") as f:
+    with open(_csv_path(), "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=music_ingest_rules.CONCERT_COLUMNS)
         writer.writeheader()
         writer.writerows(merged)
@@ -34,6 +43,6 @@ def clean():
 
 
 if __name__ == "__main__":
-    if CSV_PATH is None:
+    if _csv_path() is None:
         sys.exit("error: CONCERTS_CSV is not set in local_paths.py (the `concerts` client source is not configured)")
     clean()

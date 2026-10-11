@@ -8,18 +8,36 @@ import acquisition_store
 import fixity_store
 from ingest import source_ingest_rules
 from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
-from paths import BODYBUILDING_VAULT as VAULT
 
-SRC_DIR = os.path.expanduser(f"{VAULT}/sources")
+
+VAULT = None  # None: the configured vault; a caller or test may set a path
+
+def _vault():
+    if VAULT is not None:
+        return VAULT
+    import paths
+    return paths.settings().bodybuilding_vault
+
+
+SRC_DIR = None  # None: <vault>/sources; a caller or test may set a path
+
+def _src_dir():
+    if SRC_DIR is not None:
+        return SRC_DIR
+    import paths
+    return os.path.expanduser(f"{_vault()}/sources")
+
+
+
 
 def parse_all():
     rows = []
-    for fp in sorted(glob.glob(os.path.join(SRC_DIR, "*.md"))):
+    for fp in sorted(glob.glob(os.path.join(_src_dir(), "*.md"))):
         base = os.path.basename(fp)
         if base == "README.md":
             continue
         text = open(fp, encoding="utf-8").read()
-        row = source_ingest_rules.note_to_source_row(base, text, VAULT)
+        row = source_ingest_rules.note_to_source_row(base, text, _vault())
         where = row.pop("where")
         row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
         row.update(acquisition_store.resolve(acquisition_store.normalize_data(row.pop("raw_acquired"), where), fp))  # #46

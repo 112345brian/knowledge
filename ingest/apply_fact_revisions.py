@@ -21,13 +21,23 @@ import privacy
 import privacy_store
 import revisions
 import revisions_store
-from paths import PRIVATE_DATA_DIR as DATA_DIR
+
+
+DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
+
+def _data_dir():
+    if DATA_DIR is not None:
+        return DATA_DIR
+    import paths
+    return paths.settings().private_data_dir
+
+
 
 
 def run(con):
-    path = os.path.join(DATA_DIR, revisions.REVISIONS_FILENAME)
+    path = os.path.join(_data_dir(), revisions.REVISIONS_FILENAME)
     applied = revisions_store.apply_revisions(con, path)
-    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(_data_dir(), privacy.RULES_FILENAME))
     floor = privacy_store.apply_rules_to_db(con, rules)
     con.execute("""UPDATE fact_revisions SET visibility = 'private'
                    WHERE visibility != 'private'

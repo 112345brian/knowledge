@@ -28,9 +28,18 @@ import sqlite3, json, os
 from client.music_shared import load_artist_cache, get_or_create_artist
 from ingest.shared import get_or_create
 from client import music_ingest_rules
-from paths import SCROBBLES_JSON
 
-SCROBBLES_PATH = os.path.expanduser(SCROBBLES_JSON)
+
+SCROBBLES_PATH = None  # None: the configured scrobbles JSON; a caller or test may set a path
+
+def _scrobbles_path():
+    if SCROBBLES_PATH is not None:
+        return SCROBBLES_PATH
+    import paths
+    return os.path.expanduser(paths.settings().scrobbles_json)
+
+
+
 
 
 def iter_scrobbles(path):
@@ -51,14 +60,14 @@ def get_or_create_track(cur, cache, artist_id, title, album):
 def run(con):
     cur = con.cursor()
 
-    if not os.path.exists(SCROBBLES_PATH):
-        print(f"[scrobbles] {SCROBBLES_PATH} not found, skipping")
+    if not os.path.exists(_scrobbles_path()):
+        print(f"[scrobbles] {_scrobbles_path()} not found, skipping")
         return
 
-    import_source_id = get_or_create(cur, "import_sources", "path", SCROBBLES_PATH)
+    import_source_id = get_or_create(cur, "import_sources", "path", _scrobbles_path())
     cur.execute("DELETE FROM scrobbles WHERE import_source_id = ?", (import_source_id,))
 
-    scrobbles = list(iter_scrobbles(SCROBBLES_PATH))
+    scrobbles = list(iter_scrobbles(_scrobbles_path()))
 
     artist_cache = load_artist_cache(cur)
     before_artists = len(artist_cache)

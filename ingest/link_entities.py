@@ -13,11 +13,21 @@ import sqlite3
 import sys
 
 import entities_store
-from paths import PRIVATE_DATA_DIR as DATA_DIR
+
+
+DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
+
+def _data_dir():
+    if DATA_DIR is not None:
+        return DATA_DIR
+    import paths
+    return paths.settings().private_data_dir
+
+
 
 
 def run(con):
-    found = entities_store.read_file(os.path.join(DATA_DIR, entities_store.ENTITIES_FILENAME))
+    found = entities_store.read_file(os.path.join(_data_dir(), entities_store.ENTITIES_FILENAME))
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return

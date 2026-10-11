@@ -15,9 +15,18 @@ fine -- they're just not re-created if already present).
 import sqlite3, csv, os
 from client.music_shared import load_artist_cache, get_or_create_artist, load_artist_rules
 from client import music_ingest_rules
-from paths import CONCERTS_CSV
 
-CSV_PATH = os.path.expanduser(CONCERTS_CSV)
+
+CSV_PATH = None  # None: the configured concerts CSV; a caller or test may set a path
+
+def _csv_path():
+    if CSV_PATH is not None:
+        return CSV_PATH
+    import paths
+    return os.path.expanduser(paths.settings().concerts_csv)
+
+
+
 
 def get_or_create(cur, table, **fields):
     where = " AND ".join(f"{k} IS :{k}" for k in fields)
@@ -32,7 +41,7 @@ def get_or_create(cur, table, **fields):
 
 def run(con):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", path=CSV_PATH)
+    import_source_id = get_or_create(cur, "import_sources", path=_csv_path())
     cur.execute("DELETE FROM concert_attendances WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
     known_festivals = load_artist_rules().get("festivals", [])
@@ -41,7 +50,7 @@ def run(con):
     unresolved_festival_names = 0
     billing_counts = {}
 
-    with open(CSV_PATH, encoding="utf-8-sig") as f:
+    with open(_csv_path(), encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             concert = music_ingest_rules.concert_from_csv(row, known_festivals)
             if concert is None:

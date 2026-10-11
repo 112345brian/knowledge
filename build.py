@@ -21,21 +21,49 @@ import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile, uuid
 
 import build_rules
 import private_git
-from paths import CLIENT_SOURCES, CLIENT_SOURCES_IMPLICIT, KNOWLEDGE_DB_DIR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.expanduser(KNOWLEDGE_DB_DIR)
-LIVE_DB = os.path.join(DB_DIR, "knowledge.db")
-BACKUP_DIR = os.path.join(DB_DIR, "backups")
 KEEP_BACKUPS = build_rules.KEEP_BACKUPS
 
 STEPS = None   # the step files to run, relative to HERE; None = the core steps plus those of the enabled client sources
+
+# None means "the configured value" (paths.settings(), resolved when used, never at import); a test or an
+# embedding program may set a path here.
+DB_DIR = None
+LIVE_DB = None
+BACKUP_DIR = None
+
+
+def _settings():
+    import paths
+    return paths.settings()
+
+
+def _db_dir():
+    return DB_DIR if DB_DIR is not None else _settings().db_dir
+
+
+def _live_db():
+    return LIVE_DB if LIVE_DB is not None else os.path.join(_db_dir(), "knowledge.db")
+
+
+def _backup_dir():
+    return BACKUP_DIR if BACKUP_DIR is not None else os.path.join(_db_dir(), "backups")
+
+
+def _client_sources():
+    return _settings().client_sources
+
+
+def _client_sources_implicit():
+    return _settings().client_sources_implicit
+
 
 
 def schema_sql(sources=None):
     """The schema text for `sources` (default: this checkout's CLIENT_SOURCES): schema.sql plus the fragment of
     each enabled client source."""
-    sources = CLIENT_SOURCES if sources is None else sources
+    sources = _client_sources() if sources is None else sources
     parts = []
     for name in build_rules.schema_files(sources):
         with open(os.path.join(HERE, name)) as f:
@@ -79,8 +107,8 @@ def record_build_info(con):
 def build(target_path, sources=None):
     """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
     in `sources` (default: this checkout's CLIENT_SOURCES)."""
-    sources = build_rules.check_client_sources(CLIENT_SOURCES if sources is None else sources)
-    print(client_sources_note(sources, implicit=CLIENT_SOURCES_IMPLICIT and sources == CLIENT_SOURCES))
+    sources = build_rules.check_client_sources(_client_sources() if sources is None else sources)
+    print(client_sources_note(sources, implicit=_client_sources_implicit() and sources == _client_sources()))
     import paths
     missing = build_rules.missing_paths(sources, [n for n in ("CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON") if getattr(paths, n, None)])
     if missing:
@@ -137,8 +165,8 @@ def remove_db_files(path):
 
 def prune_backups(keep=KEEP_BACKUPS):
     """Keep only the `keep` most recent backups (see build_rules.backups_to_prune)."""
-    for old in build_rules.backups_to_prune(os.listdir(BACKUP_DIR), keep):
-        os.remove(os.path.join(BACKUP_DIR, old))
+    for old in build_rules.backups_to_prune(os.listdir(_backup_dir()), keep):
+        os.remove(os.path.join(_backup_dir(), old))
         print(f"  pruned old backup {old}")
 
 
@@ -184,29 +212,29 @@ def main():
                 remove_db_files(tmp)
             return
 
-        os.makedirs(DB_DIR, exist_ok=True)
-        print(f"Rebuilding {LIVE_DB}...")
-        tmp = build_to_temp(DB_DIR)
+        os.makedirs(_db_dir(), exist_ok=True)
+        print(f"Rebuilding {_live_db()}...")
+        tmp = build_to_temp(_db_dir())
     except BuildError as e:
         print(f"error: build failed in {e.stage}: {e.cause!r}; live DB left untouched", file=sys.stderr)
         sys.exit(1)
 
     try:
-        if os.path.exists(LIVE_DB):
-            os.makedirs(BACKUP_DIR, exist_ok=True)
-            backup = os.path.join(BACKUP_DIR, build_rules.backup_name(datetime.datetime.now()))
-            shutil.copy2(LIVE_DB, backup)
+        if os.path.exists(_live_db()):
+            os.makedirs(_backup_dir(), exist_ok=True)
+            backup = os.path.join(_backup_dir(), build_rules.backup_name(datetime.datetime.now()))
+            shutil.copy2(_live_db(), backup)
             print(f"Backed up existing DB to {backup}")
             prune_backups()
-        os.replace(tmp, LIVE_DB)
+        os.replace(tmp, _live_db())
     except BaseException:
         remove_db_files(tmp)
         raise
-    report(LIVE_DB)
+    report(_live_db())
 
     # The main build is done and stays in place whatever happens here.
     try:
-        build_normal(LIVE_DB, DB_DIR)
+        build_normal(_live_db(), _db_dir())
     except Exception as e:
         print(f"error: knowledge.db was rebuilt, but the normal-only DB failed: {e}; "
               f"any previous knowledge-normal.db was removed", file=sys.stderr)

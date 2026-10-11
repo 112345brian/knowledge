@@ -20,19 +20,28 @@ import sqlite3, csv, os
 from client.music_shared import load_artist_cache, get_or_create_artist
 from ingest.shared import get_or_create
 from client import music_ingest_rules
-from paths import RYM_EXPORT_CSV
 
-CSV_PATH = os.path.expanduser(RYM_EXPORT_CSV)
+
+CSV_PATH = None  # None: the configured RYM export; a caller or test may set a path
+
+def _csv_path():
+    if CSV_PATH is not None:
+        return CSV_PATH
+    import paths
+    return os.path.expanduser(paths.settings().rym_export_csv)
+
+
+
 
 
 def run(con):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", "path", CSV_PATH)
+    import_source_id = get_or_create(cur, "import_sources", "path", _csv_path())
     cur.execute("DELETE FROM albums WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
 
     inserted = 0
-    with open(CSV_PATH, encoding="utf-8-sig") as f:
+    with open(_csv_path(), encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             album = music_ingest_rules.album_from_row(row)
             if album is None:

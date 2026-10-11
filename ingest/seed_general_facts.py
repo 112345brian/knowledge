@@ -12,7 +12,6 @@ depends on it either.
 """
 import sqlite3, json, os
 
-from paths import PRIVATE_DATA_DIR as DATA_DIR
 from ingest.shared import get_or_create_vault_file
 from ingest import fact_ingest_rules
 import fixity_store
@@ -20,6 +19,17 @@ import privacy
 import privacy_store
 import revisions
 import revisions_store
+
+
+DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
+
+def _data_dir():
+    if DATA_DIR is not None:
+        return DATA_DIR
+    import paths
+    return paths.settings().private_data_dir
+
+
 
 def get_or_create_subject(cur, name, domain, cache):
     if name in cache:
@@ -38,12 +48,12 @@ def get_or_create_subject(cur, name, domain, cache):
 
 def run(con):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(_data_dir(), privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
-    items = json.load(open(os.path.join(DATA_DIR, "general_facts.json")))
+    items = json.load(open(os.path.join(_data_dir(), "general_facts.json")))
     inserted = skipped = 0
     bad_citekeys = set()
     derived = 0
