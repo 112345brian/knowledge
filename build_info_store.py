@@ -23,6 +23,7 @@ import platform
 import sqlite3
 
 import fixity_store
+from build_port import InputState, Provenance, RepoState
 from private_git_port import PrivateGit
 
 KEY_PREFIX = "input:"
@@ -73,22 +74,35 @@ def collect_inputs(con, locations):
     return sorted(out, key=lambda kv: kv[0])
 
 
-def record(con, locations, code_dir, git: PrivateGit, clock):
-    """Write the build_info row and the build_inputs manifest into `con` (a freshly built db). Does not commit.
-    Returns the build_info id."""
-    code = git.describe_repo(code_dir)
-    private = git.describe_repo(locations.private_data_dir)
-    version = con.execute("PRAGMA user_version").fetchone()[0]
-    cur = con.execute(
-        "INSERT INTO build_info (built_at, schema_version, code_commit, code_dirty, private_commit, private_dirty, "
-        "python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (clock.now_iso(), version, code["commit"], code["dirty"], private["commit"], private["dirty"],
-         platform.python_version(), sqlite3.sqlite_version))
-    info_id, read_at = cur.lastrowid, clock.now_iso()
-    for key, d in collect_inputs(con, locations):
-        con.execute("INSERT INTO build_inputs (build_id, input_key, state, sha256, size_bytes, file_mtime, read_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)", (info_id, key, d["state"], d["sha256"], d["size_bytes"], d["file_mtime"], read_at))
-    return info_id
+class BuildProvenance:
+    """Adapter for `build_port.ProvenanceReader`: reads which inputs and code produced a freshly built db and writes
+    that into its build_info / build_inputs tables. `code_dir` is the checkout the pipeline runs from."""
+
+    def __init__(self, locations, code_dir, git: PrivateGit):
+        self._locations, self._code_dir, self._git = locations, code_dir, git
+
+    def read(self, con) -> Provenance:
+        code = self._git.describe_repo(self._code_dir)
+        private = self._git.describe_repo(self._locations.private_data_dir)
+        inputs = tuple(InputState(key, d["state"], d["sha256"], d["size_bytes"], d["file_mtime"])
+                       for key, d in collect_inputs(con, self._locations))
+        return Provenance(schema_version=con.execute("PRAGMA user_version").fetchone()[0],
+                          code=RepoState(code["commit"], code["dirty"]),
+                          private=RepoState(private["commit"], private["dirty"]),
+                          python_version=platform.python_version(), sqlite_version=sqlite3.sqlite_version, inputs=inputs)
+
+    def write(self, con, provenance: Provenance, built_at: str, read_at: str) -> int:
+        """Insert the build_info row and the build_inputs manifest into `con`. Does not commit; returns the id."""
+        cur = con.execute(
+            "INSERT INTO build_info (built_at, schema_version, code_commit, code_dirty, private_commit, private_dirty, "
+            "python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (built_at, provenance.schema_version, provenance.code.commit, provenance.code.dirty,
+             provenance.private.commit, provenance.private.dirty, provenance.python_version, provenance.sqlite_version))
+        info_id = cur.lastrowid
+        for i in provenance.inputs:
+            con.execute("INSERT INTO build_inputs (build_id, input_key, state, sha256, size_bytes, file_mtime, read_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)", (info_id, i.key, i.state, i.sha256, i.size_bytes, i.file_mtime, read_at))
+        return info_id
 
 
 def latest(db):

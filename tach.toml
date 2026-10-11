@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_link_table_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_link_table_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -434,8 +434,8 @@ depends_on = [
 ]
 
 [[modules]]
-path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables (pure)
-layer = "pipeline"
+path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables, BuildError (pure)
+layer = "domain_services"
 depends_on = []
 
 [[modules]]
@@ -799,9 +799,24 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "build_port"          # DOMAIN SERVICE: the build session, step registry, provenance and outputs ports (draft foundation contracts)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
 path = "music_export_store"  # INFRASTRUCTURE: the SQL behind the music-taste export (implements music_export_port)
 layer = "infrastructure"
 depends_on = []
+
+[[modules]]
+path = "build_service"       # APPLICATION SERVICE: the database rebuild (order, failure naming, atomic publication, backups, normal db)
+layer = "application"
+depends_on = ["build_files_port", "build_port", "build_rules", "clock_port", "locations"]
+
+[[modules]]
+path = "building"            # COMPOSITION ROOT: binds build_service; owns the session factory and the step registry
+layer = "composition"
+depends_on = ["build_info_store", "build_port", "build_rules", "build_service", "local_buildfiles", "local_inputs", "local_stores", "pipeline_context", "private_git", "wiring"]
 
 [[modules]]
 path = "build_files_port"    # DOMAIN SERVICE: the disk and process work of a database rebuild
@@ -841,7 +856,7 @@ depends_on = ["script_runner_port", "clock_port", "locations"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "music_export_store"]
+depends_on = ["add_fact", "building", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "music_export_store"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -919,6 +934,7 @@ depends_on = ["fixity_rules"]
 path = "build_info_store"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
 layer = "infrastructure"
 depends_on = [
+    "build_port",
     "fixity_store",
     "private_git_port",
 ]
@@ -1139,15 +1155,12 @@ path = "build"
 layer = "pipeline"
 depends_on = [
     "build_rules",
+    "build_port",
+    "container",
     "normal_db",
-    "private_git",
     "paths",
     "privacy_store",
-    "build_info_store",
     "clock",
-    "local_inputs",
-    "pipeline_context",
-    "local_stores",
     "local_buildfiles",
 ]
 

@@ -269,11 +269,51 @@ def test_cli_leak_test_real_mode_flags_a_leak(built, capsys):
 
 @pytest.fixture
 def hooked(tmp_path, monkeypatch):
-    """build.main() with a fake pipeline that makes the fixture full DB, so the real hook runs."""
+    """build.main() with a fake pipeline that makes the fixture full DB, so the real hook runs: a session that
+    copies the fixture in place of the schema, no steps, no provenance."""
+    import build_info_store
+    import building
     db_dir = tmp_path / "db"
     fixture = leak_test.build_fixture(local_buildfiles, str(tmp_path))
-    monkeypatch.setattr(build, "build", lambda target, locations, clock, files: shutil.copy(fixture, target))
-    monkeypatch.setattr(build, "report", lambda files, p: None)
+
+    class FixtureSession:
+        con = None
+        context = None
+
+        def __init__(self, path):
+            self.path = path
+
+        def apply_schema(self, sources):
+            shutil.copy(fixture, self.path)
+
+        def commit(self):
+            pass
+
+        def optimize(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FixtureSessions:
+        def __init__(self, *args):
+            pass
+
+        def open(self, path):
+            return FixtureSession(path)
+
+    class NoProvenance:
+        def __init__(self, *args):
+            pass
+
+        def read(self, con):
+            return None
+
+        def write(self, con, provenance, built_at, read_at):
+            return 0
+    monkeypatch.setattr(building, "Sessions", FixtureSessions)
+    monkeypatch.setattr(building.Registry, "order", lambda self, sources: [])
+    monkeypatch.setattr(build_info_store, "BuildProvenance", NoProvenance)
     monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", lambda path=None: rules())
     return db_dir
 

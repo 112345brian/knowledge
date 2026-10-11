@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 
 from add_fact_port import AddFact
 from build_files_port import BuildFiles
+from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
@@ -82,6 +83,8 @@ PORT_PROTOCOLS = {
     "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
     "music": MusicRepository,
     "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
+    "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
+    "outputs": BuildOutputs,
 }
 
 

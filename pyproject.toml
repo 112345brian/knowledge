@@ -30,7 +30,7 @@ addopts = "-n auto"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "tests"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "subject_repository_port.py", "entities.py", "subjects.py", "build_records.py", "build_repositories_port.py", "build_steps_port.py", "identity_rules.py", "identity_service.py", "build_composition.py", "music_repository_port.py", "music_ingest_service.py", "music_store.py", "tests/port_types.py", "tests/build_port_types.py"]
+files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "subject_repository_port.py", "entities.py", "subjects.py", "build_records.py", "build_repositories_port.py", "build_steps_port.py", "identity_rules.py", "identity_service.py", "build_composition.py", "music_repository_port.py", "music_ingest_service.py", "music_store.py", "build_port.py", "build_service.py", "tests/port_types.py", "tests/build_port_types.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
@@ -76,6 +76,7 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 type = "forbidden"
 source_modules = [
     "kn.build_files_port",
+    "kn.build_port",
     "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
@@ -96,6 +97,8 @@ source_modules = [
     "kn.music_repository_port",
     "kn.scripts",
     "kn.music_ingest",
+    "kn.building",
+    "kn.build_service",
     "kn.scripts_service",
     "kn.music_ingest_service",
     "kn.fact_reads_port",
@@ -286,6 +289,7 @@ name = "Libraries and the parity registry never import typer (or click)"
 type = "forbidden"
 source_modules = [
     "kn.build_files_port",
+    "kn.build_port",
     "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
@@ -306,6 +310,8 @@ source_modules = [
     "kn.music_repository_port",
     "kn.scripts",
     "kn.music_ingest",
+    "kn.building",
+    "kn.build_service",
     "kn.scripts_service",
     "kn.music_ingest_service",
     "kn.fact_reads_port",
@@ -615,6 +621,7 @@ source_modules = [
 ]
 forbidden_modules = [
     "kn.build_files_port",
+    "kn.build_port",
     "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
@@ -630,6 +637,8 @@ forbidden_modules = [
     "kn.music_repository_port",
     "kn.scripts",
     "kn.music_ingest",
+    "kn.building",
+    "kn.build_service",
     "kn.scripts_service",
     "kn.music_ingest_service",
     "kn.fact_reads_port",
@@ -820,6 +829,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 type = "forbidden"
 source_modules = [
     "kn.build_files_port",
+    "kn.build_port",
     "kn.datafiles_port",
     "kn.music_export_port",
     "kn.step_stores_port",
@@ -939,6 +949,7 @@ name = "Use cases import ports and domain, never an adapter, a facade or infrast
 # tests/test_architecture.py checks that no service touches anything else on `os`.
 type = "forbidden"
 source_modules = [
+    "kn.build_service",
     "kn.scripts_service",
     "kn.music_ingest_service",
     "kn.queries_service",
