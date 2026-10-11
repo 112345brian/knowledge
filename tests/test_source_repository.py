@@ -8,10 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
+import build_records as records
 import source_ingest_service as svc
+from fake_build_repositories import FakeSources, FakeState
 from ingest import source_readers
 from locations import Locations
-from source_record import IdentifierConflict, SourceRecord
+from source_record import SourceRecord
 from source_repository_store import SqliteSourceRepository
 from source_status import Relation, SourceState, SourceStatusError
 
@@ -22,53 +24,50 @@ def rec(citekey, **kw):
     return SourceRecord(citekey=citekey, name=kw.pop("name", citekey), source_type="primary", **kw)
 
 
-class FakeRepo:
-    def __init__(self, known=()):
-        self.sources, self.relations, self.files = [], [], {}
-        self._known = set(known)
-        self.conflicts = {}
+def fake_repo(known=()):
+    """The foundation's in-memory `SourceRepository`, holding `known` citekeys."""
+    state = FakeState()
+    repo = FakeSources(state)
+    for citekey in sorted(known):         # a set has no order; ids follow insertion order
+        repo.add(records.NewSource(citekey, citekey, "primary"))
+    return state, repo
 
-    def citekeys(self):
-        return set(self._known) | {r.citekey for r in self.sources}
 
-    def add_source(self, record):
-        self.sources.append(record)
-        return self.conflicts.get(record.citekey, [])
-
-    def add_relations(self, relations):
-        self.relations.extend(relations)
-
-    def status_counts(self):
-        return {}
-
-    def recorded_vault_file(self, path):
-        return self.files.get(path)
-
-    def record_vault_file(self, path, fingerprint, acquisition):
-        self.files[path] = len(self.files) + 1
-        return self.files[path]
+def stored(state):
+    return [s.citekey for s in state.sources.values()]
 
 
 # ---------------------------------------------------------------- application service
 
 def test_add_sources_stores_in_order_and_reports_identifier_problems_and_conflicts():
-    repo, lines = FakeRepo(), []
-    repo.conflicts["b"] = [IdentifierConflict("doi", "10.1/x", "a")]
-    n = svc.add_sources(repo, [rec("a"), rec("b", identifier_problems=("doi 'zz': bad",))], report=lines.append)
-    assert n == 2 and [r.citekey for r in repo.sources] == ["a", "b"]
+    state, repo = fake_repo()
+    lines = []
+    n = svc.add_sources(repo, [rec("a", identifiers=(("doi", "10.1/x"),)),
+                               rec("b", identifiers=(("doi", "10.1/x"),), identifier_problems=("doi 'zz': bad",))],
+                        report=lines.append)
+    assert n == 2 and stored(state) == ["a", "b"]
     assert lines == ["  WARNING -- doi 'zz': bad; identifier not recorded",
                      "  WARNING -- duplicate identifier doi:10.1/x shared by sources 'a' and 'b' (not merged)"]
+    assert state.identifier_conflicts == [(2, "doi", "10.1/x", 1)]
+
+
+def test_the_authors_follow_the_identifiers_in_call_order():
+    state, repo = fake_repo()
+    svc.add_sources(repo, [rec("a", identifiers=(("doi", "10.1/x"),), authors=((0, "A"), (2, "B")))])
+    assert [op[0] for op in state.operations] == ["sources.add", "sources.add_identifier", "sources.link_author",
+                                                  "sources.link_author"]
 
 
 def test_skip_known_skips_stored_citekeys_and_repeats_within_the_batch():
-    repo = FakeRepo(known={"manual"})
+    state, repo = fake_repo(known={"manual"})
     n = svc.add_sources(repo, [rec("manual"), rec("n1"), rec("n1"), rec("n2")], skip_known=True)
-    assert n == 2 and [r.citekey for r in repo.sources] == ["n1", "n2"]
+    assert n == 2 and stored(state) == ["manual", "n1", "n2"]
 
 
 def test_without_skip_known_every_record_is_offered_to_the_repository():
-    repo = FakeRepo(known={"a"})
-    assert svc.add_sources(repo, [rec("a"), rec("a")]) == 2
+    _, repo = fake_repo(known={"a"})
+    with pytest.raises(sqlite3.IntegrityError):
+        svc.add_sources(repo, [rec("a")])
 
 
 @pytest.mark.parametrize("rels, msg", [
@@ -78,36 +77,43 @@ def test_without_skip_known_every_record_is_offered_to_the_repository():
     ([("a", "obsoletes", "b")], "must be one of"),
 ])
 def test_link_relations_validates_before_storing_anything(rels, msg):
-    repo = FakeRepo(known={"a", "b"})
+    state, repo = fake_repo(known={"a", "b"})
     with pytest.raises(SourceStatusError, match=msg):
         svc.link_relations(repo, rels)
-    assert repo.relations == []
+    assert state.relations == []
 
 
 def test_link_relations_collapses_duplicates_and_stores_the_rest():
-    repo = FakeRepo(known={"a", "b"})
+    state, repo = fake_repo(known={"a", "b"})
     out = svc.link_relations(repo, [("a", "replaces", "b"), ("a", "replaces", "b"), ("a", "is-version-of", "b")])
-    assert out == repo.relations == [Relation("a", "replaces", "b"), Relation("a", "is-version-of", "b")]
+    assert out == [Relation("a", "replaces", "b"), Relation("a", "is-version-of", "b")]
+    assert [(x.source_id, x.relation, x.related_source_id) for x in state.relations] == \
+        [(1, "replaces", 2), (1, "is-version-of", 2)]
 
 
 def test_vault_file_id_reads_the_file_once_and_none_for_no_path():
-    repo, reads = FakeRepo(), []
-    inputs = SimpleNamespace(fingerprint=lambda p: reads.append(("fp", p)) or {}, acquisition=lambda r, p: reads.append(("acq", p)) or r)
+    _, repo = fake_repo()
+    reads = []
+    inputs = SimpleNamespace(fingerprint=lambda p: reads.append(("fp", p)) or {"file_state": "present"},
+                             acquisition=lambda row, p: reads.append(("acq", p)) or row)
     assert svc.vault_file_id(repo, inputs, None) is None and svc.vault_file_id(repo, inputs, "") is None
     ids = {svc.vault_file_id(repo, inputs, "/v/n.md") for _ in range(3)}
     assert len(ids) == 1 and reads == [("fp", "/v/n.md"), ("acq", "/v/n.md")]
 
 
-def test_no_caller_discards_the_conflicts_add_source_returns():
-    """add_source's result is the only record of a refused identifier; the service must be its only caller."""
+def test_only_identity_service_decides_which_identifier_a_source_owns():
+    """An identifier another source holds becomes a conflict row and a warning (identity_service.SourceIdentity).
+    Nothing else may call the repository's identifier writes, or a refused identifier would go unreported."""
     import ast
     import glob
+    allowed = {"identity_service.py", "source_repository_store.py"}
     offenders = []
     for path in glob.glob(os.path.join(REPO, "**", "*.py"), recursive=True):
-        if "/.venv/" in path or "/tests/" in path or os.path.basename(path) in ("source_repository_store.py",):
+        posix = path.replace(os.sep, "/")
+        if "/.venv/" in posix or "/.claude/" in posix or "/tests/" in posix or os.path.basename(path) in allowed:
             continue
-        for node in ast.walk(ast.parse(open(path).read())):
-            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and getattr(node.value.func, "attr", "") == "add_source":
+        for node in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("add_identifier", "record_identifier_conflict"):
                 offenders.append(path)
     assert offenders == []
 
@@ -119,7 +125,7 @@ def con():
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys = ON")
-    c.executescript(open(os.path.join(REPO, "schema.sql")).read())
+    c.executescript(open(os.path.join(REPO, "schema.sql"), encoding="utf-8").read())
     return c
 
 
@@ -129,10 +135,11 @@ FP = {"content_sha256": "a" * 64, "size_bytes": 3, "file_mtime": "2026-01-01T00:
 def test_adapter_stores_a_source_with_publisher_authors_state_and_fingerprint(con):
     repo = SqliteSourceRepository(con)
     state = SourceState.from_raw({"status": "retracted", "status_date": "2020-05", "edition": "2nd"}, "w")
-    repo.add_source(rec("a2020", publisher="JCEM", state=state, fingerprint=FP, retrieved_date="2026-09-11",
-                        authors=((0, "Smith, J"), (2, "Lee, K")),
-                        acquisition={"acquired_at": "2024", "acquired_via": "download", "where_from": None, "acquired_note": None}))
-    repo.add_source(rec("b2021", publisher="JCEM", authors=((0, "Smith, J"),)))
+    svc.add_sources(repo, [
+        rec("a2020", publisher="JCEM", state=state, fingerprint=FP, retrieved_date="2026-09-11",
+            authors=((0, "Smith, J"), (2, "Lee, K")),
+            acquisition={"acquired_at": "2024", "acquired_via": "download", "where_from": None, "acquired_note": None}),
+        rec("b2021", publisher="JCEM", authors=((0, "Smith, J"),))])
     r = con.execute("SELECT s.*, p.name AS pub FROM sources s JOIN publishers p ON p.id = s.publisher_id WHERE citekey = 'a2020'").fetchone()
     assert (r["pub"], r["status"], r["status_date"], r["edition"], r["content_sha256"], r["file_state"], r["acquired_via"], r["retrieved_date"]) == \
         ("JCEM", "retracted", "2020-05", "2nd", "a" * 64, "present", "download", "2026-09-11")
@@ -145,8 +152,10 @@ def test_adapter_stores_a_source_with_publisher_authors_state_and_fingerprint(co
 
 def test_adapter_keeps_a_second_claim_on_an_identifier_as_a_conflict(con):
     repo = SqliteSourceRepository(con)
-    assert repo.add_source(rec("first", identifiers=(("doi", "10.1/x"),))) == []
-    assert repo.add_source(rec("second", identifiers=(("doi", "10.1/x"), ("pmid", "7")))) == [IdentifierConflict("doi", "10.1/x", "first")]
+    lines = []
+    svc.add_sources(repo, [rec("first", identifiers=(("doi", "10.1/x"),)),
+                           rec("second", identifiers=(("doi", "10.1/x"), ("pmid", "7")))], report=lines.append)
+    assert lines == ["  WARNING -- duplicate identifier doi:10.1/x shared by sources 'first' and 'second' (not merged)"]
     assert [tuple(r) for r in con.execute("SELECT s.citekey, i.scheme, i.value FROM source_identifiers i JOIN sources s ON s.id = i.source_id ORDER BY 1, 2")] == \
         [("first", "doi", "10.1/x"), ("second", "pmid", "7")]
     assert con.execute("SELECT COUNT(*) FROM source_identifier_conflicts").fetchone()[0] == 1
@@ -154,20 +163,23 @@ def test_adapter_keeps_a_second_claim_on_an_identifier_as_a_conflict(con):
 
 def test_adapter_relations_citekeys_and_status_counts(con):
     repo = SqliteSourceRepository(con)
-    repo.add_source(rec("old", state=SourceState.from_raw({"status": "superseded"}, "w")))
-    repo.add_source(rec("new"))
-    repo.add_relations([Relation("new", "replaces", "old")])
-    assert repo.citekeys() == {"old", "new"} and repo.status_counts() == {"superseded": 1, "active": 1}
+    svc.add_sources(repo, [rec("old", state=SourceState.from_raw({"status": "superseded"}, "w")), rec("new")])
+    svc.link_relations(repo, [("new", "replaces", "old")])
+    assert dict(repo.citekeys()) == {"old": 1, "new": 2} and repo.find("new") == 2 and repo.find("ghost") is None
+    assert dict(repo.count_by_status()) == {"superseded": 1, "active": 1}
     assert [tuple(r) for r in con.execute("SELECT source_id, relation, related_source_id FROM source_relations")] == [(2, "replaces", 1)]
 
 
 def test_adapter_vault_file_is_recorded_once_and_a_bare_row_is_filled_in(con):
     repo = SqliteSourceRepository(con)
     con.execute("INSERT INTO vault_files (path) VALUES ('/v/n.md')")
-    assert repo.recorded_vault_file("/v/n.md") is None and repo.recorded_vault_file("/v/other.md") is None
-    acq = {"acquired_at": None, "acquired_via": "manual", "where_from": None, "acquired_note": "from attributes"}
-    fid = repo.record_vault_file("/v/n.md", FP, acq)
-    assert fid == 1 and repo.recorded_vault_file("/v/n.md") == 1 and repo.record_vault_file("/v/m.md", FP, acq) == 2
+    assert repo.vault_file("/v/other.md") is None
+    assert repo.vault_file("/v/n.md") == records.VaultFileState(1, None)        # a bare row: not yet fingerprinted
+    fixity = records.FileFixity(FP["content_sha256"], 3, FP["file_mtime"], "text/markdown", "present",
+                                acquired_via="manual", acquired_note="from attributes")
+    repo.record_vault_file_fixity(1, fixity)
+    assert repo.vault_file("/v/n.md") == records.VaultFileState(1, "present")
+    assert repo.add_vault_file("/v/m.md") == 2
     assert tuple(con.execute("SELECT file_state, acquired_via, acquired_note FROM vault_files WHERE id = 1").fetchone()) == \
         ("present", "manual", "from attributes")
 

@@ -53,6 +53,14 @@ integrated result, not a replacement for reviewing them.
    only the methods it calls. Do it one aggregate at a time with `tests/golden/pipeline_dump.json` as the check.
    Some lane ports also put decisions in adapters (conflict detection in `add_source`, alias rules in a get-or-create);
    those move to the service.
+   - **Sources: done.** `sources_port` keeps only `SourceReader`. `source_repository_store.SqliteSourceRepository`
+     now implements `build_repositories_port.SourceRepository` and decides nothing; `source_ingest_service` maps a
+     `SourceRecord` to `NewSource` and uses `identity_service.SourceIdentity` for identifier conflicts and vault-file
+     fixity (a test scans that nothing else writes identifiers). The pipeline dump is byte-identical before and after.
+     The foundation port had no production adapter before this; `identity_service` had no production caller.
+   - Remaining aggregates, same recipe: subjects, facts, music, normal-db, build.
+     Compare dumps with `tests/golden/pipeline_dump.json` (on Windows it differs in four path tables, so diff a dump
+     taken before the change against one taken after).
 2. **#65 (gates) is not merged.** Its premise is "no exemptions"; merge it last and expect it to flag what the port
    collapse removes. Report, don't loosen.
 3. ~~`canonical_artist_name` / `artist_key` in `identity_rules`~~ Done: defined once in `client/artist_rules.py`;

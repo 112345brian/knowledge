@@ -210,7 +210,8 @@ def test_the_same_identifier_twice_on_one_source_is_not_a_conflict(ingest, tmp_p
     repo = SqliteSourceRepository(con)
     record = SourceRecord(citekey="b2020", name="B", source_type="primary",
                           identifiers=(("doi", "10.1210/y1"), ("doi", "10.1210/y1")))
-    assert repo.add_source(record) == []     # the same pair twice on one source: neither a second row nor a conflict
+    import source_ingest_service
+    source_ingest_service.add_sources(repo, [record], report=print)     # the same pair twice on one source: no second row, no conflict
     assert "duplicate" not in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_identifiers").fetchone()[0] == 3
 
 

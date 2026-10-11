@@ -770,19 +770,19 @@ layer = "model"
 depends_on = ["acquisition_rules", "fixity_rules", "source_status"]
 
 [[modules]]
-path = "sources_port"        # DOMAIN SERVICE: where source records come from (readers) and are kept (repository)
+path = "sources_port"        # DOMAIN SERVICE: where source records come from (readers)
 layer = "domain_services"
 depends_on = ["source_record", "source_status"]
 
 [[modules]]
 path = "source_ingest_service"   # USE CASE: store sources, validate and store their relations, record vault files
 layer = "application"
-depends_on = ["inputs_port", "source_record", "source_status", "sources_port"]
+depends_on = ["build_records", "build_repositories_port", "identity_service", "inputs_port", "source_record", "source_status"]
 
 [[modules]]
 path = "source_repository_store"   # INFRASTRUCTURE: sources, publishers, authors, identifiers, relations, vault_files in SQLite
 layer = "infrastructure"
-depends_on = ["source_record", "source_status"]
+depends_on = ["build_records"]
 
 [[modules]]
 path = "step_stores_port"    # DOMAIN SERVICE: the data files and table writers a build step uses

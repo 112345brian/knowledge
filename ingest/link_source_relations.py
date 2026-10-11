@@ -24,4 +24,4 @@ def run(con, ctx):
     sources = ctx.stores.source_repository(con)
     rels = source_ingest_service.link_relations(sources, collect(ctx))
     con.commit()
-    print(f"[link_source_relations] {len(rels)} relations; sources by status: {sources.status_counts()}")
+    print(f"[link_source_relations] {len(rels)} relations; sources by status: {dict(sources.count_by_status())}")

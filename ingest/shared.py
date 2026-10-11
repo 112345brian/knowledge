@@ -1,5 +1,5 @@
 """Small helpers shared across the ingest scripts: the fact hints file and the generic get-or-create against a
-dimension table. Publishers, authors, identifiers and vault files are the source repository's (`sources_port`)."""
+dimension table. Publishers, authors, identifiers and vault files are the source repository's (`build_repositories_port.SourceRepository`)."""
 import os
 
 import fact_ingest_service
