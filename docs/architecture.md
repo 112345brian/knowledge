@@ -203,7 +203,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
 | `music_ingest_rules` | pipeline rules | concerts / RYM / Last.fm rules |
 | `new_fact` | domain service | NewFact + validation + build_entry |
-| `normal_db` | ETL adapter (driving, batch) | SQL copy + file swap (also a script) |
+| `normal_db` | ETL adapter (driving, batch) | builds the normal db from a full db (SQL over the connections it is given, files through a BuildFiles; also a script) |
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
