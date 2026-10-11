@@ -16,7 +16,7 @@ import sys
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADD_FACT = os.path.join(REPO, "add_fact.py")
+ADD_FACT = os.path.join(REPO, "add_fact.py")  # the library facade, imported in-process
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 
 ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind",
@@ -55,7 +55,7 @@ class Env:
             args = (*args, "--no-decay")
             if "--recheck-rationale" not in args:
                 args = (*args, "--recheck-rationale", "no decay")
-        cmd = [sys.executable, ADD_FACT, *args] if via == "add_fact" else [sys.executable, KNOWLEDGE, "add-fact", *args]
+        cmd = [sys.executable, KNOWLEDGE, "add-fact", *args]
         return subprocess.run(cmd, env=self.env, cwd=self.root, capture_output=True, text=True)
 
     def entries(self):
@@ -142,14 +142,15 @@ def test_rejections_exit_1_and_write_nothing(env, args, needle):
     assert not os.path.exists(env.facts)
 
 
-def test_subject_with_leading_hyphen_is_read_as_a_flag_by_argparse_exit_2(env):
-    # Pinned today: "-car" never reaches validate(); argparse rejects it first.
+def test_subject_with_leading_hyphen_is_refused_by_validation(env):
+    # Typer (click) hands "-car" to the option as its value, so the kebab-case rule refuses it (exit 1);
+    # the old argparse script rejected it earlier with exit 2. Either way nothing is written.
     r = env.cli("S.", "--subject", "-car", "--trust", "low")
-    assert r.returncode == 2 and "expected one argument" in r.stderr
+    assert r.returncode == 1 and "kebab-case" in r.stderr
     assert not os.path.exists(env.facts)
 
 
-def test_invalid_trust_is_argparse_exit_2(env):
+def test_invalid_trust_is_a_usage_error_exit_2(env):
     r = env.cli("S.", "--subject", "x", "--trust", "bogus")
     assert r.returncode == 2
     assert not os.path.exists(env.facts)

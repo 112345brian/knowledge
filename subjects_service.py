@@ -1,20 +1,31 @@
 """Subject command use cases. File and database work is supplied through ports."""
-from ports import Ports
+from dataclasses import dataclass
+from entity_queries_port import EntityQueries
+from private_git_port import PrivateGit
+from subject_files_port import SubjectFiles
 
 
-def known_subjects(ports: Ports):
-    assert ports.entity_queries is not None
-    return ports.entity_queries.known_subjects()
+@dataclass(frozen=True)
+class SubjectsDeps:
+    """Everything this service reaches the world through; the composition root supplies each one."""
+    git: PrivateGit
+    subject_files: SubjectFiles
+    entity_queries: EntityQueries
 
 
-def rows(ports: Ports, db=None):
-    assert ports.entity_queries is not None
-    return ports.entity_queries.subject_rows(db)
+def known_subjects(deps: SubjectsDeps):
+    assert deps.entity_queries is not None
+    return deps.entity_queries.known_subjects()
 
 
-def detail(ports: Ports, name):
-    assert ports.entity_queries is not None
-    rows = ports.entity_queries.subject_rows()
+def rows(deps: SubjectsDeps, db=None):
+    assert deps.entity_queries is not None
+    return deps.entity_queries.subject_rows(db)
+
+
+def detail(deps: SubjectsDeps, name):
+    assert deps.entity_queries is not None
+    rows = deps.entity_queries.subject_rows()
     by_name = {row["name"]: row for row in rows}
     via_alias = False
     if name not in by_name:
@@ -27,30 +38,30 @@ def detail(ports: Ports, name):
     return result
 
 
-def alias(ports: Ports, name, value, known, allow_dirty=False, dry_run=False):
-    assert ports.subject_files is not None
-    assert ports.git is not None
-    files = ports.subject_files
+def alias(deps: SubjectsDeps, name, value, known, allow_dirty=False, dry_run=False):
+    assert deps.subject_files is not None
+    assert deps.git is not None
+    files = deps.subject_files
     return files.edit_file(
         lambda entries: files.add_alias(entries, name, value, known=set(known), domain=known.get(name)),
         f"add alias {value} to {name}", f"subjects: alias {value} -> {name}", allow_dirty, dry_run,
-        git=ports.git)
+        git=deps.git)
 
 
-def describe(ports: Ports, name, text, known, allow_dirty=False, dry_run=False):
-    assert ports.subject_files is not None
-    assert ports.git is not None
-    files = ports.subject_files
+def describe(deps: SubjectsDeps, name, text, known, allow_dirty=False, dry_run=False):
+    assert deps.subject_files is not None
+    assert deps.git is not None
+    files = deps.subject_files
     return files.edit_file(
         lambda entries: files.describe(entries, name, text, known=set(known), domain=known.get(name)),
-        f"set description of {name}", f"subjects: describe {name}", allow_dirty, dry_run, git=ports.git)
+        f"set description of {name}", f"subjects: describe {name}", allow_dirty, dry_run, git=deps.git)
 
 
-def deprecate(ports: Ports, name, replaced_by, known, allow_dirty=False, dry_run=False):
-    assert ports.subject_files is not None
-    assert ports.git is not None
-    files = ports.subject_files
+def deprecate(deps: SubjectsDeps, name, replaced_by, known, allow_dirty=False, dry_run=False):
+    assert deps.subject_files is not None
+    assert deps.git is not None
+    files = deps.subject_files
     return files.edit_file(
         lambda entries: files.deprecate(entries, name, replaced_by, known=set(known), domain=known.get(name)),
         f"deprecate {name}" + (f" (use {replaced_by})" if replaced_by else ""),
-        f"subjects: deprecate {name}", allow_dirty, dry_run, git=ports.git)
+        f"subjects: deprecate {name}", allow_dirty, dry_run, git=deps.git)

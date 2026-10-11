@@ -49,6 +49,7 @@ Semantics (decided, tested):
     `commit_error` (CLI exit 3). Not in a repo: written, not committed, with a note.
 Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
 """
+from dataclasses import dataclass
 import os
 
 import lifecycle_rules
@@ -57,6 +58,19 @@ import review_rules
 import revisions
 from lifecycle_rules import (CHANGED_OUTCOMES, LifecycleResult, OUTCOMES, ReviseResult,  # noqa: F401  (re-exported by the facade)
                              fail as _fail, gated as _gated, validate_edit as _validate_edit)
+from lifecycle_reads_port import LifecycleReads
+from private_git_port import PrivateGit
+from reviews_port import Reviews
+from revisions_port import Revisions
+
+
+@dataclass(frozen=True)
+class LifecycleDeps:
+    """Everything this service reaches the world through; the composition root supplies each one."""
+    git: PrivateGit
+    revisions: Revisions
+    reviews: Reviews
+    lifecycle_reads: LifecycleReads
 
 _decide_retract = lifecycle_rules.decide_retract
 _decide_supersede = lifecycle_rules.decide_supersede
@@ -65,30 +79,30 @@ _decide_visibility = lifecycle_rules.decide_visibility
 
 # --------------------------------------------------------------------------- engine
 
-def _run(ports, verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db, decide, ctx, message,
+def _run(deps, verb, ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db, decide, ctx, message,
          expect_status=None):
     result = LifecycleResult(verb, str(ref))
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = ports.revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = deps.revisions.default_data_dir() if data_dir is None else data_dir
     log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
     try:
-        states = ports.reviews.current_states(data_dir)
-        entries = {e["key"]: e for e in ports.revisions.load_entries(data_dir)}
+        states = deps.reviews.current_states(data_dir)
+        entries = {e["key"]: e for e in deps.revisions.load_entries(data_dir)}
     except revisions.RevisionError as e:
         result.errors.append(str(e))
         return result
-    key, problem = ports.reviews.resolve_ref(ref, states, db)
+    key, problem = deps.reviews.resolve_ref(ref, states, db)
     if problem:
         result.outcome = "error" if "database" in problem else "unknown"
         result.reason = problem
         return result
     result.source_key = key
     ctx = dict(ctx, db=db, data_dir=data_dir, entries=entries,
-               floor_inputs=lambda: ports.lifecycle_reads.floor_inputs(data_dir, db))
+               floor_inputs=lambda: deps.lifecycle_reads.floor_inputs(data_dir, db))
     if by_ref is not None:
-        by_key, problem = ports.reviews.resolve_ref(by_ref, states, db)
+        by_key, problem = deps.reviews.resolve_ref(by_ref, states, db)
         if problem:
             result.outcome = "error" if "database" in problem else "unknown"
             result.reason = "replacement: " + problem
@@ -105,25 +119,25 @@ def _run(ports, verb, ref, by_ref, reason, via, session_id, data_dir, commit, al
     repo = None
     if commit:
         try:
-            repo = ports.git.find_repo(data_dir)
+            repo = deps.git.find_repo(data_dir)
             if repo is None:
                 result.notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
             elif not allow_dirty:
-                ports.git.ensure_clean_tree(repo)
-        except ports.git.PrivateGitError as e:
+                deps.git.ensure_clean_tree(repo)
+        except deps.git.PrivateGitError as e:
             result.errors.append(str(e))
             return result
 
     for attempt in (1, 2):
         _, changes, expect, outcome = plan
-        res = ports.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+        res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
         if res.ok:
             result.outcome, result.revision = outcome, res.revision
             break
         if attempt == 1 and any(e.startswith("precondition failed") for e in res.errors):
             # Someone else changed the fact since we looked: decide again on the fresh state.
             try:
-                states = ports.reviews.current_states(data_dir)
+                states = deps.reviews.current_states(data_dir)
             except revisions.RevisionError as e:
                 result.errors.append(str(e))
                 return result
@@ -138,29 +152,29 @@ def _run(ports, verb, ref, by_ref, reason, via, session_id, data_dir, commit, al
 
     if repo is not None:
         try:
-            result.commit = ports.git.commit_private_change([log_path], message(key, reason), repo)
-            result.detached = ports.git.is_detached(repo)
-        except ports.git.PrivateGitError as e:
+            result.commit = deps.git.commit_private_change([log_path], message(key, reason), repo)
+            result.detached = deps.git.is_detached(repo)
+        except deps.git.PrivateGitError as e:
             result.commit_error = f"the revision IS in {log_path} but is NOT committed: {e}"
     return result
 
 
 # --------------------------------------------------------------------------- public API
 
-def supersede(ports, ref, by_ref, reason, via="cli", session_id=None, data_dir=None, commit=True,
+def supersede(deps, ref, by_ref, reason, via="cli", session_id=None, data_dir=None, commit=True,
               allow_dirty=False, db=None):
     """Mark `ref` superseded by `by_ref` (a fact id or source_key). `reason` is required."""
-    return _run(ports, "supersede", ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db,
+    return _run(deps, "supersede", ref, by_ref, reason, via, session_id, data_dir, commit, allow_dirty, db,
                 _decide_supersede, {}, lambda key, _r: f"supersede: {key}")
 
 
-def retract(ports, ref, reason, via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None):
+def retract(deps, ref, reason, via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None):
     """Mark `ref` retracted. `reason` is required."""
-    return _run(ports, "retract", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
+    return _run(deps, "retract", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
                 _decide_retract, {}, lambda key, _r: f"retract: {key}")
 
 
-def set_visibility(ports, ref, visibility, reason, via="cli", session_id=None, data_dir=None, commit=True,
+def set_visibility(deps, ref, visibility, reason, via="cli", session_id=None, data_dir=None, commit=True,
                    allow_dirty=False, db=None, expect_status=None, raise_only=False):
     """Set `ref`'s visibility to 'normal' or 'private'. Lowering to normal needs `db` and is refused
     when the privacy rules say private. `reason` is required.
@@ -169,7 +183,7 @@ def set_visibility(ports, ref, visibility, reason, via="cli", session_id=None, d
     (naming the privacy rule when one floors the fact); only raising to 'private' is allowed."""
     if visibility not in ("normal", "private"):
         return LifecycleResult("set-visibility", str(ref), errors=[f"visibility {visibility!r} must be 'normal' or 'private'"])
-    return _run(ports, "set-visibility", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
+    return _run(deps, "set-visibility", ref, None, reason, via, session_id, data_dir, commit, allow_dirty, db,
                 _decide_visibility, {"visibility": visibility, "raise_only": raise_only},
                 lambda key, _r: f"set-visibility: {key} {visibility}", expect_status)
 
@@ -178,20 +192,20 @@ def set_visibility(ports, ref, visibility, reason, via="cli", session_id=None, d
 # Moved from inbox.py so the serving layer holds no write logic; behavior unchanged. `edit` (the
 # CLI) and the inbox page both call edit_fact.
 
-def _revise(ports, ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, verb, adjust=None):
+def _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, verb, adjust=None):
     """Resolve, check, one locked write, one commit.
     `adjust(key, current, changes) -> (changes, ReviseResult | None)` may add fields or refuse."""
     ref = str(ref)
     if not isinstance(reason, str) or not reason.strip():
         return _fail(ref, "reason is required")
-    data_dir = ports.revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = deps.revisions.default_data_dir() if data_dir is None else data_dir
     try:
-        states = ports.reviews.current_states(data_dir)
+        states = deps.reviews.current_states(data_dir)
     except revisions.RevisionError as e:
         return _fail(ref, str(e))
     try:
-        key, problem = ports.reviews.resolve_ref(ref, states, db)
-    except ports.lifecycle_reads.DB_ERRORS as e:
+        key, problem = deps.reviews.resolve_ref(ref, states, db)
+    except deps.lifecycle_reads.DB_ERRORS as e:
         return _fail(ref, f"could not read the database to resolve fact id {ref}: {e}")
     if problem:
         return _fail(ref, problem, "error")
@@ -215,16 +229,16 @@ def _revise(ports, ref, changes, reason, via, session_id, data_dir, commit, allo
     repo, log_path = None, os.path.join(data_dir, revisions.REVISIONS_FILENAME)
     if commit:
         try:
-            repo = ports.git.find_repo(data_dir)
+            repo = deps.git.find_repo(data_dir)
             if repo is None:
                 notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
             elif not allow_dirty:
-                ports.git.ensure_clean_tree(repo)
-        except ports.git.PrivateGitError as e:
+                deps.git.ensure_clean_tree(repo)
+        except deps.git.PrivateGitError as e:
             return _fail(ref, str(e), source_key=key)
 
     expect = {"status": expect_status or current["status"], **{k: current[k] for k in changes}}
-    res = ports.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
+    res = deps.revisions.append_revision(key, changes, reason, via, session_id, data_dir=data_dir, expect=expect)
     if not res.ok:
         if any(e.startswith("precondition failed") for e in res.errors):
             return ReviseResult(False, "skipped", ref, key,
@@ -233,16 +247,16 @@ def _revise(ports, ref, changes, reason, via, session_id, data_dir, commit, allo
     out = ReviseResult(True, "changed", ref, key, f"{verb}: {', '.join(changes)}", notes=notes, revision=res.revision)
     if repo is not None:
         try:
-            out.commit = ports.git.commit_private_change([log_path], f"{verb}: {key} ({', '.join(changes)})", repo)
-            out.detached = ports.git.is_detached(repo)
-        except ports.git.PrivateGitError as e:
+            out.commit = deps.git.commit_private_change([log_path], f"{verb}: {key} ({', '.join(changes)})", repo)
+            out.detached = deps.git.is_detached(repo)
+        except deps.git.PrivateGitError as e:
             out.ok = False
             out.commit_error = f"the revision IS in {log_path} but is NOT committed: {e}"
             out.errors.append(out.commit_error)
     return out
 
 
-def edit_fact(ports, ref, reason, statement=None, trust_level=None, trust_rationale=None, recheck_by=None, notes=None,
+def edit_fact(deps, ref, reason, statement=None, trust_level=None, trust_rationale=None, recheck_by=None, notes=None,
               via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None,
               expect_status=None):
     """Append one revision changing the given fields (None = leave alone; "" clears trust_rationale,
@@ -263,13 +277,13 @@ def edit_fact(ports, ref, reason, statement=None, trust_level=None, trust_ration
         # fact as it will stand, so adding a listed name in `notes` raises visibility like a new statement.
         if not any(k in ch for k in ("statement", "notes", "trust_rationale")):
             return ch, None
-        subject = ports.lifecycle_reads.subjects(ports.revisions.default_data_dir() if data_dir is None else data_dir).get(key)
-        rules = ports.reviews.rules_with_db_context(data_dir, db)
+        subject = deps.lifecycle_reads.subjects(deps.revisions.default_data_dir() if data_dir is None else data_dir).get(key)
+        rules = deps.reviews.rules_with_db_context(data_dir, db)
         ch, note = lifecycle_rules.privacy_floor_note(current, ch, subject, rules)
         if note:
             adjust.notes.append(note)
         return ch, None
     adjust.notes = []
-    out = _revise(ports, ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, "edit", adjust)
+    out = _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, "edit", adjust)
     out.notes.extend(adjust.notes)
     return out

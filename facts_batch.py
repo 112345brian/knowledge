@@ -50,8 +50,8 @@ import facts_batch_service
 import private_git
 from facts_batch_rules import (BatchResult, DEFAULT_CAPTURED_VIA, DEFAULT_TRUST, ITEM_KEYS, ItemResult,  # noqa: F401  (the public API)
                                MAX_BATCH)
-from ports import Ports, bind
+from ports import bind
 
-PORTS = Ports(git=private_git, facts_file=add_fact_store, add_fact=add_fact, defaults=add_fact._Defaults())
+DEPS = facts_batch_service.FactsBatchDeps(git=private_git, facts_file=add_fact_store, add_fact=add_fact, defaults=add_fact._Defaults())
 
-add_facts = bind(facts_batch_service.add_facts, PORTS)
+add_facts = bind(facts_batch_service.add_facts, DEPS)

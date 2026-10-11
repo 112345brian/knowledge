@@ -51,9 +51,9 @@ from migrate_memory_rules import (ACTIONS, CAPTURED_VIA, FACT_TYPES, FileResult,
                                   source_key_for, subject_for)
 from migrate_memory_service import DEFAULT_ROOT  # noqa: F401
 from migrate_memory_store import discover, existing_entries, read_memory_file  # noqa: F401  (the public API)
-from ports import Ports, bind
+from ports import bind
 
-PORTS = Ports(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
-              defaults=add_fact._Defaults())
+DEPS = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
+                                            defaults=add_fact._Defaults())
 
-migrate = bind(migrate_memory_service.migrate, PORTS)
+migrate = bind(migrate_memory_service.migrate, DEPS)

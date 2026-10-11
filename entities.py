@@ -4,27 +4,27 @@ import entity_migration_store
 import entity_queries_store
 import entities_service
 import private_git
-from ports import Ports, bind
+from ports import bind
 
 ENTITY_TYPES = entities_store.ENTITY_TYPES
 EntitiesError = entities_store.EntitiesError
-PORTS = Ports(git=private_git, entity_files=entities_store, entity_migration=entity_migration_store,
-              entity_queries=entity_queries_store)
+DEPS = entities_service.EntitiesDeps(git=private_git, entity_files=entities_store, entity_migration=entity_migration_store,
+                                      entity_queries=entity_queries_store)
 
 
-read_file = bind(entities_service.load_entities, PORTS)
-find = bind(entities_service.find, PORTS)
-link_counts = bind(entities_service.link_counts, PORTS)
-add = bind(entities_service.add, PORTS)
-alias = bind(entities_service.alias, PORTS)
+read_file = bind(entities_service.load_entities, DEPS)
+find = bind(entities_service.find, DEPS)
+link_counts = bind(entities_service.link_counts, DEPS)
+add = bind(entities_service.add, DEPS)
+alias = bind(entities_service.alias, DEPS)
 
 
 def tag(ref, allow_dirty=False, dry_run=False):
-    return entities_service.set_private(PORTS, ref, True, allow_dirty, dry_run)
+    return entities_service.set_private(DEPS, ref, True, allow_dirty, dry_run)
 
 
 def untag(ref, allow_dirty=False, dry_run=False):
-    return entities_service.set_private(PORTS, ref, False, allow_dirty, dry_run)
+    return entities_service.set_private(DEPS, ref, False, allow_dirty, dry_run)
 
 
-migrate_keywords = bind(entities_service.migrate_keywords, PORTS)
+migrate_keywords = bind(entities_service.migrate_keywords, DEPS)

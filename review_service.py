@@ -31,59 +31,73 @@ Batch semantics (decided, tested):
     A batch with nothing to do neither checks the tree nor commits.
 Library code never prints or exits.
 """
+from dataclasses import dataclass
 import os
 
 import privacy
 import review_rules
 import revisions
 from review_rules import ItemResult, ReviewResult
+from privacy_rules_port import Rules
+from private_git_port import PrivateGit
+from review_reads_port import ReviewReads
+from revisions_port import Revisions
+
+
+@dataclass(frozen=True)
+class ReviewDeps:
+    """Everything this service reaches the world through; the composition root supplies each one."""
+    git: PrivateGit
+    revisions: Revisions
+    rules: Rules
+    reads: ReviewReads
 
 TRUST_LEVELS = revisions.VALID_TRUST
 
 
-def list_pending(ports, db):
+def list_pending(deps, db):
     """Pending facts of a built db, oldest first (see review_store.list_pending)."""
-    return ports.reads.list_pending(db)
+    return deps.reads.list_pending(db)
 
 
-def current_states(ports, data_dir=None):
+def current_states(deps, data_dir=None):
     """{source_key: current mutable snapshot incl. revision}; raises revisions.RevisionError."""
-    return ports.reads.current_states(data_dir)
+    return deps.reads.current_states(data_dir)
 
 
-def default_data_dir(ports):
+def default_data_dir(deps):
     """The private data directory the revision log lives in (what `data_dir=None` means)."""
-    return ports.reads.default_data_dir()
+    return deps.reads.default_data_dir()
 
 
 # --------------------------------------------------------------------------- display (the inbox page)
 
-def rules_with_db_context(ports, data_dir, db):
+def rules_with_db_context(deps, data_dir, db):
     """The privacy rules of `data_dir` plus the subject tree from the db (read-only), as
     `privacy check` does. A missing or odd db only means less context, never a crash.
     Raises privacy.PrivacyRulesError when the rules file is unusable."""
-    rules = ports.rules.load_rules(ports.rules.rules_path(data_dir))
+    rules = deps.rules.load_rules(deps.rules.rules_path(data_dir))
     if db is None:
         return rules
     try:
-        parents = ports.reads.subject_parents(db)
+        parents = deps.reads.subject_parents(db)
     except Exception:  # noqa: BLE001
         return rules
     return rules.with_context(parents=parents, known_subjects=set(parents))
 
 
-def pending_view(ports, db_path, data_dir):
+def pending_view(deps, db_path, data_dir):
     """Everything a review page shows: {facts, hidden_reviewed, missing_from_snapshot, error}.
     Pending rows come from the built db; each is overlaid with the current state from the data
     files and revision log, and dropped when that says it is no longer pending. Never raises."""
     vm = {"facts": [], "hidden_reviewed": 0, "missing_from_snapshot": 0, "error": None}
-    if not ports.reads.db_exists(db_path):
+    if not deps.reads.db_exists(db_path):
         vm["error"] = f"{db_path} does not exist: run `knowledge.py build` first"
         return vm
     try:
-        rows = list_pending(ports, db_path)
-        states = current_states(ports, data_dir)
-        rules = rules_with_db_context(ports, data_dir, db_path)
+        rows = list_pending(deps, db_path)
+        states = current_states(deps, data_dir)
+        rules = rules_with_db_context(deps, data_dir, db_path)
     except (revisions.RevisionError, privacy.PrivacyRulesError) as e:
         vm["error"] = str(e)
         return vm
@@ -105,7 +119,7 @@ def pending_view(ports, db_path, data_dir):
 
 # --------------------------------------------------------------------------- resolve
 
-def resolve_ref(ports, ref, states, db):
+def resolve_ref(deps, ref, states, db):
     """-> (source_key | None, problem | None). A fact id needs `db` (a connection or a path);
     a source_key resolves from `states` alone. May raise a db error when the db is unreadable."""
     kind, value = review_rules.parse_ref(ref)
@@ -114,14 +128,14 @@ def resolve_ref(ports, ref, states, db):
     if kind == "id":
         if db is None:
             return None, "fact ids need a database to resolve; pass the source_key instead"
-        found, key = ports.reads.source_key_for_id(db, value)
+        found, key = deps.reads.source_key_for_id(db, value)
         return review_rules.key_from_id_row(value, found, key, states)
     return review_rules.key_in_states(value, states)
 
 
 # --------------------------------------------------------------------------- transitions
 
-def _transition(ports, refs, to_status, outcome, reason, via, session_id, data_dir, commit, allow_dirty, db, verb):
+def _transition(deps, refs, to_status, outcome, reason, via, session_id, data_dir, commit, allow_dirty, db, verb):
     result = ReviewResult()
     if isinstance(refs, (str, int)):
         refs = [refs]
@@ -129,10 +143,10 @@ def _transition(ports, refs, to_status, outcome, reason, via, session_id, data_d
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = ports.reads.default_data_dir() if data_dir is None else data_dir
+    data_dir = deps.reads.default_data_dir() if data_dir is None else data_dir
     log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
     try:
-        states = current_states(ports, data_dir)
+        states = current_states(deps, data_dir)
     except revisions.RevisionError as e:
         result.errors.append(str(e))
         return result
@@ -156,7 +170,7 @@ def _transition(ports, refs, to_status, outcome, reason, via, session_id, data_d
             if not todo:
                 result.notes.append("no pending facts")
             continue
-        key, problem = resolve_ref(ports, ref, states, db)
+        key, problem = resolve_ref(deps, ref, states, db)
         if problem:
             add(pos, ItemResult(str(ref), "error" if "database" in problem else "unknown", None, problem))
             continue
@@ -178,17 +192,17 @@ def _transition(ports, refs, to_status, outcome, reason, via, session_id, data_d
     repo = None
     if commit:
         try:
-            repo = ports.git.find_repo(data_dir)
+            repo = deps.git.find_repo(data_dir)
             if repo is None:
                 result.notes.append(f"{data_dir} is not inside a git repository; the change will not be committed.")
             elif not allow_dirty:
-                ports.git.ensure_clean_tree(repo)
-        except ports.git.PrivateGitError as e:
+                deps.git.ensure_clean_tree(repo)
+        except deps.git.PrivateGitError as e:
             result.errors.append(str(e))
             return result
 
     for ref, key, pos in todo:
-        res = ports.revisions.append_revision(key, {"status": to_status}, reason, via, session_id,
+        res = deps.revisions.append_revision(key, {"status": to_status}, reason, via, session_id,
                                              data_dir=data_dir, expect={"status": "pending"})
         if res.ok:
             add(pos, ItemResult(ref, outcome, key, revision=res.revision))
@@ -202,20 +216,20 @@ def _transition(ports, refs, to_status, outcome, reason, via, session_id, data_d
         message = f"{verb}: {len(result.changed)} fact(s) ({', '.join(i.source_key for i in result.changed[:5])}" \
                   f"{', ...' if len(result.changed) > 5 else ''})"
         try:
-            result.commit = ports.git.commit_private_change([log_path], message, repo)
-            result.detached = ports.git.is_detached(repo)
-        except ports.git.PrivateGitError as e:
+            result.commit = deps.git.commit_private_change([log_path], message, repo)
+            result.detached = deps.git.is_detached(repo)
+        except deps.git.PrivateGitError as e:
             result.commit_error = f"the revisions ARE in {log_path} but are NOT committed: {e}"
     return result
 
 
-def approve(ports, refs, reason="approved", via="cli", session_id=None, data_dir=None, commit=True,
+def approve(deps, refs, reason="approved", via="cli", session_id=None, data_dir=None, commit=True,
             allow_dirty=False, db=None):
     """Approve pending facts: append a status='active' revision for each. See the module docstring."""
-    return _transition(ports, refs, "active", "approved", reason, via, session_id, data_dir, commit, allow_dirty, db, "approve")
+    return _transition(deps, refs, "active", "approved", reason, via, session_id, data_dir, commit, allow_dirty, db, "approve")
 
 
-def reject(ports, refs, reason, via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None):
+def reject(deps, refs, reason, via="cli", session_id=None, data_dir=None, commit=True, allow_dirty=False, db=None):
     """Reject pending facts: append a status='retracted' revision for each. `reason` is required.
     Only pending facts are rejected; retracting an active fact is a different operation."""
-    return _transition(ports, refs, "retracted", "rejected", reason, via, session_id, data_dir, commit, allow_dirty, db, "reject")
+    return _transition(deps, refs, "retracted", "rejected", reason, via, session_id, data_dir, commit, allow_dirty, db, "reject")

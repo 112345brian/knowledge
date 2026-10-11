@@ -1,7 +1,7 @@
 """Application boundary for Git operations on the private data repository.
 
 The concrete subprocess implementation lives in ``private_git.py``. Composition roots inject
-that adapter through ``Ports.git``; use cases and adapters depend on this protocol instead.
+that adapter as each service's `git` dependency; services and adapters depend on this protocol instead.
 """
 from typing import Any, Optional, Protocol
 

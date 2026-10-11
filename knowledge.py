@@ -31,7 +31,7 @@ command and tests/test_cli_parity.py fails when a registered command is
 missing or a future MCP tool / inbox action has no registry entry.
 
 `build`, `add-fact`, and `clean-concerts` are thin dispatches to the existing
-standalone scripts (build.py, add_fact.py, client/clean_concerts_csv.py) -- those
+standalone scripts (build.py, client/clean_concerts_csv.py) -- those
 still run fine on their own, without typer; this just gives one name to
 remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
@@ -81,6 +81,7 @@ class Status(str, enum.Enum):
 
 app = typer.Typer(help=__doc__, pretty_exceptions_enable=False, rich_markup_mode=None)
 import cli_facts_batch; cli_facts_batch.register(app)  # `add-facts` (#32)
+import cli_add_fact; cli_add_fact.register(app)  # `add-fact` (#7)
 
 
 def _personal(personal_only, not_personal):
@@ -128,12 +129,6 @@ INCLUDE_PENDING_OPT = typer.Option(False, "--include-pending", help="Also show p
 @app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
 def cmd_build(check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
     raise typer.Exit(script_runner.run_script("build.py", ["--check"] if check else []))
-
-
-@app.command("add-fact", help="Append an ad hoc fact to data/general_facts.json. Every argument is forwarded to add_fact.py (see add_fact.py --help).",
-             context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []})
-def cmd_add_fact(ctx: typer.Context):
-    raise typer.Exit(script_runner.run_script("add_fact.py", list(ctx.args)))
 
 
 @app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")

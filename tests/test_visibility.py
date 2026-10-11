@@ -141,7 +141,7 @@ def test_add_then_rebuild_round_trip(ingest):
 
 def test_callers_of_the_validating_functions_do_not_discard_the_result():
     """append_fact / validate_fact can refuse (e.g. a bad visibility). A caller that ignores the
-    return value would silently drop that refusal, so every call outside add_fact.py's own
+    return value would silently drop that refusal, so every call outside add_fact_service.py's own
     definitions must use the result."""
     offenders = []
     for root, dirs, files in os.walk(REPO):
@@ -161,6 +161,6 @@ def test_callers_of_the_validating_functions_do_not_discard_the_result():
 
 
 def test_add_fact_main_checks_ok_before_reporting_success():
-    src = open(os.path.join(REPO, "add_fact.py")).read()
-    main_src = src[src.index("def main("):]
+    src = open(os.path.join(REPO, "cli_add_fact.py")).read()
+    main_src = src[src.index("def cmd_add_fact("):]
     assert "result.ok" in main_src

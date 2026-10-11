@@ -9,7 +9,8 @@ primitives) is the centre and imports nothing else in the repo. **Domain service
 protocols in individual `*_port.py` modules) wrap it. **Application services** (`*_service`) orchestrate the domain
 through the ports. **Infrastructure** (`*_store`, `clock`, `paths`, `private_git`, ...) implements the ports. The
 **composition roots** (facades) bind an application service to its adapters, and the CLI, the inbox and the ingest
-scripts are the driving adapters on the outside. `ports.py` bundles the port protocols and binds adapters to them.
+scripts are the driving adapters on the outside. Each application service declares the ports it needs as the required fields of its own frozen `*Deps` class (no
+shared optional bundle); `ports.py` holds `bind` and the protocol conformance checks.
 The boundaries are enforced mechanically (`tach.toml`, the import-linter contracts in `pyproject.toml`, and
 `tests/test_architecture.py` / `tests/test_ports.py`), and `tests/test_pipeline_golden.py` pins what the ingest
 pipeline produces. `tach.toml` carries the same rings as its `layers`: `serving`, `cli`, `pipeline` (the driving
@@ -73,7 +74,8 @@ private-file editing receives that port rather than importing the Git adapter.
 | `link_source_relations` | ETL adapter (driving, batch) |  |
 | `shared` | ETL adapter (driving, batch) |  |
 | `acquisition_store` | infrastructure | custodial history from macOS file attributes (read-only xattr) |
-| `add_fact` | composition root | binds add_fact_service; also the add_fact.py script |
+| `add_fact` | composition root | binds add_fact_service; the library API |
+| `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
 | `add_fact_service` | application service | add one fact |
 | `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
 | `artist_rules` | domain service | artist aliases |
@@ -146,7 +148,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `normal_db` | infrastructure | SQL copy + file swap (also a script) |
 | `normal_rules` | domain service | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
-| `ports` | domain service | dependency bundle and binding helper for the separate port contracts |
+| `ports` | domain service | `bind` and conformance checks for the separate port contracts |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
 | `privacy_rules_port` | domain service | interface for reading and editing privacy rules |

@@ -9,14 +9,14 @@ import privacy  # noqa: F401  (rules_edit.privacy.PrivacyRulesError)
 import private_git
 import privacy_store
 import rules_edit_service
-from ports import Ports, bind
+from ports import bind
 from privacy import PrivacyRulesError  # noqa: F401  (raised for an unusable rules file or an invalid edit)
 from private_git import PrivateGitError  # noqa: F401  (raised for a dirty knowledge-private tree)
 from rules_edit_service import RulesEditResult  # noqa: F401
 
-PORTS = Ports(rules=privacy_store, git=private_git)
+DEPS = rules_edit_service.RulesEditDeps(rules=privacy_store, git=private_git)
 
-edit_rules = bind(rules_edit_service.edit_rules, PORTS)
+edit_rules = bind(rules_edit_service.edit_rules, DEPS)
 
 
 def rules_path():

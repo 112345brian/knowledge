@@ -56,11 +56,11 @@ import review
 import revisions  # noqa: F401  (kept importable as lifecycle.revisions)
 import revisions_store
 from lifecycle_rules import CHANGED_OUTCOMES, LifecycleResult, OUTCOMES, ReviseResult  # noqa: F401  (the public API)
-from ports import Ports, bind
+from ports import bind
 
-PORTS = Ports(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)
+DEPS = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)
 
-supersede = bind(lifecycle_service.supersede, PORTS)
-retract = bind(lifecycle_service.retract, PORTS)
-set_visibility = bind(lifecycle_service.set_visibility, PORTS)
-edit_fact = bind(lifecycle_service.edit_fact, PORTS)
+supersede = bind(lifecycle_service.supersede, DEPS)
+retract = bind(lifecycle_service.retract, DEPS)
+set_visibility = bind(lifecycle_service.set_visibility, DEPS)
+edit_fact = bind(lifecycle_service.edit_fact, DEPS)

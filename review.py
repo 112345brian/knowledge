@@ -37,17 +37,17 @@ import review_service
 import review_store
 import revisions  # noqa: F401  (review.revisions.RevisionError)
 import revisions_store
-from ports import Ports, bind
+from ports import bind
 from review_rules import ItemResult, OUTCOMES, ReviewResult, status_word, visibility_basis  # noqa: F401  (the public API)
 from review_service import TRUST_LEVELS  # noqa: F401
 
-PORTS = Ports(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
+DEPS = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
 
-list_pending = bind(review_service.list_pending, PORTS)
-current_states = bind(review_service.current_states, PORTS)
-default_data_dir = bind(review_service.default_data_dir, PORTS)
-rules_with_db_context = bind(review_service.rules_with_db_context, PORTS)
-pending_view = bind(review_service.pending_view, PORTS)
-resolve_ref = bind(review_service.resolve_ref, PORTS)
-approve = bind(review_service.approve, PORTS)
-reject = bind(review_service.reject, PORTS)
+list_pending = bind(review_service.list_pending, DEPS)
+current_states = bind(review_service.current_states, DEPS)
+default_data_dir = bind(review_service.default_data_dir, DEPS)
+rules_with_db_context = bind(review_service.rules_with_db_context, DEPS)
+pending_view = bind(review_service.pending_view, DEPS)
+resolve_ref = bind(review_service.resolve_ref, DEPS)
+approve = bind(review_service.approve, DEPS)
+reject = bind(review_service.reject, DEPS)
