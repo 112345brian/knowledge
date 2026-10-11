@@ -122,9 +122,9 @@ def fingerprinted(repo):
     return [e[1] for e in repo.log if e[0] == "fingerprint"]
 
 
-def world(files, sources=None, existing_keys=(), raised=(), vault=VAULT, names=None, aliases=None):
+def world(files, sources=None, existing_keys=(), raised=(), vault=VAULT, names=None, aliases=None, vault_written=None):
     repo = FakeRepo(sources, existing_keys)
-    locations = dataclasses.replace(synthetic_locations(), notes_vault=vault)
+    locations = dataclasses.replace(synthetic_locations(), notes_vault=vault, notes_vault_written=vault_written)
     inputs = FakeInputs(files)
     privacy = FakePrivacy(repo, raised)
     repo.identity = FakeIdentity(repo.log, names, aliases)
@@ -238,6 +238,16 @@ def test_fact_files_do_not_resolve_aliases_and_derive_the_personal_flag_and_orig
     assert [f.is_personal for f in repo.facts] == [1, 0]
     assert [f.origin_file_id for f in repo.facts] == [1, None]
     assert fingerprinted(repo) == [note]
+
+
+def test_origin_notes_are_matched_and_stored_as_the_vault_is_written_in_local_paths():
+    """local_paths.py says `~/vault`; the notes cite `~/vault/...`. The expanded path is for reading files only."""
+    note = "~/vault/Health/Sleep.md"
+    deps, repo, _, _ = world(fact_files(pilot=[entry(source_key="a", statement="He sleeps eight hours.",
+                                                      notes=f"{note}, extracted")]),
+                             vault="/home/u/vault", vault_written="~/vault")
+    svc.ingest_fact_files(deps, None)
+    assert fingerprinted(repo) == [note] and [f.origin_file_id for f in repo.facts] == [1]
 
 
 def test_fact_files_do_not_resolve_aliases():

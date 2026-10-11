@@ -31,6 +31,11 @@ class Locations:
     concerts_csv: Optional[str] = None
     rym_export_csv: Optional[str] = None
     scrobbles_json: Optional[str] = None
+    # `notes_vault` and `health_dir` as local_paths.py wrote them (`~/...`). Reads use the expanded fields above;
+    # what the build compares against fact notes and stores in the database is the written form, so a database
+    # does not carry one machine's home directory. None for locations built by hand: the field above is used.
+    notes_vault_written: Optional[str] = None
+    health_dir_written: Optional[str] = None
 
     def need(self, field, setting, for_what):
         """The value of an optional path, or a ValueError naming the `local_paths.py` setting to define."""
@@ -38,6 +43,16 @@ class Locations:
         if value is None:
             raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
         return value
+
+    @property
+    def notes_vault_stored(self):
+        """The notes vault in the form the database stores and fact notes cite."""
+        return self.notes_vault_written or self.notes_vault
+
+    @property
+    def health_dir_stored(self):
+        """The health directory in the form the database stores."""
+        return self.health_dir_written or self.health_dir
 
     @property
     def db_dir(self):

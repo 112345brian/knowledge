@@ -37,7 +37,7 @@ class ManualSources:
         items = self._inputs.read_json(os.path.join(loc.private_data_dir, MANUAL_FILE))
         for s in items:
             if s.get("origin_path"):
-                s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], loc.notes_vault, loc.health_dir)
+                s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], loc.notes_vault_stored, loc.health_dir_stored)
         return items
 
     def records(self) -> List[SourceRecord]:
@@ -83,7 +83,7 @@ class VaultNotes:
             base = os.path.basename(fp)
             if base == "README.md":
                 continue
-            row = source_ingest_rules.note_to_source_row(base, inputs.read_text(fp), vault)
+            row = source_ingest_rules.note_to_source_row(base, inputs.read_text(fp), self._locations.notes_vault_stored)
             where = row["where"]
             pairs, problems = _identifiers(row["raw_identifiers"], where)
             acquisition = inputs.acquisition(acquisition_rules.normalize_data(row["raw_acquired"], where), fp)  # #46

@@ -1,5 +1,6 @@
 """The source lane: the application service against a fake repository, the SQLite adapter against the real schema,
 and the composed readers against an in-memory world. No file system, no private checkout."""
+import dataclasses
 import json
 import os
 import sqlite3
@@ -215,6 +216,15 @@ def test_composed_readers_yield_manual_sources_then_notes_as_validated_records()
     assert m.relations == (Relation("m1", "replaces", "n2020"),)
     assert n.retrieved_date == source_readers.NOTE_RETRIEVED_DATE and n.fingerprint == FP
     assert n.identifiers == (("doi", "10.1210/jc.2007-1692"),) and n.relations == (Relation("n2020", "replaces", "old"),)
+
+
+def test_origin_paths_are_stored_as_the_vault_and_health_are_written_in_local_paths():
+    locs = dataclasses.replace(LOCS, notes_vault_written="~/vault", health_dir_written="~/health")
+    w = world([{"citekey": "m1", "name": "M", "source_type": "primary", "origin_path": "{VAULT}/m.md"},
+               {"citekey": "h1", "name": "H", "source_type": "primary", "origin_path": "{HEALTH}/h.md"}])
+    records = {r.citekey: r for r in source_readers.default_readers(SimpleNamespace(inputs=w, locations=locs)).records()}
+    assert records["m1"].origin_path == "~/vault/m.md" and records["h1"].origin_path == "~/health/h.md"
+    assert records["n2020"].origin_path.startswith("~/vault/")      # the note is still read from the expanded vault
 
 
 def test_relations_are_read_afresh_each_time_not_from_a_snapshot():

@@ -47,11 +47,16 @@ def load():
         value = getattr(local, name, None)
         return os.path.expanduser(value) if value else None
 
+    def written(*names):
+        """The first of `names` that is set, exactly as local_paths.py wrote it."""
+        return next((getattr(local, n) for n in names if getattr(local, n, None)), None)
+
     return Locations(
         knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
         private_dir=private_dir,
         # NOTES_VAULT is the generic name; BODYBUILDING_VAULT is the older one and still works.
         notes_vault=path("NOTES_VAULT") or path("BODYBUILDING_VAULT"), health_dir=path("HEALTH_DIR"),
         client_sources=sources, client_sources_implicit=implicit,
+        notes_vault_written=written("NOTES_VAULT", "BODYBUILDING_VAULT"), health_dir_written=written("HEALTH_DIR"),
         concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
     )

@@ -94,7 +94,7 @@ def main(argv=None):
     from container import Container
     app = Container()
     data_dir = args.data_dir or app.locations.private_data_dir
-    return run(app.datafiles, app.inputs, data_dir, app.locations.notes_vault, apply=args.apply)
+    return run(app.datafiles, app.inputs, data_dir, app.locations.notes_vault_stored, apply=args.apply)
 
 
 if __name__ == "__main__":

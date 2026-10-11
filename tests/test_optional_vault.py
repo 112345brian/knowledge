@@ -91,3 +91,16 @@ def test_the_core_does_not_name_the_bodybuilding_vault():
                 if re.search(r"bodybuilding_vault|BODYBUILDING_VAULT", text):
                     offenders.append(os.path.relpath(os.path.join(folder, name), REPO))
     assert offenders == []
+
+
+def test_the_vault_and_health_dir_keep_their_as_written_form_beside_the_expanded_one(tmp_path, monkeypatch):
+    loc = _load(tmp_path, "NOTES_VAULT = '~/vault'\nHEALTH_DIR = '~/health'\n", monkeypatch)
+    assert loc.notes_vault.endswith("vault") and not loc.notes_vault.startswith("~")
+    assert (loc.notes_vault_stored, loc.health_dir_stored) == ("~/vault", "~/health")
+
+
+def test_a_hand_built_locations_stores_its_paths_as_given():
+    from locations import Locations
+    loc = Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v", health_dir="/h")
+    assert (loc.notes_vault_stored, loc.health_dir_stored) == ("/v", "/h")
+    assert Locations(knowledge_db_dir="/db", private_data_dir="/data").notes_vault_stored is None

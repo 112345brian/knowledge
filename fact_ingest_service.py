@@ -82,7 +82,7 @@ def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest
             raise decisions.duplicate_key_error(screened)
         report.derived_keys += 0 if entry.has_own_key else 1
 
-        plan = decisions.plan_fact(screened, profile, hints, deps.locations.notes_vault)
+        plan = decisions.plan_fact(screened, profile, hints, deps.locations.notes_vault_stored)
         if plan.subject not in subjects:
             subjects[plan.subject] = deps.identity.subject_id(plan.subject, plan.domain, profile.resolve_aliases)
         subject_id = subjects[plan.subject]
