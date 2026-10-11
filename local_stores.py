@@ -1,5 +1,6 @@
 """Adapter for `step_stores_port.StepStores`: the privacy, entity, subject and revision stores, by name."""
 import entities_store
+import fact_ingest_store
 import privacy_store
 import revisions_store
 import subjects_store
@@ -31,3 +32,7 @@ def apply_revisions(con, path):
 
 def insert_revision_row(cur, fact_id, revision):
     return revisions_store.insert_revision_row(cur, fact_id, revision)
+
+
+def fact_repository():
+    return fact_ingest_store

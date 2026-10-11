@@ -1,29 +1,19 @@
-"""Small helpers shared across the core ingest scripts -- author/publisher/vault-file
-normalization (get-or-create against a dimension table, never repeated text)."""
-from ingest import fact_ingest_rules
-from ingest.fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
+"""Small helpers shared across the core ingest scripts -- author/publisher
+normalization (get-or-create against a dimension table, never repeated text). A vault file's fingerprint is the fact
+repository's (fact_ingest_service.ensure_vault_file)."""
+import fact_ingest_service
 from ingest.source_ingest_rules import split_authors
 
-import acquisition_rules
 import identifiers
 
 
-HINTS_FILENAME = "fact_hints.json"
+HINTS_FILENAME = fact_ingest_service.HINTS_FILENAME
 
 
 def load_hints(inputs, data_dir):
     """The author's fact-ingest hints from fact_hints.json in the private data dir (see fact_ingest_rules.Hints), or
     NO_HINTS when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
-    import json
-    import os
-    path = os.path.join(data_dir, HINTS_FILENAME)
-    try:
-        data = inputs.read_json(path)
-    except FileNotFoundError:
-        return fact_ingest_rules.NO_HINTS
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{path} is not valid JSON ({e})") from e
-    return fact_ingest_rules.parse_hints(data, path)
+    return fact_ingest_service.read_hints(inputs, data_dir)
 
 
 def get_or_create(cur, table, name_col, name):
@@ -38,27 +28,6 @@ def get_or_create_publisher(cur, name):
     if not name:
         return None
     return get_or_create(cur, "publishers", "name", name)
-
-
-def get_or_create_vault_file(cur, path, inputs):
-    """The vault_files id for `path`, with its current fixity record (#38) written on first sight.
-    A file that cannot be read gets file_state 'missing' and no hash; this never raises for a bad path."""
-    if not path:
-        return None
-    row = cur.execute("SELECT id, file_state FROM vault_files WHERE path = ?", (path,)).fetchone()
-    if row is not None and row[1] is not None:
-        return row[0]   # already recorded this build: a file is hashed and its attributes read once, not once per fact
-    file_id = row[0] if row is not None else get_or_create(cur, "vault_files", "path", path)
-    fp = inputs.fingerprint(path)
-    # #46: a vault file has no data record, so its custodial history comes from the macOS file attributes
-    # alone (a no-op elsewhere); acquisition_store.resolve marks anything it fills in acquired_note.
-    acq = inputs.acquisition({k: None for k in acquisition_rules.COLUMNS}, path)
-    cur.execute("UPDATE vault_files SET content_sha256 = :content_sha256, size_bytes = :size_bytes, "
-                "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state, "
-                "acquired_at = :acquired_at, acquired_via = :acquired_via, where_from = :where_from, "
-                "acquired_note = :acquired_note WHERE id = :id",
-                {**fp, **acq, "id": file_id})
-    return file_id
 
 
 def collect_identifiers(raw, where):

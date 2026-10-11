@@ -379,7 +379,7 @@ def test_the_moved_file_search_does_not_reread_files_it_already_hashed(tmp_path,
 
 def test_a_vault_file_cited_by_many_facts_is_hashed_and_read_for_attributes_once(tmp_path, monkeypatch):
     import acquisition_store
-    from ingest import shared
+    import fact_ingest
     note = write(tmp_path / "n.md", b"note body")
     con = sqlite3.connect(":memory:")
     con.executescript(open(os.path.join(REPO, "schema.sql")).read())
@@ -388,18 +388,19 @@ def test_a_vault_file_cited_by_many_facts_is_hashed_and_read_for_attributes_once
     real_fp, real_resolve = fixity_store.fingerprint, acquisition_store.resolve
     monkeypatch.setattr(fixity_store, "fingerprint", lambda p: fingerprints.append(p) or real_fp(p))
     monkeypatch.setattr(acquisition_store, "resolve", lambda d, p, **k: attr_reads.append(p) or real_resolve(d, p, **k))
-    ids = {shared.get_or_create_vault_file(cur, note, locs().inputs) for _ in range(5)}
+    ensure = fact_ingest.compose(locs()).ensure_vault_file
+    ids = {ensure(con, note) for _ in range(5)}
     assert len(ids) == 1 and fingerprints == [note] and attr_reads == [note]
     row = con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()
     assert tuple(row) == (sha(b"note body"), "present")
 
 
 def test_a_vault_file_row_created_without_a_fingerprint_is_still_filled_in(tmp_path):
-    from ingest import shared
+    import fact_ingest
     note = write(tmp_path / "n.md", b"body")
     con = sqlite3.connect(":memory:")
     con.executescript(open(os.path.join(REPO, "schema.sql")).read())
     cur = con.cursor()
     cur.execute("INSERT INTO vault_files (path) VALUES (?)", (note,))
-    shared.get_or_create_vault_file(cur, note, locs().inputs)
+    fact_ingest.compose(locs()).ensure_vault_file(con, note)
     assert tuple(con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()) == (sha(b"body"), "present")
