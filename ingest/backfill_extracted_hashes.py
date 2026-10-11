@@ -59,6 +59,30 @@ def backfill(files, inputs, data_dir, vault, apply=False, resolve=None):
     return result, unresolved
 
 
+def run(files, inputs, data_dir, vault, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles), `inputs` (an Inputs), `data_dir` and the notes `vault`:
+    backfills, reports, returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    try:
+        result, unresolved = backfill(files, inputs, data_dir, vault, apply=apply)
+    except (revisions.RevisionError, OSError) as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    verb = "updated" if apply else "would update"
+    for name, n in result.items():
+        print(f"  {name}: {verb} {n} entries", file=stdout)
+    for name, index, path in unresolved:
+        print(f"  skipped {name}[{index}]: origin file missing or unreadable: {path}", file=stdout)
+    total = sum(result.values())
+    print("note: baselines are hashes of the files as they are NOW (as of backfill), not at extraction time.", file=stdout)
+    if not apply:
+        print(f"dry run: {total} entries would get a baseline; nothing written. Re-run with --apply.", file=stdout)
+    else:
+        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.", file=stdout)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apply", action="store_true", help="Write the changes (default is a dry run).")
@@ -67,28 +91,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    import local_datafiles
-    import local_inputs
-    import paths
-    locations = paths.load()
-    data_dir = args.data_dir or locations.private_data_dir
-    try:
-        result, unresolved = backfill(local_datafiles, local_inputs, data_dir, locations.notes_vault, apply=args.apply)
-    except (revisions.RevisionError, OSError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    verb = "updated" if args.apply else "would update"
-    for name, n in result.items():
-        print(f"  {name}: {verb} {n} entries")
-    for name, index, path in unresolved:
-        print(f"  skipped {name}[{index}]: origin file missing or unreadable: {path}")
-    total = sum(result.values())
-    print("note: baselines are hashes of the files as they are NOW (as of backfill), not at extraction time.")
-    if not args.apply:
-        print(f"dry run: {total} entries would get a baseline; nothing written. Re-run with --apply.")
-    else:
-        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, app.inputs, data_dir, app.locations.notes_vault, apply=args.apply)
 
 
 if __name__ == "__main__":

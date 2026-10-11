@@ -47,6 +47,26 @@ def write_snapshot(files, data_dir, apply):
     return 1
 
 
+def run(files, inputs, data_dir, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles), `inputs` (an Inputs) and `data_dir`: returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    problems = find_problems(files, inputs, data_dir)
+    if problems:
+        print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=stderr)
+        return 1
+    try:
+        n = write_snapshot(files, data_dir, apply)
+    except OSError as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    print(f"  {MEASUREMENTS_SNAPSHOT_FILE}: " + (("written" if apply else "would be written") if n else "already present, left alone"),
+          file=stdout)
+    if n and not apply:
+        print("dry run: nothing written. Re-run with --apply.", file=stdout)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apply", action="store_true", help="Write the file (default is a dry run).")
@@ -55,23 +75,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    import local_datafiles
-    import local_inputs
-    import paths
-    data_dir = args.data_dir or paths.load().private_data_dir
-    problems = find_problems(local_datafiles, local_inputs, data_dir)
-    if problems:
-        print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=sys.stderr)
-        return 1
-    try:
-        n = write_snapshot(local_datafiles, data_dir, args.apply)
-    except OSError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    print(f"  {MEASUREMENTS_SNAPSHOT_FILE}: " + (("written" if args.apply else "would be written") if n else "already present, left alone"))
-    if n and not args.apply:
-        print("dry run: nothing written. Re-run with --apply.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, app.inputs, data_dir, apply=args.apply)
 
 
 if __name__ == "__main__":

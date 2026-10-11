@@ -67,6 +67,26 @@ def backfill(files, data_dir, apply=False, extra_adders=(), source_keys=True):
     return result
 
 
+def run(files, data_dir, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles) and `data_dir`: backfills, reports, returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    try:
+        result = backfill(files, data_dir, apply=apply)
+    except (revisions.RevisionError, OSError) as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    verb = "updated" if apply else "would update"
+    for name, n in result.items():
+        print(f"  {name}: {verb} {n} entries", file=stdout)
+    total = sum(result.values())
+    if not apply:
+        print(f"dry run: {total} entries need a source_key; nothing written. Re-run with --apply.", file=stdout)
+    else:
+        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.", file=stdout)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apply", action="store_true", help="Write the changes (default is a dry run).")
@@ -75,23 +95,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    import local_datafiles
-    import paths
-    data_dir = args.data_dir or paths.load().private_data_dir
-    try:
-        result = backfill(local_datafiles, data_dir, apply=args.apply)
-    except (revisions.RevisionError, OSError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    verb = "updated" if args.apply else "would update"
-    for name, n in result.items():
-        print(f"  {name}: {verb} {n} entries")
-    total = sum(result.values())
-    if not args.apply:
-        print(f"dry run: {total} entries need a source_key; nothing written. Re-run with --apply.")
-    else:
-        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, data_dir, apply=args.apply)
 
 
 if __name__ == "__main__":
