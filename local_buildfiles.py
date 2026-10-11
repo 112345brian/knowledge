@@ -67,11 +67,6 @@ def open_database(path):
     return sqlite3.connect(path)
 
 
-def open_readonly(path):
-    """A read-only connection to the sqlite file at `path` (it must exist; it is never created)."""
-    return sqlite3.connect(f"file:{os.path.abspath(path)}?mode=ro", uri=True)
-
-
 def read_bytes(path):
     with open(path, "rb") as f:
         return f.read()
