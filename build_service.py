@@ -24,7 +24,6 @@ from locations import Locations
 BUILDING_PREFIX = "knowledge.db.building-"
 PARTIAL_BACKUP_PREFIX = "backup.partial-"    # does not start with BACKUP_PREFIX, so it is never counted or pruned as a backup
 MAX_BACKUP_ATTEMPTS = 10_000
-DB_SIDECARS = ("", "-journal", "-wal", "-shm")
 
 Emit = Callable[[str], None]
 
@@ -55,12 +54,6 @@ class BuildOutcome:
 
 def _quiet(message: str) -> None:
     pass
-
-
-def remove_db_files(files, path) -> None:
-    """`path` and its journal/wal/shm sidecars, whichever exist."""
-    for suffix in DB_SIDECARS:
-        files.remove_if_exists(path + suffix)
 
 
 def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tuple[StepResult, ...]:
@@ -116,7 +109,7 @@ def build_to_temp(deps, directory, emit: Emit = _quiet) -> Tuple[str, Tuple[Step
     try:
         return tmp, build_database(deps, tmp, emit=emit)
     except BaseException:
-        remove_db_files(deps.files, tmp)
+        build_rules.remove_db_files(deps.files.remove_if_exists, tmp)
         raise
 
 
@@ -181,7 +174,7 @@ def _publish(deps, tmp, emit) -> Tuple[Optional[str], Tuple[str, ...]]:
         except Exception as e:
             raise BuildError("publish", e) from e
     except BaseException:
-        remove_db_files(files, tmp)
+        build_rules.remove_db_files(files.remove_if_exists, tmp)
         raise
     return backup, (_prune(files, backup_dir, emit) if backup else ())
 
@@ -233,5 +226,5 @@ def check(deps, emit: Emit = _quiet) -> BuildOutcome:
         except Exception as e:
             raise NormalBuildError(e, published=False) from e
     finally:
-        remove_db_files(files, tmp)
+        build_rules.remove_db_files(files.remove_if_exists, tmp)
     return BuildOutcome(None, None, (), report, normal, steps)

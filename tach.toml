@@ -514,6 +514,7 @@ path = "normal_db_service"  # APPLICATION: builds the normal DB and leak-checks 
 layer = "application"
 depends_on = [
     "build_files_port",
+    "build_rules",
     "leak_rules",
     "normal_db_port",
     "normal_rules",

@@ -51,7 +51,7 @@ class NormalOutputs:
         return NormalBuild(path, normal_db.format_counts(counts))
 
     def discard_normal(self, directory):
-        normal_db.remove_db_files(self._files, self._files.join(directory, normal_db.NORMAL_DB_NAME))
+        build_rules.remove_db_files(self._files.remove_if_exists, self._files.join(directory, normal_db.NORMAL_DB_NAME))
 
 
 def compose(locations, clock, files=None):

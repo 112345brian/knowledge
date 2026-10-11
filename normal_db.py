@@ -57,7 +57,7 @@ import leak_scan_store
 import normal_db_service
 import normal_db_store
 import wiring
-from normal_db_service import NormalDbDeps, remove_db_files  # noqa: F401  (remove_db_files: the public API)
+from normal_db_service import NormalDbDeps
 from leak_rules import format_leaks  # noqa: F401  (the public API)
 from normal_rules import (FACT_COLS, FTS_TABLES, NORMAL_DB_NAME, NormalDbError, REVISION_COLS, SOURCE_COLS, SOURCE_EDITION,  # noqa: F401  (the public API)
                           TABLES, VIEWS, format_counts)

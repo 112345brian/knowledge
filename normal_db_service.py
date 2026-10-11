@@ -10,6 +10,7 @@ than an out-of-date one.
 """
 from dataclasses import dataclass
 
+import build_rules
 from build_files_port import BuildFiles
 from leak_rules import check_markers, find_leaks, format_leaks, markers_from
 from normal_db_port import LeakScan, NormalSink, NormalSource
@@ -54,11 +55,6 @@ def build_normal_db(deps, full_path, target_path, rules):
     return integrity.counts
 
 
-def remove_db_files(files, path):
-    for p in (path, path + "-journal", path + "-wal", path + "-shm"):
-        files.remove_if_exists(p)
-
-
 def build_normal_atomic(deps, full_path, directory, rules, leak_check=True):
     """Build into a temp file in `directory`, leak-check it against the full DB, then replace
     knowledge-normal.db. On any failure the temp file and a previous knowledge-normal.db are removed.
@@ -76,7 +72,7 @@ def build_normal_atomic(deps, full_path, directory, rules, leak_check=True):
                 raise NormalDbError("leak test failed:\n" + format_leaks(leaks))
         files.replace(tmp, final)
     except BaseException:
-        remove_db_files(files, tmp)
-        remove_db_files(files, final)
+        build_rules.remove_db_files(files.remove_if_exists, tmp)
+        build_rules.remove_db_files(files.remove_if_exists, final)
         raise
     return final, counts

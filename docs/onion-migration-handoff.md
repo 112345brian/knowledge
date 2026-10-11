@@ -42,7 +42,7 @@ integrated result, not a replacement for reviewing them.
   `music_ingest_service`. The identity legacy-definition pin in `tests/test_identity_service.py` is empty.
 - `measurements_service.link_facts` is now `link_fact_measurements` (the entity-link guard in #64 scans by name).
 - `container.build_use_case(outputs, files=...)` runs the registry and session factory over the given `files`, so
-  the foundation's step tracer sees every step. `normal_db` re-exports `remove_db_files` for `build.py`.
+  the foundation's step tracer sees every step. `remove_db_files` lives once, in `build_rules`.
 
 ## Open items
 
@@ -57,7 +57,7 @@ integrated result, not a replacement for reviewing them.
    collapse removes. Report, don't loosen.
 3. **`canonical_artist_name` / `artist_key` live in `identity_rules`.** They are music-source logic (HTML
    unescape, `artist_rules.json` aliases); consider moving them back to `client/artist_rules.py`.
-4. **`remove_db_files`** is defined in both `build_service.py` and `normal_db_service.py`.
+4. ~~`remove_db_files` duplicated~~ Done: one definition in `build_rules`, taking the file port's `remove_if_exists`.
 5. **Not run:** the acceptance commands with a real private checkout (the suite is hermetic by design).
 6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated
    but may conflict on README and docs.

@@ -9,6 +9,7 @@ import re
 KEEP_BACKUPS = 5
 BACKUP_PREFIX = "knowledge.db.bak-"
 BACKUP_DUPLICATE = re.compile(r"^(?P<base>.*?)(?:-(?P<n>\d+))?$")
+DB_SIDECARS = ("", "-journal", "-wal", "-shm")
 
 
 class BuildError(Exception):
@@ -169,3 +170,9 @@ def backups_to_prune(names, keep=KEEP_BACKUPS):
     rebuild into unbounded disk growth."""
     backups = sorted((f for f in names if f.startswith(BACKUP_PREFIX)), key=_backup_order, reverse=True)
     return backups[keep:]
+
+
+def remove_db_files(remove_if_exists, path) -> None:
+    """`path` and its journal/wal/shm sidecars, whichever exist; `remove_if_exists` is the file port's."""
+    for suffix in DB_SIDECARS:
+        remove_if_exists(path + suffix)
