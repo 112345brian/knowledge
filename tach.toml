@@ -507,6 +507,7 @@ depends_on = [
     "facts_batch_service",
     "wiring",
     "private_git",
+    "paths",
 ]
 
 [[modules]]
@@ -540,6 +541,7 @@ depends_on = [
     "migrate_memory_store",
     "wiring",
     "private_git",
+    "paths",
 ]
 
 [[modules]]

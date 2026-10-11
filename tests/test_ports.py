@@ -311,3 +311,17 @@ def test_record_fact_reports_a_failed_commit_but_keeps_the_fact():
     out = add_fact_service.record_fact(deps, _fact())
     assert out.added.ok and out.commit is None and out.commit_error == "index.lock exists"
     assert len(files.records) == 1
+
+
+def test_library_and_composition_modules_import_without_a_private_repo():
+    """Configuration is injected, not read at import: with no knowledge-private checkout at all, every
+    composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
+    import subprocess
+    code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
+            "fact_queries, knowledge, cli_add_fact; print('ok')")
+    env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": "/nonexistent/knowledge-private"}
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
+    r = subprocess.run([sys.executable, "-c", "import add_fact; add_fact.data_file_path()"], cwd=REPO, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and "local_paths.py not found" in r.stderr

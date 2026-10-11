@@ -15,10 +15,13 @@ import revisions_store
 import source_status_store
 import validtime
 from new_fact import DataFileError
-from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
+import paths
 
-DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-FACTS_FILE = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
+
+
+def default_db_path():
+    """Where the built db is, from the configured settings (resolved on every call, never at import)."""
+    return paths.settings().db_path
 
 
 class DatabaseNotFound(FileNotFoundError):
@@ -30,7 +33,7 @@ def connect(db_path=None):
 
     Everything in this module only reads; writes go through build.py, which
     makes its own connection."""
-    path = os.path.abspath(db_path or DB_PATH)
+    path = os.path.abspath(db_path or default_db_path())
     if not os.path.exists(path):
         raise DatabaseNotFound(f"{path} doesn't exist -- run `python3 knowledge.py build` first")
     con = sqlite3.connect(pathlib.Path(path).as_uri() + "?mode=ro", uri=True)
@@ -40,7 +43,8 @@ def connect(db_path=None):
 
 def existing_db_path():
     """The db path for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
-    return DB_PATH if os.path.exists(DB_PATH) else None
+    path = default_db_path()
+    return path if os.path.exists(path) else None
 
 
 def subject_context():
@@ -59,7 +63,7 @@ def subject_context():
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= add_fact_store.file_subjects(FACTS_FILE)
+        known |= add_fact_store.file_subjects(paths.settings().facts_path)
     except DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
     return parents, known
@@ -194,7 +198,7 @@ QueryError = sqlite3.OperationalError  # raised for FTS syntax errors and for a 
 
 def audit_sources(con):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity_store.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity_store.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[paths.settings().bodybuilding_vault]), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):

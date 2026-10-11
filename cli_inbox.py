@@ -1,6 +1,6 @@
 """Typer commands for the inbox (#33): `inbox` (start the local server) and `edit`.
 
-Registered in knowledge.py by one line (`register(app, DB_PATH)`); this module does not import
+Registered in knowledge.py by one line (`register(app, fact_queries.default_db_path)`); this module does not import
 knowledge.py, so it works the same when knowledge.py runs as `__main__`. Logic lives in the libraries
 (library first, #34): `edit` calls lifecycle.edit_fact; `inbox` starts the server in inbox.py.
 
@@ -28,7 +28,8 @@ def _fail(msg, code=1):
     raise typer.Exit(code)
 
 
-def register(app, db_path):
+def register(app, default_db_path):
+    """`default_db_path` is a callable returning the built db's path; it is called when a command runs, not here."""
     @app.command("inbox", help="Serve the pending-fact review page on 127.0.0.1 ONLY (it shows private facts; never expose it). "
                                "Lists the built db snapshot: rebuild to see new pending facts.")
     def cmd_inbox(port: int = typer.Option(inbox.DEFAULT_PORT, "--port", min=0, max=65535, help="Port on 127.0.0.1 (0 = any free port)."),
@@ -38,7 +39,7 @@ def register(app, db_path):
             if not no_open:
                 threading.Timer(0.3, webbrowser.open, args=(url,)).start()
         try:
-            inbox.serve(db_path, port=port, on_ready=ready)
+            inbox.serve(default_db_path(), port=port, on_ready=ready)
         except OSError as e:
             _fail(f"could not listen on 127.0.0.1:{port}: {e}")
 
@@ -56,7 +57,7 @@ def register(app, db_path):
                  allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Commit even if the private repo has other uncommitted changes."),
                  as_json: bool = typer.Option(False, "--json")):
         res = lifecycle.edit_fact(ref, reason, statement=statement, trust_level=trust, trust_rationale=trust_rationale,
-                              recheck_by=recheck_by, notes=notes, via="cli", allow_dirty=allow_dirty, db=db_path)
+                              recheck_by=recheck_by, notes=notes, via="cli", allow_dirty=allow_dirty, db=default_db_path())
         if as_json:
             print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
         else:

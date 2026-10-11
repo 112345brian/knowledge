@@ -52,7 +52,7 @@ import rules_edit
 import script_runner
 from private_git_port import PrivateGitError
 from fact_rules import KIND_VALUES
-from fact_queries import (DB_PATH, DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
+from fact_queries import (DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
                           fact_as_of, get_fact, list_facts, list_subjects, search_facts)
 
 class Trust(str, enum.Enum):
@@ -696,7 +696,7 @@ import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, se
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
 
-from cli_inbox import register as _register_inbox; _register_inbox(app, DB_PATH)  # inbox, edit (#33)
+from cli_inbox import register as _register_inbox; _register_inbox(app, fact_queries.default_db_path)  # inbox, edit (#33)
 
 
 def main(argv=None):

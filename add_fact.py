@@ -12,28 +12,25 @@ import add_fact_store
 import clock
 import ids
 import privacy_store
-from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
+import paths
 from wiring import bind
 import private_git
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
-DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-
-
-class _Defaults:
-    """Where the facts file and the db are, read from this module on every call (tests repoint them)."""
-    data_path = property(lambda self: DATA_PATH)
-    db_path = property(lambda self: DB_PATH)
 
 
 DEPS = add_fact_service.AddFactDeps(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids,
-                                    defaults=_Defaults(), git=private_git)
+                                    defaults=paths.Defaults(), git=private_git)
+
+
+def data_file_path():
+    """The facts file this composition root writes to."""
+    return paths.settings().facts_path
 
 
 def data_file_label():
     """The facts file as it is shown in messages: relative to this repo."""
-    return os.path.relpath(DATA_PATH, HERE)
+    return os.path.relpath(paths.settings().facts_path, HERE)
 
 
 def new_source_key():

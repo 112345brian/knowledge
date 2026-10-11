@@ -268,7 +268,7 @@ def test_connect_path_with_uri_special_characters(lib, tmp_path):
     odd = tmp_path / "we ird#dir?x"
     odd.mkdir()
     dst = odd / "k.db"
-    shutil.copy(lib.DB_PATH, dst)
+    shutil.copy(lib.fact_queries.default_db_path(), dst)
     con = lib.connect(str(dst))
     assert con.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 5
     con.close()

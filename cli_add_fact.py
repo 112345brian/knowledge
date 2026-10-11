@@ -94,7 +94,7 @@ def register(app):
             print(f"note: stored as private although {fact.visibility} was requested -- {added.privacy.explain()}", file=sys.stderr)
         print(f"Added to {add_fact.data_file_label()} ({added.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
         if result.commit_error is not None:
-            print(f"error: the fact IS in {add_fact.DATA_PATH} but is NOT committed: {result.commit_error}", file=sys.stderr)
+            print(f"error: the fact IS in {add_fact.data_file_path()} but is NOT committed: {result.commit_error}", file=sys.stderr)
             raise typer.Exit(3)
         if result.repo is not None:
             print(f"Committed {result.commit} in {result.repo}: {result.message}")

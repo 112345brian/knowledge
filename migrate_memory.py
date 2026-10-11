@@ -43,10 +43,11 @@ import add_fact
 import clock
 import migrate_memory_service
 import migrate_memory_store
+import paths
 import private_git
 from wiring import bind
 
 DEPS = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
-                                            defaults=add_fact._Defaults())
+                                            defaults=paths.Defaults())
 
 migrate = bind(migrate_memory_service.migrate, DEPS)
