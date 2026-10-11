@@ -67,7 +67,7 @@ def subject_context():
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= add_fact_store.file_subjects(_settings().facts_path)
+        known |= add_fact_store.file_subjects(_settings().data_path)
     except DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
     return parents, known

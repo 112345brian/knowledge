@@ -593,6 +593,8 @@ FACT_READERS_ALLOWED = {
     "leak_test.py",
     # names the whitelisted tables, reads none: the normal tier's column and table whitelist
     "normal_rules.py",
+    # names the revision log file in the data dir; reads no fact table
+    "locations.py",
     # the CLI's read-only query adapter (search, facts, show, subjects): the full db, not a tool surface
     "fact_queries.py",
     # names the tables the build report counts, reads none

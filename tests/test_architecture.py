@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "locations"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
                   "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
 BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters

@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, locations)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -80,6 +80,7 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
+| `locations` | model | where the data lives, as one immutable value (pure) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `script_runner_port` | domain service | port for running the standalone scripts as processes |

@@ -27,6 +27,7 @@ def make_tree(tmp_path):
     code = tmp_path / "knowledge"
     code.mkdir()
     shutil.copy(os.path.join(REPO, "paths.py"), code / "paths.py")
+    shutil.copy(os.path.join(REPO, "locations.py"), code / "locations.py")
     return code
 
 

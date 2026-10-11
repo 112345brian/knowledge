@@ -25,12 +25,12 @@ DEPS = add_fact_service.AddFactDeps(facts_file=add_fact_store, rules=privacy_sto
 
 def data_file_path():
     """The facts file this composition root writes to."""
-    return paths.settings().facts_path
+    return paths.settings().data_path
 
 
 def data_file_label():
     """The facts file as it is shown in messages: relative to this repo."""
-    return os.path.relpath(paths.settings().facts_path, HERE)
+    return os.path.relpath(paths.settings().data_path, HERE)
 
 
 def new_source_key():

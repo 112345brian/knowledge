@@ -15,8 +15,9 @@ it is set it wins, and a bad value is an error, never a silent fallback.
 """
 import os
 import sys
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
+
+from locations import Locations
 
 _ENV_VAR = "KNOWLEDGE_PRIVATE_DIR"
 _SIBLING_DIR = os.path.abspath(
@@ -24,32 +25,7 @@ _SIBLING_DIR = os.path.abspath(
 )
 
 
-@dataclass(frozen=True)
-class Settings:
-    """Where this person's data lives. Optional client sources (see build_rules.CLIENT_SOURCES): which of them
-    this checkout builds and the input files they read; a checkout that does not use a source leaves its
-    paths None and the build never looks for them."""
-    knowledge_db_dir: str
-    private_data_dir: str
-    bodybuilding_vault: str
-    health_dir: str
-    client_sources: Tuple[str, ...] = ()
-    client_sources_implicit: bool = False
-    concerts_csv: Optional[str] = None
-    rym_export_csv: Optional[str] = None
-    scrobbles_json: Optional[str] = None
-
-    @property
-    def db_dir(self):
-        return os.path.expanduser(self.knowledge_db_dir)
-
-    @property
-    def db_path(self):
-        return os.path.join(self.db_dir, "knowledge.db")
-
-    @property
-    def facts_path(self):
-        return os.path.join(self.private_data_dir, "general_facts.json")
+Settings = Locations  # the old name; the value object now lives in the model ring (locations.py)
 
 
 def load():
@@ -72,8 +48,8 @@ def load():
     # sources, or defines no music inputs, is taken at its word.
     implicit = declared is None and bool(getattr(local, "CONCERTS_CSV", None))
     sources = ("concerts", "ratings", "scrobbles", "measurements", "claims") if implicit else tuple(declared or ())
-    return Settings(
-        knowledge_db_dir=local.KNOWLEDGE_DB_DIR, private_data_dir=local.PRIVATE_DATA_DIR,
+    return Locations(
+        knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
         bodybuilding_vault=local.BODYBUILDING_VAULT, health_dir=local.HEALTH_DIR,
         client_sources=sources, client_sources_implicit=implicit,
         concerts_csv=getattr(local, "CONCERTS_CSV", None), rym_export_csv=getattr(local, "RYM_EXPORT_CSV", None),
@@ -99,7 +75,7 @@ def configure(new: Optional[Settings]):
 
 class Defaults:
     """The `FactDefaults` port: where the facts file and the db are, resolved from `settings()` on every call."""
-    data_path = property(lambda self: settings().facts_path)
+    data_path = property(lambda self: settings().data_path)
     db_path = property(lambda self: settings().db_path)
 
 

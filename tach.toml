@@ -198,7 +198,7 @@ depends_on = ["entity_queries_port", "private_git_port", "subject_files_port"]
 [[modules]]
 path = "paths"          # the only module that knows personal paths
 layer = "infrastructure"
-depends_on = []
+depends_on = ["locations"]
 
 [[modules]]
 path = "private_git"    # the only module that runs git against knowledge-private
@@ -585,6 +585,11 @@ depends_on = ["fact_reads_port"]
 path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
 layer = "composition"
 depends_on = ["fact_reads_store", "queries_service", "wiring"]
+
+[[modules]]
+path = "locations"      # where the data lives, as one immutable value (pure)
+layer = "model"
+depends_on = []
 
 [[modules]]
 path = "fact_state"     # a fact's lifecycle as types with behaviour: Status, Visibility, FactState (pure)
