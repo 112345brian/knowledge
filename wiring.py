@@ -34,6 +34,7 @@ from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
 from music_export_port import MusicExportReads
+from music_repository_port import MusicRepository
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from review_reads_port import ReviewReads
@@ -77,6 +78,7 @@ PORT_PROTOCOLS = {
     "datafiles": DataFiles, "music_export": MusicExportReads,
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
     "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
+    "music": MusicRepository,
 }
 
 

@@ -13,6 +13,7 @@ from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
 from memory_files_port import MemoryFiles
 from music_export_port import MusicExportReads
+from music_repository_port import MusicRepository
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from revisions_port import Revisions
@@ -27,6 +28,7 @@ import local_stores
 import sqlite3
 import add_fact_store
 import clock
+import sqlite3
 import entities_store
 import entity_migration_store
 import entity_queries_store
@@ -36,6 +38,7 @@ import lifecycle_store
 import local_stores
 import migrate_memory_store
 import music_export_store
+import music_store
 import privacy_store
 import private_git
 import review_store
@@ -77,3 +80,4 @@ _scratch = sqlite3.connect(":memory:")
 vault_reader: VaultReader = vault_reader_store.SqliteVaultReader(_scratch)
 measurement_repository: MeasurementRepository = measurements_store.SqliteMeasurementRepository(_scratch)
 fact_measurement_links: FactMeasurementLinks = measurements_store.SqliteFactMeasurementLinks(_scratch)
+music: MusicRepository = music_store.SqliteMusicRepository(sqlite3.connect(":memory:"))

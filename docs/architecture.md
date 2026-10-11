@@ -145,7 +145,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
 | `add_fact_service` | application service | add one fact |
 | `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
-| `artist_rules` | pipeline rules | artist aliases |
+| `artist_rules` | domain service | artist aliases and the shape of artist_rules.json (pure) |
 | `backfill_dates` | ETL adapter (driving, batch) | one-time: `date_added` for legacy fact entries |
 | `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
 | `backfill_rules` | pipeline rules | key insertion into JSON text |
@@ -222,8 +222,11 @@ validation, matching and pure edits their files and lists are subject to.
 | `memory_files_port` | domain service | interface for memory-file operations |
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
-| `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
-| `music_ingest_rules` | pipeline rules | concerts / RYM / Last.fm rules |
+| `music_ingest` | composition root | binds music_ingest_service to music_store for one build connection |
+| `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
+| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity |
+| `music_repository_port` | domain service | port: the music tables the client music steps write |
+| `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
 | `new_fact` | domain service | NewFact + validation + build_entry |
 | `normal_db` | ETL adapter (driving, batch) | builds the normal db from a full db (SQL over the connections it is given, files through a BuildFiles; also a script) |
 | `normal_rules` | pipeline rules | normal-tier whitelist |
@@ -235,6 +238,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
 | `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
 | `build_steps_port` | domain service | the bound-step shape (`run() -> StepResult`), diagnostics, the vault reader and the step environment |
+| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `identity_service` and `music_ingest_service` share) |
 | `identity_rules` | domain service | artist-name canonicalization, byline split, identifier-conflict warning (pure) |
 | `identity_service` | application service | the one definition of source, subject and artist identity for the build |
 | `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |

@@ -67,7 +67,7 @@ def test_git_only_runs_inside_private_git():
 
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "source_record", "subject_rules"}  # the innermost ring: imports nothing else
-PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "source_ingest_rules",
+PIPELINE_RULES = {"measurement_rules", "source_ingest_rules",
                   "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
 BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
@@ -622,7 +622,8 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
                       "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "queries_service", "scripts_service",
                       "identity_service", "source_ingest_service", "fact_ingest_service",
                       "privacy_floor_service", "entity_link_service", "revision_apply_service",
-                      "measurements_service"}   # the last is a client source's use case: it sits in the pipeline ring
+                      "measurements_service",
+                      "music_ingest_service"}   # the last is a client source's use case: it sits in the pipeline ring
 
 
 def _architecture_roles():
@@ -647,7 +648,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r in ("application service", "pipeline use case")} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "build_composition", "fact_ingest"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "music_ingest", "build_composition", "fact_ingest"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",

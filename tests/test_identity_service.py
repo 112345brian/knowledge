@@ -240,9 +240,7 @@ IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "get_or_create
                            "get_or_create_subject", "get_source_id", "link_authors", "get_or_create_author",
                            "add_source_identifiers", "get_or_create_vault_file", "get_or_create_publisher"}
 # Legacy definitions that still exist because their step has not moved yet. A lane deletes its entries.
-LEGACY_DEFINITIONS = {
-    ("client/music_shared.py", "load_artist_cache"), ("client/music_shared.py", "get_or_create_artist"),
-}
+LEGACY_DEFINITIONS: set = set()   # every copy has migrated: a new definition outside identity_service fails the test
 
 
 def _definitions():

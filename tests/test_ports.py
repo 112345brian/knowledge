@@ -20,7 +20,7 @@ from appctx import app
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
             "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service",
-            "privacy_floor_service", "entity_link_service", "revision_apply_service")
+            "privacy_floor_service", "entity_link_service", "revision_apply_service", "music_ingest_service")
 
 
 def test_composing_every_root_verifies_its_adapters_against_their_ports():
@@ -173,7 +173,8 @@ DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleD
                 "subject_hierarchy_service": "HierarchyDeps", "fact_ingest_service": "FactIngestDeps",
                 "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
                 "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
-                "revision_apply_service": "RevisionApplyDeps"}
+                "revision_apply_service": "RevisionApplyDeps",
+                "music_ingest_service": "MusicIngestDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
