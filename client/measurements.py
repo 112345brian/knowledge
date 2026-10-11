@@ -162,7 +162,8 @@ def create_sources(cur, st, group):
 
 def run(con, ctx):
     st = State(read_snapshot_date(ctx.inputs, ctx.locations.private_data_dir))  # raises, naming the file, if it is not in the data
-    vault = ctx.inputs.open_database(os.path.join(ctx.locations.bodybuilding_vault, "bodybuilding.db"))
+    notes_vault = ctx.locations.need("notes_vault", "NOTES_VAULT", "the measurements source")
+    vault = ctx.inputs.open_database(os.path.join(notes_vault, "bodybuilding.db"))
     vault.row_factory = sqlite3.Row
     cur = con.cursor()
     inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
@@ -191,7 +192,7 @@ def run(con, ctx):
         insert_measurements(cur, st, measurement_rules.strength_measurements(latest), ids)
 
     # ---------------- Daily/weekly summary tables ----------------
-    summary, raw = measurement_rules.vault_db_sources(ctx.locations.bodybuilding_vault, measurement_rules.stale_note(st.snapshot_date))
+    summary, raw = measurement_rules.vault_db_sources(notes_vault, measurement_rules.stale_note(st.snapshot_date))
     ids.update(create_sources(cur, st, summary))
 
     for row in vault.execute("SELECT * FROM nutrition_daily"):

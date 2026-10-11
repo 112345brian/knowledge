@@ -65,7 +65,7 @@ def fake_paths(tmp_path, present=("vault", "csv")):
     (root / "vault").mkdir(parents=True)
     (root / "data").mkdir()
     ns = Locations(knowledge_db_dir=str(root / "db"), private_data_dir=str(root / "data"),
-                   bodybuilding_vault=str(root / "vault"), health_dir=str(root / "health"),
+                   notes_vault=str(root / "vault"), health_dir=str(root / "health"),
                    concerts_csv=str(root / "concerts.csv"), rym_export_csv=str(root / "rym.csv"),
                    scrobbles_json=str(root / "scrobbles.json"))
     if "vault" in present:
@@ -117,7 +117,7 @@ def test_present_inputs_are_hashed_and_missing_ones_are_recorded_not_errors(tmp_
 
 
 def test_a_missing_vault_directory_is_a_missing_input_too(tmp_path):
-    paths = dataclasses.replace(fake_paths(tmp_path, present=()), bodybuilding_vault=str(tmp_path / "does" / "not" / "exist"))
+    paths = dataclasses.replace(fake_paths(tmp_path, present=()), notes_vault=str(tmp_path / "does" / "not" / "exist"))
     con = new_db()
     bi.record(con, paths, str(tmp_path), private_git, system_clock())
     assert inputs(con)["input:vault-db"][0] == "missing"

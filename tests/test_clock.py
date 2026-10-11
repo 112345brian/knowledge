@@ -58,7 +58,7 @@ def test_a_bad_environment_value_is_an_error_not_a_silent_real_clock():
 def test_the_container_uses_the_clock_it_is_given():
     from locations import Locations
     import container
-    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/v", health_dir="/x/h")
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/v", health_dir="/x/h")
     fixed = clock.FixedClock("2026-10-03T08:00:00+00:00")
     app = container.Container(loc, fixed)
     assert app.clock is fixed

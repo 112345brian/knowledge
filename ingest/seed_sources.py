@@ -28,7 +28,7 @@ def load_sources(ctx):
     items = ctx.inputs.read_json(os.path.join(ctx.locations.private_data_dir, "manual_sources.json"))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], ctx.locations.bodybuilding_vault, ctx.locations.health_dir)
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], ctx.locations.notes_vault, ctx.locations.health_dir)
     return items
 
 

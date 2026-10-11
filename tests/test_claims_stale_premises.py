@@ -134,7 +134,7 @@ def test_the_read_service_takes_today_from_its_injected_clock():
         def audit_claims(self, db_path, today):
             seen.append(today)
             return [], []
-    loc = Locations(knowledge_db_dir="/x", private_data_dir="/x/d", bodybuilding_vault="/x/v", health_dir="/x/h")
+    loc = Locations(knowledge_db_dir="/x", private_data_dir="/x/d", notes_vault="/x/v", health_dir="/x/h")
     deps = queries_service.QueriesDeps(fact_reads=Reads(), clock=FixedClock("2026-10-03T23:30:00+00:00"), locations=loc)
     assert queries_service.audit_claims(deps) == ([], [])
     assert seen == [date(2026, 10, 3)]

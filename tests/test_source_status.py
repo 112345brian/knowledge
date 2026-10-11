@@ -66,7 +66,7 @@ def run02(ingest, tmp_path, notes, con=None):
     src = write_vault(tmp_path, notes)
     mod.vault = os.path.dirname(src)     # what the later steps need to find the same notes
     con = con or ingest.db()
-    mod.run(con, locs(bodybuilding_vault=mod.vault))
+    mod.run(con, locs(notes_vault=mod.vault))
     return con, mod
 
 
@@ -124,7 +124,7 @@ def test_02_reads_status_fields_and_relations_from_frontmatter(ingest, tmp_path)
     r = {x["citekey"]: x for x in con.execute("SELECT * FROM sources")}
     assert (r["old2015"]["status"], r["old2015"]["status_date"], r["old2015"]["status_note"], r["old2015"]["original_published_date"]) == \
         ("retracted", "2019-07", "https://example.org/notice", "2014-11-02")
-    rows = mod.parse_all(locs(bodybuilding_vault=mod.vault))
+    rows = mod.parse_all(locs(notes_vault=mod.vault))
     assert [x["relations"] for x in rows if x["citekey"] == "new2020"] == [[("new2020", "replaces", "old2015")]]
 
 
@@ -245,7 +245,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
                        {"old2015": {}, "mid2018": {"replaces": ["old2015"]}, "pre2014": {"is-version-of": "[old2015]"}},
                        manual=[{"citekey": "textbook-3e", "name": "3rd ed", "source_type": "secondary", "edition": "3rd",
                                 "replaces": ["mid2018"]}])
-    mod14.run(con, locs(bodybuilding_vault=mod14.vault))
+    mod14.run(con, locs(notes_vault=mod14.vault))
     rels = {(a, r, b) for a, r, b in con.execute(
         "SELECT s.citekey, r.relation, t.citekey FROM source_relations r JOIN sources s ON s.id = r.source_id JOIN sources t ON t.id = r.related_source_id")}
     assert rels == {("mid2018", "replaces", "old2015"), ("pre2014", "is-version-of", "old2015"), ("textbook-3e", "replaces", "mid2018")}
@@ -254,7 +254,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
 
 def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
     con, mod14 = run14(ingest, tmp_path, {"a2020": {}})
-    mod14.run(con, locs(bodybuilding_vault=mod14.vault))
+    mod14.run(con, locs(notes_vault=mod14.vault))
     assert "0 relations" in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 
 
@@ -266,7 +266,7 @@ def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
 def test_step14_refuses_bad_relations_naming_the_sources(ingest, tmp_path, notes, msg):
     con, mod14 = run14(ingest, tmp_path, notes)
     with pytest.raises(Exception, match=msg) as e:
-        mod14.run(con, locs(bodybuilding_vault=mod14.vault))
+        mod14.run(con, locs(notes_vault=mod14.vault))
     assert type(e.value).__name__ == "SourceStatusError"
     assert con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 

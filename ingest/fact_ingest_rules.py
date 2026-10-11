@@ -74,7 +74,7 @@ def parse_hints(data, source="fact hints"):
 
 def resolve_origin_path(notes_text, vault, hints=NO_HINTS):
     """Extract the vault .md file a batch-extracted fact's `notes` references."""
-    if not notes_text:
+    if not notes_text or not vault:
         return None
     m = re.search(r"(" + re.escape(vault) + r"/[^,]+?\.md)", notes_text)
     if m:

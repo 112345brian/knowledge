@@ -26,7 +26,7 @@ def synthetic_locations():
     from locations import Locations
     root = os.path.join(tempfile.gettempdir(), f"knowledge-test-synthetic-{os.getpid()}")
     return Locations(knowledge_db_dir=os.path.join(root, "db"), private_data_dir=os.path.join(root, "data"),
-                     bodybuilding_vault=os.path.join(root, "vault"), health_dir=os.path.join(root, "health"))
+                     notes_vault=os.path.join(root, "vault"), health_dir=os.path.join(root, "health"))
 
 
 def _default_locations():

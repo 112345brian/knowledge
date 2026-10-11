@@ -140,7 +140,7 @@ def run02(ingest, tmp_path, notes):
     mod = load("literature_sources.py")
     src = write_vault(tmp_path, notes)
     con = ingest.db()
-    mod.run(con, locs(bodybuilding_vault=os.path.dirname(src)))
+    mod.run(con, locs(notes_vault=os.path.dirname(src)))
     return con
 
 

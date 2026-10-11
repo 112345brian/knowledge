@@ -1,4 +1,4 @@
-"""Parse every citation note's (sources/*.md, see paths.py -> BODYBUILDING_VAULT)
+"""Parse every citation note's (sources/*.md, see paths.py -> NOTES_VAULT)
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after seed_sources.py.
 """
@@ -11,12 +11,14 @@ from ingest.shared import link_authors, get_or_create_publisher, collect_identif
 
 def parse_all(ctx):
     rows = []
-    for fp in ctx.inputs.list_files(os.path.join(ctx.locations.bodybuilding_vault, "sources"), "*.md"):
+    if not ctx.locations.notes_vault:  # no notes vault configured: there are no citation notes to read
+        return rows
+    for fp in ctx.inputs.list_files(os.path.join(ctx.locations.notes_vault, "sources"), "*.md"):
         base = os.path.basename(fp)
         if base == "README.md":
             continue
         text = ctx.inputs.read_text(fp)
-        row = source_ingest_rules.note_to_source_row(base, text, ctx.locations.bodybuilding_vault)
+        row = source_ingest_rules.note_to_source_row(base, text, ctx.locations.notes_vault)
         where = row.pop("where")
         row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
         row.update(ctx.inputs.acquisition(acquisition_rules.normalize_data(row.pop("raw_acquired"), where), fp))  # #46

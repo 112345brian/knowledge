@@ -27,7 +27,7 @@ def test_composing_every_root_verifies_its_adapters_against_their_ports():
     parameter or a missing attribute on any adapter raises PortMismatch here, and at every real startup."""
     from locations import Locations
     import container
-    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/vault", health_dir="/x/h")
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/vault", health_dir="/x/h")
     app = container.Container(loc)
     for name in ("review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects",
                  "queries", "scripts"):
@@ -39,7 +39,7 @@ def test_composing_every_root_verifies_its_adapters_against_their_ports():
 def test_verify_rejects_a_wrong_adapter_a_renamed_method_and_an_unknown_port():
     import review_service
     from locations import Locations
-    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/vault", health_dir="/x/h")
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/vault", health_dir="/x/h")
 
     class Bad:
         def find_repo(self):  # wrong parameters, and the rest is missing
@@ -273,7 +273,7 @@ class FakeIds:
 
 def _fake_locations():
     from locations import Locations
-    return Locations(knowledge_db_dir="/data", private_data_dir="/data", bodybuilding_vault="/vault", health_dir="/health")
+    return Locations(knowledge_db_dir="/data", private_data_dir="/data", notes_vault="/vault", health_dir="/health")
 
 
 def _record_deps(git):

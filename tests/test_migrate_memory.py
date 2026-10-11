@@ -55,7 +55,7 @@ class W:
         self.env = {**os.environ, **GIT_ENV, "KNOWLEDGE_PRIVATE_DIR": self.private}
         unused = os.path.join(self.root, "unused")
         self.locations = Locations(knowledge_db_dir=self.db_dir, private_data_dir=self.data_dir,
-                                   bodybuilding_vault=unused, health_dir=unused)
+                                   notes_vault=unused, health_dir=unused)
         if git_repo:
             git(self.private, "init", "-q")
             git(self.private, "config", "user.name", "T")
