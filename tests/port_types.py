@@ -28,6 +28,7 @@ import entity_queries_store
 import ids
 import lifecycle_store
 import migrate_memory_store
+import paths
 import privacy_store
 import private_git
 import review
@@ -46,7 +47,7 @@ clock_port: Clock = clock
 ids_port: Ids = ids
 memory: MemoryFiles = migrate_memory_store
 add_fact_port: AddFact = add_fact
-fact_defaults: FactDefaults = add_fact._Defaults()
+fact_defaults: FactDefaults = paths.Defaults()
 entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
