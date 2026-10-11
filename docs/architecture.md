@@ -214,7 +214,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
-| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
+| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits, the hierarchy plan, name/alias identity |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
@@ -242,6 +242,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `subjects_service` | application service | subject command operations |
 | `subjects_store` | infrastructure | subjects.json: hierarchy as data, aliases, edits |
 | `subject_files_port` | domain service | interface for persisted subject data |
+| `subject_repository_port` | domain service | interface for the stored subjects: lookups, creation, placement, alias claims |
+| `subject_repository_store` | infrastructure | the stored subjects of a build database (implements subject_repository_port) |
+| `subject_hierarchy_service` | application service | loads the subject hierarchy and resolves the subject a fact is filed under |
 | `textmatch` | model | whole-word term matching |
 | `timestamps` | model | revision-time parsing |
 | `validtime` | model | valid-time dates: parsing, ordering, containment |

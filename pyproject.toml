@@ -29,7 +29,7 @@ addopts = "-n auto"
 
 [tool.mypy]
 python_version = "3.11"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "subject_repository_port.py", "entities.py", "subjects.py", "tests/port_types.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
@@ -145,6 +145,7 @@ source_modules = [
     "kn.entity_files_port",
     "kn.entity_migration_port",
     "kn.subject_files_port",
+    "kn.subject_repository_port",
     "kn.entity_queries_port",
     "kn.privacy",
     "kn.privacy_store",
@@ -177,8 +178,10 @@ source_modules = [
     "kn.source_status",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subject_repository_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
     "kn.textmatch",
     "kn.validtime",
 ]
@@ -312,6 +315,7 @@ source_modules = [
     "kn.entity_files_port",
     "kn.entity_migration_port",
     "kn.subject_files_port",
+    "kn.subject_repository_port",
     "kn.entity_queries_port",
     "kn.privacy",
     "kn.privacy_store",
@@ -344,8 +348,10 @@ source_modules = [
     "kn.source_status",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subject_repository_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
@@ -650,9 +656,12 @@ forbidden_modules = [
     "kn.source_ingest_rules",
     "kn.source_status_store",
     "kn.subject_files_port",
+    "kn.subject_repository_port",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
     "kn.subjects_store",
+    "kn.subject_repository_store",
 ]
 allow_indirect_imports = true
 
@@ -718,6 +727,7 @@ source_modules = [
     "kn.entity_files_port",
     "kn.entity_migration_port",
     "kn.subject_files_port",
+    "kn.subject_repository_port",
     "kn.entity_queries_port",
     "kn.privacy",
     "kn.review_rules",
@@ -753,8 +763,10 @@ forbidden_modules = [
     "kn.private_edit_store",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subject_repository_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
 ]
 allow_indirect_imports = true
 
@@ -778,6 +790,7 @@ source_modules = [
     "kn.rules_edit_service",
     "kn.entities_service",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -797,8 +810,10 @@ forbidden_modules = [
     "kn.private_edit_store",
     "kn.source_status_store",
     "kn.subjects_store",
+    "kn.subject_repository_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.subject_hierarchy_service",
 ]
 allow_indirect_imports = true
 
@@ -845,7 +860,7 @@ forbidden_modules = [
     "kn.modes_store",
     "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
     "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids", "kn.locks",
-    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store", "kn.revisions_store",
+    "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store", "kn.subject_repository_store", "kn.revisions_store",
     "kn.acquisition_store",
     "kn.build_info_store",
     "kn.fixity_store",

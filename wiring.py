@@ -34,6 +34,7 @@ from reviews_port import Reviews
 from revisions_port import Revisions
 from script_runner_port import ScriptRunner
 from subject_files_port import SubjectFiles
+from subject_repository_port import SubjectRepository
 
 
 def bind(fn: Callable, deps: Any) -> Callable:
@@ -64,7 +65,7 @@ PORT_PROTOCOLS = {
     "lifecycle_reads": LifecycleReads, "facts_file": FactsFile, "clock": Clock, "ids": Ids,
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
-    "subject_files": SubjectFiles, "entity_queries": EntityQueries,
+    "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
 }
 
 

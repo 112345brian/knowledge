@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -184,6 +184,16 @@ depends_on = ["privacy_rules_port", "private_git_port", "locations"]
 path = "entities_service"  # USE CASE: entity commands through ports
 layer = "application"
 depends_on = ["entity_files_port", "entity_migration_port", "entity_queries_port", "private_git_port", "locations"]
+
+[[modules]]
+path = "subject_repository_port"   # DOMAIN SERVICE: the stored subjects a hierarchy load and fact ingestion go through
+layer = "domain_services"
+depends_on = ["subject_rules"]
+
+[[modules]]
+path = "subject_hierarchy_service"  # USE CASE: load the subject hierarchy, resolve the subject a fact is filed under
+layer = "application"
+depends_on = ["subject_repository_port", "subject_rules"]
 
 [[modules]]
 path = "subjects_service"  # USE CASE: subject commands through ports
@@ -600,7 +610,7 @@ depends_on = []
 [[modules]]
 path = "step_stores_port"    # DOMAIN SERVICE: the data files and table writers a build step uses
 layer = "domain_services"
-depends_on = []
+depends_on = ["subject_repository_port"]
 
 [[modules]]
 path = "datafiles_port"      # DOMAIN SERVICE: the data files a maintenance tool reads and rewrites
@@ -625,7 +635,7 @@ depends_on = ["locks", "revisions_store"]
 [[modules]]
 path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject and revision stores, by name
 layer = "infrastructure"
-depends_on = ["entities_store", "privacy_store", "revisions_store", "subjects_store"]
+depends_on = ["entities_store", "privacy_store", "revisions_store", "subject_repository_store", "subjects_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -741,6 +751,11 @@ depends_on = [
     "private_git_port",
     "privacy_store",
 ]
+
+[[modules]]
+path = "subject_repository_store"   # ADAPTER the stored subjects of a build database: lookups, creation, placement, alias claims
+layer = "infrastructure"
+depends_on = ["subject_rules"]
 
 [[modules]]
 path = "subjects_store"   # ADAPTER #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
@@ -1000,6 +1015,7 @@ depends_on = [
 path = "ingest.facts"
 layer = "pipeline"
 depends_on = [
+    "subject_hierarchy_service",
     "ingest.shared",
     "ingest.fact_ingest_rules",
     "privacy",
@@ -1018,7 +1034,7 @@ depends_on = [
 path = "ingest.seed_subject_hierarchy"
 layer = "pipeline"
 depends_on = [
-    "subject_rules",
+    "subject_hierarchy_service",
 ]
 
 [[modules]]
@@ -1058,6 +1074,7 @@ depends_on = [
 path = "ingest.seed_general_facts"
 layer = "pipeline"
 depends_on = [
+    "subject_hierarchy_service",
     "ingest.fact_ingest_rules",
     "privacy",
     "revisions",
