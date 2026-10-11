@@ -594,7 +594,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # and takes plain data in, returns plain data out, so it can be tested without a disk, a database or
 # git, and any driving adapter (CLI, inbox, MCP) or driven adapter (sqlite, files, git) can be
 # swapped without touching it. The adapters live in their own modules and import the domain, never
-# the other way round (the layered contract below already forbids the upward import).
+# the other way round (tach's `layers` already forbid the upward import).
 # DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
 # revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
 # facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps and the
@@ -762,34 +762,3 @@ forbidden_modules = [
     "kn.source_status_store",
 ]
 allow_indirect_imports = true
-[[tool.importlinter.contracts]]
-id = "libraries-layered"
-name = "Libraries form a DAG (no cycles) in a fixed order"
-# Why: a layers contract forbids any import that points up the list, so it also forbids cycles.
-# Higher entries may import lower ones; entries joined with `|` are independent of each other.
-# Adding a library means choosing its row. The normal DB builder uses leak_scan_store for scans;
-# the leak-test runner calls the normal DB builder, so the dependency is one-way.
-type = "layers"
-containers = ["kn"]
-layers = [
-    "facts_batch | lifecycle | migrate_memory | rules_edit | entities | subjects | queries",
-    "fact_reads_store",
-    "modes_store | claims_store | facts_batch_service",
-    "review | modes | claims_audit | leak_test",
-    "normal_db | lifecycle_service | migrate_memory_service | rules_edit_service | entities_service | subjects_service | queries_service",
-    "entity_migration_store | entity_queries_store",
-    "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
-    "revisions_store | build_info_store | source_status_store | leak_scan_store",
-    "add_fact",
-    "privacy_store | add_fact_service | fact_ingest_rules | backfill_rules",
-    "add_fact_store | revisions | review_rules | lifecycle_rules | facts_batch_rules | migrate_memory_rules | normal_rules | source_ingest_rules",
-    "new_fact",
-    "subjects_store",
-    "entities_store",
-    "privacy | source_status | acquisition_store",
-    "private_edit_store",
-    "private_git | clock | paths | timestamps | fact_rules | leak_rules | wiring | ids | script_runner | locks | artist_rules | music_ingest_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers | entity_rules | fact_state",
-    "entity_files_port | entity_migration_port | subject_files_port",
-    "private_git_port",
-    "fact_reads_port | facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",
-]
