@@ -123,9 +123,31 @@ def test_check_leaves_existing_live_db_untouched(env):
     assert open(env.live, "rb").read() == before
 
 
-def test_knowledge_py_build_dispatch_shells_out_to_build_py():
-    src = open(os.path.join(REPO, "knowledge.py")).read()
-    assert '"build.py"' in src and '"--check"' in src
+class _FakeRunner:
+    def __init__(self, code=0):
+        self.calls, self.code = [], code
+
+    def run_script(self, name, args=()):
+        self.calls.append(("script", name, list(args)))
+        return self.code
+
+    def run_module(self, module, args=()):
+        self.calls.append(("module", module, list(args)))
+        return self.code
+
+
+def test_the_build_command_runs_build_py_through_the_script_runner_port():
+    import scripts
+    import scripts_service
+    runner = _FakeRunner(code=7)
+    deps = scripts_service.ScriptsDeps(runner=runner)
+    assert scripts_service.build(deps) == 7
+    assert scripts_service.build(deps, check=True) == 7
+    assert scripts_service.clean_concerts(deps) == 7
+    assert runner.calls == [("script", "build.py", []), ("script", "build.py", ["--check"]),
+                            ("module", "client.clean_concerts_csv", [])]
+    import script_runner
+    assert scripts.DEPS.runner is script_runner      # the composition root binds the real adapter
 
 
 # ---- #17: failure safety -----------------------------------------------------

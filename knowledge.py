@@ -48,7 +48,7 @@ import queries
 import review
 import revisions
 import rules_edit
-import script_runner
+import scripts
 from private_git_port import PrivateGitError
 from fact_rules import KIND_VALUES
 from fact_reads_port import DatabaseNotFound, FactQueryError
@@ -123,12 +123,12 @@ INCLUDE_PENDING_OPT = typer.Option(False, "--include-pending", help="Also show p
 
 @app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
 def cmd_build(check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
-    raise typer.Exit(script_runner.run_script("build.py", ["--check"] if check else []))
+    raise typer.Exit(scripts.build(check=check))
 
 
 @app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
 def cmd_clean_concerts():
-    raise typer.Exit(script_runner.run_module("client.clean_concerts_csv"))
+    raise typer.Exit(scripts.clean_concerts())
 
 
 @app.command("search", help="Full-text search over facts (statement/trust_rationale/notes).")

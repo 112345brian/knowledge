@@ -592,6 +592,21 @@ layer = "model"
 depends_on = []
 
 [[modules]]
+path = "script_runner_port"   # DOMAIN SERVICE: the port for running the standalone scripts
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "scripts_service"      # APPLICATION SERVICE: build / clean-concerts as a script run
+layer = "application"
+depends_on = ["script_runner_port"]
+
+[[modules]]
+path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
+layer = "composition"
+depends_on = ["script_runner", "scripts_service", "wiring"]
+
+[[modules]]
 path = "entity_rules"   # #42 entity vocabulary and error type, shared by entities_store and the entity CLI (pure)
 layer = "model"
 depends_on = []
@@ -690,7 +705,6 @@ depends_on = [
     "review",
     "rules_edit",
     "revisions",
-    "script_runner",
     "cli_entities",
     "cli_sources",
     "cli_subjects",
@@ -699,6 +713,7 @@ depends_on = [
     "private_git_port",
     "queries",
     "fact_reads_port",
+    "scripts",
 ]
 
 [[modules]]

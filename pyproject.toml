@@ -74,6 +74,9 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.script_runner_port",
+    "kn.scripts",
+    "kn.scripts_service",
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
@@ -216,6 +219,9 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.script_runner_port",
+    "kn.scripts",
+    "kn.scripts_service",
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
@@ -466,6 +472,9 @@ source_modules = [
     "kn.source_status",
 ]
 forbidden_modules = [
+    "kn.script_runner_port",
+    "kn.scripts",
+    "kn.scripts_service",
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
@@ -610,6 +619,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.script_runner_port",
     "kn.fact_reads_port",
     "kn.artist_rules",
     "kn.backfill_rules",
@@ -689,6 +699,7 @@ name = "Use cases import ports and domain, never an adapter, a facade or infrast
 # tests/test_architecture.py checks that no service touches anything else on `os`.
 type = "forbidden"
 source_modules = [
+    "kn.scripts_service",
     "kn.queries_service",
     "kn.add_fact_service",
     "kn.facts_batch_service",
@@ -724,14 +735,14 @@ allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "driving-adapters-no-infrastructure"
-name = "The CLI and the inbox reach infrastructure only through use cases (script_runner launches scripts)"
+name = "The CLI and the inbox reach infrastructure only through use cases"
 # Why (onion architecture): the Typer app (knowledge, cli_*) and the inbox page are the outermost ring. They turn
 # a command or a request into a call on a composition root (review, lifecycle, add_fact, facts_batch,
 # migrate_memory, rules_edit, entities, subjects, and `queries` for every read) and print or render the result.
 # They never open a database, spawn a process or touch files, and import no adapter at all: every module in
-# tach's `infrastructure` layer is forbidden here except `script_runner`, the one launcher the Typer app uses
-# to run the standalone build and clean-concerts scripts. tests/test_architecture.py checks the list against
-# tach.toml, so a new adapter cannot be forgotten.
+# tach's `infrastructure` layer is forbidden here; the build and clean-concerts commands run their scripts
+# through `scripts` -> `scripts_service` -> the ScriptRunner port. tests/test_architecture.py checks the list
+# against tach.toml, so a new adapter cannot be forgotten.
 type = "forbidden"
 source_modules = [
     "kn.cli_facts_batch",
@@ -746,6 +757,7 @@ source_modules = [
     "kn.cli_subjects",
 ]
 forbidden_modules = [
+    "kn.script_runner",
     "kn.claims_store",
     "kn.entity_queries_store",
     "kn.fact_queries",

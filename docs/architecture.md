@@ -82,6 +82,9 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
+| `script_runner_port` | domain service | port for running the standalone scripts as processes |
+| `scripts` | composition root | binds scripts_service to script_runner |
+| `scripts_service` | application service | build and clean-concerts as a script run |
 | `seed_sources` | ETL adapter (driving, batch) |  |
 | `literature_sources` | ETL adapter (driving, batch) |  |
 | `measurements` | ETL adapter (driving, batch) |  |
