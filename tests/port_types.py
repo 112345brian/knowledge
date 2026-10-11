@@ -11,6 +11,7 @@ from facts_file_port import FactsFile
 from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
 from memory_files_port import MemoryFiles
+from music_repository_port import MusicRepository
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from revisions_port import Revisions
@@ -18,12 +19,14 @@ from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
 import add_fact_store
 import clock
+import sqlite3
 import entities_store
 import entity_migration_store
 import entity_queries_store
 import ids
 import lifecycle_store
 import migrate_memory_store
+import music_store
 import privacy_store
 import private_git
 import review_store
@@ -43,3 +46,4 @@ entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
+music: MusicRepository = music_store.SqliteMusicRepository(sqlite3.connect(":memory:"))

@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context, fixity_rules, acquisition_rules, subject_rules)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context, fixity_rules, acquisition_rules, subject_rules, step_result)   <- imports nothing else
 ```
 
 ## Rules
@@ -143,7 +143,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
 | `add_fact_service` | application service | add one fact |
 | `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
-| `artist_rules` | pipeline rules | artist aliases |
+| `artist_rules` | domain service | artist aliases and the shape of artist_rules.json (pure) |
 | `backfill_dates` | ETL adapter (driving, batch) | one-time: `date_added` for legacy fact entries |
 | `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
 | `backfill_rules` | pipeline rules | key insertion into JSON text |
@@ -207,12 +207,16 @@ validation, matching and pure edits their files and lists are subject to.
 | `memory_files_port` | domain service | interface for memory-file operations |
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
-| `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
-| `music_ingest_rules` | pipeline rules | concerts / RYM / Last.fm rules |
+| `music_ingest` | composition root | binds music_ingest_service to music_store for one build connection |
+| `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
+| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity |
+| `music_repository_port` | domain service | port: the music tables the client music steps write |
+| `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
 | `new_fact` | domain service | NewFact + validation + build_entry |
 | `normal_db` | ETL adapter (driving, batch) | builds the normal db from a full db (SQL over the connections it is given, files through a BuildFiles; also a script) |
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
+| `step_result` | model | what an ingest step reports back: counts and the lines to print (a value, no I/O) |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
 | `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |

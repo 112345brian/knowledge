@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -342,8 +342,8 @@ layer = "model"
 depends_on = []
 
 [[modules]]
-path = "client.artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
-layer = "pipeline"
+path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization (aliases) and the artist rules file's shape (pure)
+layer = "domain_services"
 depends_on = []
 
 [[modules]]
@@ -362,8 +362,8 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
-layer = "pipeline"
+path = "client.music_ingest_rules"   # DOMAIN SERVICE: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
+layer = "domain_services"
 depends_on = []
 
 [[modules]]
@@ -651,6 +651,31 @@ depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memor
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
 layer = "composition"
 depends_on = ["script_runner", "scripts_service", "wiring"]
+
+[[modules]]
+path = "step_result"        # what an ingest step reports back: counts and the lines to print (a value, no I/O)
+layer = "model"
+depends_on = []
+
+[[modules]]
+path = "music_repository_port"   # DOMAIN SERVICE: the port for the music tables the client music steps write
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "music_ingest_service"    # APPLICATION SERVICE: concerts, ratings, scrobbles and artist members, through ports only
+layer = "application"
+depends_on = ["client.artist_rules", "client.music_ingest_rules", "inputs_port", "locations", "music_repository_port", "step_result"]
+
+[[modules]]
+path = "music_store"             # INFRASTRUCTURE: the music tables of the build database (implements music_repository_port)
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "music_ingest"            # COMPOSITION ROOT: binds music_ingest_service to music_store for one build connection
+layer = "composition"
+depends_on = ["music_ingest_service", "music_store", "wiring"]
 
 [[modules]]
 path = "pipeline_context"   # what a build step is given besides its connection: Locations and Inputs (a value, no I/O)
@@ -1025,33 +1050,28 @@ depends_on = [
 path = "client.concerts"
 layer = "pipeline"
 depends_on = [
-    "client.music_ingest_rules",
-    "client.music_shared",
+    "music_ingest",
 ]
 
 [[modules]]
 path = "client.music_ratings"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
-    "client.music_ingest_rules",
-    "client.music_shared",
+    "music_ingest",
 ]
 
 [[modules]]
 path = "client.scrobbles"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
-    "client.music_ingest_rules",
-    "client.music_shared",
+    "music_ingest",
 ]
 
 [[modules]]
 path = "client.seed_artist_members"
 layer = "pipeline"
 depends_on = [
-    "client.music_shared",
+    "music_ingest",
 ]
 
 [[modules]]
@@ -1097,13 +1117,6 @@ path = "ingest.link_source_relations"
 layer = "pipeline"
 depends_on = [
     "source_status",
-]
-
-[[modules]]
-path = "client.music_shared"
-layer = "pipeline"
-depends_on = [
-    "client.artist_rules",
 ]
 
 [[modules]]
