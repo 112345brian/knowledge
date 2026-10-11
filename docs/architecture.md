@@ -10,7 +10,7 @@ protocols in individual `*_port.py` modules) wrap it. **Application services** (
 through the ports. **Infrastructure** (`*_store`, `clock`, `paths`, `private_git`, ...) implements the ports. The
 **composition roots** (facades) bind an application service to its adapters, and the CLI, the inbox and the ingest
 scripts are the driving adapters on the outside. Each application service declares the ports it needs as the required fields of its own frozen `*Deps` class (no
-shared optional bundle); `wiring.py` holds `bind`; the protocol conformance checks are test support (`tests/port_conformance.py`).
+shared optional bundle); `wiring.py` holds `bind_all` and `verify`: every `compose()` checks each adapter against its port at startup.
 The knowledge is personal, so the domain core is only what every knowledge base needs (facts, trust, privacy, revisions,
 sources). Concerts, music ratings or measurements are not domain concepts here: they are optional client sources
 (`client/`) on the outside, and their pure rule modules are marked `pipeline rules`, like the rule modules only the build pipeline uses.
@@ -42,7 +42,7 @@ model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status,
 
 Rules (each one is a failing test or contract if broken):
 
-Port adapters are checked at runtime for member names and parameter order (`tests/test_ports.py`),
+Port adapters are checked at wiring time for member names and parameter order (`wiring.verify`, run by every `compose()`),
 and statically for structural type compatibility (`tests/port_types.py`, `uv run mypy`).
 The Git operations are declared by `PrivateGit`; composition roots inject `private_git`, and shared
 private-file editing receives that port rather than importing the Git adapter.
@@ -55,7 +55,8 @@ private-file editing receives that port rather than importing the Git adapter.
    (contract `driving-adapters-no-infrastructure`).
 4. Only `private_git` runs git and only `script_runner` spawns a Python subprocess; nothing above the domain
    imports upward (layers: serving > cli > pipeline > library).
-5. Every adapter module satisfies the protocol the facade binds it to (`tests/test_ports.py`).
+5. Every adapter satisfies the protocol it is wired to: `wiring.verify` raises `PortMismatch` at startup, and a forgotten
+   adapter is a `TypeError` (the `*Deps` fields are required).
 6. The model imports no other module of the repo, and a domain service never imports an application service
    (contract `model-is-innermost` and tach's `model` / `domain_services` layers).
 
@@ -178,7 +179,7 @@ thin delegations. Sources (`source_status`) are still a vocabulary and functions
 | `normal_db` | ETL adapter (driving, batch) | SQL copy + file swap (also a script) |
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
-| `wiring` | composition helper | `bind`: publishes a service function with its dependencies bound |
+| `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
 | `privacy_rules_port` | domain service | interface for reading and editing privacy rules |
