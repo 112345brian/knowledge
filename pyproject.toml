@@ -30,8 +30,7 @@ addopts = "-n auto"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "tests"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "build_records.py", "build_repositories_port.py", "build_steps_port.py", "identity_rules.py", "identity_service.py", "build_composition.py", "tests/port_types.py", "tests/build_port_types.py"]
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "subject_repository_port.py", "entities.py", "subjects.py", "tests/port_types.py"]
+files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "subject_repository_port.py", "entities.py", "subjects.py", "build_records.py", "build_repositories_port.py", "build_steps_port.py", "identity_rules.py", "identity_service.py", "build_composition.py", "tests/port_types.py", "tests/build_port_types.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
