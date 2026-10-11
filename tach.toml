@@ -372,8 +372,8 @@ layer = "pipeline"
 depends_on = []
 
 [[modules]]
-path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables (pure)
-layer = "pipeline"
+path = "build_rules"        # DOMAIN: step order, backup pruning and naming, report tables, BuildError (pure)
+layer = "domain_services"
 depends_on = []
 
 [[modules]]
@@ -608,6 +608,21 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "build_port"          # DOMAIN SERVICE: the build session, step registry, provenance and outputs ports (draft foundation contracts)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "build_service"       # APPLICATION SERVICE: the database rebuild (order, failure naming, atomic publication, backups, normal db)
+layer = "application"
+depends_on = ["build_files_port", "build_port", "build_rules", "clock_port", "locations"]
+
+[[modules]]
+path = "building"            # COMPOSITION ROOT: binds build_service; owns the session factory and the step registry
+layer = "composition"
+depends_on = ["build_info_store", "build_port", "build_rules", "build_service", "local_buildfiles", "local_inputs", "local_stores", "pipeline_context", "private_git", "wiring"]
+
+[[modules]]
 path = "build_files_port"    # DOMAIN SERVICE: the disk and process work of a database rebuild
 layer = "domain_services"
 depends_on = []
@@ -703,6 +718,7 @@ depends_on = ["fixity_rules"]
 path = "build_info_store"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
 layer = "infrastructure"
 depends_on = [
+    "build_port",
     "fixity_store",
     "private_git_port",
 ]
@@ -918,15 +934,12 @@ path = "build"
 layer = "pipeline"
 depends_on = [
     "build_rules",
+    "build_port",
+    "building",
     "normal_db",
-    "private_git",
     "paths",
     "privacy_store",
-    "build_info_store",
     "clock",
-    "local_inputs",
-    "pipeline_context",
-    "local_stores",
     "local_buildfiles",
 ]
 

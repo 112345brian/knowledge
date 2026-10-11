@@ -76,7 +76,7 @@ Everything else reaches the disk through a port:
 | application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
 | build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
 | maintenance tools (backfills, exports) | `DataFiles` (`datafiles_port`), `Inputs` | `local_datafiles`, `local_inputs` |
-| `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| `build_service`, `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`), the rebuild ports (`build_port`) | `local_buildfiles`, `building`, `build_info_store` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
 A step imports no infrastructure module (a test checks tach's graph), and it writes only through the connection it
@@ -97,6 +97,7 @@ validation, matching and pure edits their files and lists are subject to.
 | Module | Role | What it is |
 | --- | --- | --- |
 | `acquisition_rules` | model | an acquisition record's vocabulary and validation (pure) |
+| `build_port` | domain service | ports of the rebuild: session factory, step registry, provenance reader, outputs (draft foundation contracts) |
 | `build_files_port` | domain service | port: the disk and process work of a database rebuild |
 | `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
 | `cli_build` | driving adapter | `build`, `clean-concerts` |
@@ -150,8 +151,10 @@ validation, matching and pure edits their files and lists are subject to.
 | `backfill_snapshot_date` | ETL adapter (driving, batch) | one-time: writes measurements_snapshot.json (measurements source) |
 | `backfill_source_keys` | ETL adapter (driving, batch) | one-time: `source_key` for legacy fact entries |
 | `build` | ETL adapter (driving, batch) | runs the steps, swaps the db |
-| `build_info_store` | infrastructure | which inputs and code produced the db |
-| `build_rules` | pipeline rules | step order, backups |
+| `build_info_store` | infrastructure | which inputs and code produced the db (implements the provenance reader port) |
+| `build_service` | application service | the rebuild: step order, failure naming, atomic publication, backups, normal-db generation |
+| `building` | composition root | binds build_service; owns the session factory and the composed step registry |
+| `build_rules` | domain service | step order, backups, BuildError (pure; the build use case imports it) |
 | `claims_audit` | domain service | staleness rules |
 | `claims_store` | infrastructure | claims audit SQL + clock |
 | `clean_concerts_csv` | ETL adapter (driving, batch) | idempotent cleanup of the concerts CSV (concerts source) |

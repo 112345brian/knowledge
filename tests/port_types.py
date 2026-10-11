@@ -3,6 +3,8 @@
 Run with ``uv run mypy``. These assignments supplement the runtime name/signature checks
 in ``test_ports.py`` with mypy's structural type checks.
 """
+from build_files_port import BuildFiles
+from build_port import BuildOutputs, BuildSession, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
@@ -17,6 +19,10 @@ from revisions_port import Revisions
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
 import add_fact_store
+import build
+import build_info_store
+import building
+import local_buildfiles
 import clock
 import entities_store
 import entity_migration_store
@@ -43,3 +49,9 @@ entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
+build_files: BuildFiles = local_buildfiles
+provenance: ProvenanceReader = build_info_store.BuildProvenance(None, "", private_git)
+build_session: BuildSession = building.Session(local_buildfiles, "", None, None)
+build_sessions: SessionFactory = building.Sessions(local_buildfiles, "", None)
+build_steps: StepRegistry = building.Registry(local_buildfiles, "")
+build_outputs: BuildOutputs = build.NormalOutputs(local_buildfiles, None)
