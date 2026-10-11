@@ -1,77 +1,119 @@
 # Knowledge
 
-Knowledge builds a local SQLite knowledge base from source records and reviewed facts. It provides
-tools for ingesting data, tracking revisions, checking provenance, and querying the resulting
-database. The database is a build artifact; edit its inputs or code, then rebuild it.
+A personal knowledge base built as a local SQLite database from reviewed facts and source records,
+with a CLI for ingesting, reviewing, searching, and auditing them.
+
+- **Provenance:** every fact carries a trust level and its sources; claims can be audited against
+  the facts they cite.
+- **History:** changes are appended as revisions, never overwritten, so any fact has a full history.
+- **Privacy:** facts are `normal` or `private`; privacy rules are checked before a fact is stored.
+- **Reproducible:** the database is a build artifact. Edit the inputs or the code, then rebuild.
+
+## Contents
+
+- [Data boundary](#data-boundary)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [How the build works](#how-the-build-works)
+- [Project layout](#project-layout)
+- [Development](#development)
 
 ## Data boundary
 
-This repository contains application code, schemas, and synthetic test fixtures. It must not contain
-real facts, private configuration, local file paths, or client data. Keep those in a separate private
-data directory. `local_paths.py` belongs there and supplies the database location, input paths, and
-enabled optional sources. Set `KNOWLEDGE_PRIVATE_DIR` when the private checkout is not next to this
-repository.
+This repository holds code, schemas, and synthetic test fixtures only. It must not contain real
+facts, private configuration, local file paths, or client data. Those live in a separate private
+data directory.
 
-The build reads fact files, source records, revision logs, privacy rules, subject data, and optional
-source inputs from that private directory. Do not put their contents in source files, documentation,
-examples, snapshots, or test goldens. Tests should construct synthetic data in temporary directories.
+- The private directory supplies `local_paths.py`, which defines the database location, the input
+  paths, and the enabled optional sources.
+- Point to it with `KNOWLEDGE_PRIVATE_DIR` unless it sits next to this repository.
+- Nothing from it may appear in source files, docs, examples, snapshots, or test goldens. Tests
+  build synthetic data in temporary directories.
 
-## Install and run
+## Requirements
 
-Requires Python 3.11 or later and [uv](https://docs.astral.sh/uv/).
+- Python 3.11 or later
+- [uv](https://docs.astral.sh/uv/)
+
+## Quick start
 
 ```sh
 uv sync
 export KNOWLEDGE_PRIVATE_DIR=/path/to/private-data
-uv run python knowledge.py --help
 uv run python knowledge.py build
 uv run python knowledge.py search "example terms"
 ```
 
-The Typer application is the primary CLI. Most commands support `--help`; read commands that return
-structured data support `--json`.
+`build --check` builds into a throwaway file and reports counts without touching the live database.
 
-Common commands:
+## Usage
 
-```sh
-uv run python knowledge.py build [--check]
-uv run python knowledge.py search "terms" [--subject SUBJECT] [--limit N]
-uv run python knowledge.py facts [--subject SUBJECT] [--status STATUS]
-uv run python knowledge.py show FACT_ID
-uv run python knowledge.py history FACT_ID_OR_KEY
-uv run python knowledge.py add-fact "statement" --subject SUBJECT --trust LEVEL
-uv run python knowledge.py review-pending
-uv run python knowledge.py approve FACT_ID_OR_KEY --reason "reviewed"
-uv run python knowledge.py privacy check "statement" --subject SUBJECT
-uv run python knowledge.py inbox
-```
+`knowledge.py` is the single entry point. Run `uv run python knowledge.py --help` for every command
+and `<command> --help` for its options. Read commands accept `--json`.
 
-The inbox binds to loopback and displays private facts. Keep it local; do not expose it through a
-proxy, tunnel, or port forward.
+| Task | Command |
+| --- | --- |
+| Rebuild the database | `build [--check]` |
+| Full-text search | `search "terms" [--subject S] [--trust LEVEL] [--limit N]` |
+| List or filter facts | `facts [--subject S] [--status STATUS]` |
+| Show one fact | `show FACT_ID [--as-of DATE]` |
+| Show a fact's revisions | `history FACT_ID_OR_KEY` |
+| Add a fact | `add-fact "statement" --subject S --trust LEVEL` |
+| Add a reviewed batch | `add-facts` |
+| Review pending facts | `review-pending`, `approve REF...`, `reject REF... --reason TEXT` |
+| Change a fact | `edit`, `supersede`, `retract`, `set-visibility` |
+| Check privacy | `privacy check "statement" --subject S` |
+| Audit | `audit-claims`, `audit-sources`, `audit-source-status`, `build-info` |
+| Manage vocabularies | `subject ...`, `entity ...`, `source ...` |
 
-## Pipeline and extensions
+Prefix each command with `uv run python knowledge.py`.
 
-`build.py` applies the core schema and runs the ordered steps in `build_rules.py`. The core pipeline
-can build without optional sources. A checkout enables optional sources through its private
-`local_paths.py`; each source may add schema fragments and ingest steps. The source inputs and any
-source-specific configuration stay private. Code in `ingest/` is independent of optional adapters.
+### Review inbox
 
-The built database and its normal-view copy are generated artifacts. Never edit either database by
-hand. Change the source data or pipeline, then rebuild.
+`knowledge.py inbox` serves the pending-fact review page on `127.0.0.1`. It displays private facts,
+so keep it local: do not put it behind a proxy, tunnel, or port forward.
+
+## How the build works
+
+`build.py` applies `schema.sql` and runs the ordered steps in `build_rules.py`. The core pipeline
+builds without any optional source. A checkout enables optional sources (under `client/`) through
+its private `local_paths.py`; each may add schema fragments and ingest steps. Code in `ingest/` never
+imports from `client/`.
+
+The built database and its normal-view copy are generated. Never edit either by hand.
+
+Procedures for registering facts are in [docs/register-facts-protocol.md](docs/register-facts-protocol.md).
+
+## Project layout
+
+| Path | Contents |
+| --- | --- |
+| `knowledge.py`, `cli_*.py` | Typer CLI (driving adapter) |
+| `build.py`, `build_rules.py`, `ingest/` | Build pipeline and core ingest steps |
+| `client/` | Optional sources, enabled per checkout |
+| `*_service.py` | Application services that orchestrate rules through ports |
+| `*_rules.py`, `*_port.py` | Pure domain rules and port protocols |
+| `*_store.py`, `paths.py`, `clock.py` | Adapters for the database, files, git, and time |
+| `schema.sql` | Core database schema |
+| `docs/` | [Architecture](docs/architecture.md), [competency questions](docs/competency-questions.md), [fact registration protocol](docs/register-facts-protocol.md) |
+| `tests/` | Test suite and synthetic fixtures |
+
+The code follows an onion architecture: dependencies point inward, domain rules do no I/O, and
+services reach files, the database, and processes only through ports. [docs/architecture.md](docs/architecture.md)
+has the module map and the enforced boundaries.
 
 ## Development
 
 ```sh
-uv run pytest
+uv run pytest                        # full suite, parallel by default
 uv run mypy
-uv run tach check
-uv run python tests/arch_check.py
+uv run tach check                    # module layering
+uv run python tests/arch_check.py    # tach + import-linter + repository scan
 ```
 
-The project uses an onion architecture (ports and adapters at the edge). Domain rules are kept separate from file,
-database, and process access; application services depend on explicit ports; facades compose adapters; and the
-Typer CLI and ingest pipeline drive those application services. See [docs/architecture.md](docs/architecture.md)
-for the module map and enforced boundaries.
+Test fixtures must stay synthetic. Before adding examples or generated snapshots, check that they
+contain no private facts, names, paths, or client-specific data.
 
-Test fixtures must remain synthetic and generic. Before adding examples or generated snapshots,
-check that they contain no private facts, names, paths, or client-specific data.
+Every action available in the UI is also a CLI command; see `cli_parity.py` and
+`tests/test_cli_parity.py`.
