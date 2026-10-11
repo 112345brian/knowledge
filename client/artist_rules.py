@@ -1,13 +1,6 @@
-"""Pure helpers for canonicalizing names from optional music sources."""
-import html
+"""Pure helpers for canonicalizing names from optional music sources.
 
-
-def canonical_artist_name(name, aliases=None):
-    """Unescape a source name and apply a caller-provided alias mapping."""
-    name = html.unescape(name)
-    return (aliases or {}).get(name.lower(), name)
-
-
-def artist_key(name):
-    """Case-insensitive cache key (SQLite's NOCASE only folds ASCII)."""
-    return name.lower()
+The definitions live in `identity_rules` (the one place artist identity is defined); the music steps that still
+import this module get the same functions.
+"""
+from identity_rules import artist_key, canonical_artist_name  # noqa: F401  (re-exported)
