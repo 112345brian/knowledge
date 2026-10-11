@@ -1,4 +1,6 @@
-"""Apply fact_revisions.jsonl (issue #30): validate the append-only revision log, insert
+"""Validates and applies the append-only revision log.
+
+Apply fact_revisions.jsonl (issue #30): validate the append-only revision log, insert
 revisions >= 2 into `fact_revisions`, and write each touched fact's latest revision into the
 `facts` row (statement, trust, status, visibility, superseded_by_fact_id, recheck, notes).
 

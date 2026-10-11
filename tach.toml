@@ -26,9 +26,9 @@
 #     an adapter" a layer violation (the onion's central rule), while infrastructure that called an
 #     application service would fall to the `depends_on` allowlist. The model is the innermost ring, so it
 #     can import nothing but itself. What a layer cannot say (domain modules may not import `os`/`sqlite3`,
-#     the CLI may not import infrastructure) is in the import-linter contracts in pyproject.toml, and
-#     tests/test_architecture.py checks that every module's layer here agrees with its row in
-#     docs/architecture.md.
+#     the CLI may not import infrastructure) is in the import-linter contracts in pyproject.toml. The module map
+#     in docs/architecture.md is generated from this file's layers and each module's docstring
+#     (`knowledge.py docs build`); tests/test_docs.py fails when it is stale.
 #   * root_module = "forbid": a .py file that is not listed below is an error, so a new module
 #     cannot be added without choosing its layer and its allowed imports.
 #
@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "clock_port", "docs_files_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -607,7 +607,7 @@ depends_on = ["script_runner_port"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects"]
+depends_on = ["add_fact", "docs", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -705,6 +705,7 @@ path = "knowledge"      # the Typer app; the only module that imports typer besi
 layer = "cli"
 depends_on = [
     "cli_add_fact",
+    "cli_docs",
     "cli_facts_batch",        # registration lines (CLI-internal)
     "cli_inbox",        # registration lines (CLI-internal)
     "cli_lifecycle",        # registration lines (CLI-internal)
@@ -1037,3 +1038,33 @@ layer = "pipeline"
 depends_on = [
     "ingest.facts",
 ]
+
+[[modules]]
+path = "docs_rules"           # DOMAIN SERVICE: which doc regions are rendered from code, and how (pure)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "docs_files_port"      # DOMAIN SERVICE: the port for the docs, config files and module sources the generator reads
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "docs_service"         # APPLICATION SERVICE: build / check the generated doc regions
+layer = "application"
+depends_on = ["docs_files_port", "docs_rules"]
+
+[[modules]]
+path = "docs_store"           # ADAPTER: reads and writes the repository's docs and module sources
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "docs"                 # COMPOSITION ROOT: binds docs_service to docs_store
+layer = "composition"
+depends_on = ["docs_service", "docs_store", "wiring"]
+
+[[modules]]
+path = "cli_docs"             # `knowledge.py docs build|check`; reads the command tree for the rendered tables
+layer = "cli"
+depends_on = ["docs_rules"]

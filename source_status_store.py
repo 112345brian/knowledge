@@ -1,4 +1,6 @@
-"""Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. Reads `sources`,
+"""The fact-to-source audit SQL.
+
+Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. Reads `sources`,
 `source_relations` and `fact_sources`; the rules (normalization, relation checks, following `replaces` chains)
 are in `source_status` (domain). Never writes.
 """

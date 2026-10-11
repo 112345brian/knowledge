@@ -1,4 +1,6 @@
-"""The commands that are a script run: rebuild the database, clean the concerts CSV. The service decides which
+"""Build and clean-concerts as a script run.
+
+The commands that are a script run: rebuild the database, clean the concerts CSV. The service decides which
 script and with which arguments; the `ScriptRunner` port runs it and returns its exit code. Never prints or
 exits. `scripts` is the composition root that binds it to the real runner."""
 from dataclasses import dataclass

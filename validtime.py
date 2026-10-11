@@ -1,4 +1,6 @@
-"""Valid time on facts (#40): when a fact was TRUE, as opposed to when it was recorded (date_added,
+"""Valid-time dates: parsing, ordering, containment.
+
+Valid time on facts (#40): when a fact was TRUE, as opposed to when it was recorded (date_added,
 revisions: transaction time). Library only; no imports from this repo.
 
 `valid_from` / `valid_to` are nullable ISO-8601 dates at three precisions: YYYY, YYYY-MM or YYYY-MM-DD.

@@ -1,4 +1,6 @@
-"""The read side as an application service: look facts, subjects, history, audits and build info up through the
+"""Read side: search, list, show, history, audits, build info.
+
+The read side as an application service: look facts, subjects, history, audits and build info up through the
 `FactReads` port. Plain data in, plain data out; never prints or exits. `queries` is the composition root that
 binds it to the real adapter, and `knowledge.py` is a thin printer over that."""
 from dataclasses import dataclass

@@ -1,4 +1,6 @@
-"""Load general_facts.json (in the private data directory, not this repo): ad hoc
+"""Ad hoc facts from `general_facts.json`.
+
+Load general_facts.json (in the private data directory, not this repo): ad hoc
 facts with no separate source database behind them (no external source database, no
 sources/*.md frontmatter, often no source at all) -- the stray thing you
 noticed and want on record. Add entries via add_fact.py, which enforces the

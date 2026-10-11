@@ -1,4 +1,6 @@
-"""Stale-premise audit for claims (#1). Domain (pure): the staleness rules. `claims_store` reads the db and the clock and calls these;
+"""Staleness rules.
+
+Stale-premise audit for claims (#1). Domain (pure): the staleness rules. `claims_store` reads the db and the clock and calls these;
 the `knowledge.py audit-claims` CLI wraps that.
 
 A claim is an argument; the facts it cites (claim_facts) are its premises. A premise is stale when

@@ -1,4 +1,6 @@
-"""Import Claude Code memory files as private, pending facts (issue #29), the rules (domain: no file,
+"""Memory-file rules.
+
+Import Claude Code memory files as private, pending facts (issue #29), the rules (domain: no file,
 db, git, clock or lock).
 
 Parsing of a memory file's text and frontmatter, the mapping to a `NewFact`, the per-file decision

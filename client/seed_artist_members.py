@@ -1,4 +1,6 @@
-"""Seed artist_members from the curated ARTIST_MEMBERS dict in artist_rules.py --
+"""Curated artist membership (music sources).
+
+Seed artist_members from the curated ARTIST_MEMBERS dict in artist_rules.py --
 e.g. a group or collaborative credit
 stay their own artist row (see schema.sql's comment on artist_members for
 why splitting per-credit was tried and reverted), and this records which

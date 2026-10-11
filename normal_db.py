@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Build knowledge-normal.db (the adapter: SQL and files; the whitelist and row decisions are in
+"""SQL copy + file swap (also a script).
+
+Build knowledge-normal.db (the adapter: SQL and files; the whitelist and row decisions are in
 `normal_rules`): a copy of the full DB that CANNOT contain private data (#21).
 
 Used so a remote-served connector never has anything private to leak. The build COPIES a

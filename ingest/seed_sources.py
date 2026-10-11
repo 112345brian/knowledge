@@ -1,4 +1,6 @@
-"""Hand-authored/manual sources: the original pilot sources plus small
+"""Manual sources from `manual_sources.json`.
+
+Hand-authored/manual sources: the original pilot sources plus small
 manual instruments (tape measurements, the strength-checkpoint script, and
 the one deliberately-unlocatable CRP/ESR carry-forward) that don't come from
 parsing sources/*.md frontmatter (that's literature_sources.py) or

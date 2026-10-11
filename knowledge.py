@@ -697,6 +697,7 @@ import cli_sources; app.add_typer(cli_sources.app, name="source")  # source ids 
 import cli_entities; app.add_typer(cli_entities.app, name="entity")  # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
 import cli_subjects; app.add_typer(cli_subjects.app, name="subject")  # subject list|show|alias|describe|deprecate (#43)
 import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, set-visibility (#8, #23)
+import cli_docs; app.add_typer(cli_docs.app, name="docs")  # docs build|check: generated README and docs regions
 
 
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)

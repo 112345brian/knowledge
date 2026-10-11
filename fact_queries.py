@@ -1,4 +1,6 @@
-"""Adapter for reading the built knowledge.db: the queries behind `knowledge.py search|facts|show|subjects`
+"""CLI read-only SQL.
+
+Adapter for reading the built knowledge.db: the queries behind `knowledge.py search|facts|show|subjects`
 and the connection helpers. Read-only; takes a connection, returns plain dicts, never prints or exits.
 (The mode-aware reads for the MCP server and the inbox live in `modes_store`.)
 """

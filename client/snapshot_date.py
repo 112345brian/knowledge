@@ -1,4 +1,6 @@
-"""The snapshot date of the vault-db measurements load (issue #35): the adapter that reads
+"""Snapshot date of the measurements load (measurements source).
+
+The snapshot date of the vault-db measurements load (issue #35): the adapter that reads
 `measurements_snapshot.json` from the private data dir. Validation and the error messages are the domain's
 (`measurement_rules`). A missing or malformed file fails the build loudly."""
 import os

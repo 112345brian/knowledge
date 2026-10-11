@@ -1,4 +1,6 @@
-"""Editing and reading the privacy rules file (#31): the facade (composition root) that binds the use case in
+"""Binds rules_edit_service; also the knowledge privacy commands' read access to the rules.
+
+Editing and reading the privacy rules file (#31): the facade (composition root) that binds the use case in
 `rules_edit_service` to the real adapters (`privacy_store` for the rules file, `private_git` for the safety
 net) and keeps the public API. `knowledge.py privacy ...` calls this and imports no adapter itself.
 

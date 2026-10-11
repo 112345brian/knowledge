@@ -8,6 +8,7 @@ a use case is asked for.
 from functools import cached_property
 
 import add_fact
+import docs
 import entities
 import facts_batch
 import lifecycle
@@ -67,3 +68,11 @@ class Container:
     @cached_property
     def scripts(self):
         return scripts.compose()
+
+    def docs_at(self, root=None):
+        """The documentation generator over the checkout at `root` (default: this one). It reads no data directory."""
+        return docs.compose(root)
+
+    @cached_property
+    def docs(self):
+        return self.docs_at()

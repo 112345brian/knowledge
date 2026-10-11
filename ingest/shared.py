@@ -1,4 +1,6 @@
-"""Small helpers shared across the core ingest scripts -- author/publisher/vault-file
+"""Helpers shared by the core ingest steps.
+
+Small helpers shared across the core ingest scripts -- author/publisher/vault-file
 normalization (get-or-create against a dimension table, never repeated text)."""
 from ingest import fact_ingest_rules
 from ingest.fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)

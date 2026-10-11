@@ -1,4 +1,6 @@
-"""Persistent identifiers for sources (#48): DOI, ISBN, ISSN, PMID, arXiv and `other`, normalized so the same work
+"""DOI / ISBN / ISSN / PMID / arXiv normalization (pure).
+
+Persistent identifiers for sources (#48): DOI, ISBN, ISSN, PMID, arXiv and `other`, normalized so the same work
 cannot hide behind two spellings. Library only; `knowledge.py source ids` and `search --identifier` use it.
 
 `normalize(scheme, raw)` returns the canonical value or raises IdentifierError naming the scheme and the offending

@@ -1,4 +1,6 @@
-"""Source status over time, editions and source-to-source relations (#41). Library only;
+"""Source status, relation checks, replacement chains.
+
+Source status over time, editions and source-to-source relations (#41). Library only;
 `source_status_store` runs the audit's SQL and `knowledge.py audit-source-status` wraps it. Domain: no db, no file.
 
 Why: the premise audit (#1) follows claim -> fact, but nothing followed fact -> source. A retracted paper or a

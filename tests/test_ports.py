@@ -19,7 +19,7 @@ from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service")
+            "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service", "docs_service")
 
 
 def test_composing_every_root_verifies_its_adapters_against_their_ports():
@@ -30,7 +30,7 @@ def test_composing_every_root_verifies_its_adapters_against_their_ports():
     loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/vault", health_dir="/x/h")
     app = container.Container(loc)
     for name in ("review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects",
-                 "queries", "scripts"):
+                 "queries", "scripts", "docs"):
         deps = getattr(app, name).deps
         assert dataclasses.is_dataclass(deps)
         assert all(getattr(deps, f.name) is not None for f in dataclasses.fields(deps)), name
@@ -168,7 +168,8 @@ def test_use_cases_do_not_print_open_files_or_exit():
 DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleDeps", "add_fact_service": "AddFactDeps",
                 "facts_batch_service": "FactsBatchDeps", "migrate_memory_service": "MigrateMemoryDeps",
                 "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps",
-                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps"}
+                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
+                "docs_service": "DocsDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():

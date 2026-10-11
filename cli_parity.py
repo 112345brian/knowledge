@@ -56,6 +56,8 @@ ACTIONS = {
     "privacy_untag": ("privacy", "untag"),
     "privacy_add_keyword": ("privacy", "add-keyword"),
     "privacy_remove_keyword": ("privacy", "remove-keyword"),
+    "docs_build": ("docs", "build"),
+    "docs_check": ("docs", "check"),
     "serve_inbox": ("inbox",),
     "edit_fact": ("edit",),
     "make_private": ("set-visibility",),   # inbox: raise-only use of set-visibility

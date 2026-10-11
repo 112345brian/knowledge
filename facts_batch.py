@@ -1,4 +1,6 @@
-"""Batch add_facts (the facade: binds the use case in `facts_batch_service` to the real adapters and keeps the public API): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
+"""Binds facts_batch_service.
+
+Batch add_facts (the facade: binds the use case in `facts_batch_service` to the real adapters and keeps the public API): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
 the `register facts` review protocol (#32, docs/register-facts-protocol.md).
 
     result = facts_batch.add_facts([{"statement": "...", "subject": "coffee"}, ...])

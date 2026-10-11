@@ -1,4 +1,6 @@
-"""Composition root for the single-fact use case: binds `add_fact_service` to the real adapters (the facts
+"""Binds add_fact_service; the library API.
+
+Composition root for the single-fact use case: binds `add_fact_service` to the real adapters (the facts
 file, the privacy rules, git, the clock, fresh ids) and keeps the public API (`append_fact`, `validate_fact`,
 `record_fact`, ...). The `python3 add_fact_cli.py` command line lives in `add_fact_cli`; nothing here parses
 arguments, prints or exits.

@@ -1,4 +1,6 @@
-"""Commit every mutation of the knowledge-private JSON files, so git is a reliable
+"""Git around knowledge-private.
+
+Commit every mutation of the knowledge-private JSON files, so git is a reliable
 backup and safety net for them (issue #10). The queryable fact history is the revision
 log (#30); this is the layer underneath it.
 

@@ -1,4 +1,6 @@
-"""Ingest a Last.fm scrobble export into `tracks`/`scrobbles`, reusing
+"""Scrobble export (scrobbles source).
+
+Ingest a Last.fm scrobble export into `tracks`/`scrobbles`, reusing
 `artists` (shared with concert_attendances/albums) for artist identity.
 
 The export format is a list of *pages* (one per API call during the original

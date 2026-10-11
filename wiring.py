@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 
 from add_fact_port import AddFact
 from clock_port import Clock
+from docs_files_port import DocsFiles
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
@@ -63,7 +64,7 @@ PORT_PROTOCOLS = {
     "git": PrivateGit, "revisions": Revisions, "rules": Rules, "reads": ReviewReads, "reviews": Reviews,
     "lifecycle_reads": LifecycleReads, "facts_file": FactsFile, "clock": Clock, "ids": Ids,
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
-    "entity_files": EntityFiles, "entity_migration": EntityMigration,
+    "docs_files": DocsFiles, "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries,
 }
 

@@ -169,6 +169,11 @@ source_modules = [
     "kn.subjects_service",
     "kn.textmatch",
     "kn.validtime",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_service",
+    "kn.docs_store",
+    "kn.docs",
 ]
 forbidden_modules = [
     # CLI
@@ -211,6 +216,7 @@ forbidden_modules = [
     "kn.seed_sources",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
+    "kn.cli_docs",
 ]
 
 [[tool.importlinter.contracts]]
@@ -319,6 +325,11 @@ source_modules = [
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_service",
+    "kn.docs_store",
+    "kn.docs",
 ]
 forbidden_modules = ["typer", "click"]
 
@@ -344,6 +355,7 @@ source_modules = [
     "kn.cli_add_fact",
     "kn.cli_sources",
     "kn.cli_subjects",
+    "kn.cli_docs",
 ]
 forbidden_modules = [
     "kn.inbox",
@@ -599,6 +611,12 @@ forbidden_modules = [
     "kn.subjects",
     "kn.subjects_service",
     "kn.subjects_store",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_service",
+    "kn.docs_store",
+    "kn.docs",
+    "kn.cli_docs",
 ]
 allow_indirect_imports = true
 
@@ -670,6 +688,8 @@ source_modules = [
     "kn.source_status",
     "kn.textmatch",
     "kn.validtime",
+    "kn.docs_rules",
+    "kn.docs_files_port",
 ]
 forbidden_modules = [
     # infrastructure the domain must not touch
@@ -716,6 +736,7 @@ source_modules = [
     "kn.rules_edit_service",
     "kn.entities_service",
     "kn.subjects_service",
+    "kn.docs_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -762,6 +783,7 @@ source_modules = [
     "kn.cli_add_fact",
     "kn.cli_sources",
     "kn.cli_subjects",
+    "kn.cli_docs",
 ]
 forbidden_modules = [
     "kn.script_runner",
@@ -779,5 +801,6 @@ forbidden_modules = [
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
+    "kn.docs_store",
 ]
 allow_indirect_imports = true

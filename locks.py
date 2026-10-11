@@ -1,4 +1,6 @@
-"""Adapter for the inter-process file lock: the sidecar lock file and the exclusive lock on it (fcntl on POSIX,
+"""Inter-process file lock for the data-file writers.
+
+Adapter for the inter-process file lock: the sidecar lock file and the exclusive lock on it (fcntl on POSIX,
 msvcrt on Windows). Shared by the writers of the data files in knowledge-private (the facts file, the revision
 log, the one-time backfills) so that two processes never read-modify-write the same file at once.
 """

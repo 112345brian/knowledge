@@ -1,4 +1,6 @@
-"""Ingest structured, repeatable numeric readings, lab results, manual
+"""Numeric readings and lab results (measurements source).
+
+Ingest structured, repeatable numeric readings, lab results, manual
 measurements, activity summaries, and other local source records into the database.
 into `measurements` (subject_id/metric_id resolved via get-or-create
 helpers, never written as repeated text). Per-set training, per-food, and

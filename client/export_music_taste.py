@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Export the full music-taste dataset from knowledge.db as one JSON file:
+"""Exports the music dataset as one JSON file (music sources).
+
+Export the full music-taste dataset from knowledge.db as one JSON file:
 every rated album, per-artist rollups (albums rated + concerts seen), and
 concert history. Meant to be handed off whole to another tool/model, not
 read as a report -- see export_music_taste_summary() in an earlier version

@@ -1,4 +1,6 @@
-"""Review of pending facts (#6): list the queue, approve or reject items. The use case: it applies the
+"""Approve / reject.
+
+Review of pending facts (#6): list the queue, approve or reject items. The use case: it applies the
 rules in `review_rules` (domain) through the port protocols (`*_port`) (it imports no adapter). `review` is the
 facade that binds these functions to the real adapters and keeps the public API.
 

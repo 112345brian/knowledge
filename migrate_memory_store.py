@@ -1,4 +1,6 @@
-"""Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the
+"""Memory files, run lock.
+
+Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the
 source keys already in the entry files. The rules are in `migrate_memory_rules`; the use case is
 `migrate_memory`.
 """

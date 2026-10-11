@@ -1,4 +1,6 @@
-"""One-time (but re-runnable/idempotent) cleanup of
+"""Idempotent cleanup of the concerts CSV (concerts source).
+
+One-time (but re-runnable/idempotent) cleanup of
 the concerts export CSV (see paths.py -> CONCERTS_CSV):
   - strips stray whitespace from every field
   - drops exact duplicate rows (same name/date/location)

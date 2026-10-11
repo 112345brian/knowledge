@@ -1,4 +1,6 @@
-"""Port for reading the built knowledge.db: what `knowledge.py search|facts|show|subjects|history|audit-*|build-info`
+"""Read-side port: facts, history, audits, build info (no connection).
+
+Port for reading the built knowledge.db: what `knowledge.py search|facts|show|subjects|history|audit-*|build-info`
 need, without a connection in sight. The adapter opens and closes its own read-only connection per call and
 returns plain dicts; nothing here prints or exits."""
 from typing import Any, List, Optional, Protocol, Tuple

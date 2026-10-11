@@ -1,4 +1,6 @@
-"""Deterministic privacy rules (issue #31). The model never decides how private a
+"""Visibility rules + resolver.
+
+Deterministic privacy rules (issue #31). The model never decides how private a
 fact is; this module computes it, and a caller's request can only raise it.
 
     stored visibility = the most restrictive of

@@ -1,4 +1,6 @@
-"""Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by
+"""Hand-authored pilot and batch fact files.
+
+Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by
 background agents reading the vault's notes) into `facts`, `fact_sources`, `fact_subjects`. (The `measurements` client source then links facts to
 measurements: client/link_fact_measurements.py.)
 

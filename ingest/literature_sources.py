@@ -1,4 +1,6 @@
-"""Parse every citation note's (sources/*.md, see paths.py -> NOTES_VAULT)
+"""Citation notes in the notes vault, parsed into sources.
+
+Parse every citation note's (sources/*.md, see paths.py -> NOTES_VAULT)
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after seed_sources.py.
 """

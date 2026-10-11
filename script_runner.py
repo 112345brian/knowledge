@@ -1,4 +1,6 @@
-"""Adapter for the standalone scripts (build.py, clean_concerts_csv.py): `knowledge.py build`
+"""Starts the standalone scripts.
+
+Adapter for the standalone scripts (build.py, clean_concerts_csv.py): `knowledge.py build`
 and `clean-concerts` are thin dispatches to them. This is the only place the CLI starts a Python
 subprocess, so the Typer app itself imports no `subprocess`."""
 import os

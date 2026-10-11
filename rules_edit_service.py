@@ -1,4 +1,6 @@
-"""Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag|untag|add-keyword|
+"""Edit privacy rules.
+
+Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag|untag|add-keyword|
 remove-keyword`, mirroring add-fact's git safety net (#10): load, apply the domain edit, refuse on a dirty
 private repo, write, commit only the rules file. It works through the ports (`rules`, `git`) and imports
 no adapter; the Typer command prints the result.

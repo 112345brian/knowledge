@@ -1,4 +1,6 @@
-"""Adapter for the stale-premise audit (#1): reads claims and facts from the db and "today" from the
+"""Claims audit SQL + clock.
+
+Adapter for the stale-premise audit (#1): reads claims and facts from the db and "today" from the
 clock, and applies the rules in `claims_audit` (the domain). Never writes. The `knowledge.py
 audit-claims` CLI wraps this.
 

@@ -1,4 +1,6 @@
-"""Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and
+"""Entry files, log file, lock, db.
+
+Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and
 the db. The rules (keys, freshness, record shape, the next revision) are in `revisions`, the domain;
 this module reads and writes, and calls them.
 

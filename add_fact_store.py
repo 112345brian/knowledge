@@ -1,4 +1,6 @@
-"""Adapter for adding facts: the locked, atomically written JSON array file, plus the two db lookups
+"""Locked JSON file, citekey/subject lookups.
+
+Adapter for adding facts: the locked, atomically written JSON array file, plus the two db lookups
 (a source citekey, the subject tree). The rules are in `new_fact`; the use case is `add_fact`.
 """
 import contextlib

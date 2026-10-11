@@ -619,21 +619,19 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service", "docs_service"}
 
 
 def _architecture_roles():
-    roles = {}
-    for line in _read(os.path.join(REPO, "docs", "architecture.md")).splitlines():
-        m = re.match(r"^\| `([A-Za-z0-9_]+)` \| ([^|]+?) \|", line)
-        if m:
-            assert m.group(1) not in roles, f"{m.group(1)} is listed twice in docs/architecture.md"
-            roles[m.group(1)] = m.group(2)
-    return roles
+    """{module: role}. The role is a function of the module's layer in tach.toml (docs_rules.role, the same function
+    that renders the module map in docs/architecture.md), so the layer is the one source and the doc is derived.
+    The doc itself is checked against the code by tests/test_docs.py."""
+    import docs_rules
+    return {n: docs_rules.role(n, m["layer"]) for n, m in _tach_modules(_read(TACH_TOML)).items()}
 
 
 def test_architecture_map_classifies_every_module_and_matches_the_contracts():
-    """docs/architecture.md says what each module is; it must not drift from the code or the contracts."""
+    """Every module has a role, and the roles agree with the import-linter contract lists."""
     roles = _architecture_roles()
     on_disk = set(ac.top_level_stems(REPO))
     assert set(roles) == on_disk, f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk)}"
@@ -644,7 +642,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r == "application service"} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "docs", "container"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",
@@ -653,24 +651,32 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
 
 
 def test_tach_layers_are_the_onion():
-    """tach.toml's layers are the onion's rings, outermost first, and each module sits in the layer its role in
-    docs/architecture.md names. `application` is inside `infrastructure`, so an application service importing
-    an adapter is a layer violation, not just a missing allowlist entry; `model` is innermost."""
+    """tach.toml's layers are the onion's rings, outermost first. `application` is inside `infrastructure`, so an
+    application service importing an adapter is a layer violation, not just a missing allowlist entry; `model` is
+    innermost. Roles are derived from the layer (docs_rules.role), so the table in docs/architecture.md cannot
+    disagree with it."""
     cfg = _read(TACH_TOML)
     layers = re.search(r"^layers = \[(.*?)\]", cfg, re.M).group(1)
     assert [x.strip().strip('"') for x in layers.split(",")] == [
         "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
-    expected = {"model": "model", "domain service": "domain_services", "application service": "application",
-                "infrastructure": "infrastructure", "composition root": "composition",
-                "ETL adapter (driving, batch)": "pipeline", "pipeline rules": "pipeline",
-                "composition helper": "composition"}
-    tach = _tach_modules(cfg)
-    for name, role in _architecture_roles().items():
-        layer = tach[name]["layer"]
-        if role == "driving adapter":
-            assert layer in ("cli", "serving"), f"{name} is a driving adapter but tach has it in {layer}"
-        else:
-            assert layer == expected[role], f"{name} is a {role} but tach has it in {layer}"
+    import docs_rules
+    assert set(docs_rules.LAYER_ROLES) == set(ONION_LAYERS) | {"serving", "cli"}
+
+
+def test_declared_composition_helpers_are_composition_modules():
+    """The one role tach layers cannot say (a helper, not a root) is declared in docs_rules; the declaration must
+    name modules that exist and sit in the composition layer, so it cannot go stale quietly."""
+    import docs_rules
+    tach = _tach_modules(_read(TACH_TOML))
+    for name in docs_rules.COMPOSITION_HELPERS:
+        assert name in tach and tach[name]["layer"] == "composition", name
+
+
+def test_pipeline_rules_are_named_rules_and_pinned():
+    """In the pipeline layer a module named `*_rules` is pure rules the pipeline alone uses; any other module is an
+    ETL adapter. PIPELINE_RULES pins the first set so a rename cannot move a module between roles unseen."""
+    pipeline = {n for n, m in _tach_modules(_read(TACH_TOML)).items() if m["layer"] == "pipeline"}
+    assert {n for n in pipeline if n.endswith("_rules")} == PIPELINE_RULES
 
 
 def test_model_ring_is_pinned_and_the_contract_forbids_every_other_module():

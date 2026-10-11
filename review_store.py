@@ -1,4 +1,6 @@
-"""Adapter for review (#6): the reads behind the review queue. The pending rows and subject tree come
+"""Pending rows, states.
+
+Adapter for review (#6): the reads behind the review queue. The pending rows and subject tree come
 from the built db, the current states from the entry files and the revision log. The decisions are
 in `review_rules`; the use cases are `review_service` and `lifecycle_service`.
 """

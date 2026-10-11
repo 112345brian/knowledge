@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Rebuild the configured knowledge database from scratch: schema + every
+"""Runs the steps, swaps the db.
+
+Rebuild the configured knowledge database from scratch: schema + every
 seed/ingest script in this directory, in order. This is the ONLY sanctioned
 way to change knowledge.db's structure or bulk contents -- edit a script
 here and rerun, never ALTER/INSERT by hand against the live file.

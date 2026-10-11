@@ -1,4 +1,6 @@
-"""Review of pending facts (#6): list the queue, approve or reject items. The facade (composition root):
+"""Binds review_service.
+
+Review of pending facts (#6): list the queue, approve or reject items. The facade (composition root):
 it binds the use case in `review_service` to the real adapters and keeps the public API.
 
 New ad hoc facts are written with status 'pending' (add_fact.NewFact.status). Approving one

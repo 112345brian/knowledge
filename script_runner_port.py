@@ -1,4 +1,6 @@
-"""Port for starting this repo's standalone scripts and tools as separate processes. The adapter
+"""Port for running the standalone scripts as processes.
+
+Port for starting this repo's standalone scripts and tools as separate processes. The adapter
 (`script_runner`) owns the interpreter, the working directory and `subprocess`; callers get an exit code."""
 from typing import Protocol, Sequence
 
