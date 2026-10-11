@@ -1,5 +1,6 @@
 """Entity command use cases. All file and database work is supplied through ports."""
 from dataclasses import dataclass
+import entity_rules
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
@@ -23,8 +24,7 @@ def load_entities(deps: EntitiesDeps):
 
 
 def find(deps: EntitiesDeps, entities, ref):
-    assert deps.entity_files is not None
-    return deps.entity_files.find(entities, ref)
+    return entity_rules.find(entities, ref)
 
 
 def link_counts(deps: EntitiesDeps):
@@ -38,7 +38,7 @@ def add(deps: EntitiesDeps, name, entity_type, aliases=(), private=False, extern
     assert deps.git is not None
     files = deps.entity_files
     return files.edit_file(
-        lambda current: files.add_entity(current, name, entity_type, aliases, private, external_id, notes),
+        lambda current: entity_rules.add_entity(current, name, entity_type, aliases, private, external_id, notes),
         f"add entity {name!r}" + (" (private)" if private else ""), f"entities: add {name}",
         allow_dirty, dry_run, path=deps.locations.entities_file(), git=deps.git)
 
@@ -47,7 +47,7 @@ def alias(deps: EntitiesDeps, ref, value, allow_dirty=False, dry_run=False):
     assert deps.entity_files is not None
     assert deps.git is not None
     files = deps.entity_files
-    return files.edit_file(lambda current: files.add_alias(current, ref, value),
+    return files.edit_file(lambda current: entity_rules.add_alias(current, ref, value),
                            f"add alias {value!r} to {ref}", f"entities: alias {value} -> {ref}",
                            allow_dirty, dry_run, path=deps.locations.entities_file(), git=deps.git)
 
@@ -58,7 +58,7 @@ def set_private(deps: EntitiesDeps, ref, private, allow_dirty=False, dry_run=Fal
     files = deps.entity_files
     verb = "tag" if private else "untag"
     what = f"{verb} entity {ref}" + (" private" if private else "")
-    return files.edit_file(lambda current: files.set_private(current, ref, private), what,
+    return files.edit_file(lambda current: entity_rules.set_private(current, ref, private), what,
                            f"entities: {verb} {ref}" + (" private" if private else ""),
                            allow_dirty, dry_run, path=deps.locations.entities_file(), git=deps.git)
 

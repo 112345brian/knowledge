@@ -1,5 +1,6 @@
 """Subject command use cases. File and database work is supplied through ports."""
 from dataclasses import dataclass
+import subject_rules
 from entity_queries_port import EntityQueries
 from private_git_port import PrivateGit
 from subject_files_port import SubjectFiles
@@ -45,7 +46,7 @@ def alias(deps: SubjectsDeps, name, value, known, allow_dirty=False, dry_run=Fal
     assert deps.git is not None
     files = deps.subject_files
     return files.edit_file(
-        lambda entries: files.add_alias(entries, name, value, known=set(known), domain=known.get(name)),
+        lambda entries: subject_rules.add_alias(entries, name, value, known=set(known), domain=known.get(name)),
         f"add alias {value} to {name}", f"subjects: alias {value} -> {name}", allow_dirty, dry_run,
         path=deps.locations.subjects_file(), git=deps.git)
 
@@ -55,7 +56,7 @@ def describe(deps: SubjectsDeps, name, text, known, allow_dirty=False, dry_run=F
     assert deps.git is not None
     files = deps.subject_files
     return files.edit_file(
-        lambda entries: files.describe(entries, name, text, known=set(known), domain=known.get(name)),
+        lambda entries: subject_rules.describe(entries, name, text, known=set(known), domain=known.get(name)),
         f"set description of {name}", f"subjects: describe {name}", allow_dirty, dry_run, path=deps.locations.subjects_file(), git=deps.git)
 
 
@@ -64,6 +65,6 @@ def deprecate(deps: SubjectsDeps, name, replaced_by, known, allow_dirty=False, d
     assert deps.git is not None
     files = deps.subject_files
     return files.edit_file(
-        lambda entries: files.deprecate(entries, name, replaced_by, known=set(known), domain=known.get(name)),
+        lambda entries: subject_rules.deprecate(entries, name, replaced_by, known=set(known), domain=known.get(name)),
         f"deprecate {name}" + (f" (use {replaced_by})" if replaced_by else ""),
         f"subjects: deprecate {name}", allow_dirty, dry_run, path=deps.locations.subjects_file(), git=deps.git)
