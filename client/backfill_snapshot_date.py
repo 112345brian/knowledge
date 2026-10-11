@@ -19,34 +19,31 @@ import json
 import os
 import sys
 
-import locks
-import revisions_store
 from client.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
 
 # What the old `TODAY` constant in the measurements step stood for.
 MEASUREMENTS_LEGACY_DATE = "2026-09-11"
 
 
-def find_problems(data_dir):
+def find_problems(files, inputs, data_dir):
     """[(where, what)]: the snapshot file is there but unusable."""
     problems = []
-    if os.path.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
+    if files.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
-            import local_inputs
-            read_snapshot_date(local_inputs, data_dir)
+            read_snapshot_date(inputs, data_dir)
         except RuntimeError as e:
             problems.append((MEASUREMENTS_SNAPSHOT_FILE, str(e)))
     return problems
 
 
-def write_snapshot(data_dir, apply):
+def write_snapshot(files, data_dir, apply):
     """Create measurements_snapshot.json if absent. Returns 1 if it was (or would be) written."""
     path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
-    with locks.file_lock(locks.lock_path(path)):
-        if os.path.exists(path):
+    with files.locked(path):
+        if files.exists(path):
             return 0
         if apply:
-            revisions_store.atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
+            files.write_text_atomic(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
     return 1
 
 
@@ -58,14 +55,16 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
+    import local_datafiles
+    import local_inputs
     import paths
     data_dir = args.data_dir or paths.load().private_data_dir
-    problems = find_problems(data_dir)
+    problems = find_problems(local_datafiles, local_inputs, data_dir)
     if problems:
         print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=sys.stderr)
         return 1
     try:
-        n = write_snapshot(data_dir, args.apply)
+        n = write_snapshot(local_datafiles, data_dir, args.apply)
     except OSError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

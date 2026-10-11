@@ -9,23 +9,25 @@ the concerts export CSV (see paths.py -> CONCERTS_CSV):
 Rewrites the file in place. Safe to rerun: an already-clean file passes
 through unchanged.
 """
-import csv, os
+import csv
+import io
+import sys
 
 from client import music_ingest_rules
 
 
-def clean(csv_path):
-    with open(csv_path, encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+def clean(files, csv_path):
+    rows = list(csv.DictReader(io.StringIO(files.read_text(csv_path, "utf-8-sig", newline=""), newline="")))
 
     merged = music_ingest_rules.clean_concert_rows(rows)
 
     removed = len(rows) - len(merged)
 
-    with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=music_ingest_rules.CONCERT_COLUMNS)
-        writer.writeheader()
-        writer.writerows(merged)
+    out = io.StringIO(newline="")
+    writer = csv.DictWriter(out, fieldnames=music_ingest_rules.CONCERT_COLUMNS)
+    writer.writeheader()
+    writer.writerows(merged)
+    files.write_text(csv_path, out.getvalue(), "utf-8", newline="")
 
     print(f"[clean_concerts_csv] {len(rows)} rows -> {len(merged)} rows ({removed} duplicate/near-duplicate rows merged)")
 
@@ -35,4 +37,5 @@ if __name__ == "__main__":
     csv_path = paths.load().concerts_csv
     if csv_path is None:
         sys.exit("error: CONCERTS_CSV is not set in local_paths.py (the `concerts` client source is not configured)")
-    clean(csv_path)
+    import local_datafiles
+    clean(local_datafiles, csv_path)

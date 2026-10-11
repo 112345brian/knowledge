@@ -91,12 +91,14 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 | `cli_privacy` | driving adapter | `privacy ...` commands |
 | `cli_review` | driving adapter | `review-pending`, `approve`, `reject` |
 | `container` | composition root | wires every use case for one Locations; made by an entry point |
+| `datafiles_port` | domain service | port: the data files a maintenance tool reads and rewrites |
 | `fact_entry` | model | the fact entry and the revision record as types with behaviour (pure) |
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
 | `fixity_rules` | model | a file fingerprint's vocabulary (pure) |
 | `inputs_port` | domain service | port: what a build step reads from outside the database |
+| `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
 | `local_stores` | infrastructure | the privacy, entity, subject and revision stores, by name (implements step_stores_port) |
 | `locations` | model | where the data lives, as one immutable value (pure) |

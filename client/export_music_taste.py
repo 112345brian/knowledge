@@ -13,7 +13,9 @@ Usage:
     python3 -m client.export_music_taste                    # JSON to stdout
     python3 -m client.export_music_taste -o taste.json       # JSON to a file
 """
-import sqlite3, os, sys, json, argparse
+import argparse
+import json
+import sys
 
 
 
@@ -80,16 +82,17 @@ def main():
     parser.add_argument("-o", "--output", help="write to this file instead of stdout")
     args = parser.parse_args()
 
+    import local_datafiles
+    import local_inputs
     import paths
-    con = sqlite3.connect(paths.load().db_path)
+    con = local_inputs.open_database(paths.load().db_path)
     data = build_export(con)
     con.close()
 
     output = json.dumps(data, indent=2, ensure_ascii=False)
 
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(output)
+        local_datafiles.write_text(args.output, output)
         print(f"Wrote {args.output}", file=sys.stderr)
     else:
         print(output)

@@ -27,15 +27,12 @@ Usage:
     python3 -m ingest.backfill_dates --data-dir DIR ...    # a copy, for trying it out
 """
 import argparse
-import json
 import os
 import sys
 
 from ingest import backfill_rules
 from ingest import backfill_source_keys
 import revisions
-import revisions_store
-import locks
 
 FILE_DATES = dict(revisions.ENTRY_FILES)
 
@@ -45,24 +42,24 @@ def date_adder(entry, filename, index):
     return {"date_added": FILE_DATES[filename]}
 
 
-def find_problems(data_dir):
+def find_problems(files, data_dir):
     """Entries/files that can't be backfilled safely. [(where, what)]"""
     problems = []
     for name, _ in revisions.ENTRY_FILES:
         path = os.path.join(data_dir, name)
-        if not os.path.exists(path):
+        if not files.exists(path):
             continue
-        problems.extend(backfill_rules.date_problems(name, revisions_store.read_array(path)))
+        problems.extend(backfill_rules.date_problems(name, files.read_array(path)))
     return problems
 
 
-def backfill_dates(data_dir, apply=False):
+def backfill_dates(files, data_dir, apply=False):
     """Returns {filename: entries_changed}. Raises
     revisions.RevisionError (writing nothing) on a problem entry."""
-    problems = find_problems(data_dir)
+    problems = find_problems(files, data_dir)
     if problems:
         raise revisions.RevisionError("; ".join(f"{w}: {m}" for w, m in problems))
-    return backfill_source_keys.backfill(data_dir, apply=apply, extra_adders=[date_adder], source_keys=False)
+    return backfill_source_keys.backfill(files, data_dir, apply=apply, extra_adders=[date_adder], source_keys=False)
 
 
 def main(argv=None):
@@ -73,10 +70,11 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
+    import local_datafiles
     import paths
     data_dir = args.data_dir or paths.load().private_data_dir
     try:
-        result = backfill_dates(data_dir, apply=args.apply)
+        result = backfill_dates(local_datafiles, data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

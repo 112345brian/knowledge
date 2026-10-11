@@ -24,29 +24,26 @@ import os
 import sys
 
 from ingest import backfill_source_keys
-import fixity_store
 from ingest import fact_ingest_rules
 from ingest.shared import load_hints
 import revisions
-import revisions_store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _resolver(data_dir, vault):
+def _resolver(inputs, data_dir, vault):
     """`notes -> vault file path or None`: the same rule the facts step uses (fact_ingest_rules.resolve_origin_path)."""
-    import local_inputs
-    hints = load_hints(local_inputs, data_dir)
+    hints = load_hints(inputs, data_dir)
     return lambda notes: fact_ingest_rules.resolve_origin_path(notes, vault, hints)
 
 
-def make_adder(resolve, unresolved):
+def make_adder(inputs, resolve, unresolved):
     """The `extra_adders` hook. `unresolved` collects (file, index, path-or-None) for skipped entries."""
     def adder(entry, filename, index):
         path = entry.get("origin_path") or resolve(entry.get("notes"))
         if not path:
             return {}
-        sha = fixity_store.fingerprint(path)["content_sha256"]
+        sha = inputs.fingerprint(path)["content_sha256"]
         if sha is None:
             unresolved.append((filename, index, path))
             return {}
@@ -54,11 +51,11 @@ def make_adder(resolve, unresolved):
     return adder
 
 
-def backfill(data_dir, vault, apply=False, resolve=None):
+def backfill(files, inputs, data_dir, vault, apply=False, resolve=None):
     """Returns ({filename: entries_changed}, unresolved). Nothing is written unless apply=True."""
     unresolved = []
-    adder = make_adder(resolve or _resolver(data_dir, vault), unresolved)
-    result = backfill_source_keys.backfill(data_dir, apply=apply, extra_adders=[adder], source_keys=False)
+    adder = make_adder(inputs, resolve or _resolver(inputs, data_dir, vault), unresolved)
+    result = backfill_source_keys.backfill(files, data_dir, apply=apply, extra_adders=[adder], source_keys=False)
     return result, unresolved
 
 
@@ -70,11 +67,13 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
+    import local_datafiles
+    import local_inputs
     import paths
     locations = paths.load()
     data_dir = args.data_dir or locations.private_data_dir
     try:
-        result, unresolved = backfill(data_dir, locations.bodybuilding_vault, apply=args.apply)
+        result, unresolved = backfill(local_datafiles, local_inputs, data_dir, locations.bodybuilding_vault, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

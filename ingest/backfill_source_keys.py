@@ -27,46 +27,42 @@ a callable (entry, filename, index) -> {key: value} of keys to insert for that e
 entry already has are skipped. `source_keys=False` turns the source_key pass off.
 """
 import argparse
-import json
 import os
 import sys
 
 from ingest import backfill_rules
 import revisions
-import revisions_store
-import locks
 from ingest.backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
 
 
-def _backfill_file(path, name, adders, apply):
+def _backfill_file(files, path, name, adders, apply):
     """Returns the number of entries changed in this file."""
-    with locks.file_lock(locks.lock_path(path)):
-        with open(path, encoding="utf-8", newline="") as f:
-            text = f.read()
-        items = revisions_store.read_array(path)
+    with files.locked(path):
+        text = files.read_text(path, newline="")
+        items = files.read_array(path)
         keys = revisions.derive_keys(items, name)
         context = {name: keys}
         additions = backfill_rules.plan_additions(items, name, adders(context))
         changed = sum(1 for p in additions if p)
         if changed and apply:
             new, _ = rewrite_text(text, path, additions)
-            revisions_store.atomic_write_text(path, new)
+            files.write_text_atomic(path, new)
         elif changed:
             rewrite_text(text, path, additions)  # dry run still proves the rewrite would verify
     return changed
 
 
-def backfill(data_dir, apply=False, extra_adders=(), source_keys=True):
+def backfill(files, data_dir, apply=False, extra_adders=(), source_keys=True):
     """Backfill source_key (when `source_keys`) and whatever `extra_adders` return across the
     legacy files. Returns {filename: entries_changed}. Nothing is written unless apply=True."""
     # All keys must be unique across files before we write anything.
-    revisions_store.load_entries(data_dir)
+    files.load_entries(data_dir)
     result = {}
     for name, _ in revisions.ENTRY_FILES:
         path = os.path.join(data_dir, name)
-        if not os.path.exists(path):
+        if not files.exists(path):
             continue
-        result[name] = _backfill_file(path, name,
+        result[name] = _backfill_file(files, path, name,
                                       lambda ctx: [*([source_key_adder(ctx)] if source_keys else []), *extra_adders], apply)
     return result
 
@@ -79,10 +75,11 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
+    import local_datafiles
     import paths
     data_dir = args.data_dir or paths.load().private_data_dir
     try:
-        result = backfill(data_dir, apply=args.apply)
+        result = backfill(local_datafiles, data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

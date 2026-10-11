@@ -601,6 +601,16 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "datafiles_port"      # DOMAIN SERVICE: the data files a maintenance tool reads and rewrites
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "local_datafiles"     # INFRASTRUCTURE: the real files, the atomic writer, the inter-process lock
+layer = "infrastructure"
+depends_on = ["locks", "revisions_store"]
+
+[[modules]]
 path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject and revision stores, by name
 layer = "infrastructure"
 depends_on = ["entities_store", "privacy_store", "revisions_store", "subjects_store"]
@@ -913,9 +923,8 @@ layer = "pipeline"
 depends_on = [
     "ingest.backfill_rules",
     "revisions",
-    "revisions_store",
-    "locks",
     "paths",
+    "local_datafiles",
 ]
 
 [[modules]]
@@ -925,9 +934,8 @@ depends_on = [
     "ingest.backfill_rules",
     "ingest.backfill_source_keys",
     "revisions",
-    "revisions_store",
-    "locks",
     "paths",
+    "local_datafiles",
 ]
 
 [[modules]]
@@ -936,6 +944,7 @@ layer = "pipeline"
 depends_on = [
     "client.music_ingest_rules",
     "paths",
+    "local_datafiles",
 ]
 
 [[modules]]
@@ -943,6 +952,8 @@ path = "client.export_music_taste"
 layer = "pipeline"
 depends_on = [
     "paths",
+    "local_datafiles",
+    "local_inputs",
 ]
 
 [[modules]]
@@ -1054,13 +1065,12 @@ path = "ingest.backfill_extracted_hashes"
 layer = "pipeline"
 depends_on = [
     "ingest.backfill_source_keys",
-    "fixity_store",
     "revisions",
-    "revisions_store",
     "ingest.fact_ingest_rules",
     "paths",
     "ingest.shared",
     "local_inputs",
+    "local_datafiles",
 ]
 
 [[modules]]
@@ -1088,10 +1098,9 @@ path = "client.backfill_snapshot_date"
 layer = "pipeline"
 depends_on = [
     "client.snapshot_date",
-    "locks",
-    "revisions_store",
     "paths",
     "local_inputs",
+    "local_datafiles",
 ]
 
 [[modules]]

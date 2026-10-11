@@ -758,6 +758,24 @@ def test_build_steps_import_no_infrastructure_module():
     assert bad == {}, f"steps importing infrastructure: {bad}"
 
 
+def test_maintenance_tools_do_no_file_or_database_io_of_their_own():
+    """The one-off tools (backfills, the exports) take a DataFiles / Inputs and read configuration once in main():
+    they open no file and no sqlite database themselves."""
+    import ast
+    banned = {"open", "glob.glob", "os.listdir", "os.walk", "os.stat", "os.makedirs", "os.remove", "os.replace",
+              "os.path.exists", "os.path.isfile", "os.path.isdir", "sqlite3.connect", "shutil.copy", "subprocess.run"}
+    tools = {"backfill_dates", "backfill_source_keys", "backfill_extracted_hashes", "backfill_snapshot_date",
+             "export_music_taste", "clean_concerts_csv"}
+    offenders = []
+    for name, tree in _all_source_trees():
+        if name not in tools:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) in banned:
+                offenders.append(f"{name}.py:{node.lineno}: {ast.unparse(node.func)}()")
+    assert offenders == [], "\n".join(offenders)
+
+
 def test_build_steps_do_no_file_or_database_io_of_their_own():
     """A step reads through `ctx.inputs` (inputs_port) and writes through the connection it is given. It opens no
     file, globs no directory, checks no path on disk and opens no sqlite file itself; the entry-point tools

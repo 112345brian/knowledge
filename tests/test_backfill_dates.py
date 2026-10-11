@@ -12,6 +12,7 @@ from test_add_fact import Env, REPO
 from test_fact_ingest import ingest  # noqa: F401  (fixture)
 import new_fact
 from appctx import app, locs
+import local_datafiles
 
 SNAP = "measurements_snapshot.json"
 
@@ -187,7 +188,7 @@ def test_it_does_not_touch_the_source_key_machinery_unless_asked(world, tmp_path
     from ingest import backfill_dates
     d = str(tmp_path / "copy")
     fixture_files(d)
-    backfill_dates.backfill_dates(d, apply=True)
+    backfill_dates.backfill_dates(local_datafiles, d, apply=True)
     assert all("source_key" not in e for n in ("pilot_facts.json", "facts_batch2.json") for e in json.loads(read(d, n)))
 
 
@@ -197,8 +198,8 @@ def test_source_keys_then_dates_equals_dates_then_source_keys(world, tmp_path):
     fixture_files(a)
     fixture_files(b)
     run(world, a, "--apply")
-    backfill_source_keys.backfill(a, apply=True)
-    backfill_source_keys.backfill(b, apply=True)
+    backfill_source_keys.backfill(local_datafiles, a, apply=True)
+    backfill_source_keys.backfill(local_datafiles, b, apply=True)
     run(world, b, "--apply")
     for n in ("pilot_facts.json", "facts_batch1.json", "general_facts.json"):
         assert json.loads(read(a, n)) == json.loads(read(b, n))

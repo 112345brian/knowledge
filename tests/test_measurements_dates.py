@@ -11,6 +11,7 @@ from schema_helper import full_schema
 
 from test_add_fact import Env, REPO
 from appctx import locs
+import local_datafiles
 
 SNAPSHOT = "2026-09-11"
 
@@ -141,6 +142,6 @@ def test_a_missing_or_bad_snapshot_file_fails_the_build_and_names_the_file(m03, 
 
 def test_the_snapshot_backfill_output_is_what_the_measurements_step_reads(m03, tmp_path):
     from client import backfill_snapshot_date
-    backfill_snapshot_date.write_snapshot(m03.env.data_dir, apply=True)
+    backfill_snapshot_date.write_snapshot(local_datafiles, m03.env.data_dir, apply=True)
     con = m03.build()
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}

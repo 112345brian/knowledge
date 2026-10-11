@@ -14,6 +14,7 @@ from test_add_fact import Env, REPO
 import fact_rules
 import new_fact
 from appctx import app, fixed_clock, frozen, locs, system_clock
+import local_datafiles
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -150,7 +151,7 @@ def test_legacy_entries_without_a_key_get_a_derived_key_and_their_backfilled_dat
     legacy = {"subject": "alpha", "statement": "Old fact.", "trust_level": "high"}
     world.seed(pilot=[dict(legacy)], general=[dict(legacy, freshness="no-decay", recheck_rationale="no decay")])  # #7: only the pilot entry is legacy
     from ingest import backfill_dates
-    backfill_dates.backfill_dates(world.env.data_dir, apply=True)  # #35: the date lives in the data now
+    backfill_dates.backfill_dates(local_datafiles, world.env.data_dir, apply=True)  # #35: the date lives in the data now
     con = world.build()
     rows = con.execute("SELECT f.source_key, r.changed_at, r.changed_via FROM facts f JOIN fact_revisions r ON r.fact_id = f.id ORDER BY f.id").fetchall()
     assert [r["source_key"][:7] for r in rows] == ["legacy-", "legacy-"]
@@ -625,11 +626,11 @@ def test_extension_hook_can_add_more_keys_for_issue_35(world, tmp_path):
     open(os.path.join(d, "pilot_facts.json"), "w").write(json.dumps([{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "keep"},
                                                                        {"subject": "a", "statement": "Two.", "trust_level": "low"}], indent=2) + "\n")
     adder = lambda entry, filename, index: {"date_added": "2026-09-11", "extra": index}
-    assert bk.backfill(d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 2
+    assert bk.backfill(local_datafiles, d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 2
     one, two = json.load(open(os.path.join(d, "pilot_facts.json")))
     assert one["date_added"] == "keep" and one["extra"] == 0 and "source_key" in one
     assert two["date_added"] == "2026-09-11" and two["extra"] == 1
-    assert bk.backfill(d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 0
+    assert bk.backfill(local_datafiles, d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 0
 
 
 def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):

@@ -14,6 +14,8 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
 from appctx import app, locs
+import local_datafiles
+import local_inputs
 
 @pytest.fixture(autouse=True)
 def _restore_modules():
@@ -283,17 +285,17 @@ def test_backfill_dry_run_apply_idempotent_and_byte_preserving(tmp_path):
     write(data / "pilot_facts.json", text.encode())
     resolve = lambda notes: note if notes == "via notes" else None  # noqa: E731
 
-    res, unresolved = bf.backfill(str(data), "/nonexistent-vault", apply=False, resolve=resolve)
+    res, unresolved = bf.backfill(local_datafiles, local_inputs, str(data), "/nonexistent-vault", apply=False, resolve=resolve)
     assert res["pilot_facts.json"] == 2 and len(unresolved) == 1
     assert (data / "pilot_facts.json").read_text() == text  # dry run wrote nothing
 
-    bf.backfill(str(data), "/nonexistent-vault", apply=True, resolve=resolve)
+    bf.backfill(local_datafiles, local_inputs, str(data), "/nonexistent-vault", apply=True, resolve=resolve)
     new = json.loads((data / "pilot_facts.json").read_text())
     assert [e.get("extracted_from_sha256") for e in new] == [sha(b"note body"), sha(b"note body"), None, None, "keep"]
     assert [{k: v for k, v in e.items() if k != "extracted_from_sha256"} for e in new] == \
            [{k: v for k, v in e.items() if k != "extracted_from_sha256"} for e in items]
 
-    res, _ = bf.backfill(str(data), "/nonexistent-vault", apply=True, resolve=resolve)
+    res, _ = bf.backfill(local_datafiles, local_inputs, str(data), "/nonexistent-vault", apply=True, resolve=resolve)
     assert res["pilot_facts.json"] == 0  # idempotent
 
 
@@ -302,7 +304,7 @@ def test_backfill_default_resolver_is_the_facts_step_rule():
     must be the rule the facts step applies."""
     from ingest import backfill_extracted_hashes as bf, fact_ingest_rules
     loc = locs().locations
-    resolve = bf._resolver(loc.private_data_dir, loc.bodybuilding_vault)
+    resolve = bf._resolver(local_inputs, loc.private_data_dir, loc.bodybuilding_vault)
     assert resolve(None) is None
     notes = "Some Note.md, extracted 2026-01-01"
     assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, loc.bodybuilding_vault) != None  # noqa: E711
