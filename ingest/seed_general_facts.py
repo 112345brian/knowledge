@@ -12,7 +12,7 @@ depends on it either.
 """
 import sqlite3, json, os
 
-from ingest.shared import get_or_create_vault_file
+import source_ingest_service
 from ingest import fact_ingest_rules
 import fixity_rules
 import privacy
@@ -38,6 +38,7 @@ def run(con, ctx):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
     rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     cur = con.cursor()
+    sources = ctx.stores.source_repository(con)
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
@@ -66,7 +67,7 @@ def run(con, ctx):
         baseline = item.get("extracted_from_sha256")
         if baseline is not None and not fixity_rules.valid_sha256(baseline):
             raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
-        origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"), ctx.inputs)  # #38: optional origin file
+        origin_file_id = source_ingest_service.vault_file_id(sources, ctx.inputs, item.get("origin_path"))  # #38: optional origin file
         date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)
         # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")

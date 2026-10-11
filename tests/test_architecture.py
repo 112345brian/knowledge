@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "subject_rules"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "source_record", "subject_rules"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
                   "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
 BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
@@ -619,7 +619,8 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service", "identity_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service",
+                      "identity_service", "source_ingest_service"}
 
 
 def _architecture_roles():

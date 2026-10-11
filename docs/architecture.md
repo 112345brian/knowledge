@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context, fixity_rules, acquisition_rules, subject_rules)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context, fixity_rules, acquisition_rules, source_record, subject_rules)   <- imports nothing else
 ```
 
 ## Rules
@@ -117,7 +117,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `music_export_store` | infrastructure | the SQL behind the music-taste export (implements music_export_port) |
 | `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
-| `local_stores` | infrastructure | the privacy, entity, subject, revision and claims stores, by name (implements step_stores_port) |
+| `local_stores` | infrastructure | the privacy, entity, subject, revision, claims and source stores, by name (implements step_stores_port) |
 | `locations` | model | where the data lives, as one immutable value (pure) |
 | `pipeline_context` | model | what a build step is given besides its connection (a value, no I/O) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
@@ -217,6 +217,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
+| `source_record` | model | a source as one validated value before it has a database id (pure) |
 | `subject_rules` | model | subjects as values: vocabulary, validation, pure edits; `subjects_service` calls these directly |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
@@ -245,6 +246,10 @@ validation, matching and pure edits their files and lists are subject to.
 | `script_runner` | infrastructure | starts the standalone scripts |
 | `snapshot_date` | ETL adapter (driving, batch) | snapshot date of the measurements load (measurements source) |
 | `source_ingest_rules` | pipeline rules | citation notes |
+| `source_ingest_service` | application service | store sources, validate and store their relations, record vault files (through `sources_port`) |
+| `source_readers` | ETL adapter (driving, batch) | composed readers: manual_sources.json and the vault notes as `SourceRecord`s |
+| `source_repository_store` | infrastructure | sources, publishers, authors, identifiers, relations and vault_files in SQLite (implements `sources_port`) |
+| `sources_port` | domain service | ports: `SourceReader` (where records come from) and `SourceRepository` (where they are kept) |
 | `source_status` | model | source status, relation checks, replacement chains |
 | `source_status_store` | infrastructure | the fact-to-source audit SQL |
 | `subjects` | composition root | binds subject use cases to file and query adapters |

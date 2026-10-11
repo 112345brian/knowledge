@@ -205,11 +205,13 @@ def test_duplicates_are_reported_with_both_citekeys_and_not_merged(ingest, tmp_p
 
 def test_the_same_identifier_twice_on_one_source_is_not_a_conflict(ingest, tmp_path, capsys):
     con = run02(ingest, tmp_path, {"a2020": {"doi": "10.1210/x1234", "pmid": "123"}})
-    from ingest import shared
-    cur = con.cursor()
-    sid = con.execute("SELECT id FROM sources").fetchone()[0]
-    assert shared.add_source_identifiers(cur, sid, "a2020", [("doi", "10.1210/x1234")]) == []
-    assert "duplicate" not in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_identifiers").fetchone()[0] == 2
+    from source_record import SourceRecord
+    from source_repository_store import SqliteSourceRepository
+    repo = SqliteSourceRepository(con)
+    record = SourceRecord(citekey="b2020", name="B", source_type="primary",
+                          identifiers=(("doi", "10.1210/y1"), ("doi", "10.1210/y1")))
+    assert repo.add_source(record) == []     # the same pair twice on one source: neither a second row nor a conflict
+    assert "duplicate" not in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_identifiers").fetchone()[0] == 3
 
 
 def test_manual_sources_take_identifiers_as_fields_or_a_mapping(ingest):

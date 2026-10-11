@@ -636,6 +636,26 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "source_record"       # a source as one validated value, before it has a database id (pure)
+layer = "model"
+depends_on = ["acquisition_rules", "fixity_rules", "source_status"]
+
+[[modules]]
+path = "sources_port"        # DOMAIN SERVICE: where source records come from (readers) and are kept (repository)
+layer = "domain_services"
+depends_on = ["source_record", "source_status"]
+
+[[modules]]
+path = "source_ingest_service"   # USE CASE: store sources, validate and store their relations, record vault files
+layer = "application"
+depends_on = ["inputs_port", "source_record", "source_status", "sources_port"]
+
+[[modules]]
+path = "source_repository_store"   # INFRASTRUCTURE: sources, publishers, authors, identifiers, relations, vault_files in SQLite
+layer = "infrastructure"
+depends_on = ["source_record", "source_status"]
+
+[[modules]]
 path = "step_stores_port"    # DOMAIN SERVICE: the data files and table writers a build step uses
 layer = "domain_services"
 depends_on = []
@@ -671,9 +691,9 @@ layer = "infrastructure"
 depends_on = ["locks", "revisions_store"]
 
 [[modules]]
-path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject, revision and claims stores, by name
+path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject, revision, claims and source stores, by name
 layer = "infrastructure"
-depends_on = ["claims_store", "entities_store", "privacy_store", "revisions_store", "subjects_store"]
+depends_on = ["claims_store", "entities_store", "privacy_store", "revisions_store", "source_repository_store", "subjects_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -949,9 +969,6 @@ path = "ingest.shared"
 layer = "pipeline"
 depends_on = [
     "ingest.fact_ingest_rules",
-    "ingest.source_ingest_rules",
-    "identifiers",
-    "acquisition_rules",
 ]
 
 [[modules]]
@@ -1013,22 +1030,30 @@ depends_on = [
 ]
 
 [[modules]]
-path = "ingest.seed_sources"
+path = "ingest.source_readers"   # composed readers: manual_sources.json and the vault notes as SourceRecords
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
     "ingest.source_ingest_rules",
     "source_status",
     "acquisition_rules",
+    "identifiers",
+    "source_record",
+]
+
+[[modules]]
+path = "ingest.seed_sources"
+layer = "pipeline"
+depends_on = [
+    "ingest.source_readers",
+    "source_ingest_service",
 ]
 
 [[modules]]
 path = "ingest.literature_sources"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
-    "ingest.source_ingest_rules",
-    "acquisition_rules",
+    "ingest.source_readers",
+    "source_ingest_service",
 ]
 
 [[modules]]
@@ -1044,6 +1069,7 @@ path = "ingest.facts"
 layer = "pipeline"
 depends_on = [
     "ingest.shared",
+    "source_ingest_service",
     "ingest.fact_ingest_rules",
     "privacy",
     "revisions",
@@ -1104,7 +1130,7 @@ depends_on = [
     "ingest.fact_ingest_rules",
     "privacy",
     "revisions",
-    "ingest.shared",
+    "source_ingest_service",
     "fixity_rules",
 ]
 
@@ -1137,7 +1163,8 @@ depends_on = [
 path = "ingest.link_source_relations"
 layer = "pipeline"
 depends_on = [
-    "source_status",
+    "ingest.source_readers",
+    "source_ingest_service",
 ]
 
 [[modules]]
