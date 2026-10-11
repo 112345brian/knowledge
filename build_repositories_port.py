@@ -95,7 +95,7 @@ class FactRepository(Protocol):
 
 class RevisionRepository(Protocol):
     def insert(self, fact_id: r.FactId, revision: Mapping[str, object]) -> None:
-        """One fact_revisions row from a full revision snapshot (revisions.REVISION_KEYS)."""
+        """One revision-history row from a full revision snapshot (revisions.REVISION_KEYS)."""
     def fact_ids_by_source_key(self) -> Mapping[str, r.FactId]: ...
     def first_revisions(self) -> Mapping[str, r.FirstRevision]: ...
     def read_log(self, path: str, base: Mapping[str, Mapping[str, object]]) -> Sequence[Tuple[int, Mapping[str, object]]]:
@@ -144,7 +144,7 @@ class MeasurementRepository(Protocol):
 class ClaimRepository(Protocol):
     def add(self, claim: r.NewClaim) -> r.ClaimId: ...
     def link_facts_by_prefix(self, claim_id: r.ClaimId, prefix: str, role: str, note: Optional[str]) -> int:
-        """claim_facts rows for every fact whose statement starts with `prefix` (LIKE, so `%`/`_` in a prefix are
+        """The claim-to-fact link rows for every fact whose statement starts with `prefix` (LIKE, so `%`/`_` in a prefix are
         wildcards, as today); returns how many were linked."""
 
 
