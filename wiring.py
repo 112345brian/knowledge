@@ -24,9 +24,11 @@ from entity_queries_port import EntityQueries
 from fact_reads_port import FactReads
 from facts_file_port import FactsFile
 from ids_port import Ids
+from inputs_port import Inputs
 from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
+from music_repository_port import MusicRepository
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from review_reads_port import ReviewReads
@@ -65,6 +67,7 @@ PORT_PROTOCOLS = {
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries,
+    "music": MusicRepository, "inputs": Inputs,
 }
 
 
