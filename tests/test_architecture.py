@@ -66,7 +66,8 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-HEXAGON_LAYERS = ("facade", "adapter", "use_case", "domain")  # the library side of tach.toml, outermost first
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status"}  # the innermost ring: imports nothing else
+ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
 
 def _package_modules():
@@ -111,12 +112,12 @@ def test_every_module_is_classified_in_both_configs():
 
 @pytest.mark.parametrize("enable", [False, True], ids=["live", "with-planned"])
 def test_configs_agree_on_what_a_library_is(enable):
-    """The library list is written in three places (every tach layer below `pipeline`: facade, adapter, use_case
-    and domain; and the two import-linter contracts); they must not drift apart."""
+    """The library list is written in three places (every tach layer below `pipeline`: composition, infrastructure,
+    application, domain_services and model; and the two import-linter contracts); they must not drift apart."""
     t, p = _read(TACH_TOML), _read(PYPROJECT)
     if enable:
         t, p = ac.enable_planned(t), ac.enable_planned(p)
-    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in HEXAGON_LAYERS}
+    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS}
     c = _il_contracts(p)
     up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]}
     assert up == tach_libs
@@ -357,7 +358,7 @@ CASES = [
      [("tach", ["seed_sources", "knowledge"])]),
     ("ingest-step-imports-unlisted-library", "measurements", "import add_fact",
      [("tach", ["measurements", "add_fact"])]),
-    # ---- hexagonal: the domain (privacy) never touches infrastructure or its own adapter
+    # ---- onion: the domain (privacy) never touches infrastructure or its own adapter
     ("domain-imports-sqlite", "privacy", "import sqlite3",
      [("import-linter", ["never touch the file system", "kn.privacy", "sqlite3", "BROKEN"])]),
     ("domain-lazy-imports-os", "privacy", "def f():\n    import os",
@@ -374,6 +375,10 @@ CASES = [
      [("import-linter", ["never touch the file system", "kn.modes", "sqlite3"])]),
     ("domain-modes-imports-its-adapter", "modes", "import modes_store",
      [("tach", ["modes", "modes_store"]), ("import-linter", ["kn.modes", "kn.modes_store"])]),
+    ("model-imports-domain-service", "timestamps", "import privacy",
+     [("tach", ["timestamps", "privacy"]), ("import-linter", ["kn.timestamps", "kn.privacy"])]),
+    ("model-imports-application-service", "fact_rules", "import add_fact_service",
+     [("tach", ["fact_rules", "add_fact_service"]), ("import-linter", ["kn.fact_rules", "kn.add_fact_service"])]),
     ("domain-modes-imports-revisions", "modes", "import revisions",
      [("tach", ["modes", "revisions"])]),   # revisions is a domain module now: only the tach allowlist stops it
     ("domain-claims-audit-imports-clock", "claims_audit", "import clock",
@@ -638,34 +643,48 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     contracts = _il_contracts(_read(PYPROJECT))
     domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
-    assert {n for n, r in roles.items() if r == "domain"} == domain
-    assert {n for n, r in roles.items() if r == "use case"} == services
-    assert {n for n, r in roles.items() if r.startswith("facade")} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
+    assert {n for n, r in roles.items() if r in ("model", "domain service")} == domain
+    assert {n for n, r in roles.items() if r == "model"} == MODEL
+    assert {n for n, r in roles.items() if r == "application service"} == services
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
-    allowed = {"domain", "use case", "driving adapter", "driven adapter", "ETL adapter (driving, batch)"}
-    assert {r for r in roles.values() if not r.startswith("facade")} <= allowed
+    allowed = {"model", "domain service", "application service", "infrastructure", "composition root",
+               "driving adapter", "ETL adapter (driving, batch)"}
+    assert set(roles.values()) <= allowed
 
 
-def test_tach_layers_are_the_hexagon():
-    """tach.toml's layers are the hexagon, outermost first, and each module sits in the layer its role in
-    docs/architecture.md names. `use_case` is below `adapter`, so a use case importing an adapter is a layer
-    violation, not just a missing allowlist entry."""
+def test_tach_layers_are_the_onion():
+    """tach.toml's layers are the onion's rings, outermost first, and each module sits in the layer its role in
+    docs/architecture.md names. `application` is inside `infrastructure`, so an application service importing
+    an adapter is a layer violation, not just a missing allowlist entry; `model` is innermost."""
     cfg = _read(TACH_TOML)
     layers = re.search(r"^layers = \[(.*?)\]", cfg, re.M).group(1)
     assert [x.strip().strip('"') for x in layers.split(",")] == [
-        "serving", "cli", "pipeline", "facade", "adapter", "use_case", "domain"]
-    expected = {"domain": "domain", "use case": "use_case", "driven adapter": "adapter",
+        "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
+    expected = {"model": "model", "domain service": "domain_services", "application service": "application",
+                "infrastructure": "infrastructure", "composition root": "composition",
                 "ETL adapter (driving, batch)": "pipeline"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():
         layer = tach[name]["layer"]
-        if role.startswith("facade"):
-            assert layer == "facade", f"{name} is a facade but tach has it in {layer}"
-        elif role == "driving adapter":
+        if role == "driving adapter":
             assert layer in ("cli", "serving"), f"{name} is a driving adapter but tach has it in {layer}"
         else:
             assert layer == expected[role], f"{name} is a {role} but tach has it in {layer}"
+
+
+def test_model_ring_is_pinned_and_the_contract_forbids_every_other_module():
+    """The model is the onion's centre: tach's `model` layer, the import-linter contract's sources and the
+    pinned MODEL set must agree, and the contract must forbid every module outside it (a new module is
+    caught by test_every_module_is_classified_in_both_configs first, then has to be added here)."""
+    contract = _il_contracts(_read(PYPROJECT))["model-is-innermost"]
+    sources = {m.split(".", 1)[1] for m in contract["source_modules"]}
+    forbidden = {m.split(".", 1)[1] for m in contract["forbidden_modules"]}
+    tach_model = {n for n, m in _tach_modules(_read(TACH_TOML)).items() if m["layer"] == "model"}
+    assert sources == tach_model == MODEL
+    assert forbidden == set(ac.importable_stems(REPO)) - MODEL
+    assert "ignore_imports" not in contract
 
 
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():

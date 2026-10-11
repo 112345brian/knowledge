@@ -68,9 +68,9 @@ uv run tach check
 uv run python tests/arch_check.py
 ```
 
-The project uses a ports-and-adapters architecture. Domain rules are kept separate from file,
-database, and process access; use cases depend on explicit ports; facades compose adapters; and the
-Typer CLI and ingest pipeline drive those use cases. See [docs/architecture.md](docs/architecture.md)
+The project uses an onion architecture (ports and adapters at the edge). Domain rules are kept separate from file,
+database, and process access; application services depend on explicit ports; facades compose adapters; and the
+Typer CLI and ingest pipeline drive those application services. See [docs/architecture.md](docs/architecture.md)
 for the module map and enforced boundaries.
 
 Test fixtures must remain synthetic and generic. Before adding examples or generated snapshots,
