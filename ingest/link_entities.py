@@ -12,15 +12,14 @@ import os
 import sqlite3
 import sys
 
-import entities_store
 
 
 def run(con, ctx):
-    found = entities_store.read_file(os.path.join(ctx.locations.private_data_dir, entities_store.ENTITIES_FILENAME))
+    found = ctx.stores.read_entities(ctx.locations.entities_file())
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return
-    result = entities_store.link_facts(con, found)
+    result = ctx.stores.link_entities(con, found)
     if result["unprotected"]:
         raise ValueError(f"facts {result['unprotected'][:10]} mention a private entity but are not stored private; "
                          "refusing to build (the privacy pass should have raised them)")

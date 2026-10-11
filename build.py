@@ -21,6 +21,7 @@ import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile, uuid
 
 import build_rules
 import local_inputs
+import local_stores
 import private_git
 from pipeline_context import StepContext
 
@@ -95,7 +96,7 @@ def build(target_path, locations, clock, sources=None):
         for step in (build_rules.steps_for(sources) if STEPS is None else STEPS):
             try:
                 mod = load_module(os.path.join(HERE, step))
-                mod.run(con, StepContext(locations, local_inputs))
+                mod.run(con, StepContext(locations, local_inputs, local_stores))
             except Exception as e:
                 raise BuildError(step, e) from e
         try:

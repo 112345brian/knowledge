@@ -19,17 +19,12 @@ import re
 from datetime import datetime, timezone
 
 HASH_BUFFER = 1 << 20  # read files in 1 MiB chunks, never whole
-FILE_STATES = ("present", "missing")  # keep in sync with the CHECKs in schema.sql
-SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+from fixity_rules import FILE_STATES, FINGERPRINT_COLUMNS, SHA256_RE, valid_sha256  # noqa: F401  (defined with the rules)
 REASONS = ("changed", "missing", "moved")
 
 # The stdlib table varies by platform/version; the vault is markdown, so pin the types we rely on.
 _MIME_OVERRIDES = {".md": "text/markdown", ".markdown": "text/markdown", ".json": "application/json",
                    ".csv": "text/csv", ".txt": "text/plain", ".pdf": "application/pdf"}
-
-
-def valid_sha256(value):
-    return isinstance(value, str) and bool(SHA256_RE.match(value))
 
 
 def _expand(path):
@@ -69,7 +64,6 @@ def fingerprint(path):
             "mime_type": guess_mime(path), "file_state": "present"}
 
 
-FINGERPRINT_COLUMNS = ("content_sha256", "size_bytes", "file_mtime", "mime_type", "file_state")
 
 
 def _index_roots(search_roots, wanted_exts, wanted_hashes, known=None):

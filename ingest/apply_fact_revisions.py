@@ -18,16 +18,14 @@ import sqlite3
 import sys
 
 import privacy
-import privacy_store
 import revisions
-import revisions_store
 
 
 def run(con, ctx):
     path = os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME)
-    applied = revisions_store.apply_revisions(con, path)
-    rules = privacy_store.load_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
-    floor = privacy_store.apply_rules_to_db(con, rules)
+    applied = ctx.stores.apply_revisions(con, path)
+    rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
+    floor = ctx.stores.apply_privacy_rules(con, rules)
     con.execute("""UPDATE fact_revisions SET visibility = 'private'
                    WHERE visibility != 'private'
                      AND fact_id IN (SELECT id FROM facts WHERE visibility = 'private')""")

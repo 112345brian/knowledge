@@ -74,6 +74,11 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.step_stores_port",
+    "kn.local_stores",
+    "kn.fixity_rules",
+    "kn.acquisition_rules",
+    "kn.subject_rules",
     "kn.inputs_port",
     "kn.local_inputs",
     "kn.pipeline_context",
@@ -230,6 +235,11 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.step_stores_port",
+    "kn.local_stores",
+    "kn.fixity_rules",
+    "kn.acquisition_rules",
+    "kn.subject_rules",
     "kn.inputs_port",
     "kn.local_inputs",
     "kn.pipeline_context",
@@ -484,6 +494,9 @@ name = "The model ring imports no other module of the repo"
 # lists and checks that this contract forbids every other module.
 type = "forbidden"
 source_modules = [
+    "kn.fixity_rules",
+    "kn.acquisition_rules",
+    "kn.subject_rules",
     "kn.pipeline_context",
     "kn.fact_rules",
     "kn.entity_rules",
@@ -497,6 +510,8 @@ source_modules = [
     "kn.source_status",
 ]
 forbidden_modules = [
+    "kn.step_stores_port",
+    "kn.local_stores",
     "kn.inputs_port",
     "kn.local_inputs",
     "kn.container",
@@ -652,6 +667,10 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.step_stores_port",
+    "kn.fixity_rules",
+    "kn.acquisition_rules",
+    "kn.subject_rules",
     "kn.inputs_port",
     "kn.pipeline_context",
     "kn.script_runner_port",
@@ -799,6 +818,7 @@ source_modules = [
     "kn.cli_subjects",
 ]
 forbidden_modules = [
+    "kn.local_stores",
     "kn.local_inputs",
     "kn.script_runner",
     "kn.claims_store",

@@ -4,8 +4,7 @@ from ingest import fact_ingest_rules
 from ingest.fact_ingest_rules import require_date_added  # noqa: F401  (re-exported for the ingest scripts)
 from ingest.source_ingest_rules import split_authors
 
-import acquisition_store
-import fixity_store
+import acquisition_rules
 import identifiers
 
 
@@ -53,7 +52,7 @@ def get_or_create_vault_file(cur, path, inputs):
     fp = inputs.fingerprint(path)
     # #46: a vault file has no data record, so its custodial history comes from the macOS file attributes
     # alone (a no-op elsewhere); acquisition_store.resolve marks anything it fills in acquired_note.
-    acq = inputs.acquisition({k: None for k in acquisition_store.COLUMNS}, path)
+    acq = inputs.acquisition({k: None for k in acquisition_rules.COLUMNS}, path)
     cur.execute("UPDATE vault_files SET content_sha256 = :content_sha256, size_bytes = :size_bytes, "
                 "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state, "
                 "acquired_at = :acquired_at, acquired_via = :acquired_via, where_from = :where_from, "

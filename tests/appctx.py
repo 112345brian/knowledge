@@ -49,6 +49,7 @@ def locs(**overrides):
     has pointed KNOWLEDGE_PRIVATE_DIR at (any field overridden: a vault, a csv) and the real local inputs."""
     import dataclasses
     import local_inputs
+    import local_stores
     import paths
     from pipeline_context import StepContext
-    return StepContext(dataclasses.replace(paths.load(), **overrides), local_inputs)
+    return StepContext(dataclasses.replace(paths.load(), **overrides), local_inputs, local_stores)

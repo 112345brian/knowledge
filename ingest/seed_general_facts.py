@@ -14,11 +14,9 @@ import sqlite3, json, os
 
 from ingest.shared import get_or_create_vault_file
 from ingest import fact_ingest_rules
-import fixity_store
+import fixity_rules
 import privacy
-import privacy_store
 import revisions
-import revisions_store
 
 
 def get_or_create_subject(cur, name, domain, cache):
@@ -38,7 +36,7 @@ def get_or_create_subject(cur, name, domain, cache):
 
 def run(con, ctx):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
+    rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
@@ -66,7 +64,7 @@ def run(con, ctx):
         is_personal = 1 if item.get("is_personal", True) else 0
 
         baseline = item.get("extracted_from_sha256")
-        if baseline is not None and not fixity_store.valid_sha256(baseline):
+        if baseline is not None and not fixity_rules.valid_sha256(baseline):
             raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
         origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"), ctx.inputs)  # #38: optional origin file
         date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)
@@ -85,7 +83,7 @@ def run(con, ctx):
              status, key, eff["freshness"], origin_file_id, baseline, revisions.entry_kind(item), *revisions.entry_validity(item), revisions.entry_applies_to(item))
         )
         fact_id = cur.lastrowid
-        revisions_store.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
+        ctx.stores.insert_revision_row(cur, fact_id, revisions.implicit_revision(key, item, date_added, "general_facts.json"))
 
         citekey = item.get("source_citekey")
         if citekey:
@@ -102,7 +100,7 @@ def run(con, ctx):
 
     # Re-apply the current privacy rules to every fact (raise-only; also tags subjects).
     # This is the last build step, so subjects' parent_id (step 06) is set and tags inherit.
-    applied = privacy_store.apply_rules_to_db(con, rules)
+    applied = ctx.stores.apply_privacy_rules(con, rules)
     con.commit()
     if applied["raised"]:
         print(f"  privacy rules raised {len(applied['raised'])} fact(s) to private")

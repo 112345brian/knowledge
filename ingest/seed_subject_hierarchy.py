@@ -11,19 +11,19 @@ Until the file exists no hierarchy is loaded and a note says so.
 """
 import sqlite3, os, sys
 
-import subjects_store
+import subject_rules
 
 
 def run_entries(con, entries):
     cur = con.cursor()
     for e in entries:
-        cur.execute("INSERT OR IGNORE INTO subjects (name, domain) VALUES (?, ?)", (e["name"], e["domain"] or subjects_store.DEFAULT_DOMAIN))
+        cur.execute("INSERT OR IGNORE INTO subjects (name, domain) VALUES (?, ?)", (e["name"], e["domain"] or subject_rules.DEFAULT_DOMAIN))
     ids = {name: i for i, name in cur.execute("SELECT id, name FROM subjects")}
     for e in entries:
         parent = ids[e["parent"]] if e["parent"] else None
         cur.execute(
             "UPDATE subjects SET parent_id = ?, parent_relation = ?, description = ?, deprecated = ? WHERE id = ?",
-            (parent, (e["relation"] or subjects_store.DEFAULT_RELATION) if parent else subjects_store.DEFAULT_RELATION,
+            (parent, (e["relation"] or subject_rules.DEFAULT_RELATION) if parent else subject_rules.DEFAULT_RELATION,
              e["description"], 1 if e["deprecated"] else 0, ids[e["name"]]))
     for e in entries:  # second pass: the replacement may be listed after the subject
         if e["replaced_by"]:
@@ -37,7 +37,7 @@ def run_entries(con, entries):
 
 
 def run(con, ctx):
-    entries = subjects_store.read_file(ctx.locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
+    entries = ctx.stores.read_subjects(ctx.locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
         print("[seed_subject_hierarchy] no subjects.json: no subject hierarchy loaded")
         return

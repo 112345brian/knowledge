@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "subject_rules"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
                   "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
 BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
@@ -742,6 +742,20 @@ def test_no_hidden_global_state_in_the_application():
                 if any(n in ("DEPS", "PORTS") for n in names):
                     offenders.append(f"{name}.py:{node.lineno}: module-level {names} (compose() wires; nothing is built at import)")
     assert offenders == [], "\n".join(offenders)
+
+
+def test_build_steps_import_no_infrastructure_module():
+    """Everything a step touches outside its connection arrives on its context (`ctx.inputs`, `ctx.stores`): it
+    imports no module from tach's infrastructure layer, only pure rules and other steps' helpers."""
+    mods = _tach_modules(_read(TACH_TOML))
+    infra = {n for n, m in mods.items() if m["layer"] == "infrastructure"}
+    steps = [n for n, m in mods.items() if m["layer"] == "pipeline" and n not in ENTRY_POINTS
+             and (n.startswith(("seed_", "link_", "apply_", "literature_", "facts", "concerts", "measurements", "scrobbles",
+                                "music_", "shared", "snapshot_"))
+                  or n in ("facts", "concerts", "shared"))]
+    assert steps, "found no step modules"
+    bad = {n: sorted(set(mods[n].get("depends_on", [])) & infra) for n in steps if set(mods[n].get("depends_on", [])) & infra}
+    assert bad == {}, f"steps importing infrastructure: {bad}"
 
 
 def test_build_steps_do_no_file_or_database_io_of_their_own():

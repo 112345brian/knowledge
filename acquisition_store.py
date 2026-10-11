@@ -29,46 +29,12 @@ import sys
 from datetime import datetime, timezone
 
 import validtime
+from acquisition_rules import COLUMNS, VIA_VALUES, AcquisitionError, normalize_data  # noqa: F401  (defined with the rules)
 
-VIA_VALUES = ("download", "manual", "export", "unknown")  # keep in sync with the CHECKs in schema.sql
 WHERE_FROMS = "com.apple.metadata:kMDItemWhereFroms"
 QUARANTINE = "com.apple.quarantine"
 ATTR_NOTE_PREFIX = "from macOS file attributes"
-COLUMNS = ("acquired_at", "acquired_via", "where_from", "acquired_note")
 _TIMEOUT = 5
-
-
-class AcquisitionError(Exception):
-    """A value in the data is invalid. The message names the source."""
-
-
-def _text(value, where, field):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise AcquisitionError(f"{where}: {field} must be text, not {type(value).__name__}")
-    return value.strip() or None
-
-
-def _valid_when(value):
-    if validtime.is_valid_boundary(value):
-        return True
-    try:
-        datetime.fromisoformat(value)
-        return True
-    except ValueError:
-        return False
-
-
-def normalize_data(raw, where):
-    """The data-supplied acquisition fields {acquired_at, acquired_via, where_from, acquired_note}: blank -> None,
-    validated. Raises AcquisitionError naming `where`."""
-    out = {k: _text(raw.get(k), where, k) for k in COLUMNS}
-    if out["acquired_at"] is not None and not _valid_when(out["acquired_at"]):
-        raise AcquisitionError(f"{where}: acquired_at {out['acquired_at']!r} must be an ISO date (YYYY, YYYY-MM, YYYY-MM-DD) or timestamp")
-    if out["acquired_via"] is not None and out["acquired_via"] not in VIA_VALUES:
-        raise AcquisitionError(f"{where}: acquired_via {out['acquired_via']!r} must be one of {list(VIA_VALUES)}")
-    return out
 
 
 # ------------------------------------------------------------------ reading the file attributes (read-only)

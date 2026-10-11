@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context, fixity_rules, acquisition_rules, subject_rules)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -83,6 +83,7 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 
 | Module | Role | What it is |
 | --- | --- | --- |
+| `acquisition_rules` | model | an acquisition record's vocabulary and validation (pure) |
 | `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
 | `cli_build` | driving adapter | `build`, `clean-concerts` |
 | `cli_common` | driving adapter | helpers and options shared by the knowledge.py command modules |
@@ -94,8 +95,10 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
+| `fixity_rules` | model | a file fingerprint's vocabulary (pure) |
 | `inputs_port` | domain service | port: what a build step reads from outside the database |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
+| `local_stores` | infrastructure | the privacy, entity, subject and revision stores, by name (implements step_stores_port) |
 | `locations` | model | where the data lives, as one immutable value (pure) |
 | `pipeline_context` | model | what a build step is given besides its connection (a value, no I/O) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
@@ -193,6 +196,8 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 | `normal_db` | ETL adapter (driving, batch) | SQL copy + file swap (also a script) |
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
+| `step_stores_port` | domain service | port: the data files and table writers a build step uses |
+| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
