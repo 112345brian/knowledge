@@ -42,14 +42,15 @@ def load_hierarchy(deps: HierarchyDeps, entries) -> subject_rules.HierarchyTally
     return repo.tally()
 
 
-def subject_for_fact(deps: HierarchyDeps, name, domain: Optional[str] = None, cache: Optional[Dict[str, int]] = None) -> int:
+def subject_for_fact(deps: HierarchyDeps, name, domain: Optional[str] = None, cache: Optional[Dict[str, int]] = None,
+                     resolve_aliases: bool = True) -> int:
     """The id of the subject a fact filed under `name` belongs to: the subject of that name, else the subject that
-    claims it as an alias, else a new subject (in `domain`, or the store's default when None). `cache` memoizes by
-    the name given."""
+    claims it as an alias (only when `resolve_aliases`, #43), else a new subject (in `domain`, or the store's default
+    when None). `cache` memoizes by the name given."""
     if cache is not None and name in cache:
         return cache[name]
     repo = deps.subjects
-    key, _via = subject_rules.identify(name, repo.find_subject, repo.find_alias)
+    key, _via = subject_rules.identify(name, repo.find_subject, repo.find_alias if resolve_aliases else (lambda _alias: None))
     subject_id = key if key is not None else repo.create_subject(name, domain)
     if cache is not None:
         cache[name] = subject_id

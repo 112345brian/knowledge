@@ -7,6 +7,7 @@ from clock_port import Clock
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
+from fact_ingest_port import FactRepository, PrivacyFloor
 from facts_file_port import FactsFile
 from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
@@ -23,8 +24,10 @@ import clock
 import entities_store
 import entity_migration_store
 import entity_queries_store
+import fact_ingest_store
 import ids
 import lifecycle_store
+import local_stores
 import migrate_memory_store
 import music_export_store
 import privacy_store
@@ -50,3 +53,5 @@ subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
 music_export: MusicExportReads = music_export_store.open_reads("")
 subjects_repository: SubjectRepository = subject_repository_store.SqliteSubjects(sqlite3.connect(":memory:"))
+facts: FactRepository = fact_ingest_store
+privacy_floor: PrivacyFloor = local_stores

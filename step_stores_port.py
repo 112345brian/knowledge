@@ -7,6 +7,7 @@ a step knows none of them, so a test can hand a step a fake world and a step imp
 from typing import Any, Optional, Protocol
 
 from subject_repository_port import SubjectRepository
+from fact_ingest_port import FactRepository
 
 
 class StepStores(Protocol):
@@ -21,3 +22,4 @@ class StepStores(Protocol):
     def insert_claim(self, cur, claim) -> int: ...
     def link_claim_premise(self, cur, claim_id, premise) -> int: ...
     def source_repository(self, con) -> Any: ...   # a `sources_port.SourceRepository` over the build connection
+    def fact_repository(self) -> FactRepository: ...

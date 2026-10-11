@@ -26,7 +26,7 @@ the domain contract list, and the *application service* rows must equal the use-
 driving adapters (knowledge, cli_*, inbox, build + the `ingest` package)
         |  call
         v
-composition roots (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit, entities, subjects)
+composition roots (review, lifecycle, add_fact, facts_batch, fact_ingest, migrate_memory, rules_edit, entities, subjects)
         |  bind                       (pick the adapters)
         v
 infrastructure (*_store, clock, paths, private_git, ...)  --implements-->  port contracts (*_port.py)
@@ -128,18 +128,18 @@ validation, matching and pure edits their files and lists are subject to.
 | `seed_sources` | ETL adapter (driving, batch) | manual sources from `manual_sources.json` |
 | `literature_sources` | ETL adapter (driving, batch) | citation notes in the notes vault, parsed into sources |
 | `measurements` | ETL adapter (driving, batch) | numeric readings and lab results (measurements source) |
-| `facts` | ETL adapter (driving, batch) | hand-authored pilot and batch fact files |
+| `facts` | ETL adapter (driving, batch) | hand-authored pilot and batch fact files (a step over fact_ingest) |
 | `seed_claims` | ETL adapter (driving, batch) | claims citing the facts that back them (claims source) |
 | `seed_subject_hierarchy` | ETL adapter (driving, batch) | subject parents, relation types, aliases, deprecations |
 | `concerts` | ETL adapter (driving, batch) | concerts CSV export (concerts source) |
 | `music_ratings` | ETL adapter (driving, batch) | ratings export (ratings source) |
 | `scrobbles` | ETL adapter (driving, batch) | scrobble export (scrobbles source) |
 | `seed_artist_members` | ETL adapter (driving, batch) | curated artist membership (music sources) |
-| `seed_general_facts` | ETL adapter (driving, batch) | ad hoc facts from `general_facts.json` |
+| `seed_general_facts` | ETL adapter (driving, batch) | ad hoc facts from `general_facts.json` (a step over fact_ingest) |
 | `apply_fact_revisions` | ETL adapter (driving, batch) | validates and applies the append-only revision log |
 | `link_entities` | ETL adapter (driving, batch) | loads entities and links facts to the entities they mention |
 | `link_source_relations` | ETL adapter (driving, batch) | source-to-source relations: replaces, is-version-of |
-| `shared` | ETL adapter (driving, batch) | helpers shared by the core ingest steps |
+| `shared` | ETL adapter (driving, batch) | helpers shared by the core ingest steps (authors, publishers, identifiers, hints) |
 | `acquisition_store` | infrastructure | custodial history from macOS file attributes (read-only xattr) |
 | `add_fact` | composition root | binds add_fact_service; the library API |
 | `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
@@ -179,7 +179,12 @@ validation, matching and pure edits their files and lists are subject to.
 | `entities_store` | infrastructure | entities.json: validation, linking, edits |
 | `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) | exports the music dataset as one JSON file (music sources) |
-| `fact_ingest_rules` | pipeline rules | fact-file ingest rules |
+| `fact_ingest_rules` | domain service | fact-file ingest rules: which entries load, is_personal, origin note, date_added |
+| `fact_ingest_decisions` | domain service | the decisions both fact steps share: screening, keys, the row, the implicit revision, the report (pure) |
+| `fact_ingest_port` | domain service | ports: the fact repository and the privacy floor the fact steps write through |
+| `fact_ingest_service` | application service | load the fact files into facts, fact_sources, fact_revisions, through ports |
+| `fact_ingest_store` | infrastructure | the fact repository's SQL: subjects, vault files, facts, revisions, source links |
+| `fact_ingest` | composition root | binds fact_ingest_service to the adapters a build step is given |
 | `facts_file_port` | domain service | interface for the persisted fact file and its lookups |
 | `fact_queries` | infrastructure | CLI read-only SQL |
 | `fact_rules` | model | allowed values |

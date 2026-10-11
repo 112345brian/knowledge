@@ -1,6 +1,7 @@
 """Adapter for `step_stores_port.StepStores`: the privacy, entity, subject, revision, claims and source stores, by name."""
 import claims_store
 import entities_store
+import fact_ingest_store
 import privacy_store
 import revisions_store
 import source_repository_store
@@ -48,3 +49,5 @@ def link_claim_premise(cur, claim_id, premise):
     return claims_store.link_claim_premise(cur, claim_id, premise)
 def source_repository(con):
     return source_repository_store.SqliteSourceRepository(con)
+def fact_repository():
+    return fact_ingest_store
