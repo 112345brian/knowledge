@@ -619,7 +619,8 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service",
+                      "privacy_floor_service", "entity_link_service", "revision_apply_service"}
 
 
 def _architecture_roles():

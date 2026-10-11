@@ -580,6 +580,9 @@ FACT_READERS_ALLOWED = {
     "leak_scan_store.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
     "entities_store.py", "link_entities.py",
+    # the SQLite adapters of the build-time revision, privacy-floor and entity-link passes (they moved out of revisions_store,
+    # privacy_store and entities_store); the build pipeline drives them, they never serve
+    "fact_tables_store.py",
     # links facts to the measurements they cite at build time (the `measurements` client source)
     "link_fact_measurements.py",
     # CLI-only audit over the full local db (like claims_store): which cited sources were retracted or replaced

@@ -20,14 +20,14 @@ from privacy_floor_service import PrivacyFloorDeps, apply_privacy_floor
 @dataclass(frozen=True)
 class RevisionLogDeps:
     """What applying the log alone needs."""
-    log: RevisionLogReader
+    revision_log: RevisionLogReader
     revision_table: FactRevisionTable
 
 
 @dataclass(frozen=True)
 class RevisionApplyDeps:
     """What the whole pass needs: the log, the revision rows, the privacy rows and the rules."""
-    log: RevisionLogReader
+    revision_log: RevisionLogReader
     revision_table: FactRevisionTable
     privacy_table: FactPrivacyTable
     rules_reader: PrivacyRulesReader
@@ -48,7 +48,7 @@ def apply_revision_log(deps, path) -> int:
     fact_ids = table.fact_ids_by_source_key()
     originals = table.original_revisions()
     _, _, base = revision_apply_rules.originals_view(originals)
-    records = deps.log.read_log(path, base)
+    records = deps.revision_log.read_log(path, base)
     revision_apply_rules.validate(path, records, fact_ids, originals)
     for _, rec in records:
         table.record_revision(fact_ids[rec["source_key"]], rec)
@@ -60,7 +60,7 @@ def apply_revision_log(deps, path) -> int:
 
 def apply_fact_revisions(deps, log_path, rules_path) -> RevisionRun:
     """The whole pass, in order: revisions applied, privacy rules applied, history of private facts raised."""
-    applied = apply_revision_log(RevisionLogDeps(deps.log, deps.revision_table), log_path)
+    applied = apply_revision_log(RevisionLogDeps(deps.revision_log, deps.revision_table), log_path)
     rules = deps.rules_reader.load_rules(rules_path)
     floor = apply_privacy_floor(PrivacyFloorDeps(deps.privacy_table), rules)
     table = deps.revision_table

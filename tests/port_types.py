@@ -16,6 +16,12 @@ from privacy_rules_port import Rules
 from revisions_port import Revisions
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
+from entity_link_table_port import EntityLinkTable
+from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
+from fact_revision_table_port import FactRevisionTable, RevisionLogReader
+import fact_tables_store
+import local_stores
+import sqlite3
 import add_fact_store
 import clock
 import entities_store
@@ -43,3 +49,11 @@ entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
+revision_log: RevisionLogReader = local_stores
+rules_reader: PrivacyRulesReader = local_stores
+
+
+def _sqlite_tables(con: sqlite3.Connection) -> None:
+    revision_table: FactRevisionTable = fact_tables_store.SqliteFactRevisionTable(con)
+    privacy_table: FactPrivacyTable = fact_tables_store.SqliteFactPrivacyTable(con)
+    link_table: EntityLinkTable = fact_tables_store.SqliteEntityLinkTable(con)

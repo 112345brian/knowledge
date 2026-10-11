@@ -19,7 +19,8 @@ from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service")
+            "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service",
+            "privacy_floor_service", "entity_link_service", "revision_apply_service")
 
 
 def test_composing_every_root_verifies_its_adapters_against_their_ports():
@@ -169,7 +170,9 @@ def test_use_cases_do_not_print_open_files_or_exit():
 DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleDeps", "add_fact_service": "AddFactDeps",
                 "facts_batch_service": "FactsBatchDeps", "migrate_memory_service": "MigrateMemoryDeps",
                 "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps",
-                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps"}
+                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
+                "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
+                "revision_apply_service": "RevisionApplyDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():

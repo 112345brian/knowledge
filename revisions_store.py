@@ -136,7 +136,7 @@ def apply_revisions(con, revisions_path):
     writes each touched fact's latest revision into `facts` (the use case is
     revision_apply_service.apply_revision_log; this binds it to SQLite and the log file). Raises
     RevisionError (naming path:line) on any violation. Commits. Returns the number of revisions applied."""
-    deps = revision_apply_service.RevisionLogDeps(log=_LogFile(), revision_table=fact_tables_store.SqliteFactRevisionTable(con))
+    deps = revision_apply_service.RevisionLogDeps(revision_log=_LogFile(), revision_table=fact_tables_store.SqliteFactRevisionTable(con))
     return revision_apply_service.apply_revision_log(deps, revisions_path)
 
 

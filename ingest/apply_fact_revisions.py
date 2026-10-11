@@ -22,7 +22,7 @@ import revisions
 
 def run(con, ctx):
     deps = revision_apply_service.RevisionApplyDeps(
-        log=ctx.stores, revision_table=ctx.stores.fact_revision_table(con),
+        revision_log=ctx.stores, revision_table=ctx.stores.fact_revision_table(con),
         privacy_table=ctx.stores.fact_privacy_table(con), rules_reader=ctx.stores)
     done = revision_apply_service.apply_fact_revisions(
         deps, os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME),

@@ -151,7 +151,7 @@ class FakeLinkTable:
 
 
 def revision_deps(w):
-    return revision_apply_service.RevisionApplyDeps(log=FakeLog(w), revision_table=FakeRevisionTable(w),
+    return revision_apply_service.RevisionApplyDeps(revision_log=FakeLog(w), revision_table=FakeRevisionTable(w),
                                                     privacy_table=FakePrivacyTable(w), rules_reader=FakeRules(w))
 
 
