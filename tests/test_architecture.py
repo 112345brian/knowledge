@@ -67,7 +67,9 @@ def test_git_only_runs_inside_private_git():
 
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state"}  # the innermost ring: imports nothing else
-CLIENT_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules"}  # pure, but one person's domain: plugins on the outside
+PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
+                  "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
+BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
 
@@ -118,7 +120,7 @@ def test_configs_agree_on_what_a_library_is(enable):
     t, p = _read(TACH_TOML), _read(PYPROJECT)
     if enable:
         t, p = ac.enable_planned(t), ac.enable_planned(p)
-    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS or n in CLIENT_RULES}
+    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS or n in PIPELINE_RULES or n in BUILD_TOOLING}
     c = _il_contracts(p)
     up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]}
     assert up == tach_libs
@@ -640,14 +642,14 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     contracts = _il_contracts(_read(PYPROJECT))
     domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
-    assert {n for n, r in roles.items() if r in ("model", "domain service", "client source rules")} == domain
-    assert {n for n, r in roles.items() if r == "client source rules"} == CLIENT_RULES
+    assert {n for n, r in roles.items() if r in ("model", "domain service", "pipeline rules")} == domain
+    assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r == "application service"} == services
     assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
-    allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "client source rules",
+    allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",
                "driving adapter", "ETL adapter (driving, batch)"}
     assert set(roles.values()) <= allowed
 
@@ -662,7 +664,7 @@ def test_tach_layers_are_the_onion():
         "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
     expected = {"model": "model", "domain service": "domain_services", "application service": "application",
                 "infrastructure": "infrastructure", "composition root": "composition",
-                "ETL adapter (driving, batch)": "pipeline", "client source rules": "pipeline",
+                "ETL adapter (driving, batch)": "pipeline", "pipeline rules": "pipeline",
                 "composition helper": "composition"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():

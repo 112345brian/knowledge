@@ -13,7 +13,7 @@ scripts are the driving adapters on the outside. Each application service declar
 shared optional bundle); `wiring.py` holds `bind`; the protocol conformance checks are test support (`tests/port_conformance.py`).
 The knowledge is personal, so the domain core is only what every knowledge base needs (facts, trust, privacy, revisions,
 sources). Concerts, music ratings or measurements are not domain concepts here: they are optional client sources
-(`client/`) on the outside, and their pure rule modules are marked `client source rules`.
+(`client/`) on the outside, and their pure rule modules are marked `pipeline rules`, like the rule modules only the build pipeline uses.
 The boundaries are enforced mechanically (`tach.toml`, the import-linter contracts in `pyproject.toml`, and
 `tests/test_architecture.py` / `tests/test_ports.py`), and `tests/test_pipeline_golden.py` pins what the ingest
 pipeline produces. `tach.toml` carries the same rings as its `layers`: `serving`, `cli`, `pipeline` (the driving
@@ -102,15 +102,15 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
 | `add_fact_service` | application service | add one fact |
 | `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
-| `artist_rules` | client source rules | artist aliases |
+| `artist_rules` | pipeline rules | artist aliases |
 | `backfill_dates` | ETL adapter (driving, batch) |  |
 | `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
-| `backfill_rules` | domain service | key insertion into JSON text |
+| `backfill_rules` | pipeline rules | key insertion into JSON text |
 | `backfill_snapshot_date` | ETL adapter (driving, batch) | one-time: writes measurements_snapshot.json (measurements source) |
 | `backfill_source_keys` | ETL adapter (driving, batch) |  |
 | `build` | ETL adapter (driving, batch) | runs the steps, swaps the db |
 | `build_info_store` | infrastructure | which inputs and code produced the db |
-| `build_rules` | domain service | step order, backups |
+| `build_rules` | pipeline rules | step order, backups |
 | `claims_audit` | domain service | staleness rules |
 | `claims_store` | infrastructure | claims audit SQL + clock |
 | `clean_concerts_csv` | ETL adapter (driving, batch) |  |
@@ -135,7 +135,7 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `entities_store` | infrastructure | entities.json: validation, linking, edits |
 | `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) |  |
-| `fact_ingest_rules` | domain service | fact-file ingest rules |
+| `fact_ingest_rules` | pipeline rules | fact-file ingest rules |
 | `fact_defaults_port` | domain service | interface for configured fact and database paths |
 | `facts_file_port` | domain service | interface for the persisted fact file and its lookups |
 | `fact_queries` | infrastructure | CLI read-only SQL |
@@ -149,15 +149,15 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `ids_port` | domain service | interface for creating source identifiers |
 | `inbox` | driving adapter | HTTP review page |
 | `knowledge` | driving adapter | Typer app |
-| `leak_rules` | domain service | marker matching |
-| `leak_scan_store` | infrastructure | scans normal DB files and derives private markers |
-| `leak_test` | infrastructure | runs the scanner and fixture self-test (also a script) |
+| `leak_rules` | pipeline rules | marker matching |
+| `leak_scan_store` | ETL adapter (driving, batch) | scans normal DB files and derives private markers |
+| `leak_test` | ETL adapter (driving, batch) | runs the scanner and fixture self-test (also a script) |
 | `lifecycle` | composition root | binds lifecycle_service |
 | `lifecycle_rules` | domain service | supersede/retract/visibility/edit decisions |
 | `lifecycle_service` | application service | supersede / retract / set-visibility / edit |
 | `lifecycle_store` | infrastructure | rules + subject tree for the floor |
 | `lifecycle_reads_port` | domain service | interface for inputs used by lifecycle decisions |
-| `measurement_rules` | client source rules | vault rows to measurements |
+| `measurement_rules` | pipeline rules | vault rows to measurements |
 | `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | infrastructure | inter-process file lock for the data-file writers |
 | `migrate_memory` | composition root | binds migrate_memory_service |
@@ -168,10 +168,10 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
 | `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
-| `music_ingest_rules` | client source rules | concerts / RYM / Last.fm rules |
+| `music_ingest_rules` | pipeline rules | concerts / RYM / Last.fm rules |
 | `new_fact` | domain service | NewFact + validation + build_entry |
-| `normal_db` | infrastructure | SQL copy + file swap (also a script) |
-| `normal_rules` | domain service | normal-tier whitelist |
+| `normal_db` | ETL adapter (driving, batch) | SQL copy + file swap (also a script) |
+| `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
 | `wiring` | composition helper | `bind`: publishes a service function with its dependencies bound |
 | `privacy` | domain service | visibility rules + resolver |
@@ -193,7 +193,7 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `rules_edit_service` | application service | edit privacy rules |
 | `script_runner` | infrastructure | starts the standalone scripts |
 | `snapshot_date` | ETL adapter (driving, batch) |  |
-| `source_ingest_rules` | domain service | citation notes |
+| `source_ingest_rules` | pipeline rules | citation notes |
 | `source_status` | model | source status, relation checks, replacement chains |
 | `source_status_store` | infrastructure | the fact-to-source audit SQL |
 | `subjects` | composition root | binds subject use cases to file and query adapters |
