@@ -1,0 +1,74 @@
+# Onion migration: integration handoff
+
+**Goal.** Finish the onion migration of this repo: steps stop holding SQL, DB handles or dynamic loading, and
+services own decisions behind typed ports. The flat layout stays. The package-reorganization branch
+(`codex/clean-readme-private-data`) stays out.
+
+## Where it stands
+
+Branch `claude/onion-integration` is base `claude/pure-onion-architecture` (PR #57) plus the twelve lane PRs merged
+locally in dependency order, with every conflict resolved. It is green: pytest 2304 passed and 1 skipped (hermetic,
+no private checkout), `tach check` clean, 10 of 10 import-linter contracts kept, mypy clean.
+
+| Lane | PR | In this branch |
+|---|---|---|
+| Foundation contracts | #66 | yes |
+| Exports and maintenance | #68 | yes |
+| Core editing | #61 | yes |
+| Claims | #60 | yes |
+| Sources and relations | #62 | yes |
+| Subject hierarchy | #58 | yes |
+| Facts ingestion | #67 | yes |
+| Revisions, privacy, entity linking | #64 | yes |
+| Measurements and fact links | #70 | yes |
+| Music ingestion | #59 | yes |
+| Normal database and leak checks | #69 | yes |
+| Build and provenance | #63 | yes |
+| Architecture and acceptance gates | #65 | **no** |
+
+The lane PRs themselves are unchanged and still open against `claude/pure-onion-architecture`; this branch is the
+integrated result, not a replacement for reviewing them.
+
+## What integrating changed beyond conflict resolution
+
+- `subject_hierarchy_service.subject_for_fact` has an explicit `resolve_aliases` flag. Fact files never resolved
+  aliases; general facts do. #58 had made it always resolve.
+- The facts service reaches subject and vault-file identity through `fact_ingest_port.Identity`, answered by
+  `fact_ingest.BuildIdentity` over `subject_hierarchy_service` and `source_ingest_service`. Use cases may not import
+  each other, so the composition root delegates.
+- Skip warnings in the facts ingest are emitted as found (`warn=print`), so a failing build keeps them.
+- `StepResult` is `build_steps_port`'s only; the music lane's own copy is gone.
+- The per-run artist cache is `artist_directory.ArtistDirectory`, shared by `identity_service` and
+  `music_ingest_service`. The identity legacy-definition pin in `tests/test_identity_service.py` is empty.
+- `measurements_service.link_facts` is now `link_fact_measurements` (the entity-link guard in #64 scans by name).
+- `container.build_use_case(outputs, files=...)` runs the registry and session factory over the given `files`, so
+  the foundation's step tracer sees every step. `normal_db` re-exports `remove_db_files` for `build.py`.
+
+## Open items
+
+1. **Parallel ports (the main one).** No lane adopted the foundation's `build_repositories_port`. Sources, subjects,
+   facts, music, normal-db and build each defined their own port, so two contracts exist for the same aggregates.
+   Target: the foundation's contract (it has the unit of work, the id-allocation ordering contract the golden dump
+   depends on, fakes and characterization tests). Keep narrowness by having each service declare a small Protocol of
+   only the methods it calls. Do it one aggregate at a time with `tests/golden/pipeline_dump.json` as the check.
+   Some lane ports also put decisions in adapters (conflict detection in `add_source`, alias rules in a get-or-create);
+   those move to the service.
+2. **#65 (gates) is not merged.** Its premise is "no exemptions"; merge it last and expect it to flag what the port
+   collapse removes. Report, don't loosen.
+3. **`canonical_artist_name` / `artist_key` live in `identity_rules`.** They are music-source logic (HTML
+   unescape, `artist_rules.json` aliases); consider moving them back to `client/artist_rules.py`.
+4. **`remove_db_files`** is defined in both `build_service.py` and `normal_db_service.py`.
+5. **Not run:** the acceptance commands with a real private checkout (the suite is hermetic by design).
+6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated
+   but may conflict on README and docs.
+
+## Verify
+
+```bash
+uv run pytest -q && uv run tach check && uv run python tests/arch_check.py && uv run mypy
+```
+
+## Next step
+
+Decide how this lands: one integration PR from this branch into `claude/pure-onion-architecture`, or the lane PRs
+rebased individually. Then merge #65 last and start the port collapse as separate PRs.
