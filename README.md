@@ -48,6 +48,14 @@ uv run python knowledge.py search "example terms"
 
 `build --check` builds into a throwaway file and reports counts without touching the live database.
 
+### Private data directory
+
+The build needs a private checkout containing a `local_paths.py`. It is found at
+`KNOWLEDGE_PRIVATE_DIR`, or at `../knowledge-private` next to this repository if that is unset. The
+file must define `KNOWLEDGE_DB_DIR`, `PRIVATE_DATA_DIR`, `BODYBUILDING_VAULT`, and `HEALTH_DIR`, and
+may define `CLIENT_SOURCES` (a list of optional sources to enable) plus the input paths those
+sources read. `paths.py` documents the full set.
+
 ## Usage
 
 `knowledge.py` is the single entry point. Run `uv run python knowledge.py --help` for every command
