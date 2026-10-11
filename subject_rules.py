@@ -7,7 +7,7 @@ loops, a replacement that is a real subject) and how an edit changes a list of t
 """
 import re
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -166,15 +166,26 @@ def _index(entries):
     return by_name, by_alias
 
 
+def identify(name, find_name: Callable, find_alias: Callable):
+    """(key, via): the one definition of which subject a name means, wherever the subjects live. `find_name(name)`
+    and `find_alias(name)` return the subject's key (a canonical name, a row id) or None. A subject's own name wins
+    over an alias; `via` is 'name' | 'alias' | 'unknown' and the key is None for an unknown name."""
+    key = find_name(name)
+    if key is not None:
+        return key, "name"
+    key = find_alias(name)
+    if key is not None:
+        return key, "alias"
+    return None, "unknown"
+
+
 def canonical(name, entries):
     """(canonical_name, via) with via 'name' | 'alias' | 'unknown'. An unknown name is returned unchanged
     (a brand-new subject is allowed; the privacy 'unknown subject' rule decides what that means)."""
     by_name, by_alias = _index(entries or [])
-    if name in by_name:
-        return name, "name"
-    if name in by_alias:
-        return by_alias[name]["name"], "alias"
-    return name, "unknown"
+    key, via = identify(name, lambda n: n if n in by_name else None,
+                        lambda a: by_alias[a]["name"] if a in by_alias else None)
+    return (name if key is None else key), via
 
 
 def check_new_fact(name, entries):
@@ -258,3 +269,57 @@ def deprecate(entries, subject, replaced_by=None, known=(), domain=None):
     entry["deprecated"], entry["replaced_by"] = True, replaced_by
     parse(to_json(new), source="the edited subjects")  # surfaces a cycle before anything is written
     return new, True
+
+
+# ------------------------------------------------------------------ the hierarchy decisions (what the build step loads)
+
+
+class AliasRefused(ValueError):
+    """An alias claim the store (or `refuse_alias`) will not take. `reason` is the short cause."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class SubjectPlan:
+    """What one subjects.json entry says to store: where the subject sits, what it means, and the claims on it.
+    `domain` is already defaulted (used only when the subject does not exist yet); `relation` is the schema value
+    (the default when there is no parent)."""
+    name: str
+    domain: str
+    parent: Optional[str]
+    relation: str
+    description: Optional[str]
+    deprecated: bool
+    replaced_by: Optional[str]
+    aliases: Tuple[str, ...]
+
+
+def plan_hierarchy(entries) -> Tuple[SubjectPlan, ...]:
+    """One SubjectPlan per entry, in file order. A pure decision: the defaults for domain and relation, nothing about
+    which subjects already exist (a stored subject keeps its domain; the store decides that)."""
+    return tuple(
+        SubjectPlan(e["name"], e["domain"] or DEFAULT_DOMAIN, e["parent"],
+                    (e["relation"] or DEFAULT_RELATION) if e["parent"] else DEFAULT_RELATION,
+                    e["description"], bool(e["deprecated"]), e["replaced_by"], tuple(e["aliases"]))
+        for e in entries)
+
+
+def refuse_alias(alias, subject_names, claimed: Dict[str, str]) -> Optional[str]:
+    """The reason `alias` cannot be claimed, or None. `subject_names` holds every stored subject name; `claimed`
+    maps the aliases already stored to their subject. (The database triggers say the same; this is the decision.)"""
+    if alias in subject_names:
+        return "alias collides with a subject name"
+    if alias in claimed:
+        return f"alias already belongs to {claimed[alias]!r}"
+    return None
+
+
+@dataclass(frozen=True)
+class HierarchyTally:
+    """What the stored hierarchy holds now (the whole table, not only what one load added)."""
+    with_parent: int
+    aliases: int
+    deprecated: int

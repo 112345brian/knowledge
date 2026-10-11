@@ -17,6 +17,7 @@ from privacy_rules_port import Rules
 from revisions_port import Revisions
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
+from subject_repository_port import SubjectRepository
 import add_fact_store
 import clock
 import entities_store
@@ -30,6 +31,8 @@ import privacy_store
 import private_git
 import review_store
 import revisions_store
+import sqlite3
+import subject_repository_store
 import subjects_store
 
 git: PrivateGit = private_git
@@ -46,3 +49,4 @@ entity_migration: EntityMigration = entity_migration_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
 music_export: MusicExportReads = music_export_store.open_reads("")
+subjects_repository: SubjectRepository = subject_repository_store.SqliteSubjects(sqlite3.connect(":memory:"))

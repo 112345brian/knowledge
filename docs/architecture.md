@@ -218,7 +218,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `paths` | infrastructure | personal paths |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
 | `source_record` | model | a source as one validated value before it has a database id (pure) |
-| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits; `subjects_service` calls these directly |
+| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits, the hierarchy plan, name/alias identity; `subjects_service` calls these directly |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
 | `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
@@ -256,6 +256,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `subjects_service` | application service | subject command operations |
 | `subjects_store` | infrastructure | subjects.json: hierarchy as data, aliases, edits |
 | `subject_files_port` | domain service | I/O only: read the subjects file, save it atomically, the locked `edit_file` git flow |
+| `subject_repository_port` | domain service | interface for the stored subjects: lookups, creation, placement, alias claims |
+| `subject_repository_store` | infrastructure | the stored subjects of a build database (implements subject_repository_port) |
+| `subject_hierarchy_service` | application service | loads the subject hierarchy and resolves the subject a fact is filed under |
 | `textmatch` | model | whole-word term matching |
 | `timestamps` | model | revision-time parsing |
 | `validtime` | model | valid-time dates: parsing, ordering, containment |
