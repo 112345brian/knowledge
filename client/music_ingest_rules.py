@@ -4,12 +4,20 @@ How a concerts CSV row is split into venue / festival / billing, how an RYM expo
 how Last.fm pages flatten into scrobbles, and how the concerts CSV is de-duplicated. The scripts read the
 files and write the rows; they call these.
 """
+import csv
 import datetime
 import html
 import re
 
 FESTIVAL_NOTE_RE = re.compile(r"festival", re.IGNORECASE)
 OPENER_RE = re.compile(r"open(?:ed|ing)?\s+for\s+(.+?)(?:;|$)", re.IGNORECASE)
+
+
+def csv_rows(text):
+    """The rows of CSV `text` (already decoded) as dicts keyed by the header, as `csv.DictReader` over a file.
+    Lines are split on "\\n" only and keep their ending, so a quoted field may span lines exactly as it does in a
+    file opened with newline="" (no `io` here: the caller reads the text through an Inputs port)."""
+    return csv.DictReader(re.findall(r"[^\n]*\n|[^\n]+", text))
 
 
 def parse_location(location):
