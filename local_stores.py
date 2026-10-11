@@ -2,6 +2,7 @@
 import entities_store
 import privacy_store
 import revisions_store
+import subject_repository_store
 import subjects_store
 
 
@@ -23,6 +24,10 @@ def link_entities(con, entities):
 
 def read_subjects(path):
     return subjects_store.read_file(path)
+
+
+def subject_repository(con):
+    return subject_repository_store.SqliteSubjects(con)
 
 
 def apply_revisions(con, path):

@@ -14,6 +14,7 @@ import fixity_rules
 from ingest.shared import get_or_create_vault_file, load_hints
 import revisions
 import privacy
+import subject_hierarchy_service
 
 
 def load_items(ctx):
@@ -30,25 +31,13 @@ def load_items(ctx):
     return items
 
 
-def get_or_create_subject(cur, name, cache):
-    if name in cache:
-        return cache[name]
-    row = cur.execute("SELECT id FROM subjects WHERE name = ?", (name,)).fetchone()
-    if row:
-        sid = row[0]
-    else:
-        cur.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
-        sid = cur.lastrowid
-    cache[name] = sid
-    return sid
-
-
 def run(con, ctx):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
     rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     hints = load_hints(ctx.inputs, ctx.locations.private_data_dir)   # the author's vault hints (fact_hints.json), or none
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
+    subjects = subject_hierarchy_service.HierarchyDeps(subjects=ctx.stores.subject_repository(con))
     subject_cache = {}
 
     items = load_items(ctx)
@@ -69,7 +58,7 @@ def run(con, ctx):
             raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
         derived += 0 if item.get("source_key") else 1
 
-        subject_id = get_or_create_subject(cur, subj, subject_cache)
+        subject_id = subject_hierarchy_service.subject_for_fact(subjects, subj, None, subject_cache)
 
         origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), ctx.locations.notes_vault, hints)
         origin_file_id = get_or_create_vault_file(cur, origin_path, ctx.inputs)

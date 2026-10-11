@@ -17,21 +17,7 @@ from ingest import fact_ingest_rules
 import fixity_rules
 import privacy
 import revisions
-
-
-def get_or_create_subject(cur, name, domain, cache):
-    if name in cache:
-        return cache[name]
-    row = cur.execute("SELECT id FROM subjects WHERE name = ?", (name,)).fetchone()
-    if row is None:  # #43: an entry filed under an alias belongs to the canonical subject
-        row = cur.execute("SELECT subject_id FROM subject_aliases WHERE alias = ?", (name,)).fetchone()
-    if row:
-        sid = row[0]
-    else:
-        cur.execute("INSERT INTO subjects (name, domain) VALUES (?, ?)", (name, domain))
-        sid = cur.lastrowid
-    cache[name] = sid
-    return sid
+import subject_hierarchy_service
 
 
 def run(con, ctx):
@@ -39,6 +25,7 @@ def run(con, ctx):
     rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
+    subjects = subject_hierarchy_service.HierarchyDeps(subjects=ctx.stores.subject_repository(con))
     subject_cache = {}
 
     items = ctx.inputs.read_json(os.path.join(ctx.locations.private_data_dir, "general_facts.json"))
@@ -59,7 +46,7 @@ def run(con, ctx):
             raise ValueError(f"duplicate source_key {key!r} (fact {stmt[:60]!r})")
         derived += 0 if item.get("source_key") else 1
 
-        subject_id = get_or_create_subject(cur, subj, item.get("domain") or "general", subject_cache)
+        subject_id = subject_hierarchy_service.subject_for_fact(subjects, subj, item.get("domain") or "general", subject_cache)
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = 1 if item.get("is_personal", True) else 0
 
