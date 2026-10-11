@@ -275,6 +275,8 @@ def edit_fact(deps, ref, reason, statement=None, trust_level=None, trust_rationa
     if not changes:
         return _fail(ref, "nothing to edit: give at least one field")
 
+    floor_notes = []
+
     def adjust(key, current, ch):
         # Any edit to text the keyword rules scan (statement, notes, rationales) re-runs them on the
         # fact as it will stand, so adding a listed name in `notes` raises visibility like a new statement.
@@ -284,9 +286,8 @@ def edit_fact(deps, ref, reason, statement=None, trust_level=None, trust_rationa
         rules = deps.reviews.rules_with_db_context(data_dir, db)
         ch, note = lifecycle_rules.privacy_floor_note(current, ch, subject, rules)
         if note:
-            adjust.notes.append(note)
+            floor_notes.append(note)
         return ch, None
-    adjust.notes = []
     out = _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow_dirty, db, expect_status, "edit", adjust)
-    out.notes.extend(adjust.notes)
+    out.notes.extend(floor_notes)
     return out

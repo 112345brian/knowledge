@@ -105,7 +105,7 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
         return result
 
     requested_default = _default_requested(session)
-    facts = []  # NewFact | None, parallel to items
+    facts: list = []  # NewFact | None, parallel to items
     for index, raw in enumerate(items):
         fields, errors = _parse_item(raw)
         item = ItemResult(index=index, outcome="invalid")

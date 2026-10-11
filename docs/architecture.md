@@ -92,6 +92,54 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 (`Relation`), `entity_rules` an entity (`Entity`) and `subject_rules` a subject (`Subject`) with the parsing,
 validation, matching and pure edits their files and lists are subject to.
 
+## Migration status
+
+Every subsystem is on the onion. Nothing is exempt: `tests/test_architecture.py` runs each rule below for every
+module, and the gate holds no list of modules still allowed to hold a connection, do raw I/O or load code by path
+(`test_no_migration_exemption_remains_in_the_gate`). A lane that cannot meet a rule fails the gate; it is not added
+to a list.
+
+| Subsystem | Application service | Ports | Adapters | Composition root | Verified by |
+| --- | --- | --- | --- | --- | --- |
+| Review of pending facts | `review_service` | `review_reads_port`, `revisions_port`, `privacy_rules_port`, `private_git_port`, `clock_port` | `review_store`, `revisions_store`, `privacy_store`, `private_git`, `clock` | `review` | `wiring.verify`, `tests/port_types.py` |
+| Fact lifecycle | `lifecycle_service` | `lifecycle_reads_port`, `reviews_port`, `revisions_port`, `private_git_port`, `clock_port` | `lifecycle_store`, `review` (its bound API), `revisions_store`, `private_git`, `clock` | `lifecycle` | `wiring.verify`, `tests/port_types.py` |
+| Add one fact | `add_fact_service` | `facts_file_port`, `ids_port`, `privacy_rules_port`, `private_git_port`, `clock_port` | `add_fact_store`, `ids`, `privacy_store`, `private_git`, `clock` | `add_fact` | `wiring.verify`, `tests/port_types.py` |
+| Batch add | `facts_batch_service` | `add_fact_port`, `facts_file_port`, `private_git_port` | `add_fact` (its bound API), `add_fact_store`, `private_git` | `facts_batch` | `wiring.verify`, `tests/port_types.py` |
+| Memory migration | `migrate_memory_service` | `memory_files_port`, `add_fact_port`, `private_git_port`, `clock_port` | `migrate_memory_store`, `add_fact` (its bound API), `private_git`, `clock` | `migrate_memory` | `wiring.verify`, `tests/port_types.py` |
+| Privacy rules editing | `rules_edit_service` | `privacy_rules_port`, `private_git_port` | `privacy_store`, `private_git` | `rules_edit` | `wiring.verify`, `tests/port_types.py` |
+| Entities | `entities_service` | `entity_files_port`, `entity_migration_port`, `entity_queries_port`, `private_git_port` | `entities_store`, `entity_migration_store`, `entity_queries_store`, `private_git` | `entities` | `wiring.verify`, `tests/port_types.py` |
+| Subjects | `subjects_service` | `subject_files_port`, `entity_queries_port`, `private_git_port` | `subjects_store`, `entity_queries_store`, `private_git` | `subjects` | `wiring.verify`, `tests/port_types.py` |
+| Read side (search, show, history, audits) | `queries_service` | `fact_reads_port`, `clock_port` | `fact_reads_store`, `clock` | `queries` | `wiring.verify`, `tests/port_types.py` |
+| Build and clean-concerts scripts | `scripts_service` | `script_runner_port`, `clock_port` | `script_runner`, `clock` | `scripts` | `wiring.verify`, `tests/port_types.py` |
+| Database build (`build`, `normal_db`, leak scan) | none: driving adapters | `build_files_port` | `local_buildfiles` | none (entry points call `paths.load()`) | `tests/port_types.py`, `test_build_ring_adapters_conform_to_their_ports` |
+| Ingest steps (`ingest/`, `client/`) | none: driving adapters | `inputs_port`, `step_stores_port` | `local_inputs`, `local_stores` | none (handed a `StepContext`) | `tests/port_types.py`, `test_build_ring_adapters_conform_to_their_ports`, `tests/test_pipeline_golden.py` |
+| Maintenance tools (backfills, exports) | none: driving adapters | `datafiles_port`, `inputs_port` | `local_datafiles`, `local_inputs` | none | `tests/port_types.py`, `test_build_ring_adapters_conform_to_their_ports` |
+
+What the gate checks on top of the import contracts (`tests/arch_check.py`, run by `uv run python tests/arch_check.py`
+and by `tests/test_architecture.py`):
+
+* model, domain-service and application modules import no module of the infrastructure, composition, pipeline, CLI or
+  serving rings (read from `tach.toml`);
+* outside composition and infrastructure nothing imports `sqlite3`, loads code dynamically (`importlib`,
+  `__import__`, `spec_from_file_location`, `exec`/`eval`, `runpy`) or edits `sys.path`; a build step may name
+  `sqlite3.Row` and the `sqlite3` errors and runs SQL only on the connection it is handed; the model, domain,
+  application, CLI and serving rings execute no SQL at all;
+* no `*_port` protocol has an `execute`/`cursor`/`commit`/`fetch*` method or imports `sqlite3`, and only the four
+  ports of the build ring (`build_files_port`, `datafiles_port`, `inputs_port`, `step_stores_port`) take the connection
+  the build opened;
+* every port is known to `wiring.PORT_PROTOCOLS` (or is one of the four build-ring ports, whose adapters the test
+  suite checks with the same call-compatibility rule), every `*Deps` field is typed as its port, and every
+  `compose()` reaches `wiring.verify` and builds its `*Deps` nowhere else;
+* `uv run mypy` covers every `*_port`, `*_service` and composition root, and `tests/port_types.py` assigns an adapter
+  to every port (`AddFact` and `Reviews` are the bound API of a composition root, built at runtime, so `wiring.verify`
+  is their check).
+
+`tests/test_integration_pipeline.py` runs the real build on synthetic worlds: the full and normal databases for each
+supported combination of client sources, two independently configured containers in one process, twelve rebuilds under
+one frozen clock (distinct backups, the newest five kept), a failure before publication (previous databases
+byte-identical) and a failure while generating the normal database (its previous file removed, the new full database
+kept).
+
 ## Module map
 
 | Module | Role | What it is |

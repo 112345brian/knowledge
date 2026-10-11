@@ -10,30 +10,17 @@ to itself, and neither relation may form a cycle. Duplicate triples are collapse
 
 Run after 02 (which parses the notes; this reuses its parser rather than keeping a second one).
 """
-import importlib.util
-import os
-import sqlite3
-import sys
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
 import source_status
-
-
-def _load(filename):
-    spec = importlib.util.spec_from_file_location(filename, os.path.join(HERE, filename))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+from ingest import literature_sources, seed_sources
 
 
 def collect(ctx):
     """[(source citekey, relation, related citekey)] from manual_sources.json and the vault notes."""
     rels = []
-    for s in _load("seed_sources.py").load_sources(ctx):
+    for s in seed_sources.load_sources(ctx):
         for rel, key in (("replaces", "replaces"), ("is-version-of", "is_version_of")):
             rels.extend((s["citekey"], rel, t) for t in source_status.as_list(s.get(key)))
-    rels.extend(r for row in _load("literature_sources.py").parse_all(ctx) for r in row["relations"])
+    rels.extend(r for row in literature_sources.parse_all(ctx) for r in row["relations"])
     return rels
 
 

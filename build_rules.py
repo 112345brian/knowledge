@@ -100,9 +100,27 @@ def backup_name(now):
     return f"{BACKUP_PREFIX}{now:%Y%m%dT%H%M%S}"
 
 
+def _backup_order(filename):
+    """Sort key for a backup name: its timestamp, then its collision suffix as a number (`name` is the first, `name-2`
+    the second, ... `name-10` after `name-9`), so a plain string sort's mistake of putting `-10` before `-2` cannot
+    prune the newest backup."""
+    stamp, _, suffix = filename[len(BACKUP_PREFIX):].partition("-")
+    return stamp, int(suffix) if suffix.isdigit() else 1
+
+
+def next_backup_name(name, existing):
+    """The name for a new backup stamped `name`: `name` itself when no backup of that stamp exists, else `name-N` with
+    N one above the highest in use. A slot freed by pruning is never reused, so the newest backup is always the one
+    that sorts last."""
+    taken = [_backup_order(f)[1] for f in existing if f.startswith(BACKUP_PREFIX) and _backup_order(f)[0] == _backup_order(name)[0]]
+    if not taken:
+        return name
+    return f"{name}-{max(taken) + 1}"
+
+
 def backups_to_prune(names, keep=KEEP_BACKUPS):
     """Of the backup file names `names`, the ones to delete so only the `keep` most recent remain --
     scrobbles pushed a routine backup from a few hundred KB to 20-45MB, so leaving these unpruned turns every
     rebuild into unbounded disk growth."""
-    backups = sorted((f for f in names if f.startswith(BACKUP_PREFIX)), reverse=True)
+    backups = sorted((f for f in names if f.startswith(BACKUP_PREFIX)), key=_backup_order, reverse=True)
     return backups[keep:]

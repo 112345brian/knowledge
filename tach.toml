@@ -38,9 +38,11 @@
 # numbers if you forget) and adjust depends_on to the real imports. The negative tests run with
 # every planned line enabled, so the planned layout is itself checked.
 #
-# Not expressible here: SQL in strings, importlib/__import__ loads (build.py loads the ingest steps
-# with importlib: that is the pipeline talking to itself), string-built git commands.
-# The import-linter contracts (pyproject.toml) and the regex scan tests cover part of that.
+# Not expressible here: SQL in strings, importlib/__import__ loads, database handles, string-built git
+# commands. tests/arch_check.py scans the sources for them (no module outside the composition and
+# infrastructure rings loads code dynamically or touches sqlite3; no port exposes a database call; the
+# inner rings import no adapter), and tests/test_architecture.py runs those scans with no exemptions.
+# The import-linter contracts (pyproject.toml) cover the rest.
 
 source_roots = ["."]
 exclude = ["tests", "docs", ".venv", "**/__pycache__"]
@@ -1096,6 +1098,8 @@ depends_on = [
 path = "ingest.link_source_relations"
 layer = "pipeline"
 depends_on = [
+    "ingest.literature_sources",
+    "ingest.seed_sources",
     "source_status",
 ]
 

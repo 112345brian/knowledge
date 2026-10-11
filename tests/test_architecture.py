@@ -947,3 +947,249 @@ def test_unused_allowlist_entry_is_reported_by_tach(tree):
         "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["add_fact"]["depends_on"] if d != "private_git"))
     rc, out = _check(tree, "tach")
     assert rc != 0 and "private_git" in out, out
+
+
+# --------------------------------------------------------------------- source scans (tests/arch_check.py)
+#
+# tach and import-linter judge imports. These judge what a module does, with no exemption list: a module either
+# sits in a ring that may do the thing or it does not do it.
+
+
+def test_inner_rings_import_no_concrete_adapter():
+    """Model, domain services and application services import nothing from the infrastructure, composition,
+    pipeline, CLI or serving rings (read from tach's layers, so a module added to a ring is covered)."""
+    problems = ac.scan_inner_ring_imports(REPO)
+    assert problems == [], "\n".join(problems)
+
+
+def test_handles_sql_and_dynamic_loading_stay_in_composition_and_infrastructure():
+    """sqlite3, importlib/__import__/spec_from_file_location/exec, sys.path edits and `.execute()`-style calls
+    appear only where the ring allows: composition and infrastructure may; the pipeline runs SQL on the
+    connection it is handed and may name sqlite3.Row and the sqlite3 errors, never connect or load code."""
+    problems = ac.scan_handles_and_dynamic_loading(REPO)
+    assert problems == [], "\n".join(problems)
+
+
+def test_ports_expose_no_database_calls():
+    """No `*_port` protocol has an execute/cursor/commit/fetch-style method, imports sqlite3, or (outside the
+    build ring's own ports) takes a connection or cursor parameter."""
+    problems = ac.scan_port_surface(REPO)
+    assert problems == [], "\n".join(problems)
+
+
+def test_build_ring_ports_are_exactly_the_four_that_take_the_builds_connection():
+    """The only ports allowed a connection parameter are pinned: they serve the build and its steps."""
+    assert ac.BUILD_RING_PORTS == {"build_files_port", "datafiles_port", "inputs_port", "step_stores_port"}
+    for name in ac.BUILD_RING_PORTS:
+        assert _tach_modules(_read(TACH_TOML))[name]["layer"] == "domain_services"
+    # nothing an application service, the CLI or the inbox depends on is among them
+    mods = _tach_modules(_read(TACH_TOML))
+    for name, m in mods.items():
+        if m["layer"] in ("application", "cli", "serving"):
+            assert not set(m.get("depends_on", [])) & ac.BUILD_RING_PORTS, f"{name} depends on a build-ring port"
+
+
+@pytest.mark.parametrize("module, code, scan, needle", [
+    ("privacy", "import privacy_store", "scan_inner_ring_imports", "infrastructure module 'privacy_store'"),
+    ("review_service", "def f():\n    import review", "scan_inner_ring_imports", "composition module 'review'"),
+    ("fact_rules", "import knowledge", "scan_inner_ring_imports", "cli module 'knowledge'"),
+    ("review_service", "import sqlite3", "scan_handles_and_dynamic_loading", "imports sqlite3"),
+    ("knowledge", "def f(db):\n    return db.execute('SELECT 1')", "scan_handles_and_dynamic_loading", ".execute()"),
+    ("privacy", "def f(c):\n    c.cursor()", "scan_handles_and_dynamic_loading", ".cursor()"),
+    ("inbox", "import importlib", "scan_handles_and_dynamic_loading", "dynamic loading"),
+    ("build", "import importlib.util\nspec = importlib.util.spec_from_file_location('x', 'y')",
+     "scan_handles_and_dynamic_loading", "spec_from_file_location"),
+    ("concerts", "import sys\nsys.path.insert(0, '.')", "scan_handles_and_dynamic_loading", "sys.path"),
+    ("music_ratings", "import sqlite3\nc = sqlite3.connect('x')", "scan_handles_and_dynamic_loading", "sqlite3.connect"),
+    ("cli_lifecycle", "x = __import__('os')", "scan_handles_and_dynamic_loading", "__import__"),
+    ("facts_batch_service", "exec('1')", "scan_handles_and_dynamic_loading", "exec()"),
+    ("clock_port", "class P:\n    def execute(self, sql): ...", "scan_port_surface", "execute()"),
+    ("ids_port", "class P:\n    def lookup(self, con): ...", "scan_port_surface", "database handle (con)"),
+    ("revisions_port", "import sqlite3", "scan_port_surface", "imports sqlite3"),
+])
+def test_scans_report_what_they_are_for(tree, module, code, scan, needle):
+    """Each scan can fail: an offending line in a synthetic tree (real tach.toml, empty modules) is named."""
+    _offend(tree, module, code)
+    problems = getattr(ac, scan)(str(tree))
+    assert any(needle in p and p.startswith(module + ".py") for p in problems), problems
+
+
+@pytest.mark.parametrize("module, code", [
+    ("music_ratings", "import sqlite3\ndef f(con):\n    try:\n        con.execute('x')\n    except sqlite3.IntegrityError:\n        pass"),
+    ("measurements", "import sqlite3\ndef f(con):\n    con.row_factory = sqlite3.Row"),
+    ("local_buildfiles", "import importlib.util, sqlite3\nsqlite3.connect('x')"),
+    ("paths", "import importlib.util\nimportlib.util.spec_from_file_location('x', 'y')"),
+    ("container", "import sqlite3"),
+    ("step_stores_port", "class P:\n    def write(self, con, rows): ..."),
+    ("fact_rules", "import re\nX = re.compile('a')"),
+    ("scripts_service", "def f(deps):\n    deps.runner.run_module('build')"),
+])
+def test_scans_leave_what_a_ring_may_do_alone(tree, module, code):
+    _offend(tree, module, code)
+    for scan in (ac.scan_inner_ring_imports, ac.scan_handles_and_dynamic_loading, ac.scan_port_surface):
+        assert [p for p in scan(str(tree)) if p.startswith(module + ".py")] == [], (module, scan.__name__)
+
+
+# --------------------------------------------------------------------- wiring covers every composed port
+
+
+def _port_protocols():
+    """{module: [Protocol class names]} for every `*_port` module."""
+    import ast
+    out = {}
+    for name, path in sorted(ac._source_files(REPO).items()):
+        if not name.endswith("_port"):
+            continue
+        tree = ast.parse(_read(path))
+        out[name] = [n.name for n in tree.body if isinstance(n, ast.ClassDef)
+                     and any(ast.unparse(b).split(".")[-1] == "Protocol" for b in n.bases)]
+    return out
+
+
+# Ports whose adapter is a composition root's bound API (a SimpleNamespace made at runtime), so mypy has no module
+# to assign: wiring.verify checks them against the composed API at every compose(). Everything else is also
+# assigned in tests/port_types.py.
+FACADE_PORTS = {"AddFact", "Reviews"}
+
+
+def test_every_port_protocol_is_composed_through_wiring_or_is_a_build_ring_port():
+    """A protocol that no `*Deps` can name and wiring.verify does not know is a port nothing checks."""
+    import wiring
+    build_ring = {"BuildFiles", "DataFiles", "Inputs", "StepStores"}
+    declared = {cls for classes in _port_protocols().values() for cls in classes}
+    verified = {p.__name__ for p in wiring.PORT_PROTOCOLS.values()}
+    assert declared - verified == build_ring, f"unverified ports: {sorted(declared - verified - build_ring)}"
+    assert not verified - declared, f"wiring.PORT_PROTOCOLS names a protocol no *_port module declares: {sorted(verified - declared)}"
+
+
+def test_every_deps_field_is_a_known_port_typed_as_its_protocol():
+    """Each service's `*Deps` fields are `locations` or a name in wiring.PORT_PROTOCOLS annotated with exactly that
+    protocol, so wiring.verify checks every dependency a service can be given."""
+    import dataclasses
+    import importlib
+    import wiring
+    from locations import Locations
+    seen = 0
+    for name in sorted(n for n in ac.importable_stems(REPO) if n.endswith("_service")):
+        mod = importlib.import_module(name)
+        for attr, cls in vars(mod).items():
+            if attr.endswith("Deps") and dataclasses.is_dataclass(cls) and cls.__module__ == name:
+                seen += 1
+                for f in dataclasses.fields(cls):
+                    if f.name == "locations":
+                        assert f.type in (Locations, "Locations"), (name, f.name)
+                        continue
+                    assert f.name in wiring.PORT_PROTOCOLS, f"{name}.{attr}.{f.name} is not in wiring.PORT_PROTOCOLS"
+                    assert f.type is wiring.PORT_PROTOCOLS[f.name], f"{name}.{attr}.{f.name} is typed {f.type}"
+    assert seen >= len([n for n in ac.importable_stems(REPO) if n.endswith("_service")]), "a service has no *Deps class"
+
+
+def test_every_composition_root_verifies_before_it_publishes():
+    """Every `compose()` builds its `*Deps` and returns `bind_all(...)` (which calls wiring.verify), and nothing in a
+    composition root constructs a `*Deps` outside such a function."""
+    import ast
+    roles = _architecture_roles()
+    roots = sorted(n for n, r in roles.items() if r == "composition root" and n != "container")
+    assert roots
+    for name in roots:
+        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        composes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "compose"]
+        assert len(composes) == 1, f"{name}.py needs exactly one compose()"
+        compose = composes[0]
+        calls = {ast.unparse(c.func).split(".")[-1] for c in ast.walk(compose) if isinstance(c, ast.Call)}
+        assert calls & {"bind_all", "verify"}, f"{name}.compose() never reaches wiring.verify"
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1].endswith("Deps"):
+                assert any(node is c for c in ast.walk(compose)), f"{name}.py:{node.lineno}: a Deps built outside compose()"
+
+
+def test_the_container_composes_every_root_and_returns_one_with_verified_ports():
+    """The Container hands out each composition root once through compose(): none is missing, so no root exists whose
+    ports nobody verifies."""
+    import ast
+    roles = _architecture_roles()
+    roots = {n for n, r in roles.items() if r == "composition root" and n != "container"}
+    tree = ast.parse(_read(os.path.join(REPO, "container.py")))
+    used = {ast.unparse(c.func).split(".")[0] for c in ast.walk(tree) if isinstance(c, ast.Call)
+            and ast.unparse(c.func).endswith(".compose")}
+    assert used == roots, f"container does not compose: {sorted(roots - used)}; composes a non-root: {sorted(used - roots)}"
+
+
+def test_build_ring_adapters_conform_to_their_ports(monkeypatch):
+    """The four build-ring ports are not composed through a *Deps, so run the same call-compatibility check wiring uses
+    on them (member names and parameter order), here, with the real adapters."""
+    import wiring
+    import build_files_port, datafiles_port, inputs_port, step_stores_port
+    import local_buildfiles, local_datafiles, local_inputs, local_stores
+    pairs = {"files": (build_files_port.BuildFiles, local_buildfiles), "datafiles": (datafiles_port.DataFiles, local_datafiles),
+             "inputs": (inputs_port.Inputs, local_inputs), "stores": (step_stores_port.StepStores, local_stores)}
+    for key, (proto, adapter) in pairs.items():
+        monkeypatch.setitem(wiring.PORT_PROTOCOLS, key, proto)
+        assert wiring.conformance_problems(key, adapter) == [], key
+
+
+# --------------------------------------------------------------------- mypy covers every port, service and adapter
+
+
+def test_mypy_covers_every_port_service_and_composition_root_and_assigns_each_adapter():
+    """[tool.mypy] files lists every *_port, *_service and composition root plus wiring/container, and
+    tests/port_types.py assigns an adapter to each port (the facade-shaped ports are checked at runtime by wiring)."""
+    import ast
+    files = set(tomllib.loads(_read(PYPROJECT))["tool"]["mypy"]["files"])
+    roles = _architecture_roles()
+    expected = {f"{n}.py" for n in ac.importable_stems(REPO)
+                if n.endswith(("_port", "_service")) or roles.get(n) == "composition root"}
+    expected |= {"wiring.py", "tests/port_types.py"}
+    assert expected <= files, f"mypy does not check: {sorted(expected - files)}"
+    assert all(os.path.exists(os.path.join(REPO, f)) for f in files), sorted(f for f in files if not os.path.exists(os.path.join(REPO, f)))
+    annotated = {ast.unparse(n.annotation) for n in ast.walk(ast.parse(_read(os.path.join(REPO, "tests", "port_types.py"))))
+                 if isinstance(n, ast.AnnAssign)}
+    declared = {cls for classes in _port_protocols().values() for cls in classes}
+    assert declared - annotated == FACADE_PORTS, f"ports with no static adapter assignment: {sorted(declared - annotated - FACADE_PORTS)}"
+
+
+# --------------------------------------------------------------------- the gate has no migration exemptions
+
+FORBIDDEN_LIST_NAME = re.compile(r"(EXEMPT|WAIVE|GRANDFATHER|LEGACY|NOT_YET|STILL_|MIGRAT|TEMPORARY|UNMIGRATED)", re.I)
+
+
+def test_no_migration_exemption_remains_in_the_gate():
+    """Every migration is finished, so the gate lists no module as still allowed to hold a connection, do raw I/O or
+    load code by path: no such named collection in the architecture tests or the scan helpers, no module-level
+    `*_EXEMPT*`-style name, only the documented `ignore_imports` and the one `tach-ignore`, and the scans above
+    take no module list that would excuse a module."""
+    import ast
+    for path in (os.path.join(REPO, "tests", "test_architecture.py"), os.path.join(REPO, "tests", "arch_check.py")):
+        for node in ast.parse(_read(path)).body:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+            for t in targets:
+                if isinstance(t, ast.Name):
+                    assert not FORBIDDEN_LIST_NAME.search(t.id), f"{os.path.basename(path)}:{node.lineno}: {t.id}"
+    import inspect
+    scan_params = {n: list(inspect.signature(getattr(ac, n)).parameters)
+                   for n in ("scan_inner_ring_imports", "scan_handles_and_dynamic_loading", "scan_port_surface")}
+    assert scan_params == {n: ["src_dir"] for n in scan_params}, scan_params
+    # the raw-I/O test and the other I/O tests skip exactly the infrastructure ring and nothing else
+    text = _read(os.path.join(REPO, "tests", "test_architecture.py"))
+    assert 'if layer.get(name) == "infrastructure":\n            continue' in text
+    assert "BUILD_TOOLING)" not in text.split("def test_raw_file_and_database_io_lives_only_in_adapters")[1].split("def test_maintenance")[0]
+    for module in ("build", "normal_db", "leak_test", "leak_scan_store", "local_buildfiles"):
+        assert module in ac.module_layers(REPO)
+    # build.py and the build tooling load nothing by path themselves: the one loader is the adapter's
+    for name in ("build", "normal_db", "leak_test", "leak_scan_store"):
+        assert "importlib" not in _read(os.path.join(REPO, name + ".py")), name
+
+
+def test_migration_status_table_names_real_modules_and_covers_every_service_and_port():
+    """docs/architecture.md's per-subsystem status table must not drift: every module it names exists, and every
+    application service and every port appears in it."""
+    text = _read(os.path.join(REPO, "docs", "architecture.md"))
+    section = text.split("## Migration status", 1)[1].split("\n## ", 1)[0]
+    on_disk = set(ac.top_level_stems(REPO))
+    named = {tok for row in section.splitlines() if row.startswith("| ") for tok in re.findall(r"`([a-z_]+)`", row)}
+    named = {n for n in named if n not in {"verify", "compose"}}
+    modules = {n for n in named if n.endswith(("_service", "_port", "_store")) or n in on_disk}
+    assert modules <= on_disk | {"wiring"}, f"names no module: {sorted(modules - on_disk)}"
+    for kind in ("_service", "_port"):
+        missing = {n for n in on_disk if n.endswith(kind)} - named
+        assert not missing, f"missing from the migration status table: {sorted(missing)}"

@@ -117,17 +117,18 @@ def remove_db_files(files, path):
 
 
 def claim_backup_path(files, backup_dir, name):
-    """A path in `backup_dir` named `name` that did not exist, claimed (created empty) so another build cannot take it
+    """A path in `backup_dir` for a backup stamped `name`, claimed (created empty) so another build cannot take it
     too. Two rebuilds in the same second, or under a fixed clock, get `name`, `name-2`, `name-3`...: a backup is
-    never overwritten. The suffix keeps the names sorting oldest-first, which is how backups are pruned."""
-    n = 1
+    never overwritten, and the suffix only ever goes up (a name freed by pruning is not reused), so the newest backup
+    always sorts last, which is how backups are pruned."""
     while True:
-        path = os.path.join(backup_dir, name if n == 1 else f"{name}-{n}")
+        candidate = build_rules.next_backup_name(name, files.listdir(backup_dir))
+        path = os.path.join(backup_dir, candidate)
         try:
             files.create_exclusive(path)
             return path
-        except FileExistsError:
-            n += 1
+        except FileExistsError:   # another process claimed it between the listing and the create: list again
+            continue
 
 
 def prune_backups(files, backup_dir, keep=KEEP_BACKUPS):

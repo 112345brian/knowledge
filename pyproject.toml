@@ -29,7 +29,21 @@ addopts = "-n auto"
 
 [tool.mypy]
 python_version = "3.11"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+files = [
+    "wiring.py", "container.py", "tests/port_types.py",
+    # every port (the protocols) and every application service
+    "add_fact_port.py", "build_files_port.py", "clock_port.py", "datafiles_port.py", "entity_files_port.py",
+    "entity_migration_port.py", "entity_queries_port.py", "fact_reads_port.py", "facts_file_port.py", "ids_port.py",
+    "inputs_port.py", "lifecycle_reads_port.py", "memory_files_port.py", "privacy_rules_port.py", "private_git_port.py",
+    "review_reads_port.py", "reviews_port.py", "revisions_port.py", "script_runner_port.py", "step_stores_port.py",
+    "subject_files_port.py",
+    "add_fact_service.py", "entities_service.py", "facts_batch_service.py", "lifecycle_service.py",
+    "migrate_memory_service.py", "queries_service.py", "review_service.py", "rules_edit_service.py",
+    "scripts_service.py", "subjects_service.py",
+    # the composition roots
+    "add_fact.py", "entities.py", "facts_batch.py", "lifecycle.py", "migrate_memory.py", "queries.py", "review.py",
+    "rules_edit.py", "scripts.py", "subjects.py",
+]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true

@@ -199,6 +199,130 @@ def scan_git_usage(src_dir, allowed=("private_git",)):
     return sorted(set(problems))
 
 
+# ------------------------------------------------------------------ layer-aware source scans
+# tach.toml gives every module its ring; these scans read the sources and enforce what neither tach nor
+# import-linter can see: what a module *does* (calls, attributes), not only what it imports.
+INNER_LAYERS = ("model", "domain_services", "application")
+WIRING_LAYERS = ("composition", "infrastructure")          # the only rings that may hold a handle or load code
+DB_HANDLE_METHODS = {"execute", "executemany", "executescript", "cursor", "commit", "rollback", "fetchone",
+                     "fetchall", "fetchmany", "backup", "iterdump", "create_function"}
+DYNAMIC_LOAD_NAMES = {"__import__", "exec", "eval"}      # builtins, as bare names
+DYNAMIC_LOAD_ATTRS = {"import_module", "spec_from_file_location", "spec_from_loader", "module_from_spec",
+                      "exec_module", "load_source", "run_path"}   # importlib / runpy, as attributes
+# The ports of the build ring: they hand a step (or the build) the connection the build opened, so they take one.
+# Every other port speaks in the domain's terms and takes no handle.
+BUILD_RING_PORTS = {"build_files_port", "datafiles_port", "inputs_port", "step_stores_port"}
+
+
+def module_layers(src_dir):
+    """{bare module name: tach layer} from tach.toml (`ingest.x` / `client.x` become `x`)."""
+    import tomllib
+    with open(os.path.join(src_dir, "tach.toml"), "rb") as f:
+        modules = tomllib.load(f)["modules"]
+    out = {}
+    for m in modules:
+        name = m["path"]
+        for package in PACKAGE_DIRS:
+            if name.startswith(package + "."):
+                name = name[len(package) + 1:]
+        out[name] = m.get("layer")
+    return out
+
+
+def _parse(path):
+    with open(path, encoding="utf-8") as f:
+        return ast.parse(f.read())
+
+
+def _imported_modules(tree):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                yield node.lineno, a.name
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            yield node.lineno, node.module
+
+
+def scan_inner_ring_imports(src_dir):
+    """Model, domain-service and application modules import no concrete adapter: not an infrastructure module, not a
+    composition root, not a driving adapter (import-linter says it for the named contracts; this reads tach's rings,
+    so a module added to a ring later is covered without editing a list). Returns 'file:line: why'."""
+    layers = module_layers(src_dir)
+    sources = _source_files(src_dir)
+    problems = []
+    for name, path in sorted(sources.items()):
+        if layers.get(name) not in INNER_LAYERS:
+            continue
+        for lineno, mod in _imported_modules(_parse(path)):
+            target = mod.split(".")[-1] if mod.split(".")[0] in PACKAGE_DIRS else mod.split(".")[0]
+            if target in layers and layers[target] not in INNER_LAYERS:
+                problems.append(f"{name}.py:{lineno}: {layers[target]} module {target!r} imported from the {layers[name]} ring")
+    return sorted(set(problems))
+
+
+def scan_handles_and_dynamic_loading(src_dir):
+    """Outside the composition and infrastructure rings: no `sqlite3` import (a pipeline step may import it to catch
+    its errors and name `sqlite3.Row`, never to connect), no dynamic module loading
+    (importlib, __import__, spec_from_file_location, exec/eval, runpy) and no `sys.path` edit. Outside those rings
+    *and* the pipeline (which runs its SQL on the connection a BuildFiles/step context hands it), no SQL is
+    executed either: no `.execute`/`.executescript`/`.cursor`/`.commit`-style call on anything. Returns 'file:line: why'."""
+    layers = module_layers(src_dir)
+    problems = []
+    for name, path in sorted(_source_files(src_dir).items()):
+        layer = layers.get(name)
+        if layer in WIRING_LAYERS:
+            continue
+        for node in ast.walk(_parse(path)):
+            where = f"{name}.py:{getattr(node, 'lineno', 0)} ({layer})"
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+                for m in mods:
+                    if m.split(".")[0] == "sqlite3" and layer != "pipeline":
+                        problems.append(f"{where}: imports sqlite3")
+                    if m.split(".")[0] in ("importlib", "runpy", "imp"):
+                        problems.append(f"{where}: imports {m} (dynamic loading belongs to an adapter)")
+                if isinstance(node, ast.ImportFrom) and node.module == "sys" and any(a.name == "path" for a in node.names):
+                    problems.append(f"{where}: imports sys.path")
+            if isinstance(node, ast.Call):
+                func = node.func
+                if (isinstance(func, ast.Name) and func.id in DYNAMIC_LOAD_NAMES) or \
+                        (isinstance(func, ast.Attribute) and func.attr in DYNAMIC_LOAD_ATTRS):
+                    problems.append(f"{where}: {ast.unparse(func)}() loads code dynamically")
+                if layer != "pipeline" and isinstance(func, ast.Attribute) and func.attr in DB_HANDLE_METHODS:
+                    problems.append(f"{where}: .{func.attr}() (SQL/handle use outside composition, infrastructure and the pipeline)")
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "sys" and node.attr == "path":
+                problems.append(f"{where}: sys.path")
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "sqlite3":
+                # a step may name sqlite3's row type and its exceptions (to catch IntegrityError); it never makes a handle
+                if not (node.attr == "Row" or node.attr.endswith("Error")):
+                    problems.append(f"{where}: sqlite3.{node.attr}")
+    return sorted(set(problems))
+
+
+def scan_port_surface(src_dir):
+    """The `*_port.py` protocols: no method named like a database call (execute, cursor, commit, fetch*...),
+    no import of sqlite3 and, except in the build ring's own ports (BUILD_RING_PORTS), no parameter that is a
+    connection or cursor. A port speaks in the domain's terms; a handle crossing it would let SQL leak back
+    inward. Returns 'file:line: why'."""
+    problems = []
+    for name, path in sorted(_source_files(src_dir).items()):
+        if not name.endswith("_port"):
+            continue
+        for node in ast.walk(_parse(path)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name in DB_HANDLE_METHODS or node.name.startswith(("execute", "fetch", "cursor")):
+                    problems.append(f"{name}.py:{node.lineno}: port method {node.name}() is a database call")
+                params = [a.arg for a in node.args.posonlyargs + node.args.args + node.args.kwonlyargs]
+                for p in params:
+                    if name not in BUILD_RING_PORTS and p in ("con", "conn", "connection", "cursor", "cur"):
+                        problems.append(f"{name}.py:{node.lineno}: {node.name}() takes a database handle ({p})")
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+                if any(m.split(".")[0] == "sqlite3" for m in mods):
+                    problems.append(f"{name}.py:{node.lineno}: a port imports sqlite3")
+    return sorted(set(problems))
+
+
 def main():
     """`uv run python tests/arch_check.py`: the same checks as tests/test_architecture.py."""
     rc1, out1 = run_tach(REPO)
@@ -208,7 +332,13 @@ def main():
     git = scan_git_usage(REPO)
     for g in git:
         print("git outside private_git:", g)
-    return 1 if (rc1 or rc2 or git) else 0
+    scans = {"inner ring imports an adapter": scan_inner_ring_imports(REPO),
+             "handle, SQL or dynamic loading outside its ring": scan_handles_and_dynamic_loading(REPO),
+             "port exposes a database call": scan_port_surface(REPO)}
+    for title, problems in scans.items():
+        for p in problems:
+            print(f"{title}: {p}")
+    return 1 if (rc1 or rc2 or git or any(scans.values())) else 0
 
 
 if __name__ == "__main__":

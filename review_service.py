@@ -91,7 +91,7 @@ def pending_view(deps, db_path, data_dir):
     """Everything a review page shows: {facts, hidden_reviewed, missing_from_snapshot, error}.
     Pending rows come from the built db; each is overlaid with the current state from the data
     files and revision log, and dropped when that says it is no longer pending. Never raises."""
-    vm = {"facts": [], "hidden_reviewed": 0, "missing_from_snapshot": 0, "error": None}
+    vm: dict = {"facts": [], "hidden_reviewed": 0, "missing_from_snapshot": 0, "error": None}
     if not deps.reads.db_exists(db_path):
         vm["error"] = f"{db_path} does not exist: run `knowledge.py build` first"
         return vm

@@ -357,3 +357,23 @@ def test_backups_are_never_overwritten_even_under_a_fixed_clock(env):
     assert names == ["knowledge.db.bak-20261003T080000", "knowledge.db.bak-20261003T080000-2"]
     assert rows(str(env.backups / names[0])) == ["a", "b"] and rows(str(env.backups / names[1])) == ["a", "second"]
     assert rows(env.live) == ["a", "third"]
+
+
+# ---- backup naming and pruning are one ordering --------------------------------
+
+def test_backup_suffixes_sort_numerically_so_the_newest_is_never_pruned():
+    import build_rules
+    stamp = "knowledge.db.bak-20261003T080000"
+    names = [stamp] + [f"{stamp}-{n}" for n in range(2, 13)]
+    assert set(build_rules.backups_to_prune(names, keep=5)) == {stamp, *(f"{stamp}-{n}" for n in range(2, 8))}
+    # a later second always outranks an earlier one's suffixes
+    assert build_rules.backups_to_prune([f"{stamp}-9", "knowledge.db.bak-20261003T080001"], keep=1) == [f"{stamp}-9"]
+
+
+def test_next_backup_name_never_reuses_a_slot_freed_by_pruning():
+    import build_rules
+    stamp = "knowledge.db.bak-20261003T080000"
+    assert build_rules.next_backup_name(stamp, []) == stamp
+    assert build_rules.next_backup_name(stamp, [stamp]) == f"{stamp}-2"
+    assert build_rules.next_backup_name(stamp, [f"{stamp}-7", f"{stamp}-8"]) == f"{stamp}-9"   # the base was pruned
+    assert build_rules.next_backup_name(stamp, ["knowledge.db.bak-20261003T080001-4", "unrelated.txt"]) == stamp
