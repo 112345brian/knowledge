@@ -241,9 +241,6 @@ IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "get_or_create
                            "add_source_identifiers", "get_or_create_vault_file", "get_or_create_publisher"}
 # Legacy definitions that still exist because their step has not moved yet. A lane deletes its entries.
 LEGACY_DEFINITIONS = {
-    ("ingest/shared.py", "get_or_create_publisher"), ("ingest/shared.py", "get_or_create_author"),
-    ("ingest/shared.py", "get_or_create_vault_file"), ("ingest/shared.py", "add_source_identifiers"),
-    ("ingest/shared.py", "link_authors"),
     ("ingest/facts.py", "get_or_create_subject"), ("ingest/seed_general_facts.py", "get_or_create_subject"),
     ("client/measurements.py", "get_or_create_subject"), ("client/measurements.py", "get_source_id"),
     ("client/music_shared.py", "load_artist_cache"), ("client/music_shared.py", "get_or_create_artist"),
