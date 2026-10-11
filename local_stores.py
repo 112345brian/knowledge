@@ -2,6 +2,7 @@
 import claims_store
 import entities_store
 import fact_ingest_store
+import fact_tables_store
 import privacy_store
 import revisions_store
 import source_repository_store
@@ -51,3 +52,13 @@ def source_repository(con):
     return source_repository_store.SqliteSourceRepository(con)
 def fact_repository():
     return fact_ingest_store
+def read_log(path, base=None):
+    return revisions_store.read_log(path, base)
+def load_rules(path):
+    return privacy_store.load_rules(path)
+def fact_revision_table(con):
+    return fact_tables_store.SqliteFactRevisionTable(con)
+def fact_privacy_table(con):
+    return fact_tables_store.SqliteFactPrivacyTable(con)
+def entity_link_table(con):
+    return fact_tables_store.SqliteEntityLinkTable(con)

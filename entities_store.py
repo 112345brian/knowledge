@@ -30,6 +30,8 @@ import stat
 import unicodedata
 import uuid
 
+import entity_link_service
+import fact_tables_store
 import private_edit_store
 from private_git_port import PrivateGit
 import textmatch
@@ -106,37 +108,12 @@ def edit_file(edit, what, message, allow_dirty=False, dry_run=False, *, path, gi
 
 # ------------------------------------------------------------------ linking (used by build step 13)
 
-_FACT_TEXT_SQL = """
-    SELECT f.id, f.statement, f.notes, f.trust_rationale, f.recheck_rationale, f.source_quote, f.applies_to,
-           (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
-            FROM fact_sources fs WHERE fs.fact_id = f.id)
-    FROM facts f ORDER BY f.id"""
-
-
 def link_facts(con, entities):
     """Insert `entities` and their aliases, then a fact_entities row per (fact, mentioned entity), into a
     built db. Returns {"entities": n, "links": n, "unprotected": [fact ids]}: the last is an invariant
     check, facts that mention a private entity but are not stored private (the privacy pass should have
-    made that impossible; the caller fails the build if the list is not empty). Does not commit."""
-    cur = con.cursor()
-    row_ids = {}
-    for e in entities:
-        cur.execute("INSERT INTO entities (entity_key, canonical_name, name_norm, type, private, external_id, notes) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (e["id"], e["canonical_name"], textmatch.normalize_term(e["canonical_name"]), e["type"],
-                     1 if e["private"] else 0, e["external_id"], e["notes"]))
-        row_ids[e["id"]] = cur.lastrowid
-        for a in e["aliases"]:
-            cur.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (?, ?, ?)",
-                        (row_ids[e["id"]], a, textmatch.normalize_term(a)))
-    private_ids = {e["id"] for e in entities if e["private"]}
-    links, unprotected = 0, []
-    for fact_id, *texts in con.execute(_FACT_TEXT_SQL).fetchall():
-        hits = match_all(texts, entities)
-        for eid in hits:
-            cur.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (?, ?)", (fact_id, row_ids[eid]))
-            links += 1
-        if private_ids & set(hits):
-            if cur.execute("SELECT visibility FROM facts WHERE id = ?", (fact_id,)).fetchone()[0] != "private":
-                unprotected.append(fact_id)
-    return {"entities": len(entities), "links": links, "unprotected": unprotected}
+    made that impossible; the caller fails the build if the list is not empty). Does not commit.
+    (The use case is entity_link_service; this binds it to SQLite. The build step calls
+    entity_link_service.link_entities, which refuses on the unprotected list.)"""
+    deps = entity_link_service.EntityLinkDeps(fact_tables_store.SqliteEntityLinkTable(con))
+    return entity_link_service.link_facts(deps, entities).as_dict()

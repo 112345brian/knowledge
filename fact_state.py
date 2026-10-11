@@ -99,3 +99,9 @@ def supersession_cycle(states: Mapping[str, Mapping], key, by):
         seen.add(x)
         x = states[x].get("superseded_by") if x in states else None
     return False
+
+
+def facts_with_private_history(visibilities: Mapping[int, str]):
+    """Ids of the facts whose every revision snapshot must be private: history is never more visible than the
+    fact itself, so a private fact's older (or newer) snapshots are raised with it."""
+    return sorted(i for i, v in visibilities.items() if v == Visibility.PRIVATE)

@@ -8,10 +8,7 @@ An absent entities.json is fine (the tables stay empty). A corrupt or invalid fi
 belongs to two entities, fails the build. As a safety net it also fails the build if any fact that mentions
 a private entity is not stored private (the privacy pass makes that impossible; this proves it per build).
 """
-import os
-import sqlite3
-import sys
-
+import entity_link_service
 
 
 def run(con, ctx):
@@ -19,10 +16,8 @@ def run(con, ctx):
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return
-    result = ctx.stores.link_entities(con, found)
-    if result["unprotected"]:
-        raise ValueError(f"facts {result['unprotected'][:10]} mention a private entity but are not stored private; "
-                         "refusing to build (the privacy pass should have raised them)")
+    deps = entity_link_service.EntityLinkDeps(ctx.stores.entity_link_table(con))
+    result = entity_link_service.link_entities(deps, found)   # refuses a private mention that is not stored private
     con.commit()
     private = sum(1 for e in found if e["private"])
-    print(f"[link_entities] {result['entities']} entities ({private} private), {result['links']} fact links")
+    print(f"[link_entities] {result.entities} entities ({private} private), {result.links} fact links")

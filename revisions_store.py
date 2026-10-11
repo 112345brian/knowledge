@@ -17,6 +17,8 @@ import sqlite3
 import stat
 import uuid
 
+import fact_tables_store
+import revision_apply_service
 import revisions
 import locks
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
@@ -42,14 +44,8 @@ def load_entries(data_dir):
     return revisions.collect_entries(files)
 
 
-INSERT_REVISION_SQL = (
-    "INSERT INTO fact_revisions (fact_id, " + ", ".join(REVISION_KEYS) + ") VALUES (?, "
-    + ", ".join("?" for _ in REVISION_KEYS) + ")"
-)
-
-
 def insert_revision_row(cur, fact_id, rev):
-    cur.execute(INSERT_REVISION_SQL, (fact_id, *[rev[k] for k in REVISION_KEYS]))
+    fact_tables_store.insert_revision(cur, fact_id, rev)
 
 
 def entry_base(entries):
@@ -136,34 +132,19 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
 
 
 def apply_revisions(con, revisions_path):
-    """Used by apply_fact_revisions.py. Validates the log against the facts and revision-1
-    rows already in `con`, inserts revisions >= 2 and writes each touched fact's latest
-    revision into `facts`. Raises RevisionError (naming path:line) on any violation.
-    Returns the number of revisions applied."""
-    cur = con.cursor()
-    fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
-    first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
-    first_fresh = {k: v for k, v in cur.execute("SELECT source_key, freshness FROM fact_revisions WHERE revision = 1")}
-    base = {k: dict(zip(revisions.LEGACY_INHERITED, vals)) for k, *vals in cur.execute(
-        "SELECT source_key, " + ", ".join(revisions.LEGACY_INHERITED) + " FROM fact_revisions WHERE revision = 1")}
-    records = read_log(revisions_path, base)
-    revisions.validate_sequence(revisions_path, records, first, set(fact_ids), first_fresh)
-    latest = {}
-    for _, rec in records:
-        insert_revision_row(cur, fact_ids[rec["source_key"]], rec)
-        latest[rec["source_key"]] = rec
-    for key, rec in latest.items():
-        sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
-        cur.execute(
-            """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
-                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, freshness = ?, notes = ?,
-                                kind = ?, valid_from = ?, valid_to = ?, applies_to = ?
-               WHERE id = ?""",
-            (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
-             rec["recheck_by"], rec["recheck_rationale"], rec["freshness"], rec["notes"],
-             rec["kind"], rec["valid_from"], rec["valid_to"], rec["applies_to"], fact_ids[key]))
-    con.commit()
-    return len(records)
+    """Validates the log against the facts and revision-1 rows already in `con`, inserts revisions >= 2 and
+    writes each touched fact's latest revision into `facts` (the use case is
+    revision_apply_service.apply_revision_log; this binds it to SQLite and the log file). Raises
+    RevisionError (naming path:line) on any violation. Commits. Returns the number of revisions applied."""
+    deps = revision_apply_service.RevisionLogDeps(revision_log=_LogFile(), revision_table=fact_tables_store.SqliteFactRevisionTable(con))
+    return revision_apply_service.apply_revision_log(deps, revisions_path)
+
+
+class _LogFile:
+    """The log-reading port, over `read_log` (a file)."""
+
+    def read_log(self, path, base=None):
+        return read_log(path, base)
 
 
 @contextlib.contextmanager

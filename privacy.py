@@ -188,6 +188,12 @@ def subject_chain(subject, rules):
     return chain, False
 
 
+def subject_is_private(subject, rules):
+    """Whether `subject` is private by its own tag or an ancestor's. A cyclic chain fails closed (private)."""
+    chain, cyclic = subject_chain(subject, rules)
+    return cyclic or any(rules.subject_tags.get(n) == "private" for n in chain)
+
+
 def resolve_visibility(subject, statement, requested, rules, extra_text=None) -> Resolution:
     """Pure. The stored visibility and which rules raised it. `requested` must be 'private' or
     'normal' (anything else is a ValueError: a caller bug must not be guessed at). The result is

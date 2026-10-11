@@ -21,7 +21,10 @@ from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
+from entity_link_table_port import EntityLinkTable
 from entity_queries_port import EntityQueries
+from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
+from fact_revision_table_port import FactRevisionTable, RevisionLogReader
 from fact_reads_port import FactReads
 from fact_ingest_port import FactRepository, Identity, PrivacyFloor
 from facts_file_port import FactsFile
@@ -72,6 +75,8 @@ PORT_PROTOCOLS = {
     "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
     "facts": FactRepository, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
     "datafiles": DataFiles, "music_export": MusicExportReads,
+    "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
+    "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
 }
 
 

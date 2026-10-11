@@ -19,6 +19,12 @@ from revisions_port import Revisions
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
 from subject_repository_port import SubjectRepository
+from entity_link_table_port import EntityLinkTable
+from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
+from fact_revision_table_port import FactRevisionTable, RevisionLogReader
+import fact_tables_store
+import local_stores
+import sqlite3
 import add_fact_store
 import clock
 import entities_store
@@ -55,3 +61,11 @@ music_export: MusicExportReads = music_export_store.open_reads("")
 subjects_repository: SubjectRepository = subject_repository_store.SqliteSubjects(sqlite3.connect(":memory:"))
 facts: FactRepository = fact_ingest_store
 privacy_floor: PrivacyFloor = local_stores
+revision_log: RevisionLogReader = local_stores
+rules_reader: PrivacyRulesReader = local_stores
+
+
+def _sqlite_tables(con: sqlite3.Connection) -> None:
+    revision_table: FactRevisionTable = fact_tables_store.SqliteFactRevisionTable(con)
+    privacy_table: FactPrivacyTable = fact_tables_store.SqliteFactPrivacyTable(con)
+    link_table: EntityLinkTable = fact_tables_store.SqliteEntityLinkTable(con)
