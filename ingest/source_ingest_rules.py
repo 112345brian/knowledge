@@ -142,4 +142,9 @@ def split_authors(author_string):
 
 def format_origin_path(origin_path, vault, health):
     """Substitute the {VAULT} and {HEALTH} placeholders of a manual source's origin_path."""
-    return origin_path.format(VAULT=vault, HEALTH=health) if origin_path else origin_path
+    if not origin_path:
+        return origin_path
+    for placeholder, value, setting in (("{VAULT}", vault, "NOTES_VAULT"), ("{HEALTH}", health, "HEALTH_DIR")):
+        if placeholder in origin_path and not value:
+            raise ValueError(f"origin_path {origin_path!r} uses {placeholder}, but {setting} is not set in local_paths.py")
+    return origin_path.format(VAULT=vault, HEALTH=health)

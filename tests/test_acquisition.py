@@ -236,7 +236,7 @@ def run02(ingest, tmp_path, monkeypatch, notes, attrs=None):
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     con = ingest.db()
-    mod.run(con, locs(bodybuilding_vault=str(d.parent)))
+    mod.run(con, locs(notes_vault=str(d.parent)))
     return con
 
 

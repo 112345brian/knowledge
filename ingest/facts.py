@@ -73,7 +73,7 @@ def run(con, locations):
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
-        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), locations.bodybuilding_vault, hints)
+        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), locations.notes_vault, hints)
         origin_file_id = get_or_create_vault_file(cur, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0

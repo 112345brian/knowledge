@@ -203,7 +203,7 @@ def source_ids(con, citekey):
 
 def audit_sources(con, vault):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity_store.audit_sources(con, search_roots=[vault]), fixity_store.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[vault] if vault else []), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):

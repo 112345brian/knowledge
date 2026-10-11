@@ -51,10 +51,16 @@ uv run python knowledge.py search "example terms"
 ### Private data directory
 
 The build needs a private checkout containing a `local_paths.py`. It is found at
-`KNOWLEDGE_PRIVATE_DIR`, or at `../knowledge-private` next to this repository if that is unset. The
-file must define `KNOWLEDGE_DB_DIR`, `PRIVATE_DATA_DIR`, `BODYBUILDING_VAULT`, and `HEALTH_DIR`, and
-may define `CLIENT_SOURCES` (a list of optional sources to enable) plus the input paths those
-sources read. `paths.py` documents the full set.
+`KNOWLEDGE_PRIVATE_DIR`, or at `../knowledge-private` next to this repository if that is unset.
+
+- **Required:** `KNOWLEDGE_DB_DIR` (where the built database goes) and `PRIVATE_DATA_DIR` (where your fact
+  files and rules live).
+- **Optional:** `NOTES_VAULT`, a directory of citation notes (`BODYBUILDING_VAULT` is accepted as an older
+  name), `HEALTH_DIR`, and `CLIENT_SOURCES`, a list of optional sources to enable along with the input
+  paths those sources read.
+
+A step that needs an optional setting you left out stops with a message naming it. `paths.py` and
+`locations.py` document the full set.
 
 ## Usage
 
