@@ -20,7 +20,7 @@ class SqliteMusicRepository:
         cols = ", ".join(fields)
         placeholders = ", ".join(f":{k}" for k in fields)
         self._cur.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", fields)
-        return self._cur.lastrowid
+        return int(self._cur.lastrowid or 0)
 
     def import_source(self, path: str) -> int:
         return self._get_or_create("import_sources", path=path)
@@ -39,7 +39,7 @@ class SqliteMusicRepository:
 
     def add_artist(self, name: str) -> int:
         self._cur.execute("INSERT INTO artists (name) VALUES (?)", (name,))
-        return self._cur.lastrowid
+        return int(self._cur.lastrowid or 0)
 
     def venue(self, name: str, city_state: Optional[str]) -> int:
         return self._get_or_create("venues", name=name, city_state=city_state)
@@ -69,7 +69,7 @@ class SqliteMusicRepository:
 
     def add_track(self, artist_id: int, title: str, album: str) -> int:
         self._cur.execute("INSERT INTO tracks (artist_id, title, album) VALUES (?, ?, ?)", (artist_id, title, album))
-        return self._cur.lastrowid
+        return int(self._cur.lastrowid or 0)
 
     def add_scrobbles(self, rows: Sequence[Tuple[int, str, int]]) -> None:
         self._cur.executemany(

@@ -1,7 +1,6 @@
 """The music client steps as application services, against a fake repository and a fake Inputs: canonical artist
 identity, the per-run directory, replacement of a source's own rows, festival handling and the reported counts."""
 import json
-import os
 
 import pytest
 
@@ -14,7 +13,7 @@ CSV_HEADER = "Concert,Start Date,End Date,Location,Notes\n"
 DATA = "/data"
 LOCS = Locations(knowledge_db_dir="/db", private_data_dir=DATA, concerts_csv="/in/concerts.csv",
                  rym_export_csv="/in/rym.csv", scrobbles_json="/in/scrobbles.json")
-RULES_PATH = os.path.join(DATA, "artist_rules.json")
+RULES_PATH = f"{DATA}/artist_rules.json"
 
 
 def deps(repo, files=None, rules=None):
@@ -34,16 +33,16 @@ RYM_HEADER = " First Name,Last Name,First Name localized, Last Name localized,Ti
 
 # ---------------------------------------------------------------- rules and directory
 def test_no_rules_file_means_no_rules():
-    assert svc.load_artist_rules(FakeInputs(), DATA) == ArtistRules()
+    assert svc.load_artist_rules(FakeInputs(), LOCS) == ArtistRules()
 
 
 def test_rules_file_must_be_version_1_with_aliases_and_members():
     for bad in ({"version": 2, "aliases": {}, "members": {}}, {"version": 1, "aliases": [], "members": {}},
                 {"version": 1, "aliases": {}}, {"version": 1, "aliases": {}, "members": {}, "festivals": "x"}):
         with pytest.raises(RuntimeError, match="expected version 1 with aliases and members"):
-            svc.load_artist_rules(FakeInputs({RULES_PATH: json.dumps(bad)}), DATA)
+            svc.load_artist_rules(FakeInputs({RULES_PATH: json.dumps(bad)}), LOCS)
     with pytest.raises(RuntimeError, match="cannot read artist rules"):
-        svc.load_artist_rules(FakeInputs({RULES_PATH: "{not json"}), DATA)
+        svc.load_artist_rules(FakeInputs({RULES_PATH: "{not json"}), LOCS)
 
 
 def test_parse_artist_rules_keeps_aliases_members_and_festivals():
@@ -214,3 +213,13 @@ def test_seed_members_without_rules_inserts_nothing_but_still_commits():
     repo = FakeMusicRepository()
     assert svc.seed_artist_members(deps(repo)).counts == {"artist_members": 0}
     assert repo.commits == 1
+
+
+def test_a_step_whose_input_is_not_configured_names_the_setting():
+    bare = Locations(knowledge_db_dir="/db", private_data_dir=DATA)
+    for fn, setting in ((svc.import_concerts, "CONCERTS_CSV"), (svc.import_ratings, "RYM_EXPORT_CSV"),
+                        (svc.import_scrobbles, "SCROBBLES_JSON")):
+        repo = FakeMusicRepository()
+        with pytest.raises(ValueError, match=setting):
+            fn(svc.MusicIngestDeps(music=repo, inputs=FakeInputs(), locations=bare))
+        assert repo.sources == {} and repo.commits == 0

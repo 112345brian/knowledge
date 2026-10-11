@@ -14,7 +14,6 @@ deletes the rows it previously loaded from its own import source (and only those
 is recognized by the names in artist_rules.json's `festivals`.
 """
 import json
-import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -36,10 +35,10 @@ class MusicIngestDeps:
     locations: Locations
 
 
-def load_artist_rules(inputs: Inputs, data_dir: str) -> ArtistRules:
-    """The optional aliases, group memberships and festival names from artist_rules.json in `data_dir`; no rules
-    when the file is absent. RuntimeError naming the file when it cannot be read or is not version 1."""
-    path = os.path.join(data_dir, ARTIST_RULES_FILENAME)
+def load_artist_rules(inputs: Inputs, locations: Locations) -> ArtistRules:
+    """The optional aliases, group memberships and festival names from artist_rules.json in the private data dir;
+    no rules when the file is absent. RuntimeError naming the file when it cannot be read or is not version 1."""
+    path = locations.in_data_dir(ARTIST_RULES_FILENAME)
     if not inputs.exists(path):
         return ArtistRules()
     try:
@@ -82,15 +81,16 @@ def import_concerts(deps: MusicIngestDeps) -> StepResult:
     """Replace this CSV's concert attendances with the file's rows (new artists, venues and festivals are added,
     never removed). A row without a name or start date is skipped."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    source_id = music.import_source(locations.concerts_csv)
+    csv_path = locations.need("concerts_csv", "CONCERTS_CSV", "the concerts import")
+    source_id = music.import_source(csv_path)
     music.forget_attendances(source_id)
-    rules = load_artist_rules(inputs, locations.private_data_dir)
+    rules = load_artist_rules(inputs, locations)
     artists = ArtistDirectory.load(music, rules)
 
     inserted = 0
     unresolved_festival_names = 0
     billing_counts: Dict[str, int] = {}
-    for row in music_ingest_rules.csv_rows(inputs.read_text(locations.concerts_csv, "utf-8-sig")):
+    for row in music_ingest_rules.csv_rows(inputs.read_text(csv_path, "utf-8-sig")):
         concert = music_ingest_rules.concert_from_csv(row, rules.festivals)
         if concert is None:
             continue
@@ -121,13 +121,14 @@ def import_concerts(deps: MusicIngestDeps) -> StepResult:
 def import_ratings(deps: MusicIngestDeps) -> StepResult:
     """Replace this export's albums with the file's rows, on the artists shared with the concerts."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    source_id = music.import_source(locations.rym_export_csv)
+    csv_path = locations.need("rym_export_csv", "RYM_EXPORT_CSV", "the ratings import")
+    source_id = music.import_source(csv_path)
     music.forget_albums(source_id)
-    rules = load_artist_rules(inputs, locations.private_data_dir)
+    rules = load_artist_rules(inputs, locations)
     artists = ArtistDirectory.load(music, rules)
 
     inserted = 0
-    for row in music_ingest_rules.csv_rows(inputs.read_text(locations.rym_export_csv, "utf-8-sig")):
+    for row in music_ingest_rules.csv_rows(inputs.read_text(csv_path, "utf-8-sig")):
         album = music_ingest_rules.album_from_row(row)
         if album is None:
             continue
@@ -148,7 +149,7 @@ def import_scrobbles(deps: MusicIngestDeps) -> StepResult:
     track cache) and the plays are written in one batch. Group or collaborative credits stay one artist each;
     membership is curated separately (`seed_artist_members`)."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    path = locations.scrobbles_json
+    path = locations.need("scrobbles_json", "SCROBBLES_JSON", "the scrobbles import")
     if not inputs.exists(path):
         return StepResult("scrobbles", {}, (f"[scrobbles] {path} not found, skipping",), skipped=True)
 
@@ -156,7 +157,7 @@ def import_scrobbles(deps: MusicIngestDeps) -> StepResult:
     music.forget_scrobbles(source_id)
     scrobbles = list(music_ingest_rules.scrobbles_from_pages(inputs.read_json(path)))
 
-    rules = load_artist_rules(inputs, locations.private_data_dir)
+    rules = load_artist_rules(inputs, locations)
     artists = ArtistDirectory.load(music, rules)
     before_artists = len(artists)
     artist_ids: Dict[str, int] = {}
@@ -189,7 +190,7 @@ def seed_artist_members(deps: MusicIngestDeps) -> StepResult:
     """Record the curated group memberships of artist_rules.json as artist_members rows. Runs after the imports so
     a member already exists from their own credits; a group or member not yet known is created."""
     music = deps.music
-    rules = load_artist_rules(deps.inputs, deps.locations.private_data_dir)
+    rules = load_artist_rules(deps.inputs, deps.locations)
     artists = ArtistDirectory.load(music, rules)
     inserted = 0
     for group_name, member_names in rules.members.items():
