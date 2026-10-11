@@ -301,7 +301,7 @@ def test_backfill_default_resolver_is_the_facts_step_rule():
     """The tool used to look the resolver up on a step module and crashed when the rule moved: the default
     must be the rule the facts step applies."""
     from ingest import backfill_extracted_hashes as bf, fact_ingest_rules
-    loc = locs()
+    loc = locs().locations
     resolve = bf._resolver(loc.private_data_dir, loc.bodybuilding_vault)
     assert resolve(None) is None
     notes = "Some Note.md, extracted 2026-01-01"
@@ -386,7 +386,7 @@ def test_a_vault_file_cited_by_many_facts_is_hashed_and_read_for_attributes_once
     real_fp, real_resolve = fixity_store.fingerprint, acquisition_store.resolve
     monkeypatch.setattr(fixity_store, "fingerprint", lambda p: fingerprints.append(p) or real_fp(p))
     monkeypatch.setattr(acquisition_store, "resolve", lambda d, p, **k: attr_reads.append(p) or real_resolve(d, p, **k))
-    ids = {shared.get_or_create_vault_file(cur, note) for _ in range(5)}
+    ids = {shared.get_or_create_vault_file(cur, note, locs().inputs) for _ in range(5)}
     assert len(ids) == 1 and fingerprints == [note] and attr_reads == [note]
     row = con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()
     assert tuple(row) == (sha(b"note body"), "present")
@@ -399,5 +399,5 @@ def test_a_vault_file_row_created_without_a_fingerprint_is_still_filled_in(tmp_p
     con.executescript(open(os.path.join(REPO, "schema.sql")).read())
     cur = con.cursor()
     cur.execute("INSERT INTO vault_files (path) VALUES (?)", (note,))
-    shared.get_or_create_vault_file(cur, note)
+    shared.get_or_create_vault_file(cur, note, locs().inputs)
     assert tuple(con.execute("SELECT content_sha256, file_state FROM vault_files").fetchone()) == (sha(b"body"), "present")

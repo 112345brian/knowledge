@@ -32,7 +32,8 @@ def find_problems(data_dir):
     problems = []
     if os.path.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
-            read_snapshot_date(data_dir)
+            import local_inputs
+            read_snapshot_date(local_inputs, data_dir)
         except RuntimeError as e:
             problems.append((MEASUREMENTS_SNAPSHOT_FILE, str(e)))
     return problems

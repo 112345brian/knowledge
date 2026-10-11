@@ -23,10 +23,10 @@ import revisions
 import revisions_store
 
 
-def run(con, locations):
-    path = os.path.join(locations.private_data_dir, revisions.REVISIONS_FILENAME)
+def run(con, ctx):
+    path = os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME)
     applied = revisions_store.apply_revisions(con, path)
-    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     floor = privacy_store.apply_rules_to_db(con, rules)
     con.execute("""UPDATE fact_revisions SET visibility = 'private'
                    WHERE visibility != 'private'

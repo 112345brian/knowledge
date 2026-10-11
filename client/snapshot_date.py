@@ -7,11 +7,10 @@ from client import measurement_rules
 from client.measurement_rules import MEASUREMENTS_SNAPSHOT_FILE  # noqa: F401  (the public API)
 
 
-def read_snapshot_date(data_dir):
+def read_snapshot_date(inputs, data_dir):
     path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
     try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        text = inputs.read_text(path)
     except FileNotFoundError:
         raise RuntimeError(measurement_rules.missing_snapshot_message(path)) from None
     return measurement_rules.parse_snapshot_text(text, path)

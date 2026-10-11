@@ -13,14 +13,13 @@ import sys
 import claims_audit
 
 
-def load_claims(data_dir):
+def load_claims(inputs, data_dir):
     """Read optional claim data (claims.json) from the private data dir `data_dir`."""
     path = os.path.join(data_dir, "claims.json")
-    if not os.path.exists(path):
+    if not inputs.exists(path):
         return []
     try:
-        with open(path, encoding="utf-8") as f:
-            payload = json.load(f)
+        payload = inputs.read_json(path)
     except (OSError, json.JSONDecodeError) as e:
         raise ValueError(f"{path}: cannot read claims: {e}") from e
     if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("claims"), list):
@@ -48,8 +47,8 @@ def _premise(entry, claim_statement):
     return entry["prefix"], role, _blank_to_none(entry.get("note"), "note")
 
 
-def run(con, locations, claims=None):
-    claims = load_claims(locations.private_data_dir) if claims is None else claims
+def run(con, ctx, claims=None):
+    claims = load_claims(ctx.inputs, ctx.locations.private_data_dir) if claims is None else claims
     cur = con.cursor()
     for c in claims:
         cur.execute("INSERT INTO claims (statement, notes, inference_type, warrant, qualifier) VALUES (?, ?, ?, ?, ?)",

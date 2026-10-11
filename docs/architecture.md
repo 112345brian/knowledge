@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations, pipeline_context)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -60,21 +60,26 @@ private-file editing receives that port rather than importing the Git adapter.
 6. The model imports no other module of the repo, and a domain service never imports an application service
    (contract `model-is-innermost` and tach's `model` / `domain_services` layers).
 
-### The pipeline is the outermost ring, not a client of ports
+### The pipeline is the outermost ring
 
 `build.py` and the `ingest/` and `client/` steps are batch drivers: their whole job is to populate the database.
-They read their rules from pure modules (`*_ingest_rules`, `build_rules`, `revisions`, `privacy`, ...), write
-through the stores, and import no facade, CLI or serving module (tach enforces it). They do not go through the
-`*_port` protocols, because a port in front of "insert these rows" would only restate the SQL. What they share
-with the rest of the onion is configuration: every step and `build.py` resolve their paths from
-`paths.settings()` when they run, never at import, and a test can still set the module attribute
-(`DATA_DIR`, `VAULT`, `CSV_PATH`, ...) to a path.
+A step is `run(con, ctx)`: `con` is the database it writes through, and `ctx` is a `StepContext` (see
+`pipeline_context`) holding the `Locations` and an `Inputs` (`inputs_port`, implemented by `local_inputs`).
+A step reads files, lists directories, opens the vault's own database and fingerprints files only through
+`ctx.inputs`, and a test enforces that no step opens a file, globs, checks a path on disk or connects to sqlite
+itself. Its rules are pure modules (`*_ingest_rules`, `build_rules`, `revisions`, `privacy`, ...); the data files
+it loads for the fact tables go through the stores (`privacy_store`, `entities_store`, ...), which are
+infrastructure and so legitimately reachable from the outermost ring. Steps import no facade, CLI or serving
+module (tach enforces it). Configuration reaches them as `ctx.locations`; the entry points (`build.main`, the
+backfill and export tools) are the only code that reads it, once, with `paths.load()`, and the clock is a
+`Clock` handed to `build.main` like everything else.
 
-### What is still not typed
+### What is typed
 
-`fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types, and `fact_entry` does
-the same for a fact entry and a revision record (`FactEntry`, `Revision`); `revisions` keeps its function names as
-thin delegations. Sources (`source_status`) are still a vocabulary and functions over dicts.
+`fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types, `fact_entry` does the
+same for a fact entry and a revision record (`FactEntry`, `Revision`; `revisions` keeps its function names as thin
+delegations), and `source_status` types a source's status (`SourceStatus`, `SourceState`) and its relations
+(`Relation`).
 
 | Module | Role | What it is |
 | --- | --- | --- |
@@ -89,7 +94,10 @@ thin delegations. Sources (`source_status`) are still a vocabulary and functions
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
+| `inputs_port` | domain service | port: what a build step reads from outside the database |
+| `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
 | `locations` | model | where the data lives, as one immutable value (pure) |
+| `pipeline_context` | model | what a build step is given besides its connection (a value, no I/O) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `script_runner_port` | domain service | port for running the standalone scripts as processes |

@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
                   "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
 BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
@@ -741,6 +741,30 @@ def test_no_hidden_global_state_in_the_application():
                     offenders.append(f"{name}.py:{node.lineno}: module-level mutable {names}")
                 if any(n in ("DEPS", "PORTS") for n in names):
                     offenders.append(f"{name}.py:{node.lineno}: module-level {names} (compose() wires; nothing is built at import)")
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_build_steps_do_no_file_or_database_io_of_their_own():
+    """A step reads through `ctx.inputs` (inputs_port) and writes through the connection it is given. It opens no
+    file, globs no directory, checks no path on disk and opens no sqlite file itself; the entry-point tools
+    (backfills, the exports) are the outer ring's own scripts and are not steps."""
+    import ast
+    banned_calls = {"open", "glob.glob", "glob.iglob", "os.listdir", "os.scandir", "os.walk", "os.stat", "os.makedirs",
+                    "os.mkdir", "os.remove", "os.rename", "os.replace", "os.path.exists", "os.path.isfile",
+                    "os.path.isdir", "os.path.getsize", "os.path.getmtime", "sqlite3.connect", "shutil.copy",
+                    "shutil.move", "shutil.rmtree", "subprocess.run", "subprocess.call", "Path"}
+    steps, offenders = [], []
+    for name, tree in _all_source_trees():
+        if name in ENTRY_POINTS or name.endswith("_rules"):
+            continue
+        path = ac._source_files(REPO)[name]
+        if os.path.relpath(path, REPO).split(os.sep)[0] not in ("ingest", "client"):
+            continue
+        steps.append(name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) in banned_calls:
+                offenders.append(f"{name}.py:{node.lineno}: {ast.unparse(node.func)}()")
+    assert steps, "found no step modules"
     assert offenders == [], "\n".join(offenders)
 
 

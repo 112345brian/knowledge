@@ -18,12 +18,12 @@ import privacy
 import privacy_store
 
 
-def load_items(locations):
+def load_items(ctx):
     """All entries, each with `_is_pilot`, `_where` (file, index) and `_source_key` (its own, or the deterministic
     legacy-... key from revisions.derive_keys until backfill_source_keys.py writes one)."""
     items = []
     for name, is_pilot in [("pilot_facts.json", True)] + [(f"facts_batch{i}.json", False) for i in range(1, 5)]:
-        batch = json.load(open(os.path.join(locations.private_data_dir, name)))
+        batch = ctx.inputs.read_json(os.path.join(ctx.locations.private_data_dir, name))
         for index, (item, key) in enumerate(zip(batch, revisions.derive_keys(batch, name))):
             item["_is_pilot"] = is_pilot
             item["_source_key"] = key
@@ -45,15 +45,15 @@ def get_or_create_subject(cur, name, cache):
     return sid
 
 
-def run(con, locations):
+def run(con, ctx):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
-    hints = load_hints(locations.private_data_dir)   # the author's vault hints (fact_hints.json), or none
+    rules = privacy_store.load_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
+    hints = load_hints(ctx.inputs, ctx.locations.private_data_dir)   # the author's vault hints (fact_hints.json), or none
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
-    items = load_items(locations)
+    items = load_items(ctx)
     inserted = skipped = 0
     bad_citekeys = set()
     derived = 0
@@ -73,8 +73,8 @@ def run(con, locations):
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
-        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), locations.bodybuilding_vault, hints)
-        origin_file_id = get_or_create_vault_file(cur, origin_path)
+        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), ctx.locations.bodybuilding_vault, hints)
+        origin_file_id = get_or_create_vault_file(cur, origin_path, ctx.inputs)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric, hints)

@@ -1,3 +1,4 @@
+import io
 """Ingest the RYM ratings export (see paths.py -> RYM_EXPORT_CSV) (a RateYourMusic
 ratings export) into the `albums` table, reusing the `artists` table shared
 with the concerts domain so an artist seen live and an artist rated on RYM
@@ -22,15 +23,15 @@ from ingest.shared import get_or_create
 from client import music_ingest_rules
 
 
-def run(con, locations):
+def run(con, ctx):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", "path", locations.rym_export_csv)
+    import_source_id = get_or_create(cur, "import_sources", "path", ctx.locations.rym_export_csv)
     cur.execute("DELETE FROM albums WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
-    rules = load_artist_rules(locations.private_data_dir)
+    rules = load_artist_rules(ctx.inputs, ctx.locations.private_data_dir)
 
     inserted = 0
-    with open(locations.rym_export_csv, encoding="utf-8-sig") as f:
+    with io.StringIO(ctx.inputs.read_text(ctx.locations.rym_export_csv, "utf-8-sig")) as f:
         for row in csv.DictReader(f):
             album = music_ingest_rules.album_from_row(row)
             if album is None:

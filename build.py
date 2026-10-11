@@ -20,7 +20,9 @@ file open keeps a consistent snapshot.
 import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile, uuid
 
 import build_rules
+import local_inputs
 import private_git
+from pipeline_context import StepContext
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEEP_BACKUPS = build_rules.KEEP_BACKUPS
@@ -93,7 +95,7 @@ def build(target_path, locations, clock, sources=None):
         for step in (build_rules.steps_for(sources) if STEPS is None else STEPS):
             try:
                 mod = load_module(os.path.join(HERE, step))
-                mod.run(con, locations)
+                mod.run(con, StepContext(locations, local_inputs))
             except Exception as e:
                 raise BuildError(step, e) from e
         try:

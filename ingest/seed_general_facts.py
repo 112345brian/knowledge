@@ -36,14 +36,14 @@ def get_or_create_subject(cur, name, domain, cache):
     return sid
 
 
-def run(con, locations):
+def run(con, ctx):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
-    items = json.load(open(os.path.join(locations.private_data_dir, "general_facts.json")))
+    items = ctx.inputs.read_json(os.path.join(ctx.locations.private_data_dir, "general_facts.json"))
     inserted = skipped = 0
     bad_citekeys = set()
     derived = 0
@@ -68,7 +68,7 @@ def run(con, locations):
         baseline = item.get("extracted_from_sha256")
         if baseline is not None and not fixity_store.valid_sha256(baseline):
             raise ValueError(f"invalid extracted_from_sha256 {baseline!r} on fact {stmt[:60]!r} (want 64 lowercase hex)")
-        origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"))  # #38: optional origin file
+        origin_file_id = get_or_create_vault_file(cur, item.get("origin_path"), ctx.inputs)  # #38: optional origin file
         date_added = fact_ingest_rules.require_date_added(item, "general_facts.json", index)
         # #7: general_facts.json is never legacy; an entry without a valid freshness fails the build.
         eff = revisions.effective_entry(item, "general_facts.json")

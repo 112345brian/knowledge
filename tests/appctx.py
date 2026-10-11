@@ -45,8 +45,10 @@ def app(locations=None, clock=None):
 
 
 def locs(**overrides):
-    """The `Locations` of the private checkout the test has pointed KNOWLEDGE_PRIVATE_DIR at, with any field
-    overridden (a vault, a csv). What a pipeline step's run(con, locations) is given."""
+    """The StepContext a pipeline step's run(con, ctx) is given: the `Locations` of the private checkout the test
+    has pointed KNOWLEDGE_PRIVATE_DIR at (any field overridden: a vault, a csv) and the real local inputs."""
     import dataclasses
+    import local_inputs
     import paths
-    return dataclasses.replace(paths.load(), **overrides)
+    from pipeline_context import StepContext
+    return StepContext(dataclasses.replace(paths.load(), **overrides), local_inputs)

@@ -24,17 +24,17 @@ FIELDS = ("citekey", "name", "source_type", "author", "publisher", "url",
           "published_date", "retrieved_date", "description", "origin_path")
 
 
-def load_sources(locations):
-    items = json.load(open(os.path.join(locations.private_data_dir, "manual_sources.json")))
+def load_sources(ctx):
+    items = ctx.inputs.read_json(os.path.join(ctx.locations.private_data_dir, "manual_sources.json"))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], locations.bodybuilding_vault, locations.health_dir)
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], ctx.locations.bodybuilding_vault, ctx.locations.health_dir)
     return items
 
 
-def run(con, locations):
+def run(con, ctx):
     cur = con.cursor()
-    sources = load_sources(locations)
+    sources = load_sources(ctx)
     for s in sources:
         author = s.get("author")
         publisher_id = get_or_create_publisher(cur, s.get("publisher"))

@@ -30,9 +30,8 @@ from ingest.shared import get_or_create
 from client import music_ingest_rules
 
 
-def iter_scrobbles(path):
-    with open(path) as f:
-        pages = json.load(f)
+def iter_scrobbles(inputs, path):
+    pages = inputs.read_json(path)
     yield from music_ingest_rules.scrobbles_from_pages(pages)
 
 
@@ -45,20 +44,20 @@ def get_or_create_track(cur, cache, artist_id, title, album):
     return cache[key]
 
 
-def run(con, locations):
+def run(con, ctx):
     cur = con.cursor()
 
-    if not os.path.exists(locations.scrobbles_json):
-        print(f"[scrobbles] {locations.scrobbles_json} not found, skipping")
+    if not ctx.inputs.exists(ctx.locations.scrobbles_json):
+        print(f"[scrobbles] {ctx.locations.scrobbles_json} not found, skipping")
         return
 
-    import_source_id = get_or_create(cur, "import_sources", "path", locations.scrobbles_json)
+    import_source_id = get_or_create(cur, "import_sources", "path", ctx.locations.scrobbles_json)
     cur.execute("DELETE FROM scrobbles WHERE import_source_id = ?", (import_source_id,))
 
-    scrobbles = list(iter_scrobbles(locations.scrobbles_json))
+    scrobbles = list(iter_scrobbles(ctx.inputs, ctx.locations.scrobbles_json))
 
     artist_cache = load_artist_cache(cur)
-    rules = load_artist_rules(locations.private_data_dir)
+    rules = load_artist_rules(ctx.inputs, ctx.locations.private_data_dir)
     before_artists = len(artist_cache)
     artist_ids = {}
     for artist, *_ in scrobbles:

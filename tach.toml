@@ -591,6 +591,16 @@ layer = "model"
 depends_on = []
 
 [[modules]]
+path = "inputs_port"         # DOMAIN SERVICE: what a build step reads from outside the database
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
+layer = "infrastructure"
+depends_on = ["acquisition_store", "fixity_store"]
+
+[[modules]]
 path = "script_runner_port"   # DOMAIN SERVICE: the port for running the standalone scripts
 layer = "domain_services"
 depends_on = []
@@ -609,6 +619,11 @@ depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memor
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
 layer = "composition"
 depends_on = ["script_runner", "scripts_service", "wiring"]
+
+[[modules]]
+path = "pipeline_context"   # what a build step is given besides its connection: Locations and Inputs (a value, no I/O)
+layer = "model"
+depends_on = ["locations"]
 
 [[modules]]
 path = "entity_rules"   # #42 entity vocabulary and error type, shared by entities_store and the entity CLI (pure)
@@ -861,6 +876,8 @@ depends_on = [
     "privacy_store",
     "build_info_store",
     "clock",
+    "local_inputs",
+    "pipeline_context",
 ]
 
 [[modules]]
@@ -1023,6 +1040,7 @@ depends_on = [
     "ingest.fact_ingest_rules",
     "paths",
     "ingest.shared",
+    "local_inputs",
 ]
 
 [[modules]]
@@ -1054,6 +1072,7 @@ depends_on = [
     "locks",
     "revisions_store",
     "paths",
+    "local_inputs",
 ]
 
 [[modules]]

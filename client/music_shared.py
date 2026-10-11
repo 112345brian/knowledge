@@ -5,14 +5,13 @@ import os
 from client.artist_rules import artist_key, canonical_artist_name
 
 
-def load_artist_rules(data_dir):
+def load_artist_rules(inputs, data_dir):
     """Load optional aliases and group memberships from artist_rules.json in `data_dir`."""
     path = os.path.join(data_dir, "artist_rules.json")
-    if not os.path.exists(path):
+    if not inputs.exists(path):
         return {"aliases": {}, "members": {}, "festivals": []}
     try:
-        with open(path, encoding="utf-8") as f:
-            rules = json.load(f)
+        rules = inputs.read_json(path)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"{path}: cannot read artist rules: {e}") from e
     if (not isinstance(rules, dict) or rules.get("version") != 1

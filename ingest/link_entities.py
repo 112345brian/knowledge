@@ -15,8 +15,8 @@ import sys
 import entities_store
 
 
-def run(con, locations):
-    found = entities_store.read_file(os.path.join(locations.private_data_dir, entities_store.ENTITIES_FILENAME))
+def run(con, ctx):
+    found = entities_store.read_file(os.path.join(ctx.locations.private_data_dir, entities_store.ENTITIES_FILENAME))
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return

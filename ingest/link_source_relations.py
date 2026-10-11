@@ -27,19 +27,19 @@ def _load(filename):
     return mod
 
 
-def collect(locations):
+def collect(ctx):
     """[(source citekey, relation, related citekey)] from manual_sources.json and the vault notes."""
     rels = []
-    for s in _load("seed_sources.py").load_sources(locations):
+    for s in _load("seed_sources.py").load_sources(ctx):
         for rel, key in (("replaces", "replaces"), ("is-version-of", "is_version_of")):
             rels.extend((s["citekey"], rel, t) for t in source_status.as_list(s.get(key)))
-    rels.extend(r for row in _load("literature_sources.py").parse_all(locations) for r in row["relations"])
+    rels.extend(r for row in _load("literature_sources.py").parse_all(ctx) for r in row["relations"])
     return rels
 
 
-def run(con, locations):
+def run(con, ctx):
     ids = {citekey: sid for citekey, sid in con.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
-    rels = source_status.check_relations(collect(locations), ids)
+    rels = source_status.check_relations(collect(ctx), ids)
     for a, rel, b in rels:
         con.execute("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (?, ?, ?)", (ids[a], rel, ids[b]))
     con.commit()

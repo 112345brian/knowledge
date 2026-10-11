@@ -12,15 +12,14 @@ import identifiers
 HINTS_FILENAME = "fact_hints.json"
 
 
-def load_hints(data_dir):
+def load_hints(inputs, data_dir):
     """The author's fact-ingest hints from fact_hints.json in the private data dir (see fact_ingest_rules.Hints), or
     NO_HINTS when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
     import json
     import os
     path = os.path.join(data_dir, HINTS_FILENAME)
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+        data = inputs.read_json(path)
     except FileNotFoundError:
         return fact_ingest_rules.NO_HINTS
     except json.JSONDecodeError as e:
@@ -42,7 +41,7 @@ def get_or_create_publisher(cur, name):
     return get_or_create(cur, "publishers", "name", name)
 
 
-def get_or_create_vault_file(cur, path):
+def get_or_create_vault_file(cur, path, inputs):
     """The vault_files id for `path`, with its current fixity record (#38) written on first sight.
     A file that cannot be read gets file_state 'missing' and no hash; this never raises for a bad path."""
     if not path:
@@ -51,10 +50,10 @@ def get_or_create_vault_file(cur, path):
     if row is not None and row[1] is not None:
         return row[0]   # already recorded this build: a file is hashed and its attributes read once, not once per fact
     file_id = row[0] if row is not None else get_or_create(cur, "vault_files", "path", path)
-    fp = fixity_store.fingerprint(path)
+    fp = inputs.fingerprint(path)
     # #46: a vault file has no data record, so its custodial history comes from the macOS file attributes
     # alone (a no-op elsewhere); acquisition_store.resolve marks anything it fills in acquired_note.
-    acq = acquisition_store.resolve({k: None for k in acquisition_store.COLUMNS}, path)
+    acq = inputs.acquisition({k: None for k in acquisition_store.COLUMNS}, path)
     cur.execute("UPDATE vault_files SET content_sha256 = :content_sha256, size_bytes = :size_bytes, "
                 "file_mtime = :file_mtime, mime_type = :mime_type, file_state = :file_state, "
                 "acquired_at = :acquired_at, acquired_via = :acquired_via, where_from = :where_from, "

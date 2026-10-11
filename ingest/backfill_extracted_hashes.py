@@ -35,7 +35,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 def _resolver(data_dir, vault):
     """`notes -> vault file path or None`: the same rule the facts step uses (fact_ingest_rules.resolve_origin_path)."""
-    hints = load_hints(data_dir)
+    import local_inputs
+    hints = load_hints(local_inputs, data_dir)
     return lambda notes: fact_ingest_rules.resolve_origin_path(notes, vault, hints)
 
 

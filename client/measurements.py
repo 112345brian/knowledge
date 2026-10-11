@@ -122,12 +122,11 @@ def get_or_create_food(cur, st, name):
 
 
 
-def load_config(data_dir):
+def load_config(inputs, data_dir):
     """Load source identifiers and selected record dates from private configuration."""
     path = os.path.join(data_dir, "measurements_config.json")
     try:
-        with open(path, encoding="utf-8") as f:
-            config = json.load(f)
+        config = inputs.read_json(path)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"{path}: cannot read measurement configuration: {e}") from e
     if (not isinstance(config, dict) or config.get("version") != 1
@@ -161,14 +160,14 @@ def create_sources(cur, st, group):
     return {key: get_or_create_source(cur, st, *spec) for key, spec in group.items()}
 
 
-def run(con, locations):
-    st = State(read_snapshot_date(locations.private_data_dir))  # raises, naming the file, if it is not in the data
-    vault = sqlite3.connect(os.path.join(locations.bodybuilding_vault, "bodybuilding.db"))
+def run(con, ctx):
+    st = State(read_snapshot_date(ctx.inputs, ctx.locations.private_data_dir))  # raises, naming the file, if it is not in the data
+    vault = ctx.inputs.open_database(os.path.join(ctx.locations.bodybuilding_vault, "bodybuilding.db"))
     vault.row_factory = sqlite3.Row
     cur = con.cursor()
     inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
-    config = load_config(locations.private_data_dir)
+    config = load_config(ctx.inputs, ctx.locations.private_data_dir)
     ids = {name: get_source_id(cur, citekey) for name, citekey in config["manual_sources"].items()}
 
     # ---------------- DEXA: both scans, full field set from bodycomp_dexa ----------------
@@ -192,7 +191,7 @@ def run(con, locations):
         insert_measurements(cur, st, measurement_rules.strength_measurements(latest), ids)
 
     # ---------------- Daily/weekly summary tables ----------------
-    summary, raw = measurement_rules.vault_db_sources(locations.bodybuilding_vault, measurement_rules.stale_note(st.snapshot_date))
+    summary, raw = measurement_rules.vault_db_sources(ctx.locations.bodybuilding_vault, measurement_rules.stale_note(st.snapshot_date))
     ids.update(create_sources(cur, st, summary))
 
     for row in vault.execute("SELECT * FROM nutrition_daily"):

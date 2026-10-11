@@ -10,24 +10,24 @@ from ingest import source_ingest_rules
 from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 
 
-def parse_all(locations):
+def parse_all(ctx):
     rows = []
-    for fp in sorted(glob.glob(os.path.join(os.path.join(locations.bodybuilding_vault, "sources"), "*.md"))):
+    for fp in ctx.inputs.list_files(os.path.join(ctx.locations.bodybuilding_vault, "sources"), "*.md"):
         base = os.path.basename(fp)
         if base == "README.md":
             continue
-        text = open(fp, encoding="utf-8").read()
-        row = source_ingest_rules.note_to_source_row(base, text, locations.bodybuilding_vault)
+        text = ctx.inputs.read_text(fp)
+        row = source_ingest_rules.note_to_source_row(base, text, ctx.locations.bodybuilding_vault)
         where = row.pop("where")
         row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
-        row.update(acquisition_store.resolve(acquisition_store.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
-        row.update(fixity_store.fingerprint(fp))  # #38
+        row.update(ctx.inputs.acquisition(acquisition_store.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
+        row.update(ctx.inputs.fingerprint(fp))  # #38
         rows.append(row)
     return rows
 
 
-def run(con, locations):
-    rows = parse_all(locations)
+def run(con, ctx):
+    rows = parse_all(ctx)
     cur = con.cursor()
     existing = {r[0] for r in cur.execute("SELECT citekey FROM sources WHERE citekey IS NOT NULL")}
     inserted = 0

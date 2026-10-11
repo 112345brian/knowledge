@@ -36,8 +36,8 @@ def run_entries(con, entries):
                                  "it equals an existing subject name or another alias") from None
 
 
-def run(con, locations):
-    entries = subjects_store.read_file(locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
+def run(con, ctx):
+    entries = subjects_store.read_file(ctx.locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
         print("[seed_subject_hierarchy] no subjects.json: no subject hierarchy loaded")
         return

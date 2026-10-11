@@ -5,6 +5,7 @@ import json
 import os
 import re
 
+import local_inputs
 import pytest
 
 from ingest import fact_ingest_rules as rules
@@ -113,9 +114,9 @@ def test_hints_are_immutable_and_order_independent_for_folders():
 
 def test_the_loader_returns_no_hints_for_an_absent_file_and_the_parsed_ones_otherwise(tmp_path):
     from ingest import shared
-    assert shared.load_hints(str(tmp_path)) == NO_HINTS
+    assert shared.load_hints(local_inputs, str(tmp_path)) == NO_HINTS
     (tmp_path / "fact_hints.json").write_text(json.dumps({"fingerprints": ["abc"]}))
-    assert shared.load_hints(str(tmp_path)).fingerprints == ("abc",)
+    assert shared.load_hints(local_inputs, str(tmp_path)).fingerprints == ("abc",)
 
 
 @pytest.mark.parametrize("text, message", [("{nope", "not valid JSON"), ('{"fingerprints": 3}', "must be a list")])
@@ -123,7 +124,7 @@ def test_the_loader_fails_loudly_on_a_bad_file(tmp_path, text, message):
     from ingest import shared
     (tmp_path / "fact_hints.json").write_text(text)
     with pytest.raises(ValueError, match=message) as e:
-        shared.load_hints(str(tmp_path))
+        shared.load_hints(local_inputs, str(tmp_path))
     assert "fact_hints.json" in str(e.value)
 
 

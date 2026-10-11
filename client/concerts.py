@@ -1,3 +1,4 @@
+import io
 """Ingest the concerts export CSV (see paths.py -> CONCERTS_CSV) into the normalized
 artists / venues / festivals / concert_attendances tables. Concert-going is
 neither a `facts` claim (no trust/provenance dimension) nor a `measurements`
@@ -28,19 +29,19 @@ def get_or_create(cur, table, **fields):
     return cur.lastrowid
 
 
-def run(con, locations):
+def run(con, ctx):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", path=locations.concerts_csv)
+    import_source_id = get_or_create(cur, "import_sources", path=ctx.locations.concerts_csv)
     cur.execute("DELETE FROM concert_attendances WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
-    rules = load_artist_rules(locations.private_data_dir)
+    rules = load_artist_rules(ctx.inputs, ctx.locations.private_data_dir)
     known_festivals = rules.get("festivals", [])
 
     inserted = 0
     unresolved_festival_names = 0
     billing_counts = {}
 
-    with open(locations.concerts_csv, encoding="utf-8-sig") as f:
+    with io.StringIO(ctx.inputs.read_text(ctx.locations.concerts_csv, "utf-8-sig")) as f:
         for row in csv.DictReader(f):
             concert = music_ingest_rules.concert_from_csv(row, known_festivals)
             if concert is None:
