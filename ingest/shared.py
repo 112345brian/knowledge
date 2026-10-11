@@ -1,6 +1,8 @@
 """Small helpers shared across the core ingest scripts -- author/publisher
 normalization (get-or-create against a dimension table, never repeated text). A vault file's fingerprint is the fact
 repository's (fact_ingest_service.ensure_vault_file)."""
+import os
+
 import fact_ingest_service
 from ingest.source_ingest_rules import split_authors
 
@@ -13,7 +15,7 @@ HINTS_FILENAME = fact_ingest_service.HINTS_FILENAME
 def load_hints(inputs, data_dir):
     """The author's fact-ingest hints from fact_hints.json in the private data dir (see fact_ingest_rules.Hints), or
     NO_HINTS when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
-    return fact_ingest_service.read_hints(inputs, data_dir)
+    return fact_ingest_service.read_hints(inputs, os.path.join(data_dir, HINTS_FILENAME))
 
 
 def get_or_create(cur, table, name_col, name):

@@ -11,7 +11,6 @@ after the last entry apply the privacy rules (raise-only). A step passes a profi
     fact_ingest_decisions.render(report)  # the lines to print
 """
 import json
-import os
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -35,10 +34,10 @@ class FactIngestDeps:
     locations: Locations
 
 
-def read_hints(inputs, data_dir):
-    """The author's fact-ingest hints from fact_hints.json in `data_dir` (see fact_ingest_rules.Hints), or NO_HINTS
-    when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
-    path = _join(data_dir, HINTS_FILENAME)
+def read_hints(inputs, path):
+    """The author's fact-ingest hints from the file at `path` (fact_hints.json in the private data dir; see
+    fact_ingest_rules.Hints), or NO_HINTS when it is absent. A file that is not valid JSON or not a valid hints
+    object fails the build."""
     try:
         data = inputs.read_json(path)
     except FileNotFoundError:
@@ -48,21 +47,17 @@ def read_hints(inputs, data_dir):
     return fact_ingest_rules.parse_hints(data, path)
 
 
-def _join(directory, name):
-    return os.path.join(directory, name)
-
-
 def load_fact_file_entries(deps) -> List[EntryRef]:
     """Every entry of pilot_facts.json and facts_batch1-4.json, in file order, each with its source key."""
     entries: List[EntryRef] = []
     for name in decisions.FACT_FILENAMES:
-        batch = deps.inputs.read_json(_join(deps.locations.private_data_dir, name))
+        batch = deps.inputs.read_json(deps.locations.in_data_dir(name))
         entries.extend(decisions.entry_refs(batch, name, is_pilot=name == decisions.PILOT_FILENAME))
     return entries
 
 
 def load_general_entries(deps) -> List[EntryRef]:
-    items = deps.inputs.read_json(_join(deps.locations.private_data_dir, FACTS_FILENAME))
+    items = deps.inputs.read_json(deps.locations.in_data_dir(FACTS_FILENAME))
     return decisions.entry_refs(items, FACTS_FILENAME)
 
 
@@ -132,7 +127,7 @@ def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest
 
 def ingest_fact_files(deps, con) -> IngestReport:
     """Load pilot_facts.json and facts_batch1-4.json (hand-authored, and extracted from the vault's notes)."""
-    hints = read_hints(deps.inputs, deps.locations.private_data_dir)   # the author's vault hints, or none
+    hints = read_hints(deps.inputs, deps.locations.in_data_dir(HINTS_FILENAME))   # the author's vault hints, or none
     return ingest_entries(deps, con, load_fact_file_entries(deps), decisions.FACT_FILES, hints)
 
 

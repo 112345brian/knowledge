@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -348,11 +348,26 @@ depends_on = []
 
 [[modules]]
 path = "ingest.fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
-layer = "pipeline"
+layer = "domain_services"
 depends_on = [
     "fact_rules",
     "revisions",
 ]
+
+[[modules]]
+path = "fact_ingest_decisions"  # DOMAIN: the fact ingest's shared decisions: screening, keys, row, implicit revision, report (pure)
+layer = "domain_services"
+depends_on = [
+    "fixity_rules",
+    "ingest.fact_ingest_rules",
+    "locations",
+    "revisions",
+]
+
+[[modules]]
+path = "fact_ingest_port"  # DOMAIN: the fact repository and the privacy floor the fact steps write through
+layer = "domain_services"
+depends_on = []
 
 [[modules]]
 path = "ingest.source_ingest_rules"  # DOMAIN: citation-note parsing to a sources row, byline split (pure)
@@ -509,6 +524,24 @@ depends_on = [
 ]
 
 [[modules]]
+path = "fact_ingest"    # FACADE (composition root): binds fact_ingest_service to the adapters a build step is given
+layer = "composition"
+depends_on = [
+    "fact_ingest_service",
+    "wiring",
+]
+
+[[modules]]
+path = "fact_ingest_service"  # USE CASE: load the fact files into facts, fact_sources, fact_revisions, through ports only
+layer = "application"
+depends_on = ["acquisition_rules", "fact_ingest_decisions", "fact_ingest_port", "ingest.fact_ingest_rules", "inputs_port", "locations"]
+
+[[modules]]
+path = "fact_ingest_store"   # ADAPTER for the fact repository: the SQL of the fact ingest
+layer = "infrastructure"
+depends_on = ["fact_ingest_decisions", "revisions_store"]
+
+[[modules]]
 path = "facts_batch_service"  # USE CASE: batch add_facts, through ports only
 layer = "application"
 depends_on = ["facts_batch_rules", "modes", "new_fact", "privacy", "add_fact_port", "facts_file_port", "private_git_port", "locations"]
@@ -600,7 +633,7 @@ depends_on = []
 [[modules]]
 path = "step_stores_port"    # DOMAIN SERVICE: the data files and table writers a build step uses
 layer = "domain_services"
-depends_on = []
+depends_on = ["fact_ingest_port"]
 
 [[modules]]
 path = "datafiles_port"      # DOMAIN SERVICE: the data files a maintenance tool reads and rewrites
@@ -625,7 +658,7 @@ depends_on = ["locks", "revisions_store"]
 [[modules]]
 path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject and revision stores, by name
 layer = "infrastructure"
-depends_on = ["entities_store", "privacy_store", "revisions_store", "subjects_store"]
+depends_on = ["entities_store", "fact_ingest_store", "privacy_store", "revisions_store", "subjects_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -900,10 +933,9 @@ depends_on = [
 path = "ingest.shared"
 layer = "pipeline"
 depends_on = [
-    "ingest.fact_ingest_rules",
+    "fact_ingest_service",
     "ingest.source_ingest_rules",
     "identifiers",
-    "acquisition_rules",
 ]
 
 [[modules]]
@@ -1000,11 +1032,8 @@ depends_on = [
 path = "ingest.facts"
 layer = "pipeline"
 depends_on = [
-    "ingest.shared",
-    "ingest.fact_ingest_rules",
-    "privacy",
-    "revisions",
-    "fixity_rules",
+    "fact_ingest",
+    "fact_ingest_decisions",
 ]
 
 [[modules]]
@@ -1058,11 +1087,8 @@ depends_on = [
 path = "ingest.seed_general_facts"
 layer = "pipeline"
 depends_on = [
-    "ingest.fact_ingest_rules",
-    "privacy",
-    "revisions",
-    "ingest.shared",
-    "fixity_rules",
+    "fact_ingest",
+    "fact_ingest_decisions",
 ]
 
 [[modules]]
