@@ -14,6 +14,7 @@ sys.path.insert(0, REPO)
 
 import local_datafiles  # noqa: E402
 import music_export_store  # noqa: E402
+import wiring  # noqa: E402
 from client import export_music_taste  # noqa: E402
 
 
@@ -89,9 +90,7 @@ def test_run_prints_json_to_stdout_or_writes_the_file(db, tmp_path):
 
 
 def test_the_store_satisfies_its_port_and_the_export_module_holds_no_sql():
-    import music_export_port
-    for member in ("albums", "concerts", "artists", "album_totals", "close"):
-        assert callable(getattr(music_export_store.MusicExportStore, member)), member
-    assert hasattr(music_export_port, "MusicExportReads")
+    assert wiring.conformance_problems("music_export", music_export_store.open_reads("x.db")) == []
+    assert wiring.conformance_problems("datafiles", local_datafiles) == []
     text = open(os.path.join(REPO, "client", "export_music_taste.py")).read()
     assert not any(w in text for w in ("SELECT ", "sqlite3", "cursor", ".execute("))

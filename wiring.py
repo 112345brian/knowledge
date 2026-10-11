@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 
 from add_fact_port import AddFact
 from clock_port import Clock
+from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
@@ -27,6 +28,7 @@ from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
+from music_export_port import MusicExportReads
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from review_reads_port import ReviewReads
@@ -65,6 +67,7 @@ PORT_PROTOCOLS = {
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries,
+    "datafiles": DataFiles, "music_export": MusicExportReads,
 }
 
 

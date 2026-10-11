@@ -75,7 +75,7 @@ Everything else reaches the disk through a port:
 | --- | --- | --- |
 | application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
 | build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
-| maintenance tools (backfills, exports) | `DataFiles` (`datafiles_port`), `Inputs` | `local_datafiles`, `local_inputs` |
+| maintenance tools (backfills, concerts cleanup, music export) | `DataFiles` (`datafiles_port`), `Inputs`, `MusicExportReads` (`music_export_port`); each tool's `run(...)` takes them, its `main()` takes them from the `Container` | `local_datafiles`, `local_inputs`, `music_export_store` |
 | `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
@@ -113,6 +113,8 @@ validation, matching and pure edits their files and lists are subject to.
 | `fixity_rules` | model | a file fingerprint's vocabulary (pure) |
 | `inputs_port` | domain service | port: what a build step reads from outside the database |
 | `local_buildfiles` | infrastructure | the real disk, sqlite files and module loader (implements build_files_port) |
+| `music_export_port` | domain service | port: typed album, concert and artist records for the music-taste export |
+| `music_export_store` | infrastructure | the SQL behind the music-taste export (implements music_export_port) |
 | `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
 | `local_stores` | infrastructure | the privacy, entity, subject and revision stores, by name (implements step_stores_port) |

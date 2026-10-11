@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -638,6 +638,16 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "music_export_port"   # DOMAIN SERVICE: the typed records the music-taste export reads (no cursors)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "music_export_store"  # INFRASTRUCTURE: the SQL behind the music-taste export (implements music_export_port)
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
 path = "build_files_port"    # DOMAIN SERVICE: the disk and process work of a database rebuild
 layer = "domain_services"
 depends_on = []
@@ -675,7 +685,7 @@ depends_on = ["script_runner_port", "clock_port", "locations"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs"]
+depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "music_export_store"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -966,8 +976,7 @@ layer = "pipeline"
 depends_on = [
     "ingest.backfill_rules",
     "revisions",
-    "paths",
-    "local_datafiles",
+    "container",
 ]
 
 [[modules]]
@@ -977,8 +986,7 @@ depends_on = [
     "ingest.backfill_rules",
     "ingest.backfill_source_keys",
     "revisions",
-    "paths",
-    "local_datafiles",
+    "container",
 ]
 
 [[modules]]
@@ -986,17 +994,14 @@ path = "client.clean_concerts_csv"
 layer = "pipeline"
 depends_on = [
     "client.music_ingest_rules",
-    "paths",
-    "local_datafiles",
+    "container",
 ]
 
 [[modules]]
 path = "client.export_music_taste"
 layer = "pipeline"
 depends_on = [
-    "paths",
-    "local_datafiles",
-    "local_inputs",
+    "container",
 ]
 
 [[modules]]
@@ -1110,10 +1115,8 @@ depends_on = [
     "ingest.backfill_source_keys",
     "revisions",
     "ingest.fact_ingest_rules",
-    "paths",
     "ingest.shared",
-    "local_inputs",
-    "local_datafiles",
+    "container",
 ]
 
 [[modules]]
@@ -1141,9 +1144,7 @@ path = "client.backfill_snapshot_date"
 layer = "pipeline"
 depends_on = [
     "client.snapshot_date",
-    "paths",
-    "local_inputs",
-    "local_datafiles",
+    "container",
 ]
 
 [[modules]]
