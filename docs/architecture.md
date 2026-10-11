@@ -76,7 +76,9 @@ Everything else reaches the disk through a port:
 | application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
 | build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
 | maintenance tools (backfills, concerts cleanup, music export) | `DataFiles` (`datafiles_port`), `Inputs`, `MusicExportReads` (`music_export_port`); each tool's `run(...)` takes them, its `main()` takes them from the `Container` | `local_datafiles`, `local_inputs`, `music_export_store` |
-| `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| `build.py`, `normal_db`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| the normal-db use case | `NormalSource`, `NormalSink`, `LeakScan` (`normal_db_port`) | `normal_db_store`, `leak_scan_store` |
+| `leak_test` (fixture, injection) | `SqlRunner` (`sql_runner_port`) | `sql_runner_store` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
 A step imports no infrastructure module (a test checks tach's graph), and it writes only through the connection it
@@ -201,9 +203,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `ids_port` | domain service | interface for creating source identifiers |
 | `inbox` | driving adapter | HTTP review page |
 | `knowledge` | driving adapter | Typer app |
-| `leak_rules` | pipeline rules | marker matching |
-| `leak_scan_store` | ETL adapter (driving, batch) | scans normal DB files and derives private markers |
-| `leak_test` | ETL adapter (driving, batch) | runs the scanner and fixture self-test (also a script) |
+| `leak_rules` | domain service | marker matching, derived markers from private rows, leak finding (pure) |
+| `leak_scan_store` | infrastructure | SQLite adapter: a database's cells and the full DB's private rows, read-only (implements LeakScan) |
+| `leak_test` | ETL adapter (driving, batch) | the fixture self-test and the real-build check (also a script) |
 | `lifecycle` | composition root | binds lifecycle_service |
 | `lifecycle_rules` | domain service | supersede/retract/visibility/edit decisions |
 | `lifecycle_service` | application service | supersede / retract / set-visibility / edit |
@@ -228,9 +230,14 @@ validation, matching and pure edits their files and lists are subject to.
 | `music_repository_port` | domain service | port: the music tables the client music steps write |
 | `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
 | `new_fact` | domain service | NewFact + validation + build_entry |
-| `normal_db` | ETL adapter (driving, batch) | builds the normal db from a full db (SQL over the connections it is given, files through a BuildFiles; also a script) |
-| `normal_rules` | pipeline rules | normal-tier whitelist |
+| `normal_db` | ETL adapter (driving, batch) | entry point: binds normal_db_service to the SQLite adapters and a BuildFiles (also a script) |
+| `normal_db_port` | domain service | ports: the full DB's rows in (`NormalSource`), the normal DB out (`NormalSink`), the leak scan's reads (`LeakScan`) |
+| `normal_db_service` | application service | builds the normal db, leak-checks it, swaps it in or removes the stale one |
+| `normal_db_store` | infrastructure | SQLite adapter: reads the full DB's rows, writes the normal DB (implements NormalSource and NormalSink) |
+| `normal_rules` | domain service | normal-tier whitelist and which rows may enter (pure) |
 | `paths` | infrastructure | personal paths |
+| `sql_runner_port` | domain service | port: run scripts and statements against a database file |
+| `sql_runner_store` | infrastructure | SQLite adapter for SqlRunner |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
 | `source_record` | model | a source as one validated value before it has a database id (pure) |
 | `subject_rules` | model | subjects as values: vocabulary, validation, pure edits, the hierarchy plan, name/alias identity; `subjects_service` calls these directly |

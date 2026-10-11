@@ -13,6 +13,8 @@ sys.path.insert(0, REPO)
 import build  # noqa: E402
 import leak_test  # noqa: E402
 import normal_db  # noqa: E402
+import normal_db_store  # noqa: E402
+import normal_rules  # noqa: E402
 import privacy  # noqa: E402
 import local_buildfiles
 
@@ -91,15 +93,15 @@ def test_only_whitelisted_tables_exist_and_non_fact_tables_are_absent(built):
         assert t not in names
     assert set(normal_db.TABLES) <= names
     assert not q(built.path, "SELECT 1 FROM sqlite_master WHERE type='trigger'")
-    con = sqlite3.connect(built.path)
-    normal_db.check_structure(con)
+    normal_rules.verify_integrity(normal_db_store.inspect(built.path))
 
 
 def test_check_structure_rejects_an_extra_table(built):
     con = sqlite3.connect(built.path)
     con.execute("CREATE TABLE claims (id INTEGER)")
+    con.commit()
     with pytest.raises(normal_db.NormalDbError):
-        normal_db.check_structure(con)
+        normal_rules.verify_integrity(normal_db_store.inspect(built.path))
 
 
 def test_expected_rows(built):

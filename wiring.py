@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterable, List, Mapping, Union
 
 from add_fact_port import AddFact
+from build_files_port import BuildFiles
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
@@ -35,6 +36,7 @@ from locations import Locations
 from memory_files_port import MemoryFiles
 from music_export_port import MusicExportReads
 from music_repository_port import MusicRepository
+from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
 from review_reads_port import ReviewReads
@@ -79,6 +81,7 @@ PORT_PROTOCOLS = {
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
     "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
     "music": MusicRepository,
+    "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
 }
 
 

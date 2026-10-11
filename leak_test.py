@@ -20,13 +20,27 @@ import os
 import sys
 
 import build_rules
+import normal_db
+import normal_db_service
+import sql_runner_store
 from leak_rules import (MIN_MARKER_LEN, add_marker, check_markers, format_leaks, leaks_in_bytes,  # noqa: F401  (the public API)
                         leaks_in_cell, variants as _variants)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-from leak_scan_store import derive_markers, scan, scan_against_full  # noqa: F401
+def scan(files, normal_path, markers):
+    """markers: iterable of strings (or {label: string}). Returns [(label, marker, where)]."""
+    return normal_db_service.scan(normal_db.deps_for(files), normal_path, markers)
+
+
+def derive_markers(files, full_path):
+    """{label: text} for everything in the full DB that must never reach the normal tier."""
+    return normal_db_service.derive_markers(normal_db.deps_for(files), full_path)
+
+
+def scan_against_full(files, normal_path, full_path):
+    return normal_db_service.scan_against_full(normal_db.deps_for(files), normal_path, full_path)
 
 
 # ----------------------------------------------------------------------------- fixture
@@ -58,15 +72,18 @@ MARKERS = {
 NORMAL_STATEMENTS = ("Creatine monohydrate is well studied for strength.", "Sleep duration affects recovery: café study.")
 
 
-def build_fixture(files, directory):
-    """Make a full DB with the real schema, all MARKERS private, and normal facts. Returns its path."""
+def build_fixture(files, directory, runner=sql_runner_store):
+    """Make a full DB with the real schema, all MARKERS private, and normal facts. Returns its path. The schema
+    and the rows are data (`scripts`, `statements`); `runner` (a SqlRunner) executes them."""
     path = os.path.join(directory, "fixture-full.db")
-    con = files.open_database(path)
-    con.execute("PRAGMA foreign_keys = ON")
-    for name in build_rules.schema_files(build_rules.CLIENT_SOURCES):   # the fixture holds music rows, so every fragment
-        con.executescript(files.read_text(os.path.join(HERE, name)))
+    # the fixture holds music rows, so every fragment
+    scripts = [files.read_text(os.path.join(HERE, name)) for name in build_rules.schema_files(build_rules.CLIENT_SOURCES)]
+    statements = []
+
+    def ex(sql, params=()):
+        statements.append((sql, tuple(params)))
+
     M = MARKERS
-    ex = con.execute
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (1, 'nutrition', 'health', NULL, 0)")
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (2, 'sleep', 'health', 1, 0)")
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (3, ?, 'life', NULL, 1)", (M["private subject name"],))
@@ -134,21 +151,19 @@ def build_fixture(files, directory):
     ex("INSERT INTO claims (id, statement) VALUES (1, ?)", (M["claim text"],))
     # non-fact tables with private-ish rows
     ex("INSERT INTO artists (id, name) VALUES (1, 'Secret Band')")
-    con.commit()
-    con.close()
+    runner.run(path, scripts, statements)
     return path
 
 
-def self_test(files, workdir=None, verbose=True):
+def self_test(files, workdir=None, verbose=True, runner=sql_runner_store):
     """Returns a list of problems (empty = pass). Builds the fixture and the normal DB, scans it,
     then proves the scan can fail by injecting each marker into a copy."""
     import privacy
-    import normal_db
     problems = []
     own = workdir is None
     workdir = workdir or files.make_temp_dir("leak-test-")
     try:
-        full = build_fixture(files, workdir)
+        full = build_fixture(files, workdir, runner)
         out_dir = os.path.join(workdir, "out")
         files.makedirs(out_dir)
         rules = privacy.Rules(subject_tags={M: "private" for M in [MARKERS["private subject name"]]},
@@ -164,10 +179,8 @@ def self_test(files, workdir=None, verbose=True):
         for label, marker in MARKERS.items():
             bad = os.path.join(workdir, "injected.db")
             files.copy(path, bad)
-            c = files.open_database(bad)
-            c.execute("UPDATE facts SET trust_rationale = ? WHERE id = (SELECT MIN(id) FROM facts)", (f"x {marker} x",))
-            c.commit()
-            c.close()
+            runner.run(bad, (), [("UPDATE facts SET trust_rationale = ? WHERE id = (SELECT MIN(id) FROM facts)",
+                                  (f"x {marker} x",))])
             if not scan(files, bad, {label: marker}):
                 problems.append(f"the scan did NOT flag an injected marker ({label!r}); the test cannot fail")
             files.remove_if_exists(bad)
