@@ -18,6 +18,7 @@ with a CLI for ingesting, reviewing, searching, and auditing them.
 - [How the build works](#how-the-build-works)
 - [Project layout](#project-layout)
 - [Development](#development)
+- [License](#license)
 
 ## Data boundary
 
@@ -117,3 +118,7 @@ contain no private facts, names, paths, or client-specific data.
 
 Every action available in the UI is also a CLI command; see `cli_parity.py` and
 `tests/test_cli_parity.py`.
+
+## License
+
+[MIT](LICENSE).
