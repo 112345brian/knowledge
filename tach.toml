@@ -10,7 +10,9 @@
 #
 #       serving         the HTTP review page (inbox)                  driving adapter
 #       cli             the Typer app (knowledge, cli_*)              driving adapter
-#       pipeline        build.py, the ingest package (steps, tools)   driving adapter (batch)
+#       pipeline        build.py, the ingest package, the client sources  driving adapter (batch). The
+#                       client sources' own rule modules (music, measurements) live here too: pure,
+#                       but specific to one person's domain, so they are plugins, not the domain core.
 #       composition     add_fact, review, lifecycle, facts_batch,     composition roots: pick the adapters
 #                       migrate_memory, rules_edit, entities, ...     and bind an application service to them
 #       infrastructure  *_store, clock, ids, paths, private_git, ...  db, files, git, time (implement ports)
@@ -345,7 +347,7 @@ depends_on = []
 
 [[modules]]
 path = "client.artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
-layer = "domain_services"
+layer = "pipeline"
 depends_on = []
 
 [[modules]]
@@ -365,12 +367,12 @@ depends_on = [
 
 [[modules]]
 path = "client.music_ingest_rules"   # DOMAIN: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
-layer = "domain_services"
+layer = "pipeline"
 depends_on = []
 
 [[modules]]
 path = "client.measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
-layer = "domain_services"
+layer = "pipeline"
 depends_on = []
 
 [[modules]]

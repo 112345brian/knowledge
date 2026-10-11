@@ -67,6 +67,7 @@ def test_git_only_runs_inside_private_git():
 
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules"}  # the innermost ring: imports nothing else
+CLIENT_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules"}  # pure, but one person's domain: plugins on the outside
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
 
@@ -117,7 +118,7 @@ def test_configs_agree_on_what_a_library_is(enable):
     t, p = _read(TACH_TOML), _read(PYPROJECT)
     if enable:
         t, p = ac.enable_planned(t), ac.enable_planned(p)
-    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS}
+    tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS or n in CLIENT_RULES}
     c = _il_contracts(p)
     up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]}
     assert up == tach_libs
@@ -643,13 +644,14 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     contracts = _il_contracts(_read(PYPROJECT))
     domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
-    assert {n for n, r in roles.items() if r in ("model", "domain service")} == domain
+    assert {n for n, r in roles.items() if r in ("model", "domain service", "client source rules")} == domain
+    assert {n for n, r in roles.items() if r == "client source rules"} == CLIENT_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r == "application service"} == services
     assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
-    allowed = {"model", "domain service", "application service", "infrastructure", "composition root",
+    allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "client source rules",
                "driving adapter", "ETL adapter (driving, batch)"}
     assert set(roles.values()) <= allowed
 
@@ -664,7 +666,7 @@ def test_tach_layers_are_the_onion():
         "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
     expected = {"model": "model", "domain service": "domain_services", "application service": "application",
                 "infrastructure": "infrastructure", "composition root": "composition",
-                "ETL adapter (driving, batch)": "pipeline"}
+                "ETL adapter (driving, batch)": "pipeline", "client source rules": "pipeline"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():
         layer = tach[name]["layer"]

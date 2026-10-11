@@ -11,6 +11,9 @@ through the ports. **Infrastructure** (`*_store`, `clock`, `paths`, `private_git
 **composition roots** (facades) bind an application service to its adapters, and the CLI, the inbox and the ingest
 scripts are the driving adapters on the outside. Each application service declares the ports it needs as the required fields of its own frozen `*Deps` class (no
 shared optional bundle); `ports.py` holds `bind` and the protocol conformance checks.
+The knowledge is personal, so the domain core is only what every knowledge base needs (facts, trust, privacy, revisions,
+sources). Concerts, music ratings or measurements are not domain concepts here: they are optional client sources
+(`client/`) on the outside, and their pure rule modules are marked `client source rules`.
 The boundaries are enforced mechanically (`tach.toml`, the import-linter contracts in `pyproject.toml`, and
 `tests/test_architecture.py` / `tests/test_ports.py`), and `tests/test_pipeline_golden.py` pins what the ingest
 pipeline produces. `tach.toml` carries the same rings as its `layers`: `serving`, `cli`, `pipeline` (the driving
@@ -78,7 +81,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
 | `add_fact_service` | application service | add one fact |
 | `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
-| `artist_rules` | domain service | artist aliases |
+| `artist_rules` | client source rules | artist aliases |
 | `backfill_dates` | ETL adapter (driving, batch) |  |
 | `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
 | `backfill_rules` | domain service | key insertion into JSON text |
@@ -133,7 +136,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `lifecycle_service` | application service | supersede / retract / set-visibility / edit |
 | `lifecycle_store` | infrastructure | rules + subject tree for the floor |
 | `lifecycle_reads_port` | domain service | interface for inputs used by lifecycle decisions |
-| `measurement_rules` | domain service | vault rows to measurements |
+| `measurement_rules` | client source rules | vault rows to measurements |
 | `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | infrastructure | inter-process file lock for the data-file writers |
 | `migrate_memory` | composition root | binds migrate_memory_service |
@@ -144,7 +147,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
 | `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
-| `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
+| `music_ingest_rules` | client source rules | concerts / RYM / Last.fm rules |
 | `new_fact` | domain service | NewFact + validation + build_entry |
 | `normal_db` | infrastructure | SQL copy + file swap (also a script) |
 | `normal_rules` | domain service | normal-tier whitelist |
