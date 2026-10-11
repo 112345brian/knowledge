@@ -183,12 +183,12 @@ depends_on = ["privacy_rules_port", "private_git_port", "locations"]
 [[modules]]
 path = "entities_service"  # USE CASE: entity commands through ports
 layer = "application"
-depends_on = ["entity_files_port", "entity_migration_port", "entity_queries_port", "private_git_port", "locations"]
+depends_on = ["entity_files_port", "entity_migration_port", "entity_queries_port", "entity_rules", "private_git_port", "locations"]
 
 [[modules]]
 path = "subjects_service"  # USE CASE: subject commands through ports
 layer = "application"
-depends_on = ["entity_queries_port", "private_git_port", "subject_files_port", "locations"]
+depends_on = ["entity_queries_port", "private_git_port", "subject_files_port", "subject_rules", "locations"]
 
 [[modules]]
 path = "paths"          # the only module that knows personal paths

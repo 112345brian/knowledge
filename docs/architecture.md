@@ -168,9 +168,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `clock` | infrastructure | time |
 | `clock_port` | domain service | interface for time required by use cases |
 | `add_fact_port` | domain service | interface exposing single-fact operations to batch callers |
-| `entity_rules` | model | entity types and the entities error (pure) |
+| `entity_rules` | model | entity vocabulary, validation, matching and the pure edits (`add_entity`, `add_alias`, `set_private`, `find`); `entities_service` calls these directly |
 | `entities` | composition root | binds entity use cases to file, migration and query adapters |
-| `entity_files_port` | domain service | interface for persisted entity data |
+| `entity_files_port` | domain service | I/O only: read the entities file, save it atomically, the locked `edit_file` git flow |
 | `entity_migration_port` | domain service | interface for keyword migration |
 | `entity_queries_port` | domain service | interface for entity and subject read queries |
 | `entities_service` | application service | entity command operations |
@@ -216,7 +216,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `normal_rules` | pipeline rules | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
-| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
+| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits; `subjects_service` calls these directly |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
 | `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
@@ -249,7 +249,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `subjects` | composition root | binds subject use cases to file and query adapters |
 | `subjects_service` | application service | subject command operations |
 | `subjects_store` | infrastructure | subjects.json: hierarchy as data, aliases, edits |
-| `subject_files_port` | domain service | interface for persisted subject data |
+| `subject_files_port` | domain service | I/O only: read the subjects file, save it atomically, the locked `edit_file` git flow |
 | `textmatch` | model | whole-word term matching |
 | `timestamps` | model | revision-time parsing |
 | `validtime` | model | valid-time dates: parsing, ordering, containment |
