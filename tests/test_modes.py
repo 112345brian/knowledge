@@ -595,6 +595,8 @@ FACT_READERS_ALLOWED = {
     "normal_rules.py",
     # names the revision log file in the data dir; reads no fact table
     "locations.py",
+    # names the revision record's fields; no SQL
+    "fact_entry.py",
     # the CLI's read-only query adapter (search, facts, show, subjects): the full db, not a tool surface
     "fact_queries.py",
     # names the tables the build report counts, reads none

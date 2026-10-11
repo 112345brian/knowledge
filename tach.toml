@@ -272,6 +272,7 @@ depends_on = [
     "timestamps",
     "validtime",
     "locations",
+    "fact_entry",
 ]
 
 [[modules]]
@@ -582,6 +583,11 @@ depends_on = ["fact_reads_store", "queries_service", "wiring"]
 path = "locations"      # where the data lives, as one immutable value (pure)
 layer = "model"
 depends_on = []
+
+[[modules]]
+path = "fact_entry"     # the fact entry and the revision record as types with behaviour (pure)
+layer = "model"
+depends_on = ["fact_rules", "timestamps", "validtime"]
 
 [[modules]]
 path = "fact_state"     # a fact's lifecycle as types with behaviour: Status, Visibility, FactState (pure)

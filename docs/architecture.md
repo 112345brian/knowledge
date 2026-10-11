@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, locations)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state, fact_entry, locations)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -71,13 +71,14 @@ with the rest of the onion is configuration: every step and `build.py` resolve t
 
 ### What is still not typed
 
-`fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types. Revisions, sources
-and the fact entry itself are still dicts and functions over dicts (`revisions`, `source_status`,
-`new_fact.build_entry`).
+`fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types, and `fact_entry` does
+the same for a fact entry and a revision record (`FactEntry`, `Revision`); `revisions` keeps its function names as
+thin delegations. Sources (`source_status`) are still a vocabulary and functions over dicts.
 
 | Module | Role | What it is |
 | --- | --- | --- |
 | `container` | composition root | wires every use case for one Locations; made by an entry point |
+| `fact_entry` | model | the fact entry and the revision record as types with behaviour (pure) |
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
