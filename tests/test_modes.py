@@ -587,7 +587,8 @@ FACT_READERS_ALLOWED = {
     # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table
     "build_info_store.py",
     # build/ingest pipeline: writes the tables, never serves tool results
-    "facts.py", "seed_claims.py", "seed_general_facts.py", "apply_fact_revisions.py",
+    # (the two fact steps hold no SQL: their rows are fact_ingest_store's)
+    "fact_ingest_store.py", "seed_claims.py", "apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",
     # build-time checker: scans the full db for private markers, never serves tool results
     "leak_test.py",

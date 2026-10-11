@@ -415,9 +415,24 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
         if not name.endswith(".py") or name in ("privacy.py", "add_fact_port.py"):  # protocols declare, but do not implement, fact entry creation
             continue
         src = open(os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)).read()
+        if name in WRITES_FACTS_FOR:   # the repository adapter only inserts; its caller sequences the privacy floor
+            continue
         if ("INSERT INTO facts" in src or "def build_entry" in src) and "privacy." not in src:
             offenders.append(name)
     assert offenders == []
+
+
+# adapters that INSERT INTO facts on behalf of a use case -> the use case that must apply the privacy rules after
+WRITES_FACTS_FOR = {"fact_ingest_store.py": "fact_ingest_service.py"}
+
+
+def test_the_fact_ingest_applies_the_privacy_rules_after_its_last_insert():
+    """04 and 11 re-apply the current rules to every fact after the inserts (raise-only). The adapter that inserts
+    holds no rules; the service that drives it must load them first and apply them after the insert loop."""
+    for adapter, service in WRITES_FACTS_FOR.items():
+        assert "INSERT INTO facts" in open(os.path.join(REPO, adapter)).read()
+        src = open(os.path.join(REPO, service)).read()
+        assert 0 <= src.index("load_privacy_rules") < src.index("insert_fact(") < src.rindex("apply_privacy_rules"), service
 
 
 def test_add_fact_passes_the_resolved_value_to_build_entry():

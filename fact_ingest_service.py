@@ -1,7 +1,7 @@
 """The fact ingest (the use case, through the port protocols; `fact_ingest` binds it to the adapters).
 
-Pilot/batch fact files and general_facts.json are loaded into `facts`, `fact_sources` and `fact_revisions`
-by one implementation of the decisions (`fact_ingest_decisions`): screen the entry (a Skip), check its source
+Pilot/batch fact files and general_facts.json are loaded into the fact tables (a fact, the source it cites,
+its implicit revision 1) by one implementation of the decisions (`fact_ingest_decisions`): screen the entry (a Skip), check its source
 key, refuse a duplicate, decide its row (personal flag, origin note, freshness, kind, validity, applies_to,
 date_added, the implicit revision 1), write it through the fact repository, link the source it cites, and
 after the last entry apply the privacy rules (raise-only). A step passes a profile and prints the report.
