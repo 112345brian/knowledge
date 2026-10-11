@@ -314,6 +314,7 @@ path = "review_rules"   # DOMAIN: review result types and the pure decisions beh
 layer = "domain_services"
 depends_on = [
     "privacy",
+    "fact_state",
 ]
 
 [[modules]]
@@ -339,7 +340,7 @@ depends_on = [
 [[modules]]
 path = "review_service"  # USE CASE: review, through ports only
 layer = "application"
-depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port"]
+depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port", "fact_state"]
 
 [[modules]]
 path = "timestamps"     # DOMAIN: pure revision-time parsing, shared by revisions (storage) and modes (policy)
@@ -464,6 +465,7 @@ layer = "domain_services"
 depends_on = [
     "fact_rules",
     "privacy",
+    "fact_state",
 ]
 
 [[modules]]
@@ -581,6 +583,11 @@ depends_on = ["fact_reads_port"]
 path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
 layer = "composition"
 depends_on = ["fact_reads_store", "queries_service", "wiring"]
+
+[[modules]]
+path = "fact_state"     # a fact's lifecycle as types with behaviour: Status, Visibility, FactState (pure)
+layer = "model"
+depends_on = []
 
 [[modules]]
 path = "entity_rules"   # #42 entity vocabulary and error type, shared by entities_store and the entity CLI (pure)

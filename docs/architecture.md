@@ -37,7 +37,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules, fact_state)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -59,10 +59,27 @@ private-file editing receives that port rather than importing the Git adapter.
 6. The model imports no other module of the repo, and a domain service never imports an application service
    (contract `model-is-innermost` and tach's `model` / `domain_services` layers).
 
+### The pipeline is the outermost ring, not a client of ports
+
+`build.py` and the `ingest/` and `client/` steps are batch drivers: their whole job is to populate the database.
+They read their rules from pure modules (`*_ingest_rules`, `build_rules`, `revisions`, `privacy`, ...), write
+through the stores, and import no facade, CLI or serving module (tach enforces it). They do not go through the
+`*_port` protocols, because a port in front of "insert these rows" would only restate the SQL. What they share
+with the rest of the onion is configuration: every step and `build.py` resolve their paths from
+`paths.settings()` when they run, never at import, and a test can still set the module attribute
+(`DATA_DIR`, `VAULT`, `CSV_PATH`, ...) to a path.
+
+### What is still not typed
+
+`fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types. Revisions, sources
+and the fact entry itself are still dicts and functions over dicts (`revisions`, `source_status`,
+`new_fact.build_entry`).
+
 | Module | Role | What it is |
 | --- | --- | --- |
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
+| `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `seed_sources` | ETL adapter (driving, batch) |  |

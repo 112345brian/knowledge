@@ -36,6 +36,7 @@ import os
 
 import privacy
 import review_rules
+from fact_state import FactState
 import revisions
 from review_rules import ItemResult, ReviewResult
 from privacy_rules_port import Rules
@@ -106,11 +107,11 @@ def pending_view(deps, db_path, data_dir):
         key = r["source_key"]
         listed.add(key)
         cur = states.get(key)
-        if cur is not None and cur["status"] != "pending":
+        if cur is not None and not FactState.of(cur).is_pending:
             vm["hidden_reviewed"] += 1
             continue
         vm["facts"].append(review_rules.overlay_pending(r, cur, rules))
-    vm["missing_from_snapshot"] = sum(1 for k, s in states.items() if s["status"] == "pending" and k not in listed)
+    vm["missing_from_snapshot"] = sum(1 for k, s in states.items() if FactState.of(s).is_pending and k not in listed)
     return vm
 
 
@@ -178,8 +179,9 @@ def _transition(deps, refs, to_status, outcome, reason, via, session_id, data_di
         plan.append((str(ref), key, pos))
     todo = []
     for ref, key, pos in plan:
-        status = states[key]["status"]
-        if status != "pending":
+        state = FactState.of(states[key])
+        status = state.status
+        if not state.is_pending:
             add(pos, ItemResult(ref, "skipped", key, f"status is {status!r}, not pending"))
         else:
             todo.append((ref, key, pos))

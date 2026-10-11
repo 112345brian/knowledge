@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import privacy
+from fact_state import FactState, supersession_cycle
 from fact_rules import VALID_TRUST
 
 
@@ -62,59 +63,52 @@ def no(kind, message):
 # --------------------------------------------------------------------------- decisions
 
 def decide_retract(states, key, ctx):
-    cur = states[key]
-    if cur["status"] == "retracted":
+    cur = FactState.of(states[key])
+    if cur.is_retracted:
         return no("unchanged", "already retracted")
     return write({"status": "retracted", "superseded_by": None},
-                  {"status": cur["status"], "superseded_by": cur["superseded_by"]}, "retracted")
+                  {"status": cur.status, "superseded_by": cur.superseded_by}, "retracted")
 
 
 def decide_supersede(states, key, ctx):
     by = ctx["by_key"]
-    cur = states[key]
-    if cur["status"] == "pending":
-        return no("refused", "the fact is pending; approve or reject it first")
-    if cur["status"] == "retracted":
-        return no("refused", "the fact is retracted; reverse that with an 'active' revision first "
-                              "(revisions_store.append_revision) if it should be superseded instead")
+    cur = FactState.of(states[key])
+    problem = cur.why_not_supersedable()
+    if problem:
+        return no("refused", problem)
     if by == key:
         return no("refused", "a fact cannot supersede itself")
-    rep = states[by]
-    if rep["status"] == "retracted":
-        return no("refused", f"the replacement {by!r} is retracted")
-    if rep["status"] == "pending":
-        return no("refused", f"the replacement {by!r} is pending; approve it first")
-    seen, x = set(), by
-    while x is not None and x not in seen:
-        if x == key:
-            return no("refused", f"cycle: {by!r} is (indirectly) superseded by {key!r}")
-        seen.add(x)
-        x = states[x]["superseded_by"] if x in states else None
-    if cur["status"] == "superseded" and cur["superseded_by"] == by:
+    problem = FactState.of(states[by]).why_not_a_replacement(by)
+    if problem:
+        return no("refused", problem)
+    if supersession_cycle(states, key, by):
+        return no("refused", f"cycle: {by!r} is (indirectly) superseded by {key!r}")
+    if cur.is_superseded_by(by):
         return no("unchanged", f"already superseded by {by!r}")
     return write({"status": "superseded", "superseded_by": by},
-                  {"status": cur["status"], "superseded_by": cur["superseded_by"]}, "superseded")
+                  {"status": cur.status, "superseded_by": cur.superseded_by}, "superseded")
 
 
 def decide_visibility(states, key, ctx):
     want = ctx["visibility"]
-    cur = states[key]
+    cur = FactState.of(states[key])
     if ctx.get("raise_only") and want == "normal":
         # A caller that never lowers (the inbox): still name the rule when one floors the fact.
-        floor = floor_resolution(ctx, key, cur)
+        floor = floor_resolution(ctx, key, states[key])
         if not isinstance(floor, str) and floor.visibility == "private":
             return no("refused", "cannot be made normal; " + floor.explain())
         return no("refused", "this caller only raises visibility to private; lowering is done with `set-visibility`")
-    if cur["visibility"] == want:
+    change = cur.visibility_change_to(want)
+    if change == "unchanged":
         return no("unchanged", f"visibility is already {want!r}")
-    if want == "normal":
-        floor = floor_resolution(ctx, key, cur)
+    if change == "lower":
+        floor = floor_resolution(ctx, key, states[key])
         if isinstance(floor, str):
             return no("refused", floor)
         if floor.visibility == "private":
             return no("refused", "cannot lower to normal, the privacy rules keep it private (the build would "
                                   "raise it again): " + floor.explain())
-    return write({"visibility": want}, {"visibility": cur["visibility"]}, "visibility_set")
+    return write({"visibility": want}, {"visibility": cur.visibility}, "visibility_set")
 
 
 def floor_resolution(ctx, key, cur):
@@ -138,7 +132,7 @@ def gated(decide, states, key, ctx, expect_status):
     write's `expect`, so it is also re-checked under the revision log's lock."""
     if expect_status is None:
         return decide(states, key, ctx)
-    status = states[key]["status"]
+    status = FactState.of(states[key]).status
     if status != expect_status:
         return no("unchanged", f"status is {status!r}, not {expect_status!r}")
     plan = decide(states, key, ctx)

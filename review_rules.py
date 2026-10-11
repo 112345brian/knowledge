@@ -7,7 +7,9 @@ is the use case that orchestrates the adapters (`review_store`, `revisions_store
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import fact_state
 import privacy
+from fact_state import FactState
 
 OUTCOMES = ("approved", "rejected", "skipped", "unknown", "error")
 
@@ -44,11 +46,11 @@ class ReviewResult:
 
 def status_word(status):
     """A revision status as the review UI words it: active -> approved, retracted -> rejected."""
-    return {"active": "approved", "retracted": "rejected", "pending": "pending"}.get(status, status)
+    return fact_state.review_word(status)
 
 
 def pending_keys(states, entries_order):
-    return [k for k in entries_order if states[k]["status"] == "pending"]
+    return [k for k in entries_order if FactState.of(states[k]).is_pending]
 
 
 def visibility_basis(subject, statement, visibility, rules):

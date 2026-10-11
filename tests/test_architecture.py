@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state"}  # the innermost ring: imports nothing else
 CLIENT_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules"}  # pure, but one person's domain: plugins on the outside
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
