@@ -1,4 +1,4 @@
-"""Batch add_facts (the use case, through the ports in `ports`; `facts_batch` is the facade that binds it to the real adapters): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
+"""Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
 the `register facts` review protocol (#32, docs/register-facts-protocol.md).
 
     result = facts_batch.add_facts([{"statement": "...", "subject": "coffee"}, ...])

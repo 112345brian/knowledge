@@ -1,5 +1,5 @@
 """Review of pending facts (#6): list the queue, approve or reject items. The use case: it applies the
-rules in `review_rules` (domain) through the ports in `ports` (it imports no adapter). `review` is the
+rules in `review_rules` (domain) through the port protocols (`*_port`) (it imports no adapter). `review` is the
 facade that binds these functions to the real adapters and keeps the public API.
 
 New ad hoc facts are written with status 'pending' (new_fact.NewFact.status). Approving one

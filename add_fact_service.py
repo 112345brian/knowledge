@@ -1,5 +1,5 @@
 """Append one ad hoc fact: the use case. It applies the rules in `new_fact` (domain) through the ports in
-`ports` (the facts file, the privacy rules, the clock, fresh ids, the default paths) and imports no
+`*_port` (the facts file, the privacy rules, the clock, fresh ids, the default paths) and imports no
 adapter. `add_fact` is the facade that binds it to the real adapters, keeps the public API and is also the
 `python3 add_fact.py` script.
 """

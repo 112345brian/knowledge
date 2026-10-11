@@ -1,4 +1,4 @@
-"""Onion architecture: the ports (ports.py) and the application services that depend on them.
+"""Onion architecture: the ports (`*_port.py`) and the application services that depend on them.
 
 * every adapter module really satisfies the protocol its facade hands to a service;
 * each service declares its dependencies as the required fields of its own `*Deps` class, and uses exactly those;
@@ -14,7 +14,8 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ports  # noqa: E402
+import port_conformance  # noqa: E402
+import wiring  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
@@ -29,19 +30,19 @@ def test_every_facade_binds_adapters_that_satisfy_the_protocols():
         for field in dataclasses.fields(facade.DEPS):
             adapter = getattr(facade.DEPS, field.name)
             assert adapter is not None, f"{facade.__name__}.DEPS.{field.name} is unset"
-            assert ports.conformance_problems(field.name, adapter) == [], f"{facade.__name__}.DEPS.{field.name}"
+            assert port_conformance.conformance_problems(field.name, adapter) == [], f"{facade.__name__}.DEPS.{field.name}"
     # the adapters themselves, so a rename fails here even if no facade binds that port
     for name, adapter in {"git": private_git, "revisions": revisions_store, "rules": privacy_store,
                           "reads": review_store, "lifecycle_reads": lifecycle_store, "facts_file": add_fact_store,
                           "clock": clock, "ids": ids, "memory": migrate_memory_store}.items():
-        assert ports.conformance_problems(name, adapter) == [], name
+        assert port_conformance.conformance_problems(name, adapter) == [], name
 
 
 def test_conformance_check_can_fail():
     class Bad:
         def find_repo(self):  # wrong parameters, and the rest is missing
             return None
-    problems = ports.conformance_problems("git", Bad())
+    problems = port_conformance.conformance_problems("git", Bad())
     assert any("find_repo" in p for p in problems) and any("ensure_clean_tree is missing" in p for p in problems)
 
 
@@ -51,7 +52,7 @@ def test_bind_keeps_the_public_signature_without_ports():
     def fn(ports_, a, b=2):
         """doc"""
         return (ports_, a, b)
-    bound = ports.bind(fn, "P")
+    bound = wiring.bind(fn, "P")
     assert bound(1) == ("P", 1, 2) and bound.__doc__ == "doc"
     assert list(inspect.signature(bound).parameters) == ["a", "b"]
 
@@ -115,7 +116,7 @@ def test_review_service_reports_a_failed_write_per_item():
 
 
 def _service_trees():
-    for name in SERVICES + ("ports",):
+    for name in SERVICES + ("wiring",):
         path = os.path.join(REPO, name + ".py")
         yield name, ast.parse(open(path, encoding="utf-8").read())
 
@@ -158,7 +159,7 @@ def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
         for f in dataclasses.fields(cls):
             assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
-            assert f.name in ports.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
+            assert f.name in port_conformance.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
 
 
 def test_a_service_uses_exactly_the_dependencies_it_declares():

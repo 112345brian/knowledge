@@ -476,10 +476,6 @@ CASES = [
      [("import-linter", ["kn.review_service", "subprocess"])]),
     ("service-imports-uuid", "add_fact_service", "import uuid",
      [("import-linter", ["kn.add_fact_service", "uuid"])]),
-    ("ports-imports-sqlite", "ports", "import sqlite3",
-     [("import-linter", ["never touch the file system", "kn.ports", "sqlite3"])]),
-    ("ports-imports-an-adapter", "ports", "import revisions_store",
-     [("tach", ["ports", "revisions_store"]), ("import-linter", ["kn.ports", "kn.revisions_store"])]),
     ("ids-adapter-imports-upward", "ids", "import add_fact",
      [("tach", ["ids", "add_fact"]), ("import-linter", ["kn.ids", "kn.add_fact"])]),
     ("cli-imports-sqlite", "knowledge", "import sqlite3",
@@ -603,7 +599,7 @@ def test_domain_list_is_a_ratchet_and_the_domain_is_pure_at_the_source_level():
     import ast
     domain = {m.split(".", 1)[1] for m in _il_contracts(_read(PYPROJECT))["domain-has-no-infrastructure"]["source_modules"]}
     assert {"privacy", "modes", "claims_audit", "timestamps", "revisions", "review_rules", "fact_rules", "new_fact", "lifecycle_rules",
-               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules", "ports",
+               "facts_batch_rules", "migrate_memory_rules", "normal_rules", "leak_rules",
                "artist_rules", "fact_ingest_rules", "source_ingest_rules", "music_ingest_rules",
                "measurement_rules", "build_rules", "backfill_rules"} <= domain, "a module was removed from the domain list; migrate it, do not drop it"
     for name in sorted(domain):
@@ -651,7 +647,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
-    allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "client source rules",
+    allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "client source rules",
                "driving adapter", "ETL adapter (driving, batch)"}
     assert set(roles.values()) <= allowed
 
@@ -666,7 +662,8 @@ def test_tach_layers_are_the_onion():
         "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
     expected = {"model": "model", "domain service": "domain_services", "application service": "application",
                 "infrastructure": "infrastructure", "composition root": "composition",
-                "ETL adapter (driving, batch)": "pipeline", "client source rules": "pipeline"}
+                "ETL adapter (driving, batch)": "pipeline", "client source rules": "pipeline",
+                "composition helper": "composition"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():
         layer = tach[name]["layer"]

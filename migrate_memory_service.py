@@ -1,7 +1,7 @@
 """Import Claude Code memory files as private, pending facts (issue #29).
 
 Library only: nothing here prints or exits (the Typer command lives in cli_migrate.py). This module is
-the use case (through the ports in `ports`, no adapter imported); `migrate_memory` is the facade that
+the use case (through the port protocols (`*_port`), no adapter imported); `migrate_memory` is the facade that
 binds it to the real adapters and keeps the public API.
 
 Source: `<root>/*/memory/*.md`, root defaulting to ~/.claude/projects. Index files named

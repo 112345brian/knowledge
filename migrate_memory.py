@@ -44,7 +44,7 @@ import clock
 import migrate_memory_service
 import migrate_memory_store
 import private_git
-from ports import bind
+from wiring import bind
 
 DEPS = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
                                             defaults=add_fact._Defaults())

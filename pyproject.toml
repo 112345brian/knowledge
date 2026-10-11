@@ -29,7 +29,7 @@ addopts = "-n auto"
 
 [tool.mypy]
 python_version = "3.11"
-files = ["ports.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "fact_defaults_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "fact_defaults_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
@@ -54,7 +54,7 @@ follow_imports = "silent"
 #                   migrate_memory, rules_edit, entities, ...     bind an application service to them
 #   infrastructure  *_store, clock, ids, paths, locks, git, ...   db, files, git, time (implement the ports)
 #   application     *_service                                     orchestrate the domain through ports
-#   domain_services rules, `ports` (the protocols), policies      pure: no I/O
+#   domain_services rules, `*_port` protocols, policies           pure: no I/O
 #   model           vocabularies, time and identifier primitives  pure: imports nothing else in the repo
 # tach.toml holds the per-module import allowlists (and the `paths` / `private_git` allowlists); the
 # contracts here cover what tach cannot: external packages (typer, sqlite3, subprocess), what the domain, the
@@ -110,7 +110,7 @@ source_modules = [
     "kn.normal_db",
     "kn.normal_rules",
     "kn.paths",
-    "kn.ports",
+    "kn.wiring",
     "kn.private_git_port",
     "kn.facts_file_port",
     "kn.clock_port",
@@ -249,7 +249,7 @@ source_modules = [
     "kn.normal_db",
     "kn.normal_rules",
     "kn.paths",
-    "kn.ports",
+    "kn.wiring",
     "kn.private_git_port",
     "kn.facts_file_port",
     "kn.clock_port",
@@ -536,7 +536,7 @@ forbidden_modules = [
     "kn.normal_db",
     "kn.normal_rules",
     "kn.paths",
-    "kn.ports",
+    "kn.wiring",
     "kn.privacy",
     "kn.privacy_rules_port",
     "kn.privacy_store",
@@ -582,7 +582,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # the other way round (the layered contract below already forbids the upward import).
 # DOMAIN today: privacy (rules + resolver), modes (mode policy), claims_audit (staleness rules),
 # revisions (entries, keys, log format, the next revision), review_rules, lifecycle_rules, new_fact,
-# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps, ports and the
+# facts_batch_rules, migrate_memory_rules, normal_rules, leak_rules, fact_rules, timestamps and the
 # pipeline's rules (artist_rules, fact_ingest_rules, source_ingest_rules, music_ingest_rules,
 # measurement_rules, build_rules, backfill_rules; the ingest steps and build.py are the ETL adapters). Their
 # adapters: privacy_store, modes_store, claims_store, revisions_store, review_store, lifecycle_store,
@@ -610,7 +610,6 @@ source_modules = [
     "kn.music_ingest_rules",
     "kn.new_fact",
     "kn.normal_rules",
-    "kn.ports",
     "kn.private_git_port",
     "kn.facts_file_port",
     "kn.clock_port",
@@ -764,7 +763,7 @@ layers = [
     "entities_store",
     "privacy | source_status | acquisition_store",
     "private_edit_store",
-    "private_git | clock | paths | timestamps | fact_rules | leak_rules | ports | ids | script_runner | locks | artist_rules | music_ingest_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers | entity_rules",
+    "private_git | clock | paths | timestamps | fact_rules | leak_rules | wiring | ids | script_runner | locks | artist_rules | music_ingest_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers | entity_rules",
     "entity_files_port | entity_migration_port | subject_files_port",
     "private_git_port",
     "facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",

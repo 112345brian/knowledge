@@ -4,7 +4,7 @@ import entity_migration_store
 import entity_queries_store
 import entities_service
 import private_git
-from ports import bind
+from wiring import bind
 
 DEPS = entities_service.EntitiesDeps(git=private_git, entity_files=entities_store, entity_migration=entity_migration_store,
                                       entity_queries=entity_queries_store)

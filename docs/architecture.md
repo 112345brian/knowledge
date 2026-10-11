@@ -10,7 +10,7 @@ protocols in individual `*_port.py` modules) wrap it. **Application services** (
 through the ports. **Infrastructure** (`*_store`, `clock`, `paths`, `private_git`, ...) implements the ports. The
 **composition roots** (facades) bind an application service to its adapters, and the CLI, the inbox and the ingest
 scripts are the driving adapters on the outside. Each application service declares the ports it needs as the required fields of its own frozen `*Deps` class (no
-shared optional bundle); `ports.py` holds `bind` and the protocol conformance checks.
+shared optional bundle); `wiring.py` holds `bind`; the protocol conformance checks are test support (`tests/port_conformance.py`).
 The knowledge is personal, so the domain core is only what every knowledge base needs (facts, trust, privacy, revisions,
 sources). Concerts, music ratings or measurements are not domain concepts here: they are optional client sources
 (`client/`) on the outside, and their pure rule modules are marked `client source rules`.
@@ -152,7 +152,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `normal_db` | infrastructure | SQL copy + file swap (also a script) |
 | `normal_rules` | domain service | normal-tier whitelist |
 | `paths` | infrastructure | personal paths |
-| `ports` | domain service | `bind` and conformance checks for the separate port contracts |
+| `wiring` | composition helper | `bind`: publishes a service function with its dependencies bound |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
 | `privacy_rules_port` | domain service | interface for reading and editing privacy rules |

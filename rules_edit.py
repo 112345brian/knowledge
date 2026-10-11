@@ -8,7 +8,7 @@ net) and keeps the public API. `knowledge.py privacy ...` calls this and imports
 import private_git
 import privacy_store
 import rules_edit_service
-from ports import bind
+from wiring import bind
 
 DEPS = rules_edit_service.RulesEditDeps(rules=privacy_store, git=private_git)
 

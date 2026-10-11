@@ -1,6 +1,6 @@
 """Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision.
 
-This module is the use case: it loads the state through the ports (`ports`), asks `lifecycle_rules`
+This module is the use case: it loads the state through the port protocols (`*_port`), asks `lifecycle_rules`
 (domain) what to do, writes the revision and commits. It imports no adapter; `lifecycle` is the facade
 that binds it to the real ones and keeps the public API.
 

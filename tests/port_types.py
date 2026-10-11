@@ -1,4 +1,4 @@
-"""Static checks for adapter modules against the ports declared in ``ports.py``.
+"""Static checks for adapter modules against the ports declared in the `*_port.py` modules.
 
 Run with ``uv run mypy``. These assignments supplement the runtime name/signature checks
 in ``test_ports.py`` with mypy's structural type checks.

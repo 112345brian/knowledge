@@ -17,7 +17,7 @@
 #                       migrate_memory, rules_edit, entities, ...     and bind an application service to them
 #       infrastructure  *_store, clock, ids, paths, private_git, ...  db, files, git, time (implement ports)
 #       application     *_service                                     orchestrate the domain through ports
-#       domain_services rules, `ports` (the protocols), policies      pure: no I/O, imports only the model
+#       domain_services rules, `*_port` protocols, policies           pure: no I/O, imports only the model
 #       model           vocabularies, time/identifier primitives      pure: imports nothing else in the repo
 #
 #     `application` sits inside `infrastructure` on purpose: that makes "an application service never imports
@@ -64,9 +64,9 @@ layer = "infrastructure"
 depends_on = []
 
 [[modules]]
-path = "ports"  # DOMAIN: the port protocols the use cases depend on, and bind() (pure)
-layer = "domain_services"
-depends_on = ["private_git_port", "facts_file_port", "clock_port", "ids_port", "fact_defaults_port", "add_fact_port", "privacy_rules_port", "revisions_port", "review_reads_port", "reviews_port", "lifecycle_reads_port", "memory_files_port", "entity_files_port", "entity_migration_port", "subject_files_port", "entity_queries_port"]
+path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
+layer = "composition"
+depends_on = []
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -162,7 +162,7 @@ depends_on = []
 path = "rules_edit"   # FACADE (composition root): binds rules_edit_service to privacy_store and private_git
 layer = "composition"
 depends_on = [
-    "ports",
+    "wiring",
     "privacy_store",
     "private_git",
     "rules_edit_service",
@@ -171,12 +171,12 @@ depends_on = [
 [[modules]]
 path = "entities"  # FACADE: binds entity use cases to their file, migration and query adapters
 layer = "composition"
-depends_on = ["entities_service", "entities_store", "entity_migration_store", "entity_queries_store", "private_git", "ports"]
+depends_on = ["entities_service", "entities_store", "entity_migration_store", "entity_queries_store", "private_git", "wiring"]
 
 [[modules]]
 path = "subjects"  # FACADE: binds subject use cases to their file and query adapters
 layer = "composition"
-depends_on = ["subjects_service", "subjects_store", "entity_queries_store", "private_git", "ports"]
+depends_on = ["subjects_service", "subjects_store", "entity_queries_store", "private_git", "wiring"]
 
 [[modules]]
 path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
@@ -253,7 +253,7 @@ depends_on = [
     "clock",
     "ids",
     "paths",
-    "ports",
+    "wiring",
     "privacy_store",
     "private_git",
 ]
@@ -327,7 +327,7 @@ depends_on = [
 path = "review"         # FACADE (composition root): binds review_service to the real adapters
 layer = "composition"
 depends_on = [
-    "ports",
+    "wiring",
     "privacy_store",
     "private_git",
     "review_service",
@@ -480,7 +480,7 @@ layer = "composition"
 depends_on = [
     "lifecycle_service",
     "lifecycle_store",
-    "ports",
+    "wiring",
     "private_git",
     "review",
     "revisions_store",
@@ -505,7 +505,7 @@ depends_on = [
     "add_fact",
     "add_fact_store",
     "facts_batch_service",
-    "ports",
+    "wiring",
     "private_git",
 ]
 
@@ -538,7 +538,7 @@ depends_on = [
     "clock",
     "migrate_memory_service",
     "migrate_memory_store",
-    "ports",
+    "wiring",
     "private_git",
 ]
 

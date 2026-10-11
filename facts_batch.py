@@ -47,7 +47,7 @@ import add_fact
 import add_fact_store
 import facts_batch_service
 import private_git
-from ports import bind
+from wiring import bind
 
 DEPS = facts_batch_service.FactsBatchDeps(git=private_git, facts_file=add_fact_store, add_fact=add_fact, defaults=add_fact._Defaults())
 

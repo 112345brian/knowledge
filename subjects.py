@@ -3,7 +3,7 @@ import entity_queries_store
 import subjects_service
 import subjects_store
 import private_git
-from ports import bind
+from wiring import bind
 
 DEPS = subjects_service.SubjectsDeps(git=private_git, subject_files=subjects_store, entity_queries=entity_queries_store)
 

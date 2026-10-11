@@ -35,7 +35,7 @@ import privacy_store
 import review_service
 import review_store
 import revisions_store
-from ports import bind
+from wiring import bind
 
 DEPS = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
 

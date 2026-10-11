@@ -53,7 +53,7 @@ import lifecycle_store
 import private_git
 import review
 import revisions_store
-from ports import bind
+from wiring import bind
 
 DEPS = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)
 

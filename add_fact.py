@@ -13,7 +13,7 @@ import clock
 import ids
 import privacy_store
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
-from ports import bind
+from wiring import bind
 import private_git
 
 HERE = os.path.dirname(os.path.abspath(__file__))
