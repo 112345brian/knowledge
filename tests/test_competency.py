@@ -14,6 +14,7 @@ import pytest
 from schema_helper import full_schema
 
 from conftest import REPO
+import fact_queries
 
 DOC = os.path.join(REPO, "docs", "competency-questions.md")
 sys.path.insert(0, os.path.join(REPO, "tests"))
@@ -100,18 +101,18 @@ def test_cq_01_facts_citing_a_source(world):
     rows = world.execute("SELECT f.id, fs.locator, fs.quote FROM fact_sources fs JOIN facts f ON f.id = fs.fact_id "
                          "JOIN sources s ON s.id = fs.source_id WHERE s.citekey = 'smith2020'").fetchall()
     assert [tuple(r) for r in rows] == [(1, "p. 12", "the 1.6 figure")]
-    assert knowledge.get_fact(world, 1)["sources"] == [{"name": "Smith 2020", "locator": "p. 12"}]
+    assert fact_queries.get_fact(world, 1)["sources"] == [{"name": "Smith 2020", "locator": "p. 12"}]
 
 
 def test_cq_02_trust_and_its_reason(world):
     import knowledge
-    f = knowledge.get_fact(world, 1)
+    f = fact_queries.get_fact(world, 1)
     assert (f["trust_level"], f["trust_rationale"]) == ("high", "meta-analysis of 49 trials")
 
 
 def test_cq_03_capture_provenance(world):
     import knowledge
-    f = knowledge.get_fact(world, 2)
+    f = fact_queries.get_fact(world, 2)
     assert (f["captured_via"], f["session_id"], f["captured_at"], f["source_quote"]) == ("mcp", "sess-1", "2026-10-01T10:00:00+00:00", "creatine is creatine")
 
 
@@ -132,12 +133,11 @@ def test_cq_05_facts_on_retracted_or_replaced_sources(world):
 
 
 def test_cq_06_source_identifiers_and_duplicates(world):
-    import cli_sources
     import knowledge
-    info = cli_sources.source_ids(world, "smith2020")
+    info = fact_queries.source_ids(world, "smith2020")
     assert info["identifiers"] == [{"scheme": "doi", "value": "10.1210/jc.2007-1692"}, {"scheme": "pmid", "value": "19135656"}]
-    assert cli_sources.source_ids(world, "text2e")["conflicts"] == [{"scheme": "isbn", "value": "9780306406157", "owner": "text1e"}]
-    assert [r["id"] for r in knowledge.list_facts(world, identifier="https://doi.org/10.1210/JC.2007-1692")] == [1]
+    assert fact_queries.source_ids(world, "text2e")["conflicts"] == [{"scheme": "isbn", "value": "9780306406157", "owner": "text1e"}]
+    assert [r["id"] for r in fact_queries.list_facts(world, identifier="https://doi.org/10.1210/JC.2007-1692")] == [1]
 
 
 def test_cq_07_unsupported_facts(world):
@@ -162,8 +162,8 @@ def test_cq_09_facts_that_never_decay(world):
 
 def test_cq_10_facts_true_on_a_date(world):
     import knowledge
-    inside = {r["id"] for r in knowledge.list_facts(world, valid_at="2020-06-01")}
-    outside = {r["id"] for r in knowledge.list_facts(world, valid_at="2023-01-01")}
+    inside = {r["id"] for r in fact_queries.list_facts(world, valid_at="2020-06-01")}
+    outside = {r["id"] for r in fact_queries.list_facts(world, valid_at="2023-01-01")}
     assert 1 in inside and 1 not in outside and 2 in outside                      # a fact with no interval is always in range
 
 
@@ -224,7 +224,7 @@ def test_cq_16_what_normal_mode_shows(world):
 
 def test_cq_17_pending_and_per_session_captures(world):
     import knowledge
-    assert [r["id"] for r in knowledge.list_facts(world, status="pending")] == [4]
+    assert [r["id"] for r in fact_queries.list_facts(world, status="pending")] == [4]
     assert [r[0] for r in world.execute("SELECT id FROM facts WHERE session_id = 'sess-1' ORDER BY id")] == [2, 4]
 
 
@@ -237,8 +237,8 @@ def test_cq_18_capture_routes(world):
 
 def test_cq_19_facts_about_an_entity(world):
     import knowledge
-    assert [r["id"] for r in knowledge.list_facts(world, entity="Acme Labs")] == [1]
-    assert [r["id"] for r in knowledge.list_facts(world, entity="zeddy", status="active")] == [5]            # by alias
+    assert [r["id"] for r in fact_queries.list_facts(world, entity="Acme Labs")] == [1]
+    assert [r["id"] for r in fact_queries.list_facts(world, entity="zeddy", status="active")] == [5]            # by alias
 
 
 def test_cq_20_subject_hierarchy_and_meaning(world):
@@ -250,14 +250,14 @@ def test_cq_20_subject_hierarchy_and_meaning(world):
 
 def test_cq_21_facts_for_a_population(world):
     import knowledge
-    assert [r["id"] for r in knowledge.search_facts(world, "example population", status="retracted")] == [6]
-    assert knowledge.get_fact(world, 1)["applies_to"] == "adult men"
+    assert [r["id"] for r in fact_queries.search_facts(world, "example population", status="retracted")] == [6]
+    assert fact_queries.get_fact(world, 1)["applies_to"] == "adult men"
 
 
 def test_cq_22_facts_of_a_kind(world):
     import knowledge
-    assert [r["id"] for r in knowledge.list_facts(world, kind="decision")] == [1]
-    assert [r["id"] for r in knowledge.list_facts(world, kind="plan", status="pending")] == [4]
+    assert [r["id"] for r in fact_queries.list_facts(world, kind="decision")] == [1]
+    assert [r["id"] for r in fact_queries.list_facts(world, kind="plan", status="pending")] == [4]
 
 
 # ------------------------------------------------------------------ build and data

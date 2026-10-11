@@ -17,6 +17,7 @@ import subjects_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
+import fact_queries
 
 
 @pytest.fixture(autouse=True)
@@ -352,11 +353,11 @@ def test_subject_filter_accepts_an_alias_in_both_layers():
     import modes
     import modes_store
     con = _query_db()
-    assert [r["id"] for r in knowledge.list_facts(con, subject="aas")] == [1, 3]
-    assert [r["id"] for r in knowledge.list_facts(con, subject="steroids")] == [1, 3]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", subject="aas")] == [1, 3] or \
-        {r["id"] for r in knowledge.search_facts(con, "banana", subject="aas")} == {1, 3}
-    assert knowledge.list_facts(con, subject="nope") == []
+    assert [r["id"] for r in fact_queries.list_facts(con, subject="aas")] == [1, 3]
+    assert [r["id"] for r in fact_queries.list_facts(con, subject="steroids")] == [1, 3]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", subject="aas")] == [1, 3] or \
+        {r["id"] for r in fact_queries.search_facts(con, "banana", subject="aas")} == {1, 3}
+    assert fact_queries.list_facts(con, subject="nope") == []
     normal, private = modes.Session(mode=modes.Mode.normal), modes.Session(mode=modes.Mode.private)
     assert [r["id"] for r in modes_store.list_facts(normal, con, subject="aas")] == [1]           # fact 3 stays private
     assert [r["id"] for r in modes_store.list_facts(private, con, subject="aas")] == [1, 3]

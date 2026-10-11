@@ -301,6 +301,7 @@ depends_on = [
     "identifiers",
     "source_status_store",
     "validtime",
+    "fact_reads_port",
 ]
 
 [[modules]]
@@ -562,6 +563,26 @@ depends_on = [
 ]
 
 [[modules]]
+path = "fact_reads_port"   # DOMAIN SERVICE: the read-side port (what the CLI reads, with no connection in sight)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "fact_reads_store"  # INFRASTRUCTURE: one read-only connection per call over fact_queries / claims_store
+layer = "infrastructure"
+depends_on = ["claims_store", "fact_queries", "fact_reads_port", "review_store"]
+
+[[modules]]
+path = "queries_service"   # APPLICATION SERVICE: the read side (search, list, show, history, audits, build info)
+layer = "application"
+depends_on = ["fact_reads_port"]
+
+[[modules]]
+path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
+layer = "composition"
+depends_on = ["fact_reads_store", "queries_service", "wiring"]
+
+[[modules]]
 path = "entity_rules"   # #42 entity vocabulary and error type, shared by entities_store and the entity CLI (pure)
 layer = "model"
 depends_on = []
@@ -651,13 +672,11 @@ depends_on = []
 path = "knowledge"      # the Typer app; the only module that imports typer besides cli_*
 layer = "cli"
 depends_on = [
-    "claims_store",
     "cli_add_fact",
     "cli_facts_batch",        # registration lines (CLI-internal)
     "cli_inbox",        # registration lines (CLI-internal)
     "cli_lifecycle",        # registration lines (CLI-internal)
     "cli_migrate",        # registration lines (CLI-internal)
-    "fact_queries",
     "privacy",
     "review",
     "rules_edit",
@@ -669,6 +688,8 @@ depends_on = [
     "fact_rules",
     "validtime",
     "private_git_port",
+    "queries",
+    "fact_reads_port",
 ]
 
 [[modules]]
@@ -676,7 +697,7 @@ path = "cli_lifecycle"  # supersede, retract, set-visibility
 layer = "cli"
 depends_on = [
     "lifecycle",
-    "fact_queries",
+    "queries",
 ]
 
 [[modules]]
@@ -728,15 +749,16 @@ depends_on = ["add_fact", "fact_rules", "new_fact"]
 path = "cli_sources"   # source ids (#48)
 layer = "cli"
 depends_on = [
-    "fact_queries",
+    "queries",
+    "fact_reads_port",
 ]
 
 [[modules]]
 path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
 layer = "cli"
 depends_on = [
-    "fact_queries",
     "subjects",
+    "fact_reads_port",
 ]
 
 # ===================================================================== serving (highest)

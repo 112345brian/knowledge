@@ -16,6 +16,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import facts_batch_rules
 import new_fact
+import fact_queries
 
 
 @pytest.fixture(autouse=True)
@@ -230,20 +231,20 @@ def _facts_db():
 def test_knowledge_valid_at_inside_outside_open_ended_and_point():
     import knowledge
     con = _facts_db()
-    ids = lambda at: [r["id"] for r in knowledge.list_facts(con, valid_at=at)]  # noqa: E731
+    ids = lambda at: [r["id"] for r in fact_queries.list_facts(con, valid_at=at)]  # noqa: E731
     assert ids("2024-02-01") == [1, 2]
     assert ids("2024-04-01") == [2]            # outside fact 1's interval
     assert ids("2024-03-15") == [1, 2, 5]
     assert ids("2024-03-16") == [1, 2]
     assert ids("2030-01-01") == [2, 3]         # open-ended is still true
     assert ids("2023-07-01") == [2, 4]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", valid_at="2024-06-01")] == [2, 3] or \
-        {r["id"] for r in knowledge.search_facts(con, "banana", valid_at="2024-06-01")} == {2, 3}
-    assert [r["id"] for r in knowledge.list_facts(con)] == [1, 2, 3, 4, 5]    # no --valid-at: no filter
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", valid_at="2024-06-01")] == [2, 3] or \
+        {r["id"] for r in fact_queries.search_facts(con, "banana", valid_at="2024-06-01")} == {2, 3}
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3, 4, 5]    # no --valid-at: no filter
     for bad in ("2024", "2024-02-30", "", "x' OR '1'='1"):
         with pytest.raises(ValueError):
-            knowledge.list_facts(con, valid_at=bad)
-    row = knowledge.list_facts(con)[0]
+            fact_queries.list_facts(con, valid_at=bad)
+    row = fact_queries.list_facts(con)[0]
     assert (row["valid_from"], row["valid_to"]) == ("2024-01-01", "2024-03-31")
 
 

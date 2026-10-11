@@ -16,6 +16,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import facts_batch_rules
 import new_fact
+import fact_queries
 
 
 @pytest.fixture(autouse=True)
@@ -173,13 +174,13 @@ def _facts_db():
 def test_fts_indexes_applies_to_and_follows_updates():
     import knowledge
     con = _facts_db()
-    assert [r["id"] for r in knowledge.search_facts(con, "example population")] == [1]
-    assert [r["id"] for r in knowledge.search_facts(con, "creatine")] == [1, 2] or {r["id"] for r in knowledge.search_facts(con, "creatine")} == {1, 2}
+    assert [r["id"] for r in fact_queries.search_facts(con, "example population")] == [1]
+    assert [r["id"] for r in fact_queries.search_facts(con, "creatine")] == [1, 2] or {r["id"] for r in fact_queries.search_facts(con, "creatine")} == {1, 2}
     con.execute("UPDATE facts SET applies_to = 'teenagers' WHERE id = 1")
-    assert knowledge.search_facts(con, "example population") == []
-    assert [r["id"] for r in knowledge.search_facts(con, "teenagers")] == [1]
+    assert fact_queries.search_facts(con, "example population") == []
+    assert [r["id"] for r in fact_queries.search_facts(con, "teenagers")] == [1]
     con.execute("DELETE FROM facts WHERE id = 1")
-    assert knowledge.search_facts(con, "teenagers") == []
+    assert fact_queries.search_facts(con, "teenagers") == []
 
 
 def test_rows_carry_applies_to_in_both_layers():
@@ -187,9 +188,9 @@ def test_rows_carry_applies_to_in_both_layers():
     import modes
     import modes_store
     con = _facts_db()
-    rows = {r["id"]: r for r in knowledge.list_facts(con)}
+    rows = {r["id"]: r for r in fact_queries.list_facts(con)}
     assert rows[1]["applies_to"] == "example population" and rows[2]["applies_to"] is None
-    assert knowledge.get_fact(con, 1)["applies_to"] == "example population"
+    assert fact_queries.get_fact(con, 1)["applies_to"] == "example population"
     s = modes.Session(mode=modes.Mode.normal)
     assert {r["id"]: r["applies_to"] for r in modes_store.list_facts(s, con)} == {1: "example population", 2: None}
     assert modes_store.search_facts(s, con, "example population")[0]["id"] == 1

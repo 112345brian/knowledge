@@ -19,6 +19,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import fact_rules
 import facts_batch_rules
 import new_fact
+import fact_queries
 
 VOCAB = ("observation", "measurement", "decision", "preference", "plan", "definition",
          "inference", "rule", "lesson", "unclassified")
@@ -131,12 +132,12 @@ def _db(rows):
 def test_knowledge_filters_and_row_shape_carry_kind():
     import knowledge
     con = _db([("decision", "normal"), ("plan", "normal"), ("decision", "private")])
-    assert [r["id"] for r in knowledge.list_facts(con, kind="decision")] == [1, 3]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", kind="plan")] == [2]
-    assert knowledge.list_facts(con, kind="rule") == []
-    assert knowledge.list_facts(con)[0]["kind"] == "decision"
-    assert knowledge.get_fact(con, 2)["kind"] == "plan"
-    assert [r["id"] for r in knowledge.list_facts(con, kind="x' OR '1'='1")] == []
+    assert [r["id"] for r in fact_queries.list_facts(con, kind="decision")] == [1, 3]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", kind="plan")] == [2]
+    assert fact_queries.list_facts(con, kind="rule") == []
+    assert fact_queries.list_facts(con)[0]["kind"] == "decision"
+    assert fact_queries.get_fact(con, 2)["kind"] == "plan"
+    assert [r["id"] for r in fact_queries.list_facts(con, kind="x' OR '1'='1")] == []
 
 
 def test_modes_filter_and_row_shape_carry_kind_and_keep_the_gate():

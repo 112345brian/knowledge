@@ -14,8 +14,8 @@ import sys
 
 import typer
 
-import fact_queries
 import lifecycle
+import queries
 
 app = typer.Typer(pretty_exceptions_enable=False, rich_markup_mode=None)
 
@@ -27,14 +27,6 @@ REASON_OPT = typer.Option(..., "--reason", help="Why (required; recorded in the 
 class Visibility(str, enum.Enum):
     normal = "normal"
     private = "private"
-
-
-def _open_db():
-    """Read-only connection to the built db, or None when there is none (source_keys still resolve)."""
-    try:
-        return fact_queries.connect()
-    except fact_queries.DatabaseNotFound:
-        return None
 
 
 def _report(res, as_json):
@@ -65,12 +57,7 @@ def _report(res, as_json):
 
 
 def _call(fn, *args, as_json, **kw):
-    db = _open_db()
-    try:
-        res = fn(*args, db=db, **kw)
-    finally:
-        if db is not None:
-            db.close()
+    res = fn(*args, db=queries.existing_db_path(), **kw)
     _report(res, as_json)
 
 

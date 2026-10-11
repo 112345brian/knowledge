@@ -15,17 +15,21 @@ import revisions_store
 import source_status_store
 import validtime
 from new_fact import DataFileError
-import paths
+from fact_reads_port import DatabaseNotFound  # noqa: F401  (raised by connect; defined with the port)
 
+
+
+def _settings():
+    """The configured settings, looked up on every call (never at import, never from a stale module binding)."""
+    import paths
+    return paths.settings()
 
 
 def default_db_path():
     """Where the built db is, from the configured settings (resolved on every call, never at import)."""
-    return paths.settings().db_path
+    return _settings().db_path
 
 
-class DatabaseNotFound(FileNotFoundError):
-    """knowledge.db doesn't exist yet (it is built, never hand-created)."""
 
 
 def connect(db_path=None):
@@ -63,7 +67,7 @@ def subject_context():
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= add_fact_store.file_subjects(paths.settings().facts_path)
+        known |= add_fact_store.file_subjects(_settings().facts_path)
     except DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
     return parents, known
@@ -196,9 +200,22 @@ def fact_as_of(con, fact_id, as_of):
 QueryError = sqlite3.OperationalError  # raised for FTS syntax errors and for a db built with an older schema
 
 
+def source_ids(con, citekey):
+    """{'citekey', 'name', 'identifiers': [{scheme, value}], 'conflicts': [{scheme, value, owner}]} or None for an unknown citekey."""
+    row = con.execute("SELECT id, citekey, name FROM sources WHERE citekey = ?", (citekey,)).fetchone()
+    if row is None:
+        return None
+    ids = [{"scheme": s, "value": v} for s, v in con.execute(
+        "SELECT scheme, value FROM source_identifiers WHERE source_id = ? ORDER BY scheme, value", (row[0],))]
+    conflicts = [{"scheme": s, "value": v, "owner": o} for s, v, o in con.execute(
+        "SELECT c.scheme, c.value, o.citekey FROM source_identifier_conflicts c JOIN sources o ON o.id = c.owner_source_id "
+        "WHERE c.source_id = ? ORDER BY c.scheme, c.value", (row[0],))]
+    return {"citekey": row[1], "name": row[2], "identifiers": ids, "conflicts": conflicts}
+
+
 def audit_sources(con):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity_store.audit_sources(con, search_roots=[paths.settings().bodybuilding_vault]), fixity_store.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[_settings().bodybuilding_vault]), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):

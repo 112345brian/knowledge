@@ -154,10 +154,13 @@ def test_every_module_that_calls_audit_claims_looks_at_severity():
     """A new outcome that a caller can silently ignore needs a test that fails when one does. The CLI must not
     count informational rows as failures; any future caller (an MCP tool, the inbox) must do the same."""
     offenders = []
+    # these hand the rows to their caller unchanged (port, adapter, service, composition root); the consumer
+    # that decides what a row means is knowledge.py, which is in the scan
+    pass_through = {"claims_audit.py", "fact_reads_port.py", "fact_reads_store.py", "queries_service.py", "queries.py"}
     for root, dirs, files in os.walk(REPO):
         dirs[:] = [d for d in dirs if d not in (".git", ".venv", "__pycache__", ".claude", "tests", "docs", ".tach")]
         for name in files:
-            if name.endswith(".py") and name != "claims_audit.py":
+            if name.endswith(".py") and name not in pass_through:
                 text = open(os.path.join(root, name), encoding="utf-8").read()
                 if re.search(r"\baudit_claims\(", text) and "severity" not in text:
                     offenders.append(name)

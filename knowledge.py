@@ -42,18 +42,16 @@ from typing import List, Optional
 
 import typer
 
-import claims_store
-import fact_queries
 import validtime
 import privacy
+import queries
 import review
 import revisions
 import rules_edit
 import script_runner
 from private_git_port import PrivateGitError
 from fact_rules import KIND_VALUES
-from fact_queries import (DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
-                          fact_as_of, get_fact, list_facts, list_subjects, search_facts)
+from fact_reads_port import DatabaseNotFound, FactQueryError
 
 class Trust(str, enum.Enum):
     verified = "verified"
@@ -96,16 +94,12 @@ def _fail(msg, code=1):
     raise typer.Exit(code)
 
 
-def _query(fn, *a, **kw):
-    """Open the db, run one library function, close. A missing db is a one-line error, exit 1."""
+def _read(fn, *a, **kw):
+    """Run one `queries` function. A missing db is a one-line error, exit 1."""
     try:
-        con = connect()
+        return fn(*a, **kw)
     except DatabaseNotFound as e:
         _fail(e)
-    try:
-        return fn(con, *a, **kw)
-    finally:
-        con.close()
 
 
 def _emit_json(data):
@@ -155,12 +149,12 @@ def cmd_search(
 ):
     personal = _personal(personal_only, not_personal)
     try:
-        rows = _query(search_facts, terms, subject=subject, trust=trust.value if trust else None,
+        rows = _read(queries.search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
                       include_pending=include_pending, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
         _fail(e)
-    except QueryError as e:
+    except FactQueryError as e:
         _fail(f"search failed: {e}")
     _emit_json(rows) if as_json else _print_fact_lines(rows)
 
@@ -186,7 +180,7 @@ def _print_validity(r, valid_at=None, verdict=None):
 
 def _show_as_of(fact_id, as_of, as_json, valid_at=None):
     try:
-        kind, r = _query(fact_as_of, fact_id, as_of)
+        kind, r = _read(queries.fact_as_of, fact_id, as_of)
     except ValueError as e:
         _fail(e)
     if kind == "no-fact":
@@ -220,7 +214,7 @@ def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
         _fail(f"--valid-at {valid_at!r} must be a real date, YYYY-MM-DD")
     if as_of is not None:
         return _show_as_of(fact_id, as_of, as_json, valid_at)
-    f = _query(get_fact, fact_id)
+    f = _read(queries.get_fact, fact_id)
     if not f:
         _fail(f"no fact with id {fact_id}")
     verdict = None if valid_at is None else validtime.contains(f["valid_from"], f["valid_to"], valid_at)
@@ -269,7 +263,7 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
     if not ref:
         _fail("give a fact id or a source_key")
     key = int(ref) if ref.isascii() and ref.isdigit() else ref
-    rows = _query(fact_queries.get_history, key)
+    rows = _read(queries.history, key)
     if not rows:
         _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
     if as_json:
@@ -297,11 +291,9 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
 
 @app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when a grounds/backing premise is stale; a stale rebuttal is listed as information only (it strengthens the claim).")
 def cmd_audit_claims(as_json: bool = JSON_OPT):
-    def run(con):
-        return claims_store.audit_claims(con), claims_store.unparseable_rechecks(con)
     try:
-        rows, unparsed = _query(run)
-    except QueryError as e:
+        rows, unparsed = _read(queries.audit_claims)
+    except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json({"stale_premises": rows, "unparseable_rechecks": unparsed})
@@ -333,22 +325,11 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
 def cmd_build_info(compare: Optional[str] = typer.Option(None, "--compare", help="Another knowledge.db to compare input hashes against."),
                    as_json: bool = JSON_OPT):
     try:
-        mine = _query(fact_queries.latest_build_info)
-        other = None
-        if compare is not None:
-            try:
-                con = connect(compare)
-            except DatabaseNotFound as e:
-                _fail(e)
-            try:
-                other = fact_queries.latest_build_info(con)
-            finally:
-                con.close()
-    except QueryError as e:
+        mine, other, diff = _read(queries.build_info, compare)
+    except FactQueryError as e:
         _fail(f"{e} (rebuild knowledge.db with the current schema)")
     if mine is None:
         _fail("this database recorded no build info (rebuild it)")
-    diff = fact_queries.compare_build_info(other, mine) if compare is not None else None
     if as_json:
         _emit_json({**mine, "compared_with": compare, "changed_inputs": diff})
     elif diff is not None:
@@ -367,8 +348,8 @@ def cmd_build_info(compare: Optional[str] = typer.Option(None, "--compare", help
 @app.command("audit-source-status", help="List active/pending facts that cite a retracted source, one under an expression of concern, or one that was superseded (with its replacement). Exit 1 when any are found.")
 def cmd_audit_source_status(as_json: bool = JSON_OPT):
     try:
-        rows, orphans = _query(fact_queries.audit_source_status)
-    except QueryError as e:
+        rows, orphans = _read(queries.audit_source_status)
+    except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json({"flagged_sources": rows, "superseded_without_replacement": orphans})
@@ -396,8 +377,8 @@ def cmd_audit_source_status(as_json: bool = JSON_OPT):
 @app.command("audit-sources", help="List facts whose source file changed, went missing or moved since the fact was extracted (SHA-256 baseline). Exit 1 when any are found.")
 def cmd_audit_sources(as_json: bool = JSON_OPT):
     try:
-        rows, unbaselined = _query(fact_queries.audit_sources)
-    except QueryError as e:
+        rows, unbaselined = _read(queries.audit_sources)
+    except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json({"changed_sources": rows, "no_baseline": unbaselined})
@@ -419,7 +400,7 @@ def cmd_audit_sources(as_json: bool = JSON_OPT):
 
 @app.command("subjects", help="List subjects (indented under parent) with counts of their active facts.")
 def cmd_subjects(include_pending: bool = INCLUDE_PENDING_OPT, as_json: bool = JSON_OPT):
-    rows = _query(list_subjects, include_pending=include_pending)
+    rows = _read(queries.list_subjects, include_pending=include_pending)
     if as_json:
         _emit_json(rows)
         return
@@ -445,7 +426,7 @@ def cmd_facts(
 ):
     personal = _personal(personal_only, not_personal)
     try:
-        rows = _query(list_facts, subject=subject, trust=trust.value if trust else None,
+        rows = _read(queries.list_facts, subject=subject, trust=trust.value if trust else None,
                       status=status.value if status else None, include_pending=include_pending,
                       personal=personal, limit=limit, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
@@ -501,8 +482,8 @@ def _report_review(res, as_json):
 @app.command("review-pending", help="List pending (unreviewed) facts, oldest first.")
 def cmd_review_pending(as_json: bool = JSON_OPT):
     try:
-        rows = _query(review.list_pending)
-    except QueryError as e:
+        rows = _read(queries.pending)
+    except FactQueryError as e:
         _fail(f"review-pending failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
         _emit_json(rows)
@@ -533,7 +514,7 @@ def cmd_approve(
         raise typer.BadParameter("give REF... or --all, not both")
     if not all_ and not refs:
         raise typer.BadParameter("give at least one REF, or --all")
-    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=existing_db_path())
+    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=queries.existing_db_path())
     _report_review(res, as_json)
 
 
@@ -545,7 +526,7 @@ def cmd_reject(
     allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
     as_json: bool = JSON_OPT,
 ):
-    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=existing_db_path())
+    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=queries.existing_db_path())
     _report_review(res, as_json)
 
 
@@ -571,9 +552,9 @@ def _load_rules():
 
 def _db_context(rules):
     """`rules` with the subject tree and the known-subject list from the live db (see
-    fact_queries.subject_context). No db -> empty context, so the unknown-subject rule is not enforced
+    queries.subject_context). No db -> empty context, so the unknown-subject rule is not enforced
     (nothing to compare against)."""
-    ctx = fact_queries.subject_context()
+    ctx = queries.subject_context()
     if ctx is None:
         return rules
     parents, known = ctx
@@ -696,7 +677,7 @@ import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, se
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
 
-from cli_inbox import register as _register_inbox; _register_inbox(app, fact_queries.default_db_path)  # inbox, edit (#33)
+from cli_inbox import register as _register_inbox; _register_inbox(app, queries.default_db_path)  # inbox, edit (#33)
 
 
 def main(argv=None):

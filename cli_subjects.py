@@ -14,7 +14,7 @@ import sys
 
 import typer
 
-import fact_queries
+from fact_reads_port import DatabaseNotFound
 import subjects as subject_usecases
 
 app = typer.Typer(help="The subject hierarchy: relation types, descriptions, aliases, deprecation. "
@@ -45,7 +45,7 @@ def _rows(db):
 def cmd_list(as_json: bool = JSON_OPT):
     try:
         rows = subject_usecases.rows()
-    except fact_queries.DatabaseNotFound as e:
+    except DatabaseNotFound as e:
         _fail(e)
     if as_json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
@@ -65,7 +65,7 @@ def cmd_list(as_json: bool = JSON_OPT):
 def cmd_show(name: str, as_json: bool = JSON_OPT):
     try:
         r = subject_usecases.detail(name)
-    except fact_queries.DatabaseNotFound as e:
+    except DatabaseNotFound as e:
         _fail(e)
     if r is None:
         _fail(f"unknown subject {name!r}")

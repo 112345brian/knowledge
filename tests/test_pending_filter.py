@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_knowledge import Env as BaseEnv, ok, L1, L2, L3, L4, L5, lib  # noqa: E402,F401
+import fact_queries
 
 
 class Env(BaseEnv):
@@ -91,19 +92,19 @@ def test_show_by_explicit_id_displays_any_status(env):
 
 
 def test_library_functions(lib, env):
-    con = lib.connect()
-    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]
-    assert [r["id"] for r in lib.list_facts(con, include_pending=True)] == [1, 2, 3, 6, 7]
-    assert [r["id"] for r in lib.list_facts(con, status="pending")] == [6, 7]
-    assert [r["id"] for r in lib.list_facts(con, status="pending", include_pending=False)] == [6, 7]
-    assert lib.search_facts(con, "whey") == []
-    assert {r["id"] for r in lib.search_facts(con, "whey", include_pending=True)} == {6, 7}
-    assert {r["id"] for r in lib.search_facts(con, "protein", status="superseded")} == {4}
-    assert lib.get_fact(con, 6)["status"] == "pending"  # not filtered
-    assert lib.get_fact(con, 4)["status"] == "superseded"
-    counts = {s["name"]: s["n_facts"] for s in lib.list_subjects(con)}
+    con = fact_queries.connect()
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3]
+    assert [r["id"] for r in fact_queries.list_facts(con, include_pending=True)] == [1, 2, 3, 6, 7]
+    assert [r["id"] for r in fact_queries.list_facts(con, status="pending")] == [6, 7]
+    assert [r["id"] for r in fact_queries.list_facts(con, status="pending", include_pending=False)] == [6, 7]
+    assert fact_queries.search_facts(con, "whey") == []
+    assert {r["id"] for r in fact_queries.search_facts(con, "whey", include_pending=True)} == {6, 7}
+    assert {r["id"] for r in fact_queries.search_facts(con, "protein", status="superseded")} == {4}
+    assert fact_queries.get_fact(con, 6)["status"] == "pending"  # not filtered
+    assert fact_queries.get_fact(con, 4)["status"] == "superseded"
+    counts = {s["name"]: s["n_facts"] for s in fact_queries.list_subjects(con)}
     assert counts["diary"] == 0 and counts["protein"] == 2 and counts["emptysubject"] == 0
-    assert {s["name"]: s["n_facts"] for s in lib.list_subjects(con, include_pending=True)}["diary"] == 1
+    assert {s["name"]: s["n_facts"] for s in fact_queries.list_subjects(con, include_pending=True)}["diary"] == 1
     con.close()
 
 

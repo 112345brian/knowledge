@@ -74,6 +74,10 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.fact_reads_port",
+    "kn.fact_reads_store",
+    "kn.queries",
+    "kn.queries_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -211,6 +215,10 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.fact_reads_port",
+    "kn.fact_reads_store",
+    "kn.queries",
+    "kn.queries_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -455,6 +463,10 @@ source_modules = [
     "kn.source_status",
 ]
 forbidden_modules = [
+    "kn.fact_reads_port",
+    "kn.fact_reads_store",
+    "kn.queries",
+    "kn.queries_service",
     "kn.acquisition_store",
     "kn.add_fact",
     "kn.add_fact_port",
@@ -595,6 +607,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.fact_reads_port",
     "kn.artist_rules",
     "kn.backfill_rules",
     "kn.build_rules",
@@ -672,6 +685,7 @@ name = "Use cases import ports and domain, never an adapter, a facade or infrast
 # tests/test_architecture.py checks that no service touches anything else on `os`.
 type = "forbidden"
 source_modules = [
+    "kn.queries_service",
     "kn.add_fact_service",
     "kn.facts_batch_service",
     "kn.lifecycle_service",
@@ -706,14 +720,14 @@ allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "driving-adapters-no-infrastructure"
-name = "The CLI and the inbox reach infrastructure only through use cases and read adapters"
-# Why (hexagonal architecture): the Typer app (knowledge, cli_*) and the inbox page are driving adapters:
-# they turn a command or a request into a use-case call and print or render the result. They never open a
-# database, spawn a process or touch files themselves, and never import a write-side adapter; writes go
-# through the facades (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit), and reads
-# through the read adapters (fact_queries, which also serves the revision history, claims_store, modes_store).
-# The forbidden list names every store that writes (or is both): privacy_store, private_git, revisions_store,
-# add_fact_store, lifecycle_store, review_store, migrate_memory_store, locks, ...
+name = "The CLI and the inbox reach infrastructure only through use cases (script_runner launches scripts)"
+# Why (onion architecture): the Typer app (knowledge, cli_*) and the inbox page are the outermost ring. They turn
+# a command or a request into a call on a composition root (review, lifecycle, add_fact, facts_batch,
+# migrate_memory, rules_edit, entities, subjects, and `queries` for every read) and print or render the result.
+# They never open a database, spawn a process or touch files, and import no adapter at all: every module in
+# tach's `infrastructure` layer is forbidden here except `script_runner`, the one launcher the Typer app uses
+# to run the standalone build and clean-concerts scripts. tests/test_architecture.py checks the list against
+# tach.toml, so a new adapter cannot be forgotten.
 type = "forbidden"
 source_modules = [
     "kn.cli_facts_batch",
@@ -728,6 +742,12 @@ source_modules = [
     "kn.cli_subjects",
 ]
 forbidden_modules = [
+    "kn.claims_store",
+    "kn.entity_queries_store",
+    "kn.fact_queries",
+    "kn.fact_reads_store",
+    "kn.leak_scan_store",
+    "kn.modes_store",
     "sqlite3", "subprocess", "pathlib", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "uuid", "os",
     "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids", "kn.locks",
     "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.subjects_store", "kn.revisions_store",
@@ -748,10 +768,11 @@ name = "Libraries form a DAG (no cycles) in a fixed order"
 type = "layers"
 containers = ["kn"]
 layers = [
-    "facts_batch | lifecycle | migrate_memory | rules_edit | entities | subjects",
+    "facts_batch | lifecycle | migrate_memory | rules_edit | entities | subjects | queries",
+    "fact_reads_store",
     "modes_store | claims_store | facts_batch_service",
     "review | modes | claims_audit | leak_test",
-    "normal_db | lifecycle_service | migrate_memory_service | rules_edit_service | entities_service | subjects_service",
+    "normal_db | lifecycle_service | migrate_memory_service | rules_edit_service | entities_service | subjects_service | queries_service",
     "entity_migration_store | entity_queries_store",
     "review_store | lifecycle_store | migrate_memory_store | review_service | fact_queries",
     "revisions_store | build_info_store | source_status_store | leak_scan_store",
@@ -766,5 +787,5 @@ layers = [
     "private_git | clock | paths | timestamps | fact_rules | leak_rules | wiring | ids | script_runner | locks | artist_rules | music_ingest_rules | measurement_rules | build_rules | fixity_store | validtime | textmatch | identifiers | entity_rules",
     "entity_files_port | entity_migration_port | subject_files_port",
     "private_git_port",
-    "facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",
+    "fact_reads_port | facts_file_port | clock_port | ids_port | fact_defaults_port | add_fact_port | privacy_rules_port | revisions_port | review_reads_port | reviews_port | lifecycle_reads_port | memory_files_port | entity_queries_port",
 ]

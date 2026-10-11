@@ -619,7 +619,7 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service"}
 
 
 def _architecture_roles():
@@ -644,7 +644,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "client source rules"} == CLIENT_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r == "application service"} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "client source rules",
@@ -684,6 +684,16 @@ def test_model_ring_is_pinned_and_the_contract_forbids_every_other_module():
     assert sources == tach_model == MODEL
     assert forbidden == set(ac.importable_stems(REPO)) - MODEL
     assert "ignore_imports" not in contract
+
+
+def test_driving_adapters_are_forbidden_every_infrastructure_module_but_the_script_launcher():
+    """The outermost ring reaches data only through composition roots: the contract must name every module
+    tach puts in the infrastructure layer (script_runner, the subprocess launcher, is the single exception)."""
+    contract = _il_contracts(_read(PYPROJECT))["driving-adapters-no-infrastructure"]
+    forbidden = {m.split(".", 1)[1] for m in contract["forbidden_modules"] if m.startswith("kn.")}
+    infra = {n for n, m in _tach_modules(_read(TACH_TOML)).items()
+             if m["layer"] == "infrastructure" and "." not in n and n != "script_runner"}
+    assert infra <= forbidden, f"driving adapters may import these infrastructure modules: {sorted(infra - forbidden)}"
 
 
 def test_composition_roots_import_only_what_they_use():

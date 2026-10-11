@@ -19,6 +19,7 @@ import textmatch
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
+import fact_queries
 
 
 @pytest.fixture(autouse=True)
@@ -375,15 +376,15 @@ def test_knowledge_entity_filter_by_name_alias_and_id():
     import knowledge
     con = _linked_db()
     for ref in ("Acme Labs", "acme", "ACME", "  acme   labs ", "acme"):
-        assert [r["id"] for r in knowledge.list_facts(con, entity=ref)] == [1, 4], ref
-    assert [r["id"] for r in knowledge.list_facts(con, entity="zed")] == [3, 4]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", entity="Acme")] in ([1, 4], [4, 1])
-    assert knowledge.list_facts(con, entity="nobody") == []
-    assert [r["id"] for r in knowledge.list_facts(con)] == [1, 2, 3, 4]
+        assert [r["id"] for r in fact_queries.list_facts(con, entity=ref)] == [1, 4], ref
+    assert [r["id"] for r in fact_queries.list_facts(con, entity="zed")] == [3, 4]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", entity="Acme")] in ([1, 4], [4, 1])
+    assert fact_queries.list_facts(con, entity="nobody") == []
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3, 4]
     for bad in ("", "   ", "!!!"):
         with pytest.raises(ValueError):
-            knowledge.list_facts(con, entity=bad)
-    assert knowledge.list_facts(con, entity="x' OR '1'='1") == []
+            fact_queries.list_facts(con, entity=bad)
+    assert fact_queries.list_facts(con, entity="x' OR '1'='1") == []
 
 
 def test_modes_entity_filter_respects_mode():

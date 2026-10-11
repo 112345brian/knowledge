@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 import pytest
+import fact_queries
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
@@ -243,7 +244,7 @@ def lib(env, monkeypatch):
 
 
 def test_connect_is_read_only(lib, env):
-    con = lib.connect()
+    con = fact_queries.connect()
     try:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             con.execute("UPDATE facts SET statement = 'x' WHERE id = 1")
@@ -258,8 +259,8 @@ def test_connect_is_read_only(lib, env):
 
 def test_connect_missing_db_raises_not_exits(lib, env):
     os.remove(env.db)
-    with pytest.raises(lib.DatabaseNotFound, match="run `python3 knowledge.py build` first"):
-        lib.connect()
+    with pytest.raises(fact_queries.DatabaseNotFound, match="run `python3 knowledge.py build` first"):
+        fact_queries.connect()
     assert not os.path.exists(env.db)  # ro open must not create it either
 
 
@@ -268,32 +269,32 @@ def test_connect_path_with_uri_special_characters(lib, tmp_path):
     odd = tmp_path / "we ird#dir?x"
     odd.mkdir()
     dst = odd / "k.db"
-    shutil.copy(lib.fact_queries.default_db_path(), dst)
-    con = lib.connect(str(dst))
+    shutil.copy(fact_queries.default_db_path(), dst)
+    con = fact_queries.connect(str(dst))
     assert con.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 5
     con.close()
 
 
 def test_functions_return_dicts_and_never_print_or_exit(lib, capsys):
-    con = lib.connect()
-    hits = lib.search_facts(con, "protein", personal=False)
+    con = fact_queries.connect()
+    hits = fact_queries.search_facts(con, "protein", personal=False)
     assert {h["id"] for h in hits} == {1}
     assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "applies_to", "statement"}
-    assert [r["id"] for r in lib.list_facts(con, status="active", personal=True)] == [3]
-    assert [r["id"] for r in lib.list_facts(con)] == [1, 2, 3]  # active only (#6)
-    assert [r["id"] for r in lib.list_facts(con, status="superseded")] == [4]
-    assert lib.list_facts(con, subject="emptysubject") == []
-    assert lib.search_facts(con, "zzzz") == []
-    assert lib.get_fact(con, 999) is None
-    f = lib.get_fact(con, 1)
+    assert [r["id"] for r in fact_queries.list_facts(con, status="active", personal=True)] == [3]
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3]  # active only (#6)
+    assert [r["id"] for r in fact_queries.list_facts(con, status="superseded")] == [4]
+    assert fact_queries.list_facts(con, subject="emptysubject") == []
+    assert fact_queries.search_facts(con, "zzzz") == []
+    assert fact_queries.get_fact(con, 999) is None
+    f = fact_queries.get_fact(con, 1)
     assert f["subject"] == "protein" and f["origin_path"] == "vault/protein.md"
     assert f["sources"] == [{"name": "Smith 2020 protein review", "locator": "p. 12"},
                             {"name": "Some blog", "locator": None}]
-    assert lib.get_fact(con, 2)["sources"] == []
-    subs = {s["name"]: s for s in lib.list_subjects(con)}
+    assert fact_queries.get_fact(con, 2)["sources"] == []
+    subs = {s["name"]: s for s in fact_queries.list_subjects(con)}
     assert subs["emptysubject"]["n_facts"] == 0 and subs["protein"]["parent"] == "nutrition"
     with pytest.raises(sqlite3.OperationalError):
-        lib.search_facts(con, '"unbalanced')
+        fact_queries.search_facts(con, '"unbalanced')
     con.close()
     out = capsys.readouterr()
     assert out.out == "" and out.err == ""

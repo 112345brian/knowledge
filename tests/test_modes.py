@@ -20,6 +20,7 @@ import privacy
 import revisions
 import revisions_store
 from test_add_fact import REPO
+import fact_queries
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -78,7 +79,7 @@ def db(tmp_path):
     con.execute("INSERT INTO claim_facts (claim_id, fact_id) VALUES (1, 3)")
     con.commit()
     con.close()
-    ro = knowledge.connect(path)
+    ro = fact_queries.connect(path)
     yield ro
     ro.close()
 
@@ -227,10 +228,10 @@ def _strip_gate(rows):
 
 
 def test_compat_get_fact_matches_knowledge(db):
-    # Private mode returns the full row, exactly knowledge.get_fact. Normal mode returns the same row
+    # Private mode returns the full row, exactly fact_queries.get_fact. Normal mode returns the same row
     # minus NORMAL_HIDDEN_FIELDS (the columns normal_db.py also leaves out).
     for fid in (1, 4, 9, 10):
-        full = knowledge.get_fact(db, fid)
+        full = fact_queries.get_fact(db, fid)
         assert modes_store.get_fact(S("private"), db, fid) == full
         trimmed = {k: v for k, v in full.items() if k not in modes.NORMAL_HIDDEN_FIELDS}
         assert modes_store.get_fact(S("normal"), db, fid) == trimmed
@@ -265,20 +266,20 @@ def _all_statuses(fn, db, *a, **kw):
 
 def test_compat_list_search_subjects_row_shapes(db):
     got = {r["id"]: r for r in modes_store.list_facts(S("normal"), db)}
-    ref = {r["id"]: r for r in knowledge.list_facts(db)}
+    ref = {r["id"]: r for r in fact_queries.list_facts(db)}
     for fid, row in got.items():
         assert row == ref[fid]
     s_got = {r["id"]: r for r in modes_store.search_facts(S("normal"), db, "banana")}
-    s_ref = {r["id"]: r for r in knowledge.search_facts(db, "banana")}
+    s_ref = {r["id"]: r for r in fact_queries.search_facts(db, "banana")}
     for fid, row in s_got.items():
         assert row == s_ref[fid]
     assert set(s_got) == {1, 4, 9, 10, 11}
     priv = {r["id"]: r for r in modes_store.list_facts(S("private"), db, limit=1000)}
-    assert priv == _all_statuses(knowledge.list_facts, db, limit=1000)
+    assert priv == _all_statuses(fact_queries.list_facts, db, limit=1000)
     priv_s = {r["id"]: r for r in modes_store.search_facts(S("private"), db, "banana")}
-    assert priv_s == _all_statuses(knowledge.search_facts, db, "banana")
-    # Subjects: same rows; private mode counts every status, knowledge.list_subjects only active ones.
-    p_sub, k_sub = modes_store.list_subjects(S("private"), db), knowledge.list_subjects(db)
+    assert priv_s == _all_statuses(fact_queries.search_facts, db, "banana")
+    # Subjects: same rows; private mode counts every status, fact_queries.list_subjects only active ones.
+    p_sub, k_sub = modes_store.list_subjects(S("private"), db), fact_queries.list_subjects(db)
     names = lambda rows: [{k: v for k, v in r.items() if k in ("name", "domain", "parent")} for r in rows]
     assert names(p_sub) == names(k_sub)
     assert all(p["n_facts"] >= k["n_facts"] for p, k in zip(p_sub, k_sub))

@@ -61,6 +61,10 @@ private-file editing receives that port rather than importing the Git adapter.
 
 | Module | Role | What it is |
 | --- | --- | --- |
+| `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
+| `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
+| `queries` | composition root | binds queries_service to fact_reads_store |
+| `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `seed_sources` | ETL adapter (driving, batch) |  |
 | `literature_sources` | ETL adapter (driving, batch) |  |
 | `measurements` | ETL adapter (driving, batch) |  |

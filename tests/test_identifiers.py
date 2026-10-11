@@ -13,6 +13,7 @@ import pytest
 import identifiers as ids
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_queries
 
 
 @pytest.fixture(autouse=True)
@@ -255,12 +256,12 @@ def test_identifier_filter_matches_any_spelling_in_both_layers():
     import modes_store
     con = _qdb()
     for ref in ("10.1210/JC.2007-1692", "https://doi.org/10.1210/jc.2007-1692", "doi:10.1210/jc.2007-1692", "19135656", "PMID 19135656"):
-        assert [r["id"] for r in knowledge.list_facts(con, identifier=ref)] == [1, 3], ref
-    assert [r["id"] for r in knowledge.list_facts(con, identifier="0-306-40615-2")] == [2]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", identifier="9780306406157")] == [2]
-    assert knowledge.list_facts(con, identifier="10.9999/nobody") == []
+        assert [r["id"] for r in fact_queries.list_facts(con, identifier=ref)] == [1, 3], ref
+    assert [r["id"] for r in fact_queries.list_facts(con, identifier="0-306-40615-2")] == [2]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", identifier="9780306406157")] == [2]
+    assert fact_queries.list_facts(con, identifier="10.9999/nobody") == []
     with pytest.raises(ValueError):
-        knowledge.list_facts(con, identifier="  ")
+        fact_queries.list_facts(con, identifier="  ")
     normal, private = modes.Session(mode=modes.Mode.normal), modes.Session(mode=modes.Mode.private)
     assert [r["id"] for r in modes_store.list_facts(normal, con, identifier="19135656")] == [1]
     assert [r["id"] for r in modes_store.list_facts(private, con, identifier="19135656")] == [1, 3]
