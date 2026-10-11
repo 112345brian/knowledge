@@ -11,11 +11,14 @@ the same kind of string. A frozen value must carry an offset (naive times are
 rejected) and is normalised to UTC.
 """
 import contextlib
+import contextvars
 import os
 from datetime import datetime, timezone
 
 ENV_VAR = "KNOWLEDGE_FROZEN_NOW"
-_frozen = None
+# The one ambient value in the system, and only a test seam: a context variable (scoped, restored on exit),
+# not a module global that a `global` statement rebinds.
+_frozen = contextvars.ContextVar("knowledge_frozen_now", default=None)
 
 
 def _parse(value):
@@ -27,8 +30,9 @@ def _parse(value):
 
 def now():
     """Current time as a timezone-aware UTC datetime (frozen value if one is set)."""
-    if _frozen is not None:
-        return _frozen
+    frozen_now = _frozen.get()
+    if frozen_now is not None:
+        return frozen_now
     env = os.environ.get(ENV_VAR)
     if env:
         return _parse(env)
@@ -42,10 +46,9 @@ def now_iso():
 @contextlib.contextmanager
 def frozen(value):
     """Freeze `now()` to an ISO-8601 string with an offset, or a datetime that has one."""
-    global _frozen
     dt = _parse(value) if isinstance(value, str) else _parse(value.isoformat())
-    previous, _frozen = _frozen, dt
+    token = _frozen.set(dt)
     try:
         yield
     finally:
-        _frozen = previous
+        _frozen.reset(token)

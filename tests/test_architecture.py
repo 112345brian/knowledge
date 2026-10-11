@@ -696,6 +696,76 @@ def test_driving_adapters_are_forbidden_every_infrastructure_module_but_the_scri
     assert infra <= forbidden, f"driving adapters may import these infrastructure modules: {sorted(infra - forbidden)}"
 
 
+ENTRY_POINTS = {"container", "build", "normal_db", "backfill_dates", "backfill_source_keys", "backfill_extracted_hashes",
+                "backfill_snapshot_date", "export_music_taste", "clean_concerts_csv"}
+
+
+def test_only_entry_points_read_the_configuration():
+    """`paths` is how configuration is read. Only the places a process starts may import it; everything else is
+    handed a Locations. tach's allowlist is the enforcement, this pins who is on it."""
+    importers = {n for n, m in _tach_modules(_read(TACH_TOML)).items() if "paths" in m.get("depends_on", [])}
+    assert importers == ENTRY_POINTS, f"unexpected: {sorted(importers - ENTRY_POINTS)}; gone: {sorted(ENTRY_POINTS - importers)}"
+
+
+def _all_source_trees():
+    import ast
+    for name, path in sorted(ac._source_files(REPO).items()):
+        yield name, ast.parse(_read(path))
+
+
+def test_no_hidden_global_state_in_the_application():
+    """No `global` statement, no memoised function (a cache is hidden state; textmatch's regex compile cache is
+    a pure function of its argument), no module-level mutable container (a cache, a registry) in any module."""
+    import ast
+    allowed_cache = {"textmatch"}
+    offenders = []
+    for name, tree in _all_source_trees():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Global):
+                offenders.append(f"{name}.py:{node.lineno}: global {', '.join(node.names)}")
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for d in node.decorator_list:
+                    target = d.func if isinstance(d, ast.Call) else d
+                    text = ast.unparse(target)
+                    if text.endswith(("lru_cache", "functools.cache", "cache")) and name not in allowed_cache:
+                        offenders.append(f"{name}.py:{node.lineno}: memoised {node.name}()")
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                value = node.value
+                empty_mutable = (isinstance(value, (ast.Dict, ast.List, ast.Set)) and not
+                                 (getattr(value, "keys", None) or getattr(value, "elts", None))) or \
+                    (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                     and value.func.id in ("dict", "list", "set", "defaultdict") and not value.args)
+                if empty_mutable and names and not all(n.isupper() or n == "__all__" for n in names):
+                    offenders.append(f"{name}.py:{node.lineno}: module-level mutable {names}")
+                if any(n in ("DEPS", "PORTS") for n in names):
+                    offenders.append(f"{name}.py:{node.lineno}: module-level {names} (compose() wires; nothing is built at import)")
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_the_clock_is_the_only_ambient_value_and_it_is_a_context_variable():
+    assert "contextvars.ContextVar(" in _read(os.path.join(REPO, "clock.py"))
+
+
+def test_application_services_import_no_system_module():
+    """An application service gets every path from Locations and every effect from a port: it imports no os, sys,
+    pathlib, subprocess or sqlite3 at all (the earlier rule allowed `os.path` string helpers)."""
+    import ast
+    forbidden = {"os", "sys", "posixpath", "ntpath", "pathlib", "subprocess", "sqlite3", "shutil", "tempfile", "glob", "io"}
+    offenders = []
+    for name, tree in _all_source_trees():
+        if not name.endswith("_service"):
+            continue
+        for node in ast.walk(tree):
+            mods = [a.name.split(".")[0] for a in node.names] if isinstance(node, ast.Import) else \
+                [(node.module or "").split(".")[0]] if isinstance(node, ast.ImportFrom) else []
+            for m in mods:
+                if m in forbidden:
+                    offenders.append(f"{name}.py:{node.lineno}: import {m}")
+    assert offenders == [], "\n".join(offenders)
+
+
 def test_composition_roots_import_only_what_they_use():
     """A composition root binds services to adapters and publishes its own functions. It must not re-export
     other modules' names (that hides where a name lives and lets callers reach infrastructure through it):
