@@ -356,9 +356,9 @@ layer = "model"
 depends_on = []
 
 [[modules]]
-path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization (re-exported from identity_rules) and the artist rules file's shape (pure)
+path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization and the artist rules file's shape (pure)
 layer = "domain_services"
-depends_on = ["identity_rules"]
+depends_on = []
 
 [[modules]]
 path = "ingest.fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
@@ -720,14 +720,14 @@ layer = "domain_services"
 depends_on = ["build_repositories_port", "inputs_port", "locations"]
 
 [[modules]]
-path = "identity_rules"     # DOMAIN SERVICE: artist-name canonicalization, byline split, identifier warning (pure)
+path = "identity_rules"     # DOMAIN SERVICE: byline split, identifier warning, artist_rules.json record (pure)
 layer = "domain_services"
 depends_on = ["build_records"]
 
 [[modules]]
 path = "artist_directory"    # DOMAIN SERVICE: the artists of one import run, keyed the one way artist names compare
 layer = "domain_services"
-depends_on = ["identity_rules"]
+depends_on = ["client.artist_rules"]
 
 [[modules]]
 path = "identity_service"   # APPLICATION SERVICE: the one definition of source, subject and artist identity

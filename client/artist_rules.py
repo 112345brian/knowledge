@@ -1,12 +1,25 @@
 """Pure helpers for canonicalizing names from optional music sources, and the shape of artist_rules.json.
 
-The two name functions are defined once, in `identity_rules` (the one place artist identity is defined); this module
-re-exports them for the music steps and keeps the artist rules file's own shape.
+The two name functions are music-source logic (RYM HTML-escapes names; the aliases come from artist_rules.json), so
+they are defined here, once. `artist_directory` is the stateful user; `identity_service` and `music_ingest_service`
+reach them through it.
 """
+import html
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
 
-from identity_rules import artist_key, canonical_artist_name  # noqa: F401  (re-exported)
+
+def canonical_artist_name(name: str, aliases: Optional[Mapping[str, str]] = None) -> str:
+    """Unescape a source name (RYM HTML-escapes), then apply a caller-provided alias mapping keyed by the
+    lowercased unescaped name."""
+    name = html.unescape(name)
+    return (aliases or {}).get(name.lower(), name)
+
+
+def artist_key(name: str) -> str:
+    """Case-insensitive cache key. Python's `lower()`, not SQLite NOCASE (which folds ASCII only): Last.fm, RYM and
+    hand-typed concert names disagree on casing ("JPEGMAFIA" vs "Jpegmafia") far more than on spelling."""
+    return name.lower()
 
 
 @dataclass(frozen=True)

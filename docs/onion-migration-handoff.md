@@ -55,8 +55,9 @@ integrated result, not a replacement for reviewing them.
    those move to the service.
 2. **#65 (gates) is not merged.** Its premise is "no exemptions"; merge it last and expect it to flag what the port
    collapse removes. Report, don't loosen.
-3. **`canonical_artist_name` / `artist_key` live in `identity_rules`.** They are music-source logic (HTML
-   unescape, `artist_rules.json` aliases); consider moving them back to `client/artist_rules.py`.
+3. ~~`canonical_artist_name` / `artist_key` in `identity_rules`~~ Done: defined once in `client/artist_rules.py`;
+   `artist_directory` is their only caller. `identity_rules.artist_rules_from_mapping` still builds a second
+   `ArtistRules` (`build_records`) beside `client.artist_rules.ArtistRules`: another parallel definition for the port collapse.
 4. ~~`remove_db_files` duplicated~~ Done: one definition in `build_rules`, taking the file port's `remove_if_exists`.
 5. **Not run:** the acceptance commands with a real private checkout (the suite is hermetic by design).
 6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated

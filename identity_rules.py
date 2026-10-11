@@ -1,26 +1,12 @@
 """Identity rules the build shares, pure: how names and keys are normalized before they are compared.
 
-Domain service ring: no I/O. This is the only place the artist-name canonicalization and the byline split are
-defined (`client/artist_rules.py` re-exports the artist ones for the music steps that still import it). The
-stateful operations that use them (find or create, with a per-run cache) are `identity_service`.
+Domain service ring: no I/O. The byline split and the identifier warning are defined here; the artist-name
+canonicalization is music-source logic and lives in `client/artist_rules.py`. The stateful operations that use
+them (find or create, with a per-run cache) are `identity_service`.
 """
-import html
 from typing import List, Mapping, Optional, Tuple
 
 import build_records as r
-
-
-def canonical_artist_name(name: str, aliases: Optional[Mapping[str, str]] = None) -> str:
-    """Unescape a source name (RYM HTML-escapes), then apply a caller-provided alias mapping keyed by the
-    lowercased unescaped name."""
-    name = html.unescape(name)
-    return (aliases or {}).get(name.lower(), name)
-
-
-def artist_key(name: str) -> str:
-    """Case-insensitive cache key. Python's `lower()`, not SQLite NOCASE (which folds ASCII only): Last.fm, RYM and
-    hand-typed concert names disagree on casing ("JPEGMAFIA" vs "Jpegmafia") far more than on spelling."""
-    return name.lower()
 
 
 def artist_rules_from_mapping(raw: Mapping) -> r.ArtistRules:

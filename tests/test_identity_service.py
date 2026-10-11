@@ -259,7 +259,7 @@ def _definitions():
 
 def test_identity_functions_have_one_definition_and_no_new_copies_appear():
     defs = _definitions()
-    owners = {"canonical_artist_name": "identity_rules.py", "artist_key": "identity_rules.py"}
+    owners = {"canonical_artist_name": "client/artist_rules.py", "artist_key": "client/artist_rules.py"}
     for fn, owner in owners.items():
         assert {p for p, n in defs if n == fn} == {owner}, f"{fn} must be defined only in {owner}"
     new = {d for d in defs if d not in LEGACY_DEFINITIONS and d[1] not in owners}
