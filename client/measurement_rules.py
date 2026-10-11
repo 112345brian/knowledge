@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 MEASUREMENTS_SNAPSHOT_FILE = "measurements_snapshot.json"
+MEASUREMENTS_CONFIG_FILE = "measurements_config.json"
 
 # Curated labels/good-direction for the metrics worth a human-friendly name.
 # Anything not listed here gets an auto-generated label (see humanize()) --
@@ -74,6 +75,16 @@ def parse_snapshot_text(text, path):
 def missing_snapshot_message(path):
     return (f"{path} is missing: the measurements snapshot date is not stored in the data yet. "
             f"Run `python3 -m client.backfill_snapshot_date --apply` (see the README, 'Dates'); a date is never invented.")
+
+
+def validate_config(config, path):
+    """`config` (the parsed measurements_config.json) when it is version 1 with manual_sources and scans;
+    RuntimeError naming `path` otherwise."""
+    if (not isinstance(config, dict) or config.get("version") != 1
+            or not isinstance(config.get("manual_sources"), dict)
+            or not isinstance(config.get("scans"), list)):
+        raise RuntimeError(f"{path}: expected version 1 with manual_sources and scans")
+    return config
 
 
 @dataclass
@@ -337,3 +348,29 @@ def micronutrient_measurements(row, cols):
     return [Measurement("nutrition-energy-balance", col, row[col], micronutrient_unit(col), row["date"], "micro", "verified",
                         "Imported daily summary from a local source.")
             for col in cols if row[col] is not None]
+
+
+# ---------------------------------------------------------------- the load's report
+
+@dataclass(frozen=True)
+class LoadSummary:
+    """What one measurements load wrote: rows it inserted into `measurements`, the table totals of the event
+    tables, and how many distinct dimension rows it touched."""
+    inserted: int
+    subjects: int
+    metrics: int
+    training_sets: int
+    exercises: int
+    food_log_entries: int
+    foods: int
+    meal_log_entries: int
+    muscle_volume_rows: int
+    muscles: int
+
+
+def summary_lines(s):
+    return [f"[measurements] inserted {s.inserted} measurement rows "
+            f"({s.subjects} subjects, {s.metrics} metrics touched)",
+            f"  plus {s.training_sets} training_sets ({s.exercises} exercises), "
+            f"{s.food_log_entries} food_log_entries ({s.foods} foods), {s.meal_log_entries} meal_log_entries, "
+            f"{s.muscle_volume_rows} muscle_volume_weekly rows ({s.muscles} muscles)"]

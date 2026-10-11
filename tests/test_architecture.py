@@ -621,7 +621,8 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
                       "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "queries_service", "scripts_service",
                       "identity_service", "source_ingest_service", "fact_ingest_service",
-                      "privacy_floor_service", "entity_link_service", "revision_apply_service"}
+                      "privacy_floor_service", "entity_link_service", "revision_apply_service",
+                      "measurements_service"}   # the last is a client source's use case: it sits in the pipeline ring
 
 
 def _architecture_roles():
@@ -645,12 +646,12 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r in ("model", "domain service", "pipeline rules")} == domain
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
-    assert {n for n, r in roles.items() if r == "application service"} == services
+    assert {n for n, r in roles.items() if r in ("application service", "pipeline use case")} == services
     assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "build_composition", "fact_ingest"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",
-               "driving adapter", "ETL adapter (driving, batch)"}
+               "driving adapter", "ETL adapter (driving, batch)", "pipeline use case"}
     assert set(roles.values()) <= allowed
 
 
@@ -664,7 +665,7 @@ def test_tach_layers_are_the_onion():
         "serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
     expected = {"model": "model", "domain service": "domain_services", "application service": "application",
                 "infrastructure": "infrastructure", "composition root": "composition",
-                "ETL adapter (driving, batch)": "pipeline", "pipeline rules": "pipeline",
+                "ETL adapter (driving, batch)": "pipeline", "pipeline rules": "pipeline", "pipeline use case": "pipeline",
                 "composition helper": "composition"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():

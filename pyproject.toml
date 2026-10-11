@@ -212,6 +212,10 @@ source_modules = [
     "kn.build_steps_port",
     "kn.identity_rules",
     "kn.identity_service",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 forbidden_modules = [
     # CLI
@@ -261,6 +265,7 @@ forbidden_modules = [
     "kn.source_readers",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
+    "kn.measurements_service",
 ]
 
 [[tool.importlinter.contracts]]
@@ -411,6 +416,10 @@ source_modules = [
     "kn.build_steps_port",
     "kn.identity_rules",
     "kn.identity_service",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 forbidden_modules = ["typer", "click"]
 
@@ -487,6 +496,7 @@ forbidden_modules = [
     "kn.source_readers",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
+    "kn.measurements_service",
 ]
 
 [[tool.importlinter.contracts]]
@@ -749,6 +759,11 @@ forbidden_modules = [
     "kn.identity_service",
     "kn.subject_hierarchy_service",
     "kn.subject_repository_store",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
+    "kn.measurements_service",
 ]
 allow_indirect_imports = true
 
@@ -844,6 +859,8 @@ source_modules = [
     "kn.build_repositories_port",
     "kn.build_steps_port",
     "kn.identity_rules",
+    "kn.vault_reader_port",
+    "kn.measurements_port",
 ]
 forbidden_modules = [
     # infrastructure the domain must not touch
@@ -873,6 +890,8 @@ forbidden_modules = [
     "kn.subjects_service",
     "kn.source_ingest_service",
     "kn.subject_hierarchy_service",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true
 
@@ -903,6 +922,7 @@ source_modules = [
     "kn.identity_service",
     "kn.source_ingest_service",
     "kn.subject_hierarchy_service",
+    "kn.measurements_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -930,6 +950,8 @@ forbidden_modules = [
     "kn.subjects_service",
     "kn.source_ingest_service",
     "kn.subject_hierarchy_service",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true
 
@@ -984,5 +1006,7 @@ forbidden_modules = [
     "kn.private_edit_store",
     "kn.source_status_store",
     "kn.source_repository_store",
+    "kn.vault_reader_store",
+    "kn.measurements_store",
 ]
 allow_indirect_imports = true

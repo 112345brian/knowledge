@@ -210,6 +210,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `lifecycle_store` | infrastructure | rules + subject tree for the floor |
 | `lifecycle_reads_port` | domain service | interface for inputs used by lifecycle decisions |
 | `measurement_rules` | pipeline rules | vault rows to measurements |
+| `measurements_port` | domain service | interfaces for the measurement writes and the fact <-> measurement links |
+| `measurements_service` | pipeline use case | load the vault's readings, link facts to measurements, through ports (measurements source) |
+| `measurements_store` | infrastructure | SQLite measurement repository and fact-link queries |
 | `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | infrastructure | inter-process file lock for the data-file writers |
 | `migrate_memory` | composition root | binds migrate_memory_service |
@@ -258,7 +261,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `rules_edit` | composition root | binds rules_edit_service; also the knowledge privacy commands' read access to the rules |
 | `rules_edit_service` | application service | edit privacy rules |
 | `script_runner` | infrastructure | starts the standalone scripts |
-| `snapshot_date` | ETL adapter (driving, batch) | snapshot date of the measurements load (measurements source) |
+| `snapshot_date` | ETL adapter (driving, batch) | snapshot date and configuration of the measurements load (measurements source) |
 | `source_ingest_rules` | pipeline rules | citation notes |
 | `source_ingest_service` | application service | store sources, validate and store their relations, record vault files (through `sources_port`) |
 | `source_readers` | ETL adapter (driving, batch) | composed readers: manual_sources.json and the vault notes as `SourceRecord`s |
@@ -276,3 +279,5 @@ validation, matching and pure edits their files and lists are subject to.
 | `textmatch` | model | whole-word term matching |
 | `timestamps` | model | revision-time parsing |
 | `validtime` | model | valid-time dates: parsing, ordering, containment |
+| `vault_reader_port` | domain service | interface for reading the vault's database as typed records |
+| `vault_reader_store` | infrastructure | SQLite reader of the vault's database |

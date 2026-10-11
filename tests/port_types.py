@@ -69,3 +69,11 @@ def _sqlite_tables(con: sqlite3.Connection) -> None:
     revision_table: FactRevisionTable = fact_tables_store.SqliteFactRevisionTable(con)
     privacy_table: FactPrivacyTable = fact_tables_store.SqliteFactPrivacyTable(con)
     link_table: EntityLinkTable = fact_tables_store.SqliteEntityLinkTable(con)
+from client.measurements_port import FactMeasurementLinks, MeasurementRepository  # noqa: E402
+from client.vault_reader_port import VaultReader  # noqa: E402
+from client import measurements_store, vault_reader_store  # noqa: E402
+import sqlite3  # noqa: E402
+_scratch = sqlite3.connect(":memory:")
+vault_reader: VaultReader = vault_reader_store.SqliteVaultReader(_scratch)
+measurement_repository: MeasurementRepository = measurements_store.SqliteMeasurementRepository(_scratch)
+fact_measurement_links: FactMeasurementLinks = measurements_store.SqliteFactMeasurementLinks(_scratch)
