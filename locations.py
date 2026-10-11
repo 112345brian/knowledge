@@ -23,13 +23,20 @@ class Locations:
     looks for it."""
     knowledge_db_dir: str
     private_data_dir: str
-    bodybuilding_vault: str
-    health_dir: str
+    notes_vault: Optional[str] = None
+    health_dir: Optional[str] = None
     client_sources: Tuple[str, ...] = ()
     client_sources_implicit: bool = False
     concerts_csv: Optional[str] = None
     rym_export_csv: Optional[str] = None
     scrobbles_json: Optional[str] = None
+
+    def need(self, field, setting, for_what):
+        """The value of an optional path, or a ValueError naming the `local_paths.py` setting to define."""
+        value = getattr(self, field)
+        if value is None:
+            raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
+        return value
 
     @property
     def db_dir(self):

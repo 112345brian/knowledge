@@ -278,7 +278,7 @@ def hooked(tmp_path, monkeypatch):
 def run_main(db_dir, *args):
     from locations import Locations
     locations = Locations(knowledge_db_dir=str(db_dir), private_data_dir=str(db_dir.parent / "data"),
-                          bodybuilding_vault=str(db_dir.parent / "vault"), health_dir=str(db_dir.parent / "health"))
+                          notes_vault=str(db_dir.parent / "vault"), health_dir=str(db_dir.parent / "health"))
     build.main(locations, list(args))
 
 

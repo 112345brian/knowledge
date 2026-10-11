@@ -49,7 +49,8 @@ def load():
 
     return Locations(
         knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
-        bodybuilding_vault=os.path.expanduser(local.BODYBUILDING_VAULT), health_dir=os.path.expanduser(local.HEALTH_DIR),
+        # NOTES_VAULT is the generic name; BODYBUILDING_VAULT is the older one and still works.
+        notes_vault=path("NOTES_VAULT") or path("BODYBUILDING_VAULT"), health_dir=path("HEALTH_DIR"),
         client_sources=sources, client_sources_implicit=implicit,
         concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
     )

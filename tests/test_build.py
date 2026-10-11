@@ -43,7 +43,7 @@ def env(tmp_path, monkeypatch):
     e = E()
     e.steps_dir, e.db_dir, e.schema = steps_dir, db_dir, schema
     e.locations = Locations(knowledge_db_dir=str(db_dir), private_data_dir=str(tmp_path / "data"),
-                            bodybuilding_vault=str(tmp_path / "vault"), health_dir=str(tmp_path / "health"))
+                            notes_vault=str(tmp_path / "vault"), health_dir=str(tmp_path / "health"))
     e.live = str(db_dir / "knowledge.db")
     e.backups = db_dir / "backups"
     e.write_step = lambda name, body: (steps_dir / name).write_text(body)

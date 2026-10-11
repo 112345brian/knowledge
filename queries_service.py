@@ -55,7 +55,7 @@ def audit_claims(deps):
 
 
 def audit_sources(deps):
-    return deps.fact_reads.audit_sources(deps.locations.db_path, deps.locations.bodybuilding_vault)
+    return deps.fact_reads.audit_sources(deps.locations.db_path, deps.locations.notes_vault)
 
 
 def audit_source_status(deps):

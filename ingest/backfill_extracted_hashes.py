@@ -73,7 +73,7 @@ def main(argv=None):
     locations = paths.load()
     data_dir = args.data_dir or locations.private_data_dir
     try:
-        result, unresolved = backfill(data_dir, locations.bodybuilding_vault, apply=args.apply)
+        result, unresolved = backfill(data_dir, locations.notes_vault, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

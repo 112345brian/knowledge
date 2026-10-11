@@ -240,7 +240,7 @@ def test_02_fills_the_source_fixity_columns(ingest, tmp_path, monkeypatch):
     write(d / "smith2020.md", b"---\ntitle: T\nyear: 2020\n---\nbody\n")
     write(d / "README.md", b"skipped")
     con = ingest.db()
-    mod.run(con, locs(bodybuilding_vault=str(d.parent)))
+    mod.run(con, locs(notes_vault=str(d.parent)))
     r = con.execute("SELECT * FROM sources").fetchone()
     assert con.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 1
     assert r["content_sha256"] == sha(b"---\ntitle: T\nyear: 2020\n---\nbody\n")
@@ -302,10 +302,10 @@ def test_backfill_default_resolver_is_the_facts_step_rule():
     must be the rule the facts step applies."""
     from ingest import backfill_extracted_hashes as bf, fact_ingest_rules
     loc = locs()
-    resolve = bf._resolver(loc.private_data_dir, loc.bodybuilding_vault)
+    resolve = bf._resolver(loc.private_data_dir, loc.notes_vault)
     assert resolve(None) is None
     notes = "Some Note.md, extracted 2026-01-01"
-    assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, loc.bodybuilding_vault) != None  # noqa: E711
+    assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, loc.notes_vault) != None  # noqa: E711
 
 
 # ------------------------------------------------------------------ CLI

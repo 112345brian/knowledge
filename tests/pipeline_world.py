@@ -106,7 +106,7 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
     rym = os.path.join(root, "rym.csv")
     scrobbles = os.path.join(root, "scrobbles.json")
     _write(os.path.join(private, "local_paths.py"),
-           f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\nBODYBUILDING_VAULT = {vault!r}\n"
+           f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\nNOTES_VAULT = {vault!r}\n"
            f"HEALTH_DIR = {os.path.join(root, 'health')!r}\nCONCERTS_CSV = {concerts!r}\nRYM_EXPORT_CSV = {rym!r}\n"
            f"SCROBBLES_JSON = {scrobbles!r}\nCLIENT_SOURCES = {tuple(sources)!r}\n")
 

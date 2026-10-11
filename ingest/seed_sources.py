@@ -28,7 +28,7 @@ def load_sources(locations):
     items = json.load(open(os.path.join(locations.private_data_dir, "manual_sources.json")))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], locations.bodybuilding_vault, locations.health_dir)
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], locations.notes_vault, locations.health_dir)
     return items
 
 
