@@ -256,6 +256,8 @@ class FakeRules:
 
 
 class FakeClock:
+    is_fixed = True
+
     def now(self):
         import datetime
         return datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
@@ -352,3 +354,33 @@ def test_library_and_composition_modules_import_without_a_private_repo():
     r = subprocess.run([sys.executable, "-c", "import container; container.Container().add_fact.data_file_path()"], cwd=REPO, env=env,
                        capture_output=True, text=True)
     assert r.returncode != 0 and "local_paths.py not found" in r.stderr
+
+
+def test_verify_checks_that_the_calls_the_protocol_allows_are_accepted():
+    """A matching parameter-name prefix is not enough: a required extra argument, a missing default, a wrong name
+    or the wrong order fails a call the protocol lets callers make."""
+    class Extra:                       # now(extra): the protocol's now() takes nothing
+        def now(self, extra): ...
+        def now_iso(self): ...
+        is_fixed = False
+
+    class Fine:
+        is_fixed = False
+        def now(self): ...
+        def now_iso(self, *a, **k): ...
+
+    problems = wiring.conformance_problems("clock", Extra())
+    assert any("clock.now" in p and "minimal call" in p for p in problems)
+    assert wiring.conformance_problems("clock", Fine()) == []
+
+    class Records(dict):               # append_records(path, records, reject): the protocol's reject has a default
+        pass
+    names = ("read_array", "append_record", "citekey_problem", "subject_tree", "file_subjects", "data_dir_of",
+             "file_sha256", "canonical_subject")
+    ok = type("FF", (), {n: (lambda self, *a, **k: None) for n in names})()
+    ok.append_records = lambda path, records, reject=None: None
+    assert wiring.conformance_problems("facts_file", ok) == []
+    ok.append_records = lambda path, records, reject: None
+    assert any("append_records" in p and "minimal call" in p for p in wiring.conformance_problems("facts_file", ok))
+    ok.append_records = lambda path, rows, reject=None: None       # wrong name: a call by keyword would fail
+    assert any("by parameter name" in p for p in wiring.conformance_problems("facts_file", ok))

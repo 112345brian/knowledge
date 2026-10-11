@@ -640,7 +640,7 @@ depends_on = []
 [[modules]]
 path = "scripts_service"      # APPLICATION SERVICE: build / clean-concerts as a script run
 layer = "application"
-depends_on = ["script_runner_port"]
+depends_on = ["script_runner_port", "clock_port", "locations"]
 
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations

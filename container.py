@@ -79,4 +79,4 @@ class Container:
 
     @cached_property
     def scripts(self):
-        return scripts.compose()
+        return scripts.compose(self.locations, self.clock)

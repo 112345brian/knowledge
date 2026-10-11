@@ -18,12 +18,33 @@ def system_clock():
     return clock.SystemClock()
 
 
+def synthetic_locations():
+    """Locations for a test that has no private checkout of its own: real-looking, absolute, under a per-process
+    scratch directory nothing else uses. Tests that touch the disk pass explicit paths or use their own layout."""
+    import os
+    import tempfile
+    from locations import Locations
+    root = os.path.join(tempfile.gettempdir(), f"knowledge-test-synthetic-{os.getpid()}")
+    return Locations(knowledge_db_dir=os.path.join(root, "db"), private_data_dir=os.path.join(root, "data"),
+                     bodybuilding_vault=os.path.join(root, "vault"), health_dir=os.path.join(root, "health"))
+
+
+def _default_locations():
+    """The locations of a private checkout the test itself pointed KNOWLEDGE_PRIVATE_DIR at, else synthetic ones.
+    (conftest removes any ambient value before every test, so a developer's real checkout is never read.)"""
+    import paths
+    try:
+        return paths.load()
+    except ModuleNotFoundError:
+        return synthetic_locations()
+
+
 def app(locations=None, clock=None):
     import clock as clocks
     with _lock:   # tests call this from worker threads; importing and re-resolving is not re-entrant
         sys.modules.pop("container", None)
         import container
-        return container.Container(locations, clock)
+        return container.Container(_default_locations() if locations is None else locations, clock)
 
 
 def locs(**overrides):
@@ -32,6 +53,5 @@ def locs(**overrides):
     import dataclasses
     import local_inputs
     import local_stores
-    import paths
     from pipeline_context import StepContext
-    return StepContext(dataclasses.replace(paths.load(), **overrides), local_inputs, local_stores)
+    return StepContext(dataclasses.replace(_default_locations(), **overrides), local_inputs, local_stores)

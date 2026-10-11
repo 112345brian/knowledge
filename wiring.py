@@ -72,8 +72,45 @@ class PortMismatch(TypeError):
     """A dependency does not have the shape of the port it was wired to."""
 
 
+def _call_problems(name: str, member: str, proto_fn, impl) -> List[str]:
+    """Whether `impl` accepts every call the protocol method allows. Three sample calls are bound against its
+    signature: the minimal one (only the protocol's required parameters, positionally), the maximal one (every
+    parameter, positionally) and the keyword one (every parameter by name). A required extra parameter, a
+    missing default, a wrong name or the wrong order fails one of them. A `(*args, **kwargs)` forwarder (an
+    instrument or a patch) accepts anything and is left alone."""
+    wanted = [p for p in inspect.signature(proto_fn).parameters.values()
+              if p.name != "self" and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
+    try:
+        have = inspect.signature(impl)
+    except (TypeError, ValueError):
+        return []        # a builtin or C callable: no signature to compare
+    if any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in have.parameters.values()) and \
+            any(p.kind is inspect.Parameter.VAR_KEYWORD for p in have.parameters.values()):
+        return []
+    positional = [p for p in wanted if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+    keyword_only = [p for p in wanted if p.kind is inspect.Parameter.KEYWORD_ONLY]
+    required = lambda ps: [p for p in ps if p.default is inspect.Parameter.empty]   # noqa: E731
+    calls = {
+        "minimal": (len(required(positional)), {p.name: None for p in required(keyword_only)}),
+        "maximal": (len(positional), {p.name: None for p in keyword_only}),
+    }
+    problems = []
+    for label, (n_pos, kw) in calls.items():
+        try:
+            have.bind(*([None] * n_pos), **kw)
+        except TypeError as e:
+            problems.append(f"{name}.{member}: the {label} call the protocol allows is not accepted ({e}); "
+                            f"signature is {have}")
+    by_name = {p.name: None for p in positional + keyword_only}
+    try:
+        have.bind(**by_name)
+    except TypeError as e:
+        problems.append(f"{name}.{member}: a call by parameter name is not accepted ({e}); signature is {have}")
+    return problems
+
+
 def conformance_problems(name: str, adapter: Any) -> List[str]:
-    """What is missing or mis-shaped in `adapter` against the protocol for port `name` (empty = conforms)."""
+    """What is missing or not call-compatible in `adapter` against the protocol for port `name` (empty = conforms)."""
     proto = PORT_PROTOCOLS[name]
     problems = []
     for member, value in vars(proto).items():
@@ -85,18 +122,7 @@ def conformance_problems(name: str, adapter: Any) -> List[str]:
         if impl is None:
             problems.append(f"{name}: {member} is missing")
             continue
-        want = [p for p in inspect.signature(value).parameters if p != "self"]
-        params = inspect.signature(impl).parameters
-        if any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params.values()):
-            continue          # a (*args, **kwargs) forwarder (instrumentation, a patch): nothing to compare
-        has_var_kw = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
-        have = [n for n, p in params.items() if p.kind not in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)]
-        if has_var_kw:    # `(fact, **kw)`: the named ones must lead the protocol's; the rest arrive as keywords
-            if have != want[:len(have)]:
-                problems.append(f"{name}.{member}: parameters {have} do not lead {want}")
-            continue
-        if have[:len(want)] != want:
-            problems.append(f"{name}.{member}: parameters {have} do not start with {want}")
+        problems.extend(_call_problems(name, member, value, impl))
     for member in getattr(proto, "__annotations__", {}):
         if not hasattr(adapter, member):
             problems.append(f"{name}: attribute {member} is missing")

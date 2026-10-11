@@ -55,8 +55,9 @@ private-file editing receives that port rather than importing the Git adapter.
    (contract `driving-adapters-no-infrastructure`).
 4. Only `private_git` runs git and only `script_runner` spawns a Python subprocess; nothing above the domain
    imports upward (layers: serving > cli > pipeline > library).
-5. Every adapter satisfies the protocol it is wired to: `wiring.verify` raises `PortMismatch` at startup, and a forgotten
-   adapter is a `TypeError` (the `*Deps` fields are required).
+5. Every adapter satisfies the protocol it is wired to: `wiring.verify` raises `PortMismatch` at startup unless every
+   call the protocol allows (the minimal one, the full one, and one by parameter name) binds to the adapter's
+   signature, and a forgotten adapter is a `TypeError` (the `*Deps` fields are required).
 6. The model imports no other module of the repo, and a domain service never imports an application service
    (contract `model-is-innermost` and tach's `model` / `domain_services` layers).
 
@@ -114,7 +115,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `queries` | composition root | binds queries_service to fact_reads_store |
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `script_runner_port` | domain service | port for running the standalone scripts as processes |
-| `scripts` | composition root | binds scripts_service to script_runner |
+| `scripts` | composition root | binds scripts_service to script_runner; a child is started for the container's checkout and fixed clock only |
 | `scripts_service` | application service | build and clean-concerts as a script run |
 | `seed_sources` | ETL adapter (driving, batch) |  |
 | `literature_sources` | ETL adapter (driving, batch) |  |

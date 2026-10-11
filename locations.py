@@ -25,6 +25,7 @@ class Locations:
     private_data_dir: str
     bodybuilding_vault: str
     health_dir: str
+    private_dir: Optional[str] = None   # the checkout local_paths.py came from; None for locations built by hand
     client_sources: Tuple[str, ...] = ()
     client_sources_implicit: bool = False
     concerts_csv: Optional[str] = None

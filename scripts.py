@@ -6,6 +6,7 @@ from wiring import bind_all
 API = ("build", "clean_concerts")
 
 
-def compose():
-    """The script-backed commands wired to the real runner."""
-    return bind_all(scripts_service, scripts_service.ScriptsDeps(runner=script_runner), API)
+def compose(locations, clock):
+    """The script-backed commands wired to the real runner, for these `locations` and this `clock`."""
+    deps = scripts_service.ScriptsDeps(runner=script_runner, clock=clock, locations=locations)
+    return bind_all(scripts_service, deps, API)

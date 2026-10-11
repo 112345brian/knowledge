@@ -24,6 +24,8 @@ def parse(value):
 
 
 class SystemClock:
+    is_fixed = False      # a subprocess started for this clock follows the wall clock too
+
     def now(self):
         """Current time as a timezone-aware UTC datetime."""
         return datetime.now(timezone.utc)
@@ -33,6 +35,8 @@ class SystemClock:
 
 
 class FixedClock(SystemClock):
+    is_fixed = True       # a subprocess started for this clock is given its instant (KNOWLEDGE_FROZEN_NOW)
+
     def __init__(self, value):
         self._now = parse(value)
 

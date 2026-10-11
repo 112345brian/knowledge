@@ -23,6 +23,7 @@ import migrate_memory as mm  # noqa: E402
 import fact_rules
 import migrate_memory_rules
 import new_fact
+from locations import Locations
 from appctx import app
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -52,6 +53,9 @@ class W:
         self.facts = os.path.join(self.data_dir, "general_facts.json")
         self.db = os.path.join(self.db_dir, "knowledge.db")
         self.env = {**os.environ, **GIT_ENV, "KNOWLEDGE_PRIVATE_DIR": self.private}
+        unused = os.path.join(self.root, "unused")
+        self.locations = Locations(knowledge_db_dir=self.db_dir, private_data_dir=self.data_dir,
+                                   bodybuilding_vault=unused, health_dir=unused)
         if git_repo:
             git(self.private, "init", "-q")
             git(self.private, "config", "user.name", "T")
@@ -84,7 +88,7 @@ class W:
         return path
 
     def run(self, application=None, **kw):
-        application = application or app()
+        application = application or app(self.locations)
         return application.migrate_memory.migrate(root=self.projects, data_path=self.facts, db_path=self.db, today=TODAY, **kw)
 
     def entries(self):
@@ -415,15 +419,15 @@ def test_commit_failure_is_exit_3_and_facts_are_kept(w):
 def test_interrupted_run_commits_what_was_written_and_rerun_finishes(w, monkeypatch):
     for n in ("a.md", "b.md", "c.md"):
         w.mem("p", n)
-    application = app()
+    application = app(w.locations)
     real = application.add_fact.append_fact
     calls = []
 
-    def flaky(fact, **kw):
+    def flaky(fact, *a, **kw):
         calls.append(1)
         if len(calls) == 2:
             raise KeyboardInterrupt
-        return real(fact, **kw)
+        return real(fact, *a, **kw)
 
     monkeypatch.setattr(application.add_fact, "append_fact", flaky)
     with pytest.raises(KeyboardInterrupt):

@@ -116,6 +116,20 @@ def remove_db_files(files, path):
         files.remove_if_exists(p)
 
 
+def claim_backup_path(files, backup_dir, name):
+    """A path in `backup_dir` named `name` that did not exist, claimed (created empty) so another build cannot take it
+    too. Two rebuilds in the same second, or under a fixed clock, get `name`, `name-2`, `name-3`...: a backup is
+    never overwritten. The suffix keeps the names sorting oldest-first, which is how backups are pruned."""
+    n = 1
+    while True:
+        path = os.path.join(backup_dir, name if n == 1 else f"{name}-{n}")
+        try:
+            files.create_exclusive(path)
+            return path
+        except FileExistsError:
+            n += 1
+
+
 def prune_backups(files, backup_dir, keep=KEEP_BACKUPS):
     """Keep only the `keep` most recent backups (see build_rules.backups_to_prune)."""
     for old in build_rules.backups_to_prune(files.listdir(backup_dir), keep):
@@ -188,7 +202,7 @@ def main(locations=None, argv=None, clock=None, files=None):
     try:
         if files.exists(live_db):
             files.makedirs(backup_dir)
-            backup = os.path.join(backup_dir, build_rules.backup_name(clock.now()))
+            backup = claim_backup_path(files, backup_dir, build_rules.backup_name(clock.now()))
             files.copy(live_db, backup)
             print(f"Backed up existing DB to {backup}")
             prune_backups(files, backup_dir)

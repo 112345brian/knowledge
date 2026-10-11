@@ -127,27 +127,67 @@ class _FakeRunner:
     def __init__(self, code=0):
         self.calls, self.code = [], code
 
-    def run_script(self, name, args=()):
-        self.calls.append(("script", name, list(args)))
+    def run_script(self, name, args=(), env=None):
+        self.calls.append(("script", name, list(args), env))
         return self.code
 
-    def run_module(self, module, args=()):
-        self.calls.append(("module", module, list(args)))
+    def run_module(self, module, args=(), env=None):
+        self.calls.append(("module", module, list(args), env))
         return self.code
+
+
+def _checkout_locations(private_dir="/checkout/A"):
+    from locations import Locations
+    return Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/v",
+                     health_dir="/x/h", private_dir=private_dir)
 
 
 def test_the_build_command_runs_build_py_through_the_script_runner_port():
+    import clock
     import scripts
     import scripts_service
+    import script_runner
     runner = _FakeRunner(code=7)
-    deps = scripts_service.ScriptsDeps(runner=runner)
+    deps = scripts_service.ScriptsDeps(runner=runner, clock=clock.SystemClock(), locations=_checkout_locations())
     assert scripts_service.build(deps) == 7
     assert scripts_service.build(deps, check=True) == 7
     assert scripts_service.clean_concerts(deps) == 7
-    assert runner.calls == [("script", "build.py", []), ("script", "build.py", ["--check"]),
-                            ("module", "client.clean_concerts_csv", [])]
+    env = {"KNOWLEDGE_PRIVATE_DIR": "/checkout/A"}
+    assert runner.calls == [("script", "build.py", [], env), ("script", "build.py", ["--check"], env),
+                            ("module", "client.clean_concerts_csv", [], env)]
+    composed = scripts.compose(_checkout_locations(), clock.SystemClock())
+    assert composed.deps.runner is script_runner      # the composition root binds the real adapter
+
+
+def test_a_child_is_started_for_the_containers_configuration_not_the_environments(monkeypatch):
+    """Container(locations=A, clock=fixed).scripts must not launch a child configured for whatever the
+    environment holds (B): it hands over A's checkout and the fixed instant."""
+    import clock
+    import container
     import script_runner
-    assert scripts.compose().deps.runner is script_runner      # the composition root binds the real adapter
+    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", "/checkout/B")
+    monkeypatch.setenv("KNOWLEDGE_FROZEN_NOW", "2001-01-01T00:00:00+00:00")
+    app = container.Container(_checkout_locations("/checkout/A"), clock.FixedClock("2026-10-03T08:00:00+00:00"))
+    runner = _FakeRunner()
+    object.__setattr__(app.scripts.deps, "runner", runner)       # swap the adapter, keep the real wiring
+    app.scripts.build()
+    (_kind, _name, _args, env), = runner.calls
+    assert env == {"KNOWLEDGE_PRIVATE_DIR": "/checkout/A", "KNOWLEDGE_FROZEN_NOW": "2026-10-03T08:00:00+00:00"}
+    # and the real adapter never lets the parent's own values through
+    child = script_runner.child_environment(env)
+    assert child["KNOWLEDGE_PRIVATE_DIR"] == "/checkout/A" and child["KNOWLEDGE_FROZEN_NOW"] == "2026-10-03T08:00:00+00:00"
+    assert "KNOWLEDGE_PRIVATE_DIR" not in script_runner.child_environment({}, {"KNOWLEDGE_PRIVATE_DIR": "/checkout/B", "X": "1"})
+    assert script_runner.child_environment({}, {"KNOWLEDGE_FROZEN_NOW": "x", "X": "1"}) == {"X": "1"}
+
+
+def test_locations_that_did_not_come_from_a_checkout_cannot_start_a_script():
+    import clock
+    import scripts_service
+    deps = scripts_service.ScriptsDeps(runner=_FakeRunner(), clock=clock.SystemClock(),
+                                       locations=_checkout_locations(private_dir=None))
+    with pytest.raises(ValueError, match="not read from a private checkout"):
+        scripts_service.build(deps)
+    assert deps.runner.calls == []
 
 
 # ---- #17: failure safety -----------------------------------------------------
@@ -303,3 +343,17 @@ def test_swapped_db_has_normal_file_mode_not_mkstemp_0600(env):
     umask = os.umask(0)
     os.umask(umask)
     assert os.stat(env.live).st_mode & 0o777 == 0o666 & ~umask
+
+
+def test_backups_are_never_overwritten_even_under_a_fixed_clock(env):
+    import clock
+    fixed = clock.FixedClock("2026-10-03T08:00:00+00:00")
+    build.main(env.locations, [], fixed)                      # first build: no live db to back up yet
+    env.write_step("b_step.py", GOOD_STEP.format(v="second"))
+    build.main(env.locations, [], fixed)                      # backs up build 1
+    env.write_step("b_step.py", GOOD_STEP.format(v="third"))
+    build.main(env.locations, [], fixed)                      # backs up build 2: same name, same second
+    names = sorted(p.name for p in env.backups.iterdir())
+    assert names == ["knowledge.db.bak-20261003T080000", "knowledge.db.bak-20261003T080000-2"]
+    assert rows(str(env.backups / names[0])) == ["a", "b"] and rows(str(env.backups / names[1])) == ["a", "second"]
+    assert rows(env.live) == ["a", "third"]

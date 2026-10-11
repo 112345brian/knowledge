@@ -49,6 +49,7 @@ def load():
 
     return Locations(
         knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
+        private_dir=private_dir,
         bodybuilding_vault=os.path.expanduser(local.BODYBUILDING_VAULT), health_dir=os.path.expanduser(local.HEALTH_DIR),
         client_sources=sources, client_sources_implicit=implicit,
         concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
