@@ -105,7 +105,7 @@ Procedures for registering facts are in [docs/register-facts-protocol.md](docs/r
 | `*_rules.py`, `*_port.py` | Pure domain rules and port protocols |
 | `*_store.py`, `paths.py`, `clock.py` | Adapters for the database, files, git, and time |
 | `schema.sql` | Core database schema |
-| `docs/` | [Architecture](docs/architecture.md), [competency questions](docs/competency-questions.md), [fact registration protocol](docs/register-facts-protocol.md) |
+| `docs/` | [Index](docs/README.md): [architecture](docs/architecture.md), [competency questions](docs/competency-questions.md), [fact registration protocol](docs/register-facts-protocol.md) |
 | `tests/` | Test suite and synthetic fixtures |
 
 The code follows an onion architecture: dependencies point inward, domain rules do no I/O, and
