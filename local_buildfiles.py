@@ -35,6 +35,10 @@ def remove_if_exists(path):
         pass
 
 
+def join(directory, name):
+    return os.path.join(directory, name)
+
+
 def makedirs(path):
     os.makedirs(path, exist_ok=True)
 

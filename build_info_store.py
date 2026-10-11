@@ -15,7 +15,7 @@ An input that does not exist is recorded as state `missing` (hash, size and mtim
 several inputs are optional. `read_at` is when the build looked; everything else is deterministic, so two
 builds over identical inputs give identical (key, state, sha256, size_bytes, file_mtime) rows.
 
-Normal-only DB: built_at and schema_version only (normal_db.py); commits, versions and keys stay out.
+Normal-only DB: built_at and schema_version only (normal_rules.py, normal_db_store.py); commits, versions and keys stay out.
 """
 import hashlib
 import os

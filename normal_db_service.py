@@ -8,7 +8,6 @@ full DB, then replace the target. On ANY failure the temporary file is removed A
 removed too: a stale normal DB could still hold a fact that has since been made private, so no file is safer
 than an out-of-date one.
 """
-import os
 from dataclasses import dataclass
 
 from build_files_port import BuildFiles
@@ -65,8 +64,8 @@ def build_normal_atomic(deps, full_path, directory, rules, leak_check=True):
     knowledge-normal.db. On any failure the temp file and a previous knowledge-normal.db are removed.
     Returns (final_path, counts)."""
     files = deps.files
-    final = os.path.join(directory, NORMAL_DB_NAME)
-    tmp = os.path.join(directory, f"{NORMAL_DB_NAME}.building-{files.unique_token()}")
+    final = files.join(directory, NORMAL_DB_NAME)
+    tmp = files.join(directory, f"{NORMAL_DB_NAME}.building-{files.unique_token()}")
     files.create_exclusive(tmp)     # fails if the directory is unwritable, before any work is done
     files.remove_if_exists(tmp)     # build_normal_db expects a fresh path
     try:

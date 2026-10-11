@@ -578,6 +578,8 @@ FACT_READERS_ALLOWED = {
     "cli_subjects.py",
     "entity_queries_store.py",
     "leak_scan_store.py",
+    # SQLite adapter that reads the full db rows the normal db is built from and writes the normal db; build-time only
+    "normal_db_store.py",
     # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
     "entities_store.py", "link_entities.py",
     # links facts to the measurements they cite at build time (the `measurements` client source)

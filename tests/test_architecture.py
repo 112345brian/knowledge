@@ -68,8 +68,8 @@ def test_git_only_runs_inside_private_git():
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "subject_rules"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"artist_rules", "music_ingest_rules", "measurement_rules", "fact_ingest_rules", "source_ingest_rules",
-                  "backfill_rules", "build_rules", "normal_rules", "leak_rules"}  # pure, but only the pipeline (or one person) uses them
-BUILD_TOOLING = {"normal_db", "leak_test", "leak_scan_store"}  # the normal-db builder and leak scanner: pipeline adapters
+                  "backfill_rules", "build_rules"}  # pure, but only the pipeline (or one person) uses them
+BUILD_TOOLING = {"normal_db", "leak_test"}  # the normal-db and leak-test entry points: pipeline adapters
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
 
@@ -619,7 +619,8 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     on_disk = {n for n in ac.importable_stems(REPO) if n.endswith("_service")}
     assert listed == on_disk, f"a *_service module is outside the contract: {sorted(on_disk ^ listed)}"
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
-                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service"}
+                      "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service",
+                      "normal_db_service"}
 
 
 def _architecture_roles():
@@ -762,7 +763,7 @@ def test_raw_file_and_database_io_lives_only_in_adapters():
     """Every call that touches the disk, a sqlite file or a process (open, os file ops, sqlite3.connect, shutil,
     subprocess, tempfile) is in an infrastructure module. Nothing else does any: not the model, domain, application,
     composition, CLI, serving or step code, not the maintenance tools, not build.py, and not the normal-db builder
-    and leak scanner (normal_db, leak_test, leak_scan_store), which work through a BuildFiles."""
+    and leak scanner (normal_db, leak_test), which work through the BuildFiles, NormalSource, NormalSink and LeakScan ports."""
     import ast
     banned = {"open", "glob.glob", "glob.iglob", "os.listdir", "os.scandir", "os.walk", "os.stat", "os.makedirs",
               "os.mkdir", "os.remove", "os.rename", "os.replace", "os.unlink", "os.path.exists", "os.path.isfile",

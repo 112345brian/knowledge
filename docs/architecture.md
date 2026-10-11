@@ -76,7 +76,9 @@ Everything else reaches the disk through a port:
 | application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
 | build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
 | maintenance tools (backfills, exports) | `DataFiles` (`datafiles_port`), `Inputs` | `local_datafiles`, `local_inputs` |
-| `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| `build.py`, `normal_db`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| the normal-db use case | `NormalSource`, `NormalSink`, `LeakScan` (`normal_db_port`) | `normal_db_store`, `leak_scan_store` |
+| `leak_test` (fixture, injection) | `SqlRunner` (`sql_runner_port`) | `sql_runner_store` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
 A step imports no infrastructure module (a test checks tach's graph), and it writes only through the connection it
@@ -189,9 +191,9 @@ validation, matching and pure edits their files and lists are subject to.
 | `ids_port` | domain service | interface for creating source identifiers |
 | `inbox` | driving adapter | HTTP review page |
 | `knowledge` | driving adapter | Typer app |
-| `leak_rules` | pipeline rules | marker matching |
-| `leak_scan_store` | ETL adapter (driving, batch) | scans normal DB files and derives private markers |
-| `leak_test` | ETL adapter (driving, batch) | runs the scanner and fixture self-test (also a script) |
+| `leak_rules` | domain service | marker matching, derived markers from private rows, leak finding (pure) |
+| `leak_scan_store` | infrastructure | SQLite adapter: a database's cells and the full DB's private rows, read-only (implements LeakScan) |
+| `leak_test` | ETL adapter (driving, batch) | the fixture self-test and the real-build check (also a script) |
 | `lifecycle` | composition root | binds lifecycle_service |
 | `lifecycle_rules` | domain service | supersede/retract/visibility/edit decisions |
 | `lifecycle_service` | application service | supersede / retract / set-visibility / edit |
@@ -210,9 +212,14 @@ validation, matching and pure edits their files and lists are subject to.
 | `music_shared` | ETL adapter (driving, batch) | artist identity helpers for the music source |
 | `music_ingest_rules` | pipeline rules | concerts / RYM / Last.fm rules |
 | `new_fact` | domain service | NewFact + validation + build_entry |
-| `normal_db` | ETL adapter (driving, batch) | builds the normal db from a full db (SQL over the connections it is given, files through a BuildFiles; also a script) |
-| `normal_rules` | pipeline rules | normal-tier whitelist |
+| `normal_db` | ETL adapter (driving, batch) | entry point: binds normal_db_service to the SQLite adapters and a BuildFiles (also a script) |
+| `normal_db_port` | domain service | ports: the full DB's rows in (`NormalSource`), the normal DB out (`NormalSink`), the leak scan's reads (`LeakScan`) |
+| `normal_db_service` | application service | builds the normal db, leak-checks it, swaps it in or removes the stale one |
+| `normal_db_store` | infrastructure | SQLite adapter: reads the full DB's rows, writes the normal DB (implements NormalSource and NormalSink) |
+| `normal_rules` | domain service | normal-tier whitelist and which rows may enter (pure) |
 | `paths` | infrastructure | personal paths |
+| `sql_runner_port` | domain service | port: run scripts and statements against a database file |
+| `sql_runner_store` | infrastructure | SQLite adapter for SqlRunner |
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
 | `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |

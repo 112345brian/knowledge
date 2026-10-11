@@ -13,8 +13,8 @@
 #       pipeline        build.py, the ingest package, the client sources  driving adapter (batch). The
 #                       client sources' own rule modules (music, measurements) live here too: pure,
 #                       but specific to one person's domain, so they are plugins, not the domain core.
-#                       The build tooling (normal_db, leak_test, leak_scan_store) and the rule modules the
-#                       pipeline alone uses (ingest rules, build/normal/leak rules) sit here as well.
+#                       The build entry points (normal_db, leak_test) and the rule modules the
+#                       pipeline alone uses (ingest rules, build rules) sit here as well.
 #       composition     add_fact, review, lifecycle, facts_batch,     composition roots: pick the adapters
 #                       migrate_memory, rules_edit, entities, ...     and bind an application service to them
 #       infrastructure  *_store, clock, ids, paths, private_git, ...  db, files, git, time (implement ports)
@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "build_files_port", "clock_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_reads_port", "facts_file_port", "ids_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -415,45 +415,86 @@ depends_on = [
 ]
 
 [[modules]]
-path = "normal_rules"   # DOMAIN: the normal tier's table/column whitelist and which rows may enter (pure)
-layer = "pipeline"
+path = "normal_rules"   # DOMAIN SERVICE: the normal tier's whitelist and which rows may enter (pure)
+layer = "domain_services"
 depends_on = [
     "privacy",
 ]
 
 [[modules]]
-path = "normal_db"      # ADAPTER (and script): the SQL copy and the file swap for knowledge-normal.db
+path = "leak_rules"     # DOMAIN SERVICE: how a private marker is matched and which derived strings count (pure)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "normal_db_port"  # DOMAIN SERVICE: port: the full DB's rows in, the normal DB out, the leak scan's reads
+layer = "domain_services"
+depends_on = [
+    "leak_rules",
+    "normal_rules",
+]
+
+[[modules]]
+path = "sql_runner_port"  # DOMAIN SERVICE: port: run scripts and statements against a database file (leak self-test)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "normal_db_service"  # APPLICATION: builds the normal DB and leak-checks it through the ports
+layer = "application"
+depends_on = [
+    "build_files_port",
+    "leak_rules",
+    "normal_db_port",
+    "normal_rules",
+]
+
+[[modules]]
+path = "normal_db_store"  # INFRASTRUCTURE: SQLite adapter: reads the full DB's rows, writes the normal DB
+layer = "infrastructure"
+depends_on = [
+    "normal_rules",
+]
+
+[[modules]]
+path = "leak_scan_store"  # INFRASTRUCTURE: SQLite adapter: reads a db's cells and the full DB's private rows
+layer = "infrastructure"
+depends_on = [
+    "leak_rules",
+]
+
+[[modules]]
+path = "sql_runner_store"  # INFRASTRUCTURE: SQLite adapter for SqlRunner
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "normal_db"      # ENTRY POINT (and script): binds normal_db_service to the SQLite adapters for knowledge-normal.db
 layer = "pipeline"
 depends_on = [
-    "leak_scan_store",
     "leak_rules",
+    "leak_scan_store",
+    "normal_db_service",
+    "normal_db_store",
     "normal_rules",
     "privacy_store",
     "paths",
     "local_buildfiles",
+    "wiring",
 ]
 
 [[modules]]
-path = "leak_rules"     # DOMAIN: how a private marker is matched and which derived strings count (pure)
-layer = "pipeline"
-depends_on = []
-
-[[modules]]
-path = "leak_test"      # ADAPTER (and script): reads the db files, derives markers from the full DB
+path = "leak_test"      # ENTRY POINT (and script): the fixture self-test and the real-build check
 layer = "pipeline"
 depends_on = [
     "leak_rules",
-    "leak_scan_store",
-    "normal_db",        # self_test builds a fixture normal db; the dependency is one-way now.
+    "normal_db",
+    "normal_db_service",
+    "sql_runner_store",
     "privacy",          # lazy
     "build_rules",
     "local_buildfiles",
 ]
-
-[[modules]]
-path = "leak_scan_store"  # ADAPTER: scans a normal DB and derives private markers
-layer = "pipeline"
-depends_on = ["leak_rules"]
 
 [[modules]]
 path = "lifecycle_rules" # DOMAIN: lifecycle result types and the supersede/retract/set-visibility/edit decisions (pure)

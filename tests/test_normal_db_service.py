@@ -42,6 +42,7 @@ class FakeFiles:
         self.calls = []
 
     def exists(self, path): return path in self.files
+    def join(self, directory, name): return f"{directory}/{name}"
     def unique_token(self): return "tok"
     def read_bytes(self, path):
         self.calls.append(("read_bytes", path))
