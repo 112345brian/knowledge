@@ -216,6 +216,12 @@ validation, matching and pure edits their files and lists are subject to.
 | `step_stores_port` | domain service | port: the data files and table writers a build step uses |
 | `subject_rules` | model | subjects as values: vocabulary, validation, pure edits |
 | `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
+| `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
+| `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
+| `build_steps_port` | domain service | the bound-step shape (`run() -> StepResult`), diagnostics, the vault reader and the step environment |
+| `identity_rules` | domain service | artist-name canonicalization, byline split, identifier-conflict warning (pure) |
+| `identity_service` | application service | the one definition of source, subject and artist identity for the build |
+| `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
 | `privacy_rules_port` | domain service | interface for reading and editing privacy rules |

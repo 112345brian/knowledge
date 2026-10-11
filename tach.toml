@@ -342,9 +342,9 @@ layer = "model"
 depends_on = []
 
 [[modules]]
-path = "client.artist_rules"    # DOMAIN: artist name canonicalization (aliases) and group membership data (pure)
+path = "client.artist_rules"    # DOMAIN: artist name canonicalization (aliases): re-exported from identity_rules (pure)
 layer = "pipeline"
-depends_on = []
+depends_on = ["identity_rules"]
 
 [[modules]]
 path = "ingest.fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
@@ -571,6 +571,36 @@ depends_on = ["claims_store", "fact_queries", "fact_reads_port", "review_store"]
 path = "queries_service"   # APPLICATION SERVICE: the read side (search, list, show, history, audits, build info)
 layer = "application"
 depends_on = ["fact_reads_port", "locations", "clock_port"]
+
+[[modules]]
+path = "build_records"     # DOMAIN SERVICE: the plain frozen values the build repositories exchange (pure)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "build_repositories_port"   # DOMAIN SERVICE: repository protocols and the BuildSession a build step uses
+layer = "domain_services"
+depends_on = ["build_records", "entity_rules", "privacy", "subject_rules"]
+
+[[modules]]
+path = "build_steps_port"   # DOMAIN SERVICE: the bound-step shape (run() -> StepResult), diagnostics, vault reader
+layer = "domain_services"
+depends_on = ["build_repositories_port", "inputs_port", "locations"]
+
+[[modules]]
+path = "identity_rules"     # DOMAIN SERVICE: artist-name canonicalization, byline split, identifier warning (pure)
+layer = "domain_services"
+depends_on = ["build_records"]
+
+[[modules]]
+path = "identity_service"   # APPLICATION SERVICE: the one definition of source, subject and artist identity
+layer = "application"
+depends_on = ["acquisition_rules", "build_records", "build_repositories_port", "build_steps_port", "identity_rules", "inputs_port"]
+
+[[modules]]
+path = "build_composition"  # COMPOSITION ROOT: opens a build session and binds the ordered pipeline to it
+layer = "composition"
+depends_on = ["build_repositories_port", "build_steps_port"]
 
 [[modules]]
 path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
