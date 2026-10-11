@@ -571,7 +571,7 @@ def _py_files():
 # Modules allowed to read facts directly: the query layers and the build pipeline (which creates
 # them). Anything else that wants fact rows must go through modes.py.
 FACT_READERS_ALLOWED = {
-    "modes.py", "modes_store.py", "knowledge.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
+    "modes.py", "modes_store.py", "knowledge.py", "cli_common.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # CLI-only audit over the full local db (like claims_store); never serves tool results
     "fixity_store.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results

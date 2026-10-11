@@ -709,16 +709,15 @@ depends_on = [
     "cli_inbox",        # registration lines (CLI-internal)
     "cli_lifecycle",        # registration lines (CLI-internal)
     "cli_migrate",        # registration lines (CLI-internal)
-    "privacy",
-    "revisions",
     "cli_entities",
     "cli_sources",
     "cli_subjects",
-    "fact_rules",
-    "validtime",
-    "private_git_port",
-    "fact_reads_port",
     "container",
+    "cli_audits",
+    "cli_build",
+    "cli_facts",
+    "cli_privacy",
+    "cli_review",
 ]
 
 [[modules]]
@@ -767,6 +766,36 @@ depends_on = [
 path = "cli_add_fact"   # `knowledge.py add-fact` (#7)
 layer = "cli"
 depends_on = ["fact_rules", "new_fact"]
+
+[[modules]]
+path = "cli_common"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = ["fact_reads_port"]
+
+[[modules]]
+path = "cli_facts"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = ["cli_common", "fact_reads_port", "fact_rules", "revisions", "validtime"]
+
+[[modules]]
+path = "cli_audits"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = ["cli_common", "fact_reads_port"]
+
+[[modules]]
+path = "cli_review"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = ["cli_common", "fact_reads_port"]
+
+[[modules]]
+path = "cli_privacy"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = ["cli_common", "privacy", "private_git_port"]
+
+[[modules]]
+path = "cli_build"   # the knowledge.py commands, split by concern
+layer = "cli"
+depends_on = []
 
 [[modules]]
 path = "cli_sources"   # source ids (#48)

@@ -78,6 +78,12 @@ thin delegations. Sources (`source_status`) are still a vocabulary and functions
 
 | Module | Role | What it is |
 | --- | --- | --- |
+| `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
+| `cli_build` | driving adapter | `build`, `clean-concerts` |
+| `cli_common` | driving adapter | helpers and options shared by the knowledge.py command modules |
+| `cli_facts` | driving adapter | `search`, `show`, `history`, `subjects`, `facts` |
+| `cli_privacy` | driving adapter | `privacy ...` commands |
+| `cli_review` | driving adapter | `review-pending`, `approve`, `reject` |
 | `container` | composition root | wires every use case for one Locations; made by an entry point |
 | `fact_entry` | model | the fact entry and the revision record as types with behaviour (pure) |
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
