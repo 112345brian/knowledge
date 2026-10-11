@@ -19,6 +19,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
 import fact_queries
 from appctx import app, locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -462,8 +463,8 @@ def test_normal_db_carries_subject_metadata_for_included_subjects_only():
     import privacy
     import tempfile
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         rows = {r[0]: r for r in con.execute("SELECT name, description, parent_relation, deprecated FROM subjects")}
         assert rows["sleep"][2] == "part-of" and rows["sleep"][1] == "Sleep habits and duration"
@@ -479,13 +480,13 @@ def test_normal_db_drops_a_description_or_alias_that_contains_a_rule_keyword():
     import privacy
     import tempfile
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE subjects SET description = 'About Zorbak relatives' WHERE name = 'sleep'")
         c.execute("INSERT INTO subject_aliases (subject_id, alias) VALUES (2, 'zorbak')")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("zorbak",)))
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
         con = sqlite3.connect(path)
         assert con.execute("SELECT description FROM subjects WHERE name = 'sleep'").fetchone()[0] is None
         assert [r[0] for r in con.execute("SELECT alias FROM subject_aliases")] == ["rest"]
@@ -498,11 +499,11 @@ def test_normal_db_keeps_deprecation_and_drops_a_replacement_that_is_not_include
     import privacy
     import tempfile
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE subjects SET deprecated = 1, replaced_by_subject_id = 3 WHERE name = 'sleep'")   # 3 = private subject
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         assert tuple(con.execute("SELECT deprecated, replaced_by_subject_id FROM subjects WHERE name = 'sleep'").fetchone()) == (1, None)

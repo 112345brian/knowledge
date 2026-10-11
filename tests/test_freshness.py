@@ -21,6 +21,7 @@ from test_fact_revisions import world, entry, rec, write_log, T1, T2, T3  # noqa
 import new_fact
 import migrate_memory_rules
 from appctx import app, locs
+import local_buildfiles
 
 sys.path.insert(0, REPO)
 
@@ -431,10 +432,10 @@ def test_normal_db_copies_freshness_with_the_same_checks():
     import tempfile
     import privacy
     with tempfile.TemporaryDirectory() as tmp:
-        full = leak_test.build_fixture(tmp)
+        full = leak_test.build_fixture(local_buildfiles, tmp)
         out = os.path.join(tmp, "out")
         os.makedirs(out)
-        path, _ = normal_db.build_normal_atomic(full, out, privacy.Rules())
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, out, privacy.Rules())
         con = sqlite3.connect(path)
         assert "freshness" in {r[1] for r in con.execute("PRAGMA table_info(facts)")}
         assert {r[0] for r in con.execute("SELECT freshness FROM facts")} == {"unreviewed"}

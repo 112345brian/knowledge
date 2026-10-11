@@ -17,10 +17,7 @@ A marker is looked for in (1) every text/blob cell of every table, with the tabl
 left in free pages or FTS shadow tables.
 """
 import os
-import shutil
-import sqlite3
 import sys
-import tempfile
 
 import build_rules
 from leak_rules import (MIN_MARKER_LEN, add_marker, check_markers, format_leaks, leaks_in_bytes,  # noqa: F401  (the public API)
@@ -61,14 +58,13 @@ MARKERS = {
 NORMAL_STATEMENTS = ("Creatine monohydrate is well studied for strength.", "Sleep duration affects recovery: café study.")
 
 
-def build_fixture(directory):
+def build_fixture(files, directory):
     """Make a full DB with the real schema, all MARKERS private, and normal facts. Returns its path."""
     path = os.path.join(directory, "fixture-full.db")
-    con = sqlite3.connect(path)
+    con = files.open_database(path)
     con.execute("PRAGMA foreign_keys = ON")
     for name in build_rules.schema_files(build_rules.CLIENT_SOURCES):   # the fixture holds music rows, so every fragment
-        with open(os.path.join(HERE, name)) as f:
-            con.executescript(f.read())
+        con.executescript(files.read_text(os.path.join(HERE, name)))
     M = MARKERS
     ex = con.execute
     ex("INSERT INTO subjects (id, name, domain, parent_id, private) VALUES (1, 'nutrition', 'health', NULL, 0)")
@@ -143,41 +139,41 @@ def build_fixture(directory):
     return path
 
 
-def self_test(workdir=None, verbose=True):
+def self_test(files, workdir=None, verbose=True):
     """Returns a list of problems (empty = pass). Builds the fixture and the normal DB, scans it,
     then proves the scan can fail by injecting each marker into a copy."""
     import privacy
     import normal_db
     problems = []
     own = workdir is None
-    workdir = workdir or tempfile.mkdtemp(prefix="leak-test-")
+    workdir = workdir or files.make_temp_dir("leak-test-")
     try:
-        full = build_fixture(workdir)
+        full = build_fixture(files, workdir)
         out_dir = os.path.join(workdir, "out")
-        os.makedirs(out_dir)
+        files.makedirs(out_dir)
         rules = privacy.Rules(subject_tags={M: "private" for M in [MARKERS["private subject name"]]},
                               keywords=(MARKERS["rules-file name in untagged subject"].split()[0].lower(),))
-        path, counts = normal_db.build_normal_atomic(full, out_dir, rules)
+        path, counts = normal_db.build_normal_atomic(files, full, out_dir, rules)
         if verbose:
             print("normal DB row counts:\n" + normal_db.format_counts(counts))
-        for label, _m, where in scan(path, MARKERS):
+        for label, _m, where in scan(files, path, MARKERS):
             problems.append(f"marker {label!r} leaked into the normal DB ({where})")
-        for leak in scan_against_full(path, full):
+        for leak in scan_against_full(files, path, full):
             problems.append(f"derived marker {leak[0]!r} leaked ({leak[2]})")
         # the scan must be able to fail: inject each marker into a copy and require a flag
         for label, marker in MARKERS.items():
             bad = os.path.join(workdir, "injected.db")
-            shutil.copy(path, bad)
-            c = sqlite3.connect(bad)
+            files.copy(path, bad)
+            c = files.open_database(bad)
             c.execute("UPDATE facts SET trust_rationale = ? WHERE id = (SELECT MIN(id) FROM facts)", (f"x {marker} x",))
             c.commit()
             c.close()
-            if not scan(bad, {label: marker}):
+            if not scan(files, bad, {label: marker}):
                 problems.append(f"the scan did NOT flag an injected marker ({label!r}); the test cannot fail")
-            os.remove(bad)
+            files.remove_if_exists(bad)
     finally:
         if own:
-            shutil.rmtree(workdir, ignore_errors=True)
+            files.remove_tree(workdir)
     return problems
 
 
@@ -190,14 +186,16 @@ def main(argv=None):
         if len(argv) != 4 or argv[0] != "--full" or argv[2] != "--normal":
             print("usage: leak_test.py [--full FULL_DB --normal NORMAL_DB]", file=sys.stderr)
             return 2
-        markers = derive_markers(argv[1])
-        leaks = scan(argv[3], markers)
+        import local_buildfiles
+        markers = derive_markers(local_buildfiles, argv[1])
+        leaks = scan(local_buildfiles, argv[3], markers)
         if leaks:
             print(f"LEAK TEST FAILED ({len(leaks)} finding(s)):\n{format_leaks(leaks)}", file=sys.stderr)
             return 1
         print(f"leak test passed: {len(markers)} derived markers, none found in {argv[3]}")
         return 0
-    problems = self_test()
+    import local_buildfiles
+    problems = self_test(local_buildfiles)
     if problems:
         print("LEAK TEST FAILED:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1

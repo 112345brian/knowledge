@@ -15,6 +15,7 @@ from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world i
 from test_review import rw, make_repo, git, file_hashes  # noqa: F401  (rw is a fixture)
 from test_lifecycle import lw, kw, history, Cli  # noqa: F401  (lw is a fixture)
 from appctx import app, fixed_clock
+import local_buildfiles
 
 
 def write_rules(w, tags=None, keywords=None):
@@ -283,7 +284,7 @@ def _normal_statements(w, tmp_path, name):
     out.close()
     outdir = tmp_path / f"{name}-out"
     outdir.mkdir()
-    path, _counts = normal_db.build_normal_atomic(full, str(outdir), privacy_store.load_rules(os.path.join(w.env.data_dir, "privacy_rules.json")))
+    path, _counts = normal_db.build_normal_atomic(local_buildfiles, full, str(outdir), privacy_store.load_rules(os.path.join(w.env.data_dir, "privacy_rules.json")))
     n = sqlite3.connect(path)
     try:
         return sorted(r[0] for r in n.execute("SELECT statement FROM facts"))

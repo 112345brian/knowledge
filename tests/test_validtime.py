@@ -18,6 +18,7 @@ import facts_batch_rules
 import new_fact
 import fact_queries
 from appctx import app
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -319,13 +320,13 @@ def test_normal_db_includes_validity_with_the_same_checks():
     import privacy
     import tempfile
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET valid_from = '2024-03', valid_to = '2024-05-31' WHERE id = 1")
         c.execute("UPDATE fact_revisions SET valid_from = '2024-03' WHERE fact_id = 1 AND revision = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 1").fetchone()) == ("2024-03", "2024-05-31")
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 2").fetchone()) == (None, None)

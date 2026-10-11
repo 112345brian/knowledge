@@ -760,9 +760,9 @@ def test_build_steps_import_no_infrastructure_module():
 
 def test_raw_file_and_database_io_lives_only_in_adapters():
     """Every call that touches the disk, a sqlite file or a process (open, os file ops, sqlite3.connect, shutil,
-    subprocess, tempfile) is in an infrastructure module or in one of the three build-tooling adapters
-    (normal_db, leak_test, leak_scan_store), whose whole job is building and scanning database files. Nothing in
-    the model, domain, application, composition, CLI, serving or step code does any."""
+    subprocess, tempfile) is in an infrastructure module. Nothing else does any: not the model, domain, application,
+    composition, CLI, serving or step code, not the maintenance tools, not build.py, and not the normal-db builder
+    and leak scanner (normal_db, leak_test, leak_scan_store), which work through a BuildFiles."""
     import ast
     banned = {"open", "glob.glob", "glob.iglob", "os.listdir", "os.scandir", "os.walk", "os.stat", "os.makedirs",
               "os.mkdir", "os.remove", "os.rename", "os.replace", "os.unlink", "os.path.exists", "os.path.isfile",
@@ -772,7 +772,7 @@ def test_raw_file_and_database_io_lives_only_in_adapters():
     layer = {n: m["layer"] for n, m in _tach_modules(_read(TACH_TOML)).items()}
     offenders = []
     for name, tree in _all_source_trees():
-        if layer.get(name) == "infrastructure" or name in BUILD_TOOLING:
+        if layer.get(name) == "infrastructure":
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and ast.unparse(node.func) in banned:

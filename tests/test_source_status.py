@@ -18,6 +18,7 @@ import source_status_store as ss_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 from appctx import locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -413,15 +414,15 @@ def test_normal_db_carries_status_and_edition_but_not_the_note_date_or_relations
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         cols = {r[1] for r in con.execute("PRAGMA table_info(sources)")}
         assert {"status", "edition"} <= cols and not ({"status_note", "status_date", "original_published_date", "origin_path"} & cols)
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE citekey = 'pub2020'").fetchone()) == ("corrected", "2nd edition")
         assert "source_relations" not in {r[0] for r in con.execute("SELECT name FROM sqlite_master")}
         assert leak_test.MARKERS["source status note"].encode() not in open(path, "rb").read()
-        assert not leak_test.scan_against_full(path, full)
+        assert not leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 def test_normal_db_drops_an_edition_that_trips_a_keyword():
@@ -429,12 +430,12 @@ def test_normal_db_drops_an_edition_that_trips_a_keyword():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE sources SET edition = 'Zorbak family edition' WHERE id = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("zorbak",)))
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
         con = sqlite3.connect(path)
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE id = 1").fetchone()) == ("corrected", None)
 
@@ -444,13 +445,13 @@ def test_leak_test_flags_a_status_note_planted_in_the_normal_db():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         con.execute("UPDATE sources SET edition = ? WHERE id = 1", (leak_test.MARKERS["source status note"],))
         con.commit()
         con.close()
-        assert leak_test.scan_against_full(path, full)
+        assert leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 def test_the_status_enum_is_the_vocabulary_the_schema_and_the_audit_use():

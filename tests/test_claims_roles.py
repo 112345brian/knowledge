@@ -18,6 +18,7 @@ import claims_audit as ca
 import claims_store
 from conftest import REPO
 from appctx import locs
+import local_buildfiles
 
 TODAY = date(2026, 10, 4)
 
@@ -281,7 +282,7 @@ def test_claims_stay_out_of_the_normal_db_entirely():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         names = {r[0] for r in sqlite3.connect(path).execute("SELECT name FROM sqlite_master")}
         assert "claims" not in names and "claim_facts" not in names

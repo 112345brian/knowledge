@@ -23,6 +23,7 @@ import build_info_store as bi
 import private_git
 from test_add_fact import REPO
 from appctx import system_clock
+import local_buildfiles
 
 # Bump rule: when this fails, schema.sql or a client/*.sql fragment changed. Bump `PRAGMA user_version` in schema.sql, then update BOTH
 # constants below (the version and the fingerprint the failure message prints).
@@ -269,8 +270,8 @@ def test_normal_db_has_built_at_and_schema_version_only():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         assert [c[1] for c in con.execute("PRAGMA table_info(build_info)")] == ["id", "built_at", "schema_version"]
         assert tuple(con.execute("SELECT built_at, schema_version FROM build_info").fetchone()) == ("2026-10-08T00:00:00+00:00", 1)
@@ -278,11 +279,11 @@ def test_normal_db_has_built_at_and_schema_version_only():
         raw = open(path, "rb").read()
         for key in ("code commit", "private commit", "build input key"):
             assert leak_test.MARKERS[key].encode() not in raw, key
-        assert not leak_test.scan_against_full(path, full)
+        assert not leak_test.scan_against_full(local_buildfiles, path, full)
         con.execute("UPDATE build_info SET built_at = ?", (leak_test.MARKERS["code commit"],))
         con.commit()
         con.close()
-        assert leak_test.scan_against_full(path, full)
+        assert leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 # ------------------------------------------------------------------ cost

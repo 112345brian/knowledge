@@ -1,18 +1,15 @@
-"""Read-only database and file scanner for the normal-tier leak check."""
-import os
-import sqlite3
-
+"""Read-only database and file scanner for the normal-tier leak check. It reads through a `BuildFiles`
+(build_files_port); the markers and what counts as a leak are `leak_rules`."""
 from leak_rules import (MIN_MARKER_LEN, add_marker, check_markers, leaks_in_bytes,
                         leaks_in_cell)
 
 
-def scan(normal_path, markers):
+def scan(files, normal_path, markers):
     """markers: iterable of strings (or {label: string}). Returns [(label, marker, where)]."""
     markers = check_markers(markers)
-    with open(normal_path, "rb") as f:
-        raw = f.read().lower()
+    raw = files.read_bytes(normal_path).lower()
     leaks = leaks_in_bytes(raw, markers)
-    con = sqlite3.connect(f"file:{os.path.abspath(normal_path)}?mode=ro", uri=True)
+    con = files.open_readonly(normal_path)
     try:
         for (table,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall():
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]
@@ -26,9 +23,9 @@ def scan(normal_path, markers):
     return leaks
 
 
-def derive_markers(full_path):
+def derive_markers(files, full_path):
     """{label: text} for everything in the full DB that must never reach the normal tier."""
-    full = sqlite3.connect(f"file:{os.path.abspath(full_path)}?mode=ro", uri=True)
+    full = files.open_readonly(full_path)
     try:
         markers = {}
         # strings that are legitimately in the normal tier are never markers
@@ -98,7 +95,7 @@ def derive_markers(full_path):
         full.close()
 
 
-def scan_against_full(normal_path, full_path):
-    return scan(normal_path, derive_markers(full_path))
+def scan_against_full(files, normal_path, full_path):
+    return scan(files, normal_path, derive_markers(files, full_path))
 
 

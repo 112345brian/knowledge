@@ -15,6 +15,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import fact_queries
 from appctx import locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -300,13 +301,13 @@ def test_normal_db_carries_identifiers_of_included_sources_only():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.executemany("INSERT INTO source_identifiers VALUES (?, ?, ?)", [(1, "doi", "10.1210/pub"), (2, "doi", "10.1210/onlyprivate"), (1, "other", "pmcid:PMC1234567")])
         c.execute("INSERT INTO source_identifier_conflicts VALUES (2, 'doi', '10.1210/pub', 1)")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("pmc1234567",)))
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("pmc1234567",)))
         con = sqlite3.connect(path)
         assert [tuple(r) for r in con.execute("SELECT * FROM source_identifiers")] == [(1, "doi", "10.1210/pub")]       # source 2 not included; the keyword drops the 'other'
         assert "source_identifier_conflicts" not in {r[0] for r in con.execute("SELECT name FROM sqlite_master")}

@@ -18,6 +18,7 @@ import facts_batch_rules
 import new_fact
 import fact_queries
 from appctx import app, system_clock
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -244,14 +245,14 @@ def test_normal_db_includes_applies_to_scans_it_and_indexes_it():
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET applies_to = 'example population' WHERE id = 1")
         c.execute("UPDATE facts SET applies_to = 'Zorbak relatives' WHERE id = 2")
         c.execute("UPDATE fact_revisions SET applies_to = 'example population' WHERE fact_id = 1 AND revision = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("zorbak",)))
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
         con = sqlite3.connect(path)
         assert con.execute("SELECT applies_to FROM facts WHERE id = 1").fetchone()[0] == "example population"
         assert con.execute("SELECT COUNT(*) FROM facts WHERE id = 2").fetchone()[0] == 0   # keyword in applies_to: left out

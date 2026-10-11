@@ -430,6 +430,7 @@ depends_on = [
     "normal_rules",
     "privacy_store",
     "paths",
+    "local_buildfiles",
 ]
 
 [[modules]]
@@ -446,6 +447,7 @@ depends_on = [
     "normal_db",        # self_test builds a fixture normal db; the dependency is one-way now.
     "privacy",          # lazy
     "build_rules",
+    "local_buildfiles",
 ]
 
 [[modules]]

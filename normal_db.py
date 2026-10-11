@@ -52,11 +52,8 @@ festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and t
 that sit on them.
 """
 import os
-import sqlite3
 import sys
-import uuid
 
-import privacy_store
 import leak_scan_store
 from leak_rules import format_leaks
 from normal_rules import (FACT_COLS, FTS_TABLES, NORMAL_DB_NAME, NormalDbError, REVISION_COLS, SOURCE_COLS, SOURCE_EDITION,  # noqa: F401  (the public API)
@@ -325,13 +322,13 @@ def populate(out, full, rules):
         out.execute(f"INSERT INTO {fts}({fts}) VALUES ('rebuild')")
 
 
-def build_normal_db(full_path, target_path, rules):
+def build_normal_db(files, full_path, target_path, rules):
     """Write a fresh normal DB at exactly `target_path` (must not exist). `rules` is a
     privacy.Rules (pass privacy.Rules() for none). Returns {table: row count}."""
-    if os.path.exists(target_path):
+    if files.exists(target_path):
         raise NormalDbError(f"{target_path} already exists; build into a fresh path")
-    full = sqlite3.connect(f"file:{os.path.abspath(full_path)}?mode=ro", uri=True)
-    out = sqlite3.connect(target_path)
+    full = files.open_readonly(full_path)
+    out = files.open_database(target_path)
     try:
         out.execute("PRAGMA journal_mode = DELETE")
         out.executescript(DDL)
@@ -358,36 +355,30 @@ def check_structure(con):
     check_objects(names, con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'").fetchone()[0])
 
 
-def remove_db_files(path):
+def remove_db_files(files, path):
     for p in (path, path + "-journal", path + "-wal", path + "-shm"):
-        try:
-            os.remove(p)
-        except FileNotFoundError:
-            pass
+        files.remove_if_exists(p)
 
 
-def build_normal_atomic(full_path, directory, rules, leak_check=True):
+def build_normal_atomic(files, full_path, directory, rules, leak_check=True):
     """Build into a temp file in `directory`, leak-check it against the full DB, then
     os.replace onto knowledge-normal.db. On any failure the temp file is removed AND a previous
     knowledge-normal.db is removed too: a stale normal DB could still hold a fact that has since
     been made private, so no file is safer than an out-of-date one. Returns (final_path, counts)."""
     final = os.path.join(directory, NORMAL_DB_NAME)
-    tmp = os.path.join(directory, f"{NORMAL_DB_NAME}.building-{uuid.uuid4().hex}")
-    # Let the kernel apply umask at creation; reading it with os.umask(0) changes the
-    # process-wide setting while other threads may be creating files.
-    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-    os.close(fd)
-    os.remove(tmp)  # build_normal_db expects a fresh path
+    tmp = os.path.join(directory, f"{NORMAL_DB_NAME}.building-{files.unique_token()}")
+    files.create_exclusive(tmp)     # fails if the directory is unwritable, before any work is done
+    files.remove_if_exists(tmp)     # build_normal_db expects a fresh path
     try:
-        counts = build_normal_db(full_path, tmp, rules)
+        counts = build_normal_db(files, full_path, tmp, rules)
         if leak_check:
-            leaks = leak_scan_store.scan_against_full(tmp, full_path)
+            leaks = leak_scan_store.scan_against_full(files, tmp, full_path)
             if leaks:
                 raise NormalDbError("leak test failed:\n" + format_leaks(leaks))
-        os.replace(tmp, final)
+        files.replace(tmp, final)
     except BaseException:
-        remove_db_files(tmp)
-        remove_db_files(final)
+        remove_db_files(files, tmp)
+        remove_db_files(files, final)
         raise
     return final, counts
 
@@ -398,9 +389,11 @@ def main(argv=None):
         print("usage: normal_db.py FULL_DB OUT_DIR   (builds OUT_DIR/knowledge-normal.db)", file=sys.stderr)
         return 2
     try:
+        import local_buildfiles
         import paths
+        import privacy_store
         rules = privacy_store.load_rules(paths.load().privacy_rules())
-        path, counts = build_normal_atomic(argv[0], argv[1], rules)
+        path, counts = build_normal_atomic(local_buildfiles, argv[0], argv[1], rules)
     except Exception as e:
         print(f"error: normal DB build failed: {e}", file=sys.stderr)
         return 1

@@ -63,8 +63,7 @@ private-file editing receives that port rather than importing the Git adapter.
 ### Where I/O lives
 
 Raw file, sqlite-file and process calls (`open`, `os` file operations, `sqlite3.connect`, `shutil`, `subprocess`,
-`tempfile`) appear only in infrastructure modules and in three build-tooling adapters (`normal_db`, `leak_test`,
-`leak_scan_store`), whose whole job is building and scanning database files; a test enforces it for every module.
+`tempfile`) appear only in infrastructure modules; a test enforces it for every module, with no exemptions.
 Everything else reaches the disk through a port:
 
 | Who | Port | Adapter |
@@ -72,7 +71,7 @@ Everything else reaches the disk through a port:
 | application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
 | build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
 | maintenance tools (backfills, exports) | `DataFiles` (`datafiles_port`), `Inputs` | `local_datafiles`, `local_inputs` |
-| `build.py` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
 A step imports no infrastructure module (a test checks tach's graph), and it writes only through the connection it

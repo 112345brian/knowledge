@@ -123,14 +123,14 @@ def prune_backups(files, backup_dir, keep=KEEP_BACKUPS):
         print(f"  pruned old backup {old}")
 
 
-def build_normal(full_path, directory, locations, rules=None):
+def build_normal(files, full_path, directory, locations, rules=None):
     """Build + leak-check knowledge-normal.db in `directory` from the freshly built `full_path`.
     Privacy rules come from the private data dir (a bad rules file raises: fail closed)."""
     import normal_db
     if rules is None:
         import privacy_store
         rules = privacy_store.load_rules(locations.privacy_rules())
-    path, counts = normal_db.build_normal_atomic(full_path, directory, rules)
+    path, counts = normal_db.build_normal_atomic(files, full_path, directory, rules)
     print(f"Built {path} (leak test passed)")
     print(normal_db.format_counts(counts))
     return path
@@ -170,7 +170,7 @@ def main(locations=None, argv=None, clock=None, files=None):
                 report(files, tmp)
                 with files.temporary_directory() as nd:
                     print("Normal-only DB (temp):")
-                    build_normal(tmp, nd, locations)
+                    build_normal(files, tmp, nd, locations)
             except Exception as e:
                 print(f"error: normal DB build failed: {e}", file=sys.stderr)
                 sys.exit(1)
@@ -200,7 +200,7 @@ def main(locations=None, argv=None, clock=None, files=None):
 
     # The main build is done and stays in place whatever happens here.
     try:
-        build_normal(live_db, db_dir, locations)
+        build_normal(files, live_db, db_dir, locations)
     except Exception as e:
         print(f"error: knowledge.db was rebuilt, but the normal-only DB failed: {e}; "
               f"any previous knowledge-normal.db was removed", file=sys.stderr)

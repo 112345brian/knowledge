@@ -19,6 +19,7 @@ import pytest
 from test_fact_revisions import world, T1, T2  # noqa: F401  (fixture import)
 import new_fact
 from appctx import app
+import local_buildfiles
 
 NAME = "Quenbyx"  # synthetic; the keyword the rules list
 
@@ -185,7 +186,7 @@ def test_normal_db_leaves_out_a_fact_whose_copied_text_has_a_listed_name(world, 
     dst.close()
     rules = mods.privacy.Rules(keywords=(NAME.lower(),))
     out = str(tmp_path / "normal.db")
-    mods.normal_db.build_normal_db(full, out, rules)
+    mods.normal_db.build_normal_db(local_buildfiles, full, out, rules)
     n = sqlite3.connect(out)
     assert [r[0] for r in n.execute("SELECT source_key FROM facts ORDER BY id")] == ["k2"]
     assert NAME.encode() not in open(out, "rb").read()
@@ -197,7 +198,7 @@ def test_normal_db_leaves_out_a_revision_with_a_listed_name_in_its_rationale(wor
     full = full_db_file(world, tmp_path)
     rules = mods.privacy.Rules(keywords=(NAME.lower(),))
     out = str(tmp_path / "normal.db")
-    mods.normal_db.build_normal_db(full, out, rules)
+    mods.normal_db.build_normal_db(local_buildfiles, full, out, rules)
     n = sqlite3.connect(out)
     # the current fact's rationale carries the name, so the fact (and with it all its history) is out
     assert n.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
