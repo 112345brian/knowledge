@@ -8,22 +8,12 @@ net) and keeps the public API. `knowledge.py privacy ...` calls this and imports
 import private_git
 import privacy_store
 import rules_edit_service
-from wiring import bind
+from wiring import bind_all
 
-DEPS = rules_edit_service.RulesEditDeps(rules=privacy_store, git=private_git)
-
-edit_rules = bind(rules_edit_service.edit_rules, DEPS)
+API = ("edit_rules", "rules_path", "rules_file_exists", "load_rules")
 
 
-def rules_path():
-    """Where the privacy rules file is (PRIVATE_DATA_DIR/privacy_rules.json)."""
-    return privacy_store.rules_path()
-
-
-def rules_file_exists(path):
-    return privacy_store.rules_file_exists(path)
-
-
-def load_rules(path=None):
-    """The rules in `path` (default: the rules file). Raises PrivacyRulesError if it is unusable."""
-    return privacy_store.load_rules(rules_path() if path is None else path)
+def compose(locations):
+    """The privacy-rules editing API wired to the real adapters for these `locations`."""
+    deps = rules_edit_service.RulesEditDeps(rules=privacy_store, git=private_git, locations=locations)
+    return bind_all(rules_edit_service, deps, API)

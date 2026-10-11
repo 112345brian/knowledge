@@ -57,7 +57,8 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions_store.default_data_dir()
+    import paths
+    data_dir = args.data_dir or paths.load().private_data_dir
     problems = find_problems(data_dir)
     if problems:
         print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=sys.stderr)

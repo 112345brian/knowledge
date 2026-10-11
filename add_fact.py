@@ -11,35 +11,20 @@ import add_fact_service
 import add_fact_store
 import clock
 import ids
-import privacy_store
-import paths
-from wiring import bind
 import private_git
+import privacy_store
+from wiring import bind_all
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+API = ("validate_fact", "build_entry", "resolve_privacy", "canonicalize_subject", "append_fact", "record_fact")
 
 
-DEPS = add_fact_service.AddFactDeps(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids,
-                                    defaults=paths.Defaults(), git=private_git)
-
-
-def data_file_path():
-    """The facts file this composition root writes to."""
-    return paths.settings().data_path
-
-
-def data_file_label():
-    """The facts file as it is shown in messages: relative to this repo."""
-    return os.path.relpath(paths.settings().data_path, HERE)
-
-
-def new_source_key():
-    return ids.new_source_key()
-
-
-validate_fact = bind(add_fact_service.validate_fact, DEPS)
-build_entry = bind(add_fact_service.build_entry, DEPS)
-resolve_privacy = bind(add_fact_service.resolve_privacy, DEPS)
-canonicalize_subject = bind(add_fact_service.canonicalize_subject, DEPS)
-append_fact = bind(add_fact_service.append_fact, DEPS)
-record_fact = bind(add_fact_service.record_fact, DEPS)
+def compose(locations):
+    """The single-fact API wired to the real adapters for these `locations`. `data_file_label()` is the facts
+    file as it is shown in messages: relative to this repo."""
+    deps = add_fact_service.AddFactDeps(facts_file=add_fact_store, rules=privacy_store, clock=clock, ids=ids,
+                                        git=private_git, locations=locations)
+    api = bind_all(add_fact_service, deps, API)
+    api.data_file_path = lambda: locations.data_path
+    api.data_file_label = lambda: os.path.relpath(locations.data_path, HERE)
+    return api

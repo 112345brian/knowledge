@@ -1,6 +1,6 @@
-"""paths.py resolves the private companion repo: KNOWLEDGE_PRIVATE_DIR if set,
-otherwise the sibling ../knowledge-private. Every test copies paths.py into a
-temp tree, so none of them touch the real private repo.
+"""paths.load() resolves the private companion repo: KNOWLEDGE_PRIVATE_DIR if set,
+otherwise the sibling ../knowledge-private. Every test copies paths.py (and locations.py) into a
+temp tree, so none of them touch the real private repo. Importing paths reads nothing.
 """
 import os
 import shutil
@@ -35,7 +35,7 @@ def run_import(code_dir, env_var=None):
     env = {k: v for k, v in os.environ.items() if k != "KNOWLEDGE_PRIVATE_DIR"}
     if env_var is not None:
         env["KNOWLEDGE_PRIVATE_DIR"] = env_var
-    script = "import paths; print(paths.PRIVATE_DATA_DIR)"
+    script = "import paths; print(paths.load().private_data_dir)"
     return subprocess.run([sys.executable, "-c", script], cwd=code_dir, env=env,
                           capture_output=True, text=True)
 
@@ -112,7 +112,7 @@ def sources_of(tmp_path, extra_lines, names=NAMES):
         f.write(extra_lines)
     env = dict(os.environ)
     env.pop("KNOWLEDGE_PRIVATE_DIR", None)
-    r = subprocess.run([sys.executable, "-c", "import paths; print(paths.CLIENT_SOURCES, paths.CLIENT_SOURCES_IMPLICIT, paths.CONCERTS_CSV)"],
+    r = subprocess.run([sys.executable, "-c", "import paths; l = paths.load(); print(l.client_sources, l.client_sources_implicit, l.concerts_csv)"],
                        cwd=code, env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     return r.stdout.strip()

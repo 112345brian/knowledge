@@ -16,17 +16,6 @@ Usage:
 import sqlite3, os, sys, json, argparse
 
 
-DB = None  # None: the configured knowledge.db; a caller or test may set a path
-
-def _db():
-    if DB is not None:
-        return DB
-    import paths
-    return paths.settings().db_path
-
-
-
-
 
 
 def rows_as_dicts(cur, sql):
@@ -91,7 +80,8 @@ def main():
     parser.add_argument("-o", "--output", help="write to this file instead of stdout")
     args = parser.parse_args()
 
-    con = sqlite3.connect(_db())
+    import paths
+    con = sqlite3.connect(paths.load().db_path)
     data = build_export(con)
     con.close()
 

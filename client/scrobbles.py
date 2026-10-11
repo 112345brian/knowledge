@@ -25,21 +25,9 @@ separate importer. The two tools are independent, so a parsing fix here may
 need to be made there too.
 """
 import sqlite3, json, os
-from client.music_shared import load_artist_cache, get_or_create_artist
+from client.music_shared import load_artist_cache, get_or_create_artist, load_artist_rules
 from ingest.shared import get_or_create
 from client import music_ingest_rules
-
-
-SCROBBLES_PATH = None  # None: the configured scrobbles JSON; a caller or test may set a path
-
-def _scrobbles_path():
-    if SCROBBLES_PATH is not None:
-        return SCROBBLES_PATH
-    import paths
-    return os.path.expanduser(paths.settings().scrobbles_json)
-
-
-
 
 
 def iter_scrobbles(path):
@@ -57,24 +45,25 @@ def get_or_create_track(cur, cache, artist_id, title, album):
     return cache[key]
 
 
-def run(con):
+def run(con, locations):
     cur = con.cursor()
 
-    if not os.path.exists(_scrobbles_path()):
-        print(f"[scrobbles] {_scrobbles_path()} not found, skipping")
+    if not os.path.exists(locations.scrobbles_json):
+        print(f"[scrobbles] {locations.scrobbles_json} not found, skipping")
         return
 
-    import_source_id = get_or_create(cur, "import_sources", "path", _scrobbles_path())
+    import_source_id = get_or_create(cur, "import_sources", "path", locations.scrobbles_json)
     cur.execute("DELETE FROM scrobbles WHERE import_source_id = ?", (import_source_id,))
 
-    scrobbles = list(iter_scrobbles(_scrobbles_path()))
+    scrobbles = list(iter_scrobbles(locations.scrobbles_json))
 
     artist_cache = load_artist_cache(cur)
+    rules = load_artist_rules(locations.private_data_dir)
     before_artists = len(artist_cache)
     artist_ids = {}
     for artist, *_ in scrobbles:
         if artist not in artist_ids:
-            artist_ids[artist] = get_or_create_artist(cur, artist_cache, artist)
+            artist_ids[artist] = get_or_create_artist(cur, artist_cache, artist, rules)
     new_artists = len(artist_cache) - before_artists
 
     track_cache = {
@@ -98,10 +87,3 @@ def run(con):
     print(f"  scrobbles: {cur.execute('SELECT COUNT(*) FROM scrobbles').fetchone()[0]}, "
           f"tracks: {cur.execute('SELECT COUNT(*) FROM tracks').fetchone()[0]}, "
           f"artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

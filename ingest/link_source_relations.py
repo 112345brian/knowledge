@@ -27,28 +27,21 @@ def _load(filename):
     return mod
 
 
-def collect():
+def collect(locations):
     """[(source citekey, relation, related citekey)] from manual_sources.json and the vault notes."""
     rels = []
-    for s in _load("seed_sources.py").load_sources():
+    for s in _load("seed_sources.py").load_sources(locations):
         for rel, key in (("replaces", "replaces"), ("is-version-of", "is_version_of")):
             rels.extend((s["citekey"], rel, t) for t in source_status.as_list(s.get(key)))
-    rels.extend(r for row in _load("literature_sources.py").parse_all() for r in row["relations"])
+    rels.extend(r for row in _load("literature_sources.py").parse_all(locations) for r in row["relations"])
     return rels
 
 
-def run(con):
+def run(con, locations):
     ids = {citekey: sid for citekey, sid in con.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
-    rels = source_status.check_relations(collect(), ids)
+    rels = source_status.check_relations(collect(locations), ids)
     for a, rel, b in rels:
         con.execute("INSERT INTO source_relations (source_id, relation, related_source_id) VALUES (?, ?, ?)", (ids[a], rel, ids[b]))
     con.commit()
     counts = dict(con.execute("SELECT status, COUNT(*) FROM sources GROUP BY status"))
     print(f"[link_source_relations] {len(rels)} relations; sources by status: {counts}")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(HERE, "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

@@ -17,6 +17,7 @@ import source_status as ss
 import source_status_store as ss_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+from appctx import locs
 
 
 @pytest.fixture(autouse=True)
@@ -61,9 +62,10 @@ def new_db():
 
 def run02(ingest, tmp_path, notes, con=None):
     mod = load("literature_sources.py")
-    mod.SRC_DIR = write_vault(tmp_path, notes)
+    src = write_vault(tmp_path, notes)
+    mod.vault = os.path.dirname(src)     # what the later steps need to find the same notes
     con = con or ingest.db()
-    mod.run(con)
+    mod.run(con, locs(bodybuilding_vault=mod.vault))
     return con, mod
 
 
@@ -105,7 +107,7 @@ def test_01_manual_sources_without_status_fields_are_active(ingest):
         json.dump([{"citekey": "m1", "name": "Manual one", "source_type": "primary", "published_date": "2026-01-01"}], f)
     mod = load("seed_sources.py")
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs())
     r = con.execute("SELECT * FROM sources").fetchone()
     assert (r["status"], r["status_date"]) == ("active", None)
 
@@ -121,7 +123,7 @@ def test_02_reads_status_fields_and_relations_from_frontmatter(ingest, tmp_path)
     r = {x["citekey"]: x for x in con.execute("SELECT * FROM sources")}
     assert (r["old2015"]["status"], r["old2015"]["status_date"], r["old2015"]["status_note"], r["old2015"]["original_published_date"]) == \
         ("retracted", "2019-07", "https://example.org/notice", "2014-11-02")
-    rows = mod.parse_all()
+    rows = mod.parse_all(locs(bodybuilding_vault=mod.vault))
     assert [x["relations"] for x in rows if x["citekey"] == "new2020"] == [[("new2020", "replaces", "old2015")]]
 
 
@@ -141,14 +143,14 @@ def test_01_reads_status_fields_from_manual_sources_json(ingest):
         json.dump([{"citekey": "m1", "name": "M", "source_type": "primary", "status": "expression-of-concern",
                     "status_date": "2024", "status_note": "see journal", "edition": "1st", "original_published_date": "1999"}], f)
     con = ingest.db()
-    load("seed_sources.py").run(con)
+    load("seed_sources.py").run(con, locs())
     r = con.execute("SELECT * FROM sources").fetchone()
     assert (r["status"], r["status_date"], r["status_note"], r["edition"], r["original_published_date"]) == \
         ("expression-of-concern", "2024", "see journal", "1st", "1999")
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m2", "name": "M", "source_type": "primary", "status": "banned"}], f)
     with pytest.raises(Exception, match="m2") as e:
-        load("seed_sources.py").run(ingest.db())
+        load("seed_sources.py").run(ingest.db(), locs())
     assert type(e.value).__name__ == "SourceStatusError"
 
 
@@ -228,16 +230,9 @@ def run14(ingest, tmp_path, notes, manual=None):
     if manual is not None:
         with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
             json.dump(manual, f)
-        load("seed_sources.py").run(con)
+        load("seed_sources.py").run(con, locs())
     mod14 = load("link_source_relations.py")
-    real = mod14._load
-
-    def patched(filename):
-        m = real(filename)
-        if filename.startswith("literature_sources"):
-            m.SRC_DIR = mod02.SRC_DIR
-        return m
-    mod14._load = patched
+    mod14.vault = mod02.vault      # the notes written by run02
     if manual is None:
         with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
             json.dump([], f)
@@ -249,7 +244,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
                        {"old2015": {}, "mid2018": {"replaces": ["old2015"]}, "pre2014": {"is-version-of": "[old2015]"}},
                        manual=[{"citekey": "textbook-3e", "name": "3rd ed", "source_type": "secondary", "edition": "3rd",
                                 "replaces": ["mid2018"]}])
-    mod14.run(con)
+    mod14.run(con, locs(bodybuilding_vault=mod14.vault))
     rels = {(a, r, b) for a, r, b in con.execute(
         "SELECT s.citekey, r.relation, t.citekey FROM source_relations r JOIN sources s ON s.id = r.source_id JOIN sources t ON t.id = r.related_source_id")}
     assert rels == {("mid2018", "replaces", "old2015"), ("pre2014", "is-version-of", "old2015"), ("textbook-3e", "replaces", "mid2018")}
@@ -258,7 +253,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
 
 def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
     con, mod14 = run14(ingest, tmp_path, {"a2020": {}})
-    mod14.run(con)
+    mod14.run(con, locs(bodybuilding_vault=mod14.vault))
     assert "0 relations" in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 
 
@@ -270,7 +265,7 @@ def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
 def test_step14_refuses_bad_relations_naming_the_sources(ingest, tmp_path, notes, msg):
     con, mod14 = run14(ingest, tmp_path, notes)
     with pytest.raises(Exception, match=msg) as e:
-        mod14.run(con)
+        mod14.run(con, locs(bodybuilding_vault=mod14.vault))
     assert type(e.value).__name__ == "SourceStatusError"
     assert con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 

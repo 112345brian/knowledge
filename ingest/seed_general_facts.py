@@ -21,16 +21,6 @@ import revisions
 import revisions_store
 
 
-DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if DATA_DIR is not None:
-        return DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-
 def get_or_create_subject(cur, name, domain, cache):
     if name in cache:
         return cache[name]
@@ -46,14 +36,14 @@ def get_or_create_subject(cur, name, domain, cache):
     return sid
 
 
-def run(con):
+def run(con, locations):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(_data_dir(), privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
-    items = json.load(open(os.path.join(_data_dir(), "general_facts.json")))
+    items = json.load(open(os.path.join(locations.private_data_dir, "general_facts.json")))
     inserted = skipped = 0
     bad_citekeys = set()
     derived = 0
@@ -122,10 +112,3 @@ def run(con):
     if derived:
         print(f"  note: {derived} entries have no source_key yet; used deterministic legacy-* keys. "
               f"Run backfill_source_keys.py to write them into the files (same values).")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

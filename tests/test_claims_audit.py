@@ -11,6 +11,7 @@ import sqlite3
 import pytest
 
 from conftest import REPO
+from appctx import locs
 
 
 def new_db():
@@ -79,7 +80,7 @@ def test_seed_claims_links_facts_by_statement_prefix_and_tolerates_misses():
                    fact_match_prefixes=["Example premise", "Missing premise"])]
     first = claims[0]["fact_match_prefixes"][0]
     add_fact(con, first + " and more text")
-    seed.run(con, claims=claims)
+    seed.run(con, locs(), claims=claims)
     assert con.execute("SELECT COUNT(*) FROM claims").fetchone()[0] == len(claims)
     assert con.execute("SELECT COUNT(*) FROM claim_facts").fetchone()[0] == 1
 

@@ -50,7 +50,6 @@ Semantics (decided, tested):
 Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
 """
 from dataclasses import dataclass
-import os
 
 import lifecycle_rules
 import privacy
@@ -62,6 +61,7 @@ from lifecycle_reads_port import LifecycleReads
 from private_git_port import PrivateGit
 from reviews_port import Reviews
 from revisions_port import Revisions
+from locations import Locations
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,7 @@ class LifecycleDeps:
     revisions: Revisions
     reviews: Reviews
     lifecycle_reads: LifecycleReads
+    locations: Locations
 
 _decide_retract = lifecycle_rules.decide_retract
 _decide_supersede = lifecycle_rules.decide_supersede
@@ -85,8 +86,8 @@ def _run(deps, verb, ref, by_ref, reason, via, session_id, data_dir, commit, all
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = deps.revisions.default_data_dir() if data_dir is None else data_dir
-    log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
+    data_dir = deps.locations.data_dir if data_dir is None else data_dir
+    log_path = deps.locations.revisions_log(data_dir)
     try:
         states = deps.reviews.current_states(data_dir)
         entries = {e["key"]: e for e in deps.revisions.load_entries(data_dir)}
@@ -198,7 +199,7 @@ def _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow
     ref = str(ref)
     if not isinstance(reason, str) or not reason.strip():
         return _fail(ref, "reason is required")
-    data_dir = deps.revisions.default_data_dir() if data_dir is None else data_dir
+    data_dir = deps.locations.data_dir if data_dir is None else data_dir
     try:
         states = deps.reviews.current_states(data_dir)
     except revisions.RevisionError as e:
@@ -226,7 +227,7 @@ def _revise(deps, ref, changes, reason, via, session_id, data_dir, commit, allow
     if all(current[k] == v for k, v in changes.items()):
         return _fail(ref, "no field would change", source_key=key)
 
-    repo, log_path = None, os.path.join(data_dir, revisions.REVISIONS_FILENAME)
+    repo, log_path = None, deps.locations.revisions_log(data_dir)
     if commit:
         try:
             repo = deps.git.find_repo(data_dir)
@@ -277,7 +278,7 @@ def edit_fact(deps, ref, reason, statement=None, trust_level=None, trust_rationa
         # fact as it will stand, so adding a listed name in `notes` raises visibility like a new statement.
         if not any(k in ch for k in ("statement", "notes", "trust_rationale")):
             return ch, None
-        subject = deps.lifecycle_reads.subjects(deps.revisions.default_data_dir() if data_dir is None else data_dir).get(key)
+        subject = deps.lifecycle_reads.subjects(deps.locations.data_dir if data_dir is None else data_dir).get(key)
         rules = deps.reviews.rules_with_db_context(data_dir, db)
         ch, note = lifecycle_rules.privacy_floor_note(current, ch, subject, rules)
         if note:

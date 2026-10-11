@@ -17,7 +17,6 @@ from typing import Optional
 
 import typer
 
-import lifecycle
 
 # THE one allowed CLI -> serving import (see the module docstring and tach.toml): this command starts the server.
 import inbox  # tach-ignore inbox
@@ -28,18 +27,19 @@ def _fail(msg, code=1):
     raise typer.Exit(code)
 
 
-def register(app, default_db_path):
-    """`default_db_path` is a callable returning the built db's path; it is called when a command runs, not here."""
+def register(app):
     @app.command("inbox", help="Serve the pending-fact review page on 127.0.0.1 ONLY (it shows private facts; never expose it). "
                                "Lists the built db snapshot: rebuild to see new pending facts.")
-    def cmd_inbox(port: int = typer.Option(inbox.DEFAULT_PORT, "--port", min=0, max=65535, help="Port on 127.0.0.1 (0 = any free port)."),
+    def cmd_inbox(ctx: typer.Context, port: int = typer.Option(inbox.DEFAULT_PORT, "--port", min=0, max=65535, help="Port on 127.0.0.1 (0 = any free port)."),
                   no_open: bool = typer.Option(False, "--no-open", help="Do not open a browser tab.")):
+        c = ctx.obj
+
         def ready(url):
             print(f"Inbox on {url} (127.0.0.1 only; Ctrl-C to stop)", flush=True)
             if not no_open:
                 threading.Timer(0.3, webbrowser.open, args=(url,)).start()
         try:
-            inbox.serve(default_db_path(), port=port, on_ready=ready)
+            inbox.serve(c, c.queries.default_db_path(), port=port, on_ready=ready)
         except OSError as e:
             _fail(f"could not listen on 127.0.0.1:{port}: {e}")
 
@@ -47,7 +47,7 @@ def register(app, default_db_path):
                               "Give at least one of the field options and --reason. An empty string clears "
                               "--trust-rationale, --recheck-by or --notes. The subject cannot be changed and "
                               "visibility is never lowered.")
-    def cmd_edit(ref: str,
+    def cmd_edit(ctx: typer.Context, ref: str,
                  statement: Optional[str] = typer.Option(None, "--statement", help="New statement text."),
                  trust: Optional[str] = typer.Option(None, "--trust", help="New trust level."),
                  trust_rationale: Optional[str] = typer.Option(None, "--trust-rationale"),
@@ -56,8 +56,9 @@ def register(app, default_db_path):
                  reason: str = typer.Option(..., "--reason", help="Why (recorded in history)."),
                  allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Commit even if the private repo has other uncommitted changes."),
                  as_json: bool = typer.Option(False, "--json")):
-        res = lifecycle.edit_fact(ref, reason, statement=statement, trust_level=trust, trust_rationale=trust_rationale,
-                              recheck_by=recheck_by, notes=notes, via="cli", allow_dirty=allow_dirty, db=default_db_path())
+        c = ctx.obj
+        res = c.lifecycle.edit_fact(ref, reason, statement=statement, trust_level=trust, trust_rationale=trust_rationale,
+                              recheck_by=recheck_by, notes=notes, via="cli", allow_dirty=allow_dirty, db=c.queries.default_db_path())
         if as_json:
             print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
         else:

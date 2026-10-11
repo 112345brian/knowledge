@@ -12,6 +12,7 @@ import pytest
 
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 import new_fact
+from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -69,9 +70,9 @@ def test_a_new_fact_added_through_add_fact_is_pending_in_the_entry_and_after_a_b
     w = rw
     w.seed()
     path = os.path.join(w.env.data_dir, "general_facts.json")
-    r = w.af.append_fact(new_fact.NewFact("Fresh.", "alpha", "low", no_decay=True, recheck_rationale="no decay"), data_path=path, db_path="/nonexistent")
+    r = app().add_fact.append_fact(new_fact.NewFact("Fresh.", "alpha", "low", no_decay=True, recheck_rationale="no decay"), data_path=path, db_path="/nonexistent")
     assert r.ok and r.entry["status"] == "pending"
-    r2 = w.af.append_fact(new_fact.NewFact("Reviewed.", "alpha", "low", no_decay=True, recheck_rationale="no decay", status="active"), data_path=path, db_path="/nonexistent")
+    r2 = app().add_fact.append_fact(new_fact.NewFact("Reviewed.", "alpha", "low", no_decay=True, recheck_rationale="no decay", status="active"), data_path=path, db_path="/nonexistent")
     assert r2.ok and r2.entry["status"] == "active"
     status = dict(w.build().execute("SELECT statement, status FROM facts").fetchall())
     assert status == {"Fresh.": "pending", "Reviewed.": "active"}
@@ -92,19 +93,19 @@ def test_list_pending_is_oldest_first_and_carries_provenance(rw):
                     pend("early", date_added=T1, captured_via="mcp", session_id="s1", captured_at=T1, source_quote="said so"),
                     entry("act", date_added=T1)])
     con = w.build()
-    rows = w.review.list_pending(con)
+    rows = app().review.list_pending(con)
     assert [r["source_key"] for r in rows] == ["early", "late"]
     assert set(rows[0]) == {"id", "source_key", "subject", "statement", "visibility", "trust_level", "captured_via",
                             "session_id", "captured_at", "source_quote", "date_added"}
     assert rows[0]["captured_via"] == "mcp" and rows[0]["source_quote"] == "said so" and rows[0]["subject"] == "alpha"
-    assert w.review.list_pending(con) == rows  # read-only and stable
+    assert app().review.list_pending(con) == rows  # read-only and stable
 
 
 def test_list_pending_is_empty_after_approval(rw):
     w = rw
     w.seed(general=[pend("p1")])
-    assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).ok
-    assert w.review.list_pending(w.build()) == []
+    assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).ok
+    assert app().review.list_pending(w.build()) == []
 
 
 # ---------------------------------------------------------------- approve
@@ -113,7 +114,7 @@ def test_approve_appends_one_revision_per_fact_and_never_edits_the_entries(rw):
     w = rw
     seed3(w)
     before = file_hashes(w)
-    res = w.review.approve(["p1", "p2"], reason="looks right", via="cli", session_id="sess", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve(["p1", "p2"], reason="looks right", via="cli", session_id="sess", data_dir=w.env.data_dir, commit=False)
     assert res.ok and [i.outcome for i in res.items] == ["approved", "approved"]
     assert file_hashes(w) == before  # byte-identical original files
     lines = w.log_lines()
@@ -125,7 +126,7 @@ def test_approve_appends_one_revision_per_fact_and_never_edits_the_entries(rw):
     hist = w.rs.get_history(con, "p1")
     assert [(h["revision"], h["status"]) for h in hist] == [(1, "pending"), (2, "active")]
     assert [r[0] for r in con.execute("SELECT status FROM facts ORDER BY source_key")] == ["active"] * 3
-    assert w.review.list_pending(con) == []
+    assert app().review.list_pending(con) == []
 
 
 def test_approve_by_fact_id_digit_string_and_all(rw):
@@ -133,20 +134,20 @@ def test_approve_by_fact_id_digit_string_and_all(rw):
     w.seed(general=[pend("p1"), pend("p2"), pend("p3"), pend("p4")])
     con = w.build()
     ids = {r[0]: r[1] for r in con.execute("SELECT source_key, id FROM facts")}
-    res = w.review.approve([ids["p1"]], data_dir=w.env.data_dir, commit=False, db=con)
+    res = app().review.approve([ids["p1"]], data_dir=w.env.data_dir, commit=False, db=con)
     assert [(i.source_key, i.outcome) for i in res.items] == [("p1", "approved")]
-    res = w.review.approve([str(ids["p2"])], data_dir=w.env.data_dir, commit=False, db=con)
+    res = app().review.approve([str(ids["p2"])], data_dir=w.env.data_dir, commit=False, db=con)
     assert [(i.source_key, i.outcome) for i in res.items] == [("p2", "approved")]
-    res = w.review.approve("all", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("all", data_dir=w.env.data_dir, commit=False)
     assert [(i.source_key, i.outcome) for i in res.items] == [("p3", "approved"), ("p4", "approved")]
 
 
 def test_approve_all_only_touches_pending_and_zero_pending_is_not_an_error(rw):
     w = rw
     w.seed(general=[entry("a1"), pend("p1")])
-    res = w.review.approve("all", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("all", data_dir=w.env.data_dir, commit=False)
     assert res.ok and [(i.source_key, i.outcome) for i in res.items] == [("p1", "approved")]
-    again = w.review.approve("all", data_dir=w.env.data_dir, commit=False)
+    again = app().review.approve("all", data_dir=w.env.data_dir, commit=False)
     assert again.ok and again.items == [] and again.commit is None and "no pending facts" in again.notes
     assert len(w.log_lines()) == 1
 
@@ -154,10 +155,10 @@ def test_approve_all_only_touches_pending_and_zero_pending_is_not_an_error(rw):
 def test_approving_twice_changes_nothing(rw):
     w = rw
     seed3(w)
-    w.review.approve("p1", data_dir=w.env.data_dir, commit=False)
+    app().review.approve("p1", data_dir=w.env.data_dir, commit=False)
     with open(w.log) as f:
         log_before = f.read()
-    res = w.review.approve("p1", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("p1", data_dir=w.env.data_dir, commit=False)
     assert res.ok and res.items[0].outcome == "skipped" and "active" in res.items[0].reason
     with open(w.log) as f:
         assert f.read() == log_before
@@ -166,7 +167,7 @@ def test_approving_twice_changes_nothing(rw):
 def test_unknown_blank_and_unresolvable_refs_are_reported_not_fatal(rw):
     w = rw
     seed3(w)
-    res = w.review.approve(["nope", "", "   ", 999, "p1", None], data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve(["nope", "", "   ", 999, "p1", None], data_dir=w.env.data_dir, commit=False)
     out = {i.ref: i.outcome for i in res.items}
     assert out["nope"] == "unknown" and out[""] == "unknown" and out["   "] == "unknown" and out["p1"] == "approved"
     assert out["999"] == "error"  # an id with no database to resolve it
@@ -178,7 +179,7 @@ def test_unknown_blank_and_unresolvable_refs_are_reported_not_fatal(rw):
 def test_unknown_id_with_a_database(rw):
     w = rw
     seed3(w)
-    res = w.review.approve([12345], data_dir=w.env.data_dir, commit=False, db=w.build())
+    res = app().review.approve([12345], data_dir=w.env.data_dir, commit=False, db=w.build())
     assert res.items[0].outcome == "unknown" and "12345" in res.items[0].reason
 
 
@@ -188,7 +189,7 @@ def test_retracted_superseded_and_active_facts_are_skipped_with_a_reason(rw):
     assert w.append("r", {"status": "retracted"}).ok
     assert w.append("s", {"status": "superseded", "superseded_by": "x"}).ok
     n = len(w.log_lines())
-    res = w.review.approve(["r", "s", "a"], data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve(["r", "s", "a"], data_dir=w.env.data_dir, commit=False)
     assert [i.outcome for i in res.items] == ["skipped"] * 3
     assert "retracted" in res.items[0].reason and "superseded" in res.items[1].reason and "active" in res.items[2].reason
     assert len(w.log_lines()) == n
@@ -197,7 +198,7 @@ def test_retracted_superseded_and_active_facts_are_skipped_with_a_reason(rw):
 def test_duplicate_refs_in_one_batch_approve_once(rw):
     w = rw
     seed3(w)
-    res = w.review.approve(["p1", "p1"], data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve(["p1", "p1"], data_dir=w.env.data_dir, commit=False)
     assert [i.outcome for i in res.items] == ["approved", "skipped"] and len(w.log_lines()) == 1
 
 
@@ -206,7 +207,7 @@ def test_a_corrupt_log_is_a_batch_error_and_writes_nothing(rw):
     seed3(w)
     with open(w.log, "w") as f:
         f.write("not json\n")
-    res = w.review.approve("p1", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("p1", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and res.errors and res.items == []
     with open(w.log) as f:
         assert f.read() == "not json\n"
@@ -215,9 +216,9 @@ def test_a_corrupt_log_is_a_batch_error_and_writes_nothing(rw):
 def test_approve_validates_reason_and_via(rw):
     w = rw
     seed3(w)
-    res = w.review.approve("p1", reason="  ", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("p1", reason="  ", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and "reason" in res.errors[0] and not os.path.exists(w.log)
-    res = w.review.approve("p1", via="Bad Via", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("p1", via="Bad Via", data_dir=w.env.data_dir, commit=False)
     assert res.items[0].outcome == "error" and "via" in res.items[0].reason and not os.path.exists(w.log)
 
 
@@ -234,7 +235,7 @@ def test_a_failing_item_does_not_roll_back_earlier_items_and_the_rest_still_run(
         return real(key, *a, **kw)
     monkeypatch.setattr(w.review.revisions_store, "append_revision", flaky)
     d = make_repo(w)
-    res = w.review.approve(["p1", "p2", "p3"], data_dir=d)
+    res = app().review.approve(["p1", "p2", "p3"], data_dir=d)
     assert [(i.source_key, i.outcome) for i in res.items] == [("p1", "approved"), ("p2", "error"), ("p3", "approved")]
     assert not res.ok and "disk on fire" in res.items[1].reason
     assert [json.loads(l)["source_key"] for l in w.log_lines()] == ["p1", "p3"]
@@ -251,7 +252,7 @@ def test_fact_retracted_by_another_process_after_the_check_is_not_reactivated(rw
         assert real("p1", {"status": "retracted"}, "x", "cli", data_dir=w.env.data_dir).ok  # someone else gets in first
         return real(key, *a, **kw)
     monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
-    res = w.review.approve("p1", data_dir=w.env.data_dir, commit=False)
+    res = app().review.approve("p1", data_dir=w.env.data_dir, commit=False)
     assert res.items[0].outcome == "skipped" and "no longer pending" in res.items[0].reason
     assert [json.loads(l)["status"] for l in w.log_lines()] == ["retracted"]
 
@@ -265,7 +266,7 @@ def test_fact_edited_by_another_process_keeps_its_edit_when_approved(rw, monkeyp
         assert real("p1", {"statement": "Reworded."}, "x", "cli", data_dir=w.env.data_dir).ok  # still pending, new text
         return real(key, *a, **kw)
     monkeypatch.setattr(w.review.revisions_store, "append_revision", racing)
-    assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "approved"
+    assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "approved"
     last = json.loads(w.log_lines()[-1])
     assert (last["revision"], last["status"], last["statement"]) == (3, "active", "Reworded.")
 
@@ -274,12 +275,12 @@ def test_concurrent_approves_of_the_same_facts_write_each_revision_once(rw):
     w = rw
     w.seed(general=[pend(f"p{i}") for i in range(6)])
     with concurrent.futures.ThreadPoolExecutor(6) as ex:
-        results = list(ex.map(lambda _: w.review.approve("all", data_dir=w.env.data_dir, commit=False), range(6)))
+        results = list(ex.map(lambda _: app().review.approve("all", data_dir=w.env.data_dir, commit=False), range(6)))
     approved = [i.source_key for r in results for i in r.items if i.outcome == "approved"]
     assert sorted(approved) == [f"p{i}" for i in range(6)]
     assert all(r.ok for r in results)
     assert len(w.log_lines()) == 6
-    assert w.review.list_pending(w.build()) == []  # the log is still valid for the build
+    assert app().review.list_pending(w.build()) == []  # the log is still valid for the build
 
 
 # ---------------------------------------------------------------- git
@@ -289,7 +290,7 @@ def test_one_commit_for_the_batch_containing_only_the_revision_log(rw):
     seed3(w)
     d = make_repo(w)
     head = git(d, "rev-parse", "HEAD")
-    res = w.review.approve(["p1", "p2"], data_dir=d)
+    res = app().review.approve(["p1", "p2"], data_dir=d)
     assert res.ok and res.commit
     assert git(d, "rev-list", "--count", f"{head}..HEAD") == "1"
     assert git(d, "show", "--name-only", "--format=", "HEAD") == "fact_revisions.jsonl"
@@ -302,9 +303,9 @@ def test_dirty_tree_refuses_before_writing_unless_allow_dirty(rw):
     d = make_repo(w)
     with open(os.path.join(d, "stray.txt"), "w") as f:
         f.write("x")
-    res = w.review.approve("p1", data_dir=d)
+    res = app().review.approve("p1", data_dir=d)
     assert not res.ok and "uncommitted" in res.errors[0] and res.items == [] and not os.path.exists(w.log)
-    res = w.review.approve("p1", data_dir=d, allow_dirty=True)
+    res = app().review.approve("p1", data_dir=d, allow_dirty=True)
     assert res.ok and res.commit
     assert git(d, "show", "--name-only", "--format=", "HEAD") == "fact_revisions.jsonl"  # stray stays out
     assert git(d, "status", "--porcelain") == "?? stray.txt"
@@ -317,14 +318,14 @@ def test_nothing_to_approve_ignores_a_dirty_tree_and_makes_no_commit(rw):
     with open(os.path.join(d, "stray.txt"), "w") as f:
         f.write("x")
     head = git(d, "rev-parse", "HEAD")
-    res = w.review.approve("all", data_dir=d)
+    res = app().review.approve("all", data_dir=d)
     assert res.ok and res.commit is None and not res.errors and git(d, "rev-parse", "HEAD") == head
 
 
 def test_non_git_dir_writes_without_committing_and_says_so(rw):
     w = rw
     seed3(w)
-    res = w.review.approve("p1", data_dir=w.env.data_dir)
+    res = app().review.approve("p1", data_dir=w.env.data_dir)
     assert res.ok and res.commit is None and any("not inside a git repository" in n for n in res.notes)
     assert len(w.log_lines()) == 1
 
@@ -335,7 +336,7 @@ def test_commit_false_skips_git_entirely_even_on_a_dirty_tree(rw):
     d = make_repo(w)
     with open(os.path.join(d, "stray.txt"), "w") as f:
         f.write("x")
-    res = w.review.approve("p2", data_dir=d, commit=False)
+    res = app().review.approve("p2", data_dir=d, commit=False)
     assert res.ok and res.commit is None and res.notes == [] and len(w.log_lines()) == 1
 
 
@@ -347,7 +348,7 @@ def test_commit_failure_is_reported_and_the_revisions_stay_written(rw):
     with open(hook, "w") as f:
         f.write("#!/bin/sh\necho nope >&2\nexit 1\n")
     os.chmod(hook, 0o755)
-    res = w.review.approve("p1", data_dir=d)
+    res = app().review.approve("p1", data_dir=d)
     assert res.items[0].outcome == "approved" and res.commit is None
     assert res.commit_error and "NOT committed" in res.commit_error and not res.ok
     assert len(w.log_lines()) == 1
@@ -358,13 +359,13 @@ def test_commit_failure_is_reported_and_the_revisions_stay_written(rw):
 def test_reject_appends_a_retracted_revision_and_requires_a_reason(rw):
     w = rw
     seed3(w)
-    res = w.review.reject("p1", "", data_dir=w.env.data_dir, commit=False)
+    res = app().review.reject("p1", "", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and res.errors and not os.path.exists(w.log)
-    res = w.review.reject(["p1", "a1", "zzz"], "wrong", data_dir=w.env.data_dir, commit=False)
+    res = app().review.reject(["p1", "a1", "zzz"], "wrong", data_dir=w.env.data_dir, commit=False)
     assert [(i.ref, i.outcome) for i in res.items] == [("p1", "rejected"), ("a1", "skipped"), ("zzz", "unknown")]
     con = w.build()
     assert [(h["revision"], h["status"]) for h in w.rs.get_history(con, "p1")] == [(1, "pending"), (2, "retracted")]
-    assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "skipped"
+    assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).items[0].outcome == "skipped"
 
 
 # ---------------------------------------------------------------- results must not be discarded

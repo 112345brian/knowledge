@@ -35,16 +35,13 @@ from private_git_port import PrivateGit
 import textmatch
 from entity_rules import ENTITY_TYPES, EntitiesError  # noqa: F401  (EntitiesError is raised here; callers import it from entity_rules)
 
-ENTITIES_FILENAME = "entities.json"
+from locations import ENTITIES_FILENAME  # noqa: E402  (one definition of the file names, with Locations)
 VERSION = 1
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _KEYS = {"id", "canonical_name", "type", "aliases", "private", "external_id", "notes"}
 
 
-def data_path(data_dir=None):
-    if data_dir is None:
-        from paths import PRIVATE_DATA_DIR  # lazy: this module imports without a private repo
-        data_dir = PRIVATE_DATA_DIR
+def data_path(data_dir):
     return os.path.join(data_dir, ENTITIES_FILENAME)
 
 
@@ -118,10 +115,8 @@ def parse(data, source="entities.json"):
     return out
 
 
-def read_file(path=None):
-    """Entities from `path` (default: the private data dir's entities.json); None when the file is absent.
-    Corrupt or invalid -> EntitiesError."""
-    path = data_path() if path is None else path
+def read_file(path):
+    """Entities from `path` (an entities.json); None when the file is absent. Corrupt or invalid -> EntitiesError."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -299,10 +294,9 @@ def set_private(entities, ref, private):
 EditResult = private_edit_store.EditResult
 
 
-def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None, *, git: PrivateGit):
-    """Load entities.json (an absent file starts empty), apply `edit(entities) -> (new, changed)`, and write
-    and commit it through private_edit_store.edit_files (clean tree required unless allow_dirty)."""
-    path = data_path() if path is None else path
+def edit_file(edit, what, message, allow_dirty=False, dry_run=False, *, path, git: PrivateGit):
+    """Load the entities file at `path` (an absent file starts empty), apply `edit(entities) -> (new, changed)`,
+    and write and commit it through private_edit_store.edit_files (clean tree required unless allow_dirty)."""
 
     def compute():
         new, changed = edit(read_file(path) or [])

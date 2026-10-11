@@ -2,22 +2,14 @@
 The CLI calls these; it never opens a connection."""
 import fact_reads_store
 import queries_service
-from wiring import bind
+from wiring import bind_all
 
-DEPS = queries_service.QueriesDeps(reads=fact_reads_store)
+API = ("search_facts", "list_facts", "get_fact", "list_subjects", "fact_as_of", "history", "pending", "source_ids",
+       "audit_claims", "audit_sources", "audit_source_status", "build_info", "subject_context", "existing_db_path",
+       "default_db_path")
 
-search_facts = bind(queries_service.search_facts, DEPS)
-list_facts = bind(queries_service.list_facts, DEPS)
-get_fact = bind(queries_service.get_fact, DEPS)
-list_subjects = bind(queries_service.list_subjects, DEPS)
-fact_as_of = bind(queries_service.fact_as_of, DEPS)
-history = bind(queries_service.history, DEPS)
-source_ids = bind(queries_service.source_ids, DEPS)
-pending = bind(queries_service.pending, DEPS)
-audit_claims = bind(queries_service.audit_claims, DEPS)
-audit_sources = bind(queries_service.audit_sources, DEPS)
-audit_source_status = bind(queries_service.audit_source_status, DEPS)
-build_info = bind(queries_service.build_info, DEPS)
-subject_context = bind(queries_service.subject_context, DEPS)
-existing_db_path = bind(queries_service.existing_db_path, DEPS)
-default_db_path = bind(queries_service.default_db_path, DEPS)
+
+def compose(locations):
+    """The read-side API wired to the real read adapter for these `locations`."""
+    deps = queries_service.QueriesDeps(fact_reads=fact_reads_store, locations=locations)
+    return bind_all(queries_service, deps, API)

@@ -23,15 +23,6 @@ import locks
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
 
 
-def default_data_dir():
-    from paths import PRIVATE_DATA_DIR
-    return PRIVATE_DATA_DIR
-
-
-def default_revisions_path():
-    return os.path.join(default_data_dir(), REVISIONS_FILENAME)
-
-
 def read_array(path):
     try:
         with open(path) as f:
@@ -41,10 +32,9 @@ def read_array(path):
     return revisions.check_array(items, path)
 
 
-def load_entries(data_dir=None):
+def load_entries(data_dir):
     """Every fact entry in the data files, in file order, as dicts
     {file, index, key, entry, legacy_date}. Missing files are skipped. A duplicate key fails."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
     files = []
     for name, legacy_date in ENTRY_FILES:
         path = os.path.join(data_dir, name)
@@ -115,7 +105,8 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     lock as the write: if the fact's current state differs, nothing is written and the result is
     not ok with error "precondition failed: ...". review.approve uses it so a fact that was
     retracted by another process between the check and the write is never silently re-activated."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
+    if data_dir is None:
+        raise ValueError("append_revision needs the data dir the entry files and the revision log live in")
     revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
     changes, bad = revisions.normalize_changes(changes)
     if bad:

@@ -20,6 +20,7 @@ from test_fact_ingest import F, ingest, LEGACY_04  # noqa: F401  (ingest is a fi
 from test_fact_revisions import world, entry, rec, write_log, T1, T2, T3  # noqa: F401  (world is a fixture)
 import new_fact
 import migrate_memory_rules
+from appctx import app, locs
 
 sys.path.insert(0, REPO)
 
@@ -166,7 +167,7 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
     base = dict(statement="S.", subject="x", trust_level="low")
 
     def errs(**kw):
-        return af.validate_fact(new_fact.NewFact(**base, **kw), db_path="/nonexistent")[0]
+        return app().add_fact.validate_fact(new_fact.NewFact(**base, **kw), db_path="/nonexistent")[0]
 
     assert errs(recheck_by="2027-01-01") == []
     assert errs(no_decay=True, recheck_rationale="does not decay") == []
@@ -187,17 +188,17 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
 
 def test_the_entry_stores_the_derived_freshness_explicitly(world):
     af = world.af
-    e1 = af.build_entry(new_fact.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
-    e2 = af.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
+    e1 = app().add_fact.build_entry(new_fact.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
+    e2 = app().add_fact.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
     assert (e1["freshness"], e1["recheck_by"]) == ("recheck", "2027-01-01")
     assert (e2["freshness"], e2["recheck_rationale"], "recheck_by" in e2) == ("no-decay", "r", False)
 
 
 def test_a_refused_library_add_writes_nothing(world, tmp_path):
     p = tmp_path / "f.json"
-    res = world.af.append_fact(new_fact.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
+    res = app().add_fact.append_fact(new_fact.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
-    res = world.af.append_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
+    res = app().add_fact.append_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
                                data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
 
@@ -212,7 +213,7 @@ def fb(world):
 
 
 def batch(w, items):
-    return w.fb.add_facts(items, data_dir=w.env.data_dir, commit=False, db_path="/nonexistent")
+    return app().facts_batch.add_facts(items, data_dir=w.env.data_dir, commit=False, db_path="/nonexistent")
 
 
 GOOD = {"statement": "Fine.", "subject": "coffee", "recheck_by": "2027-01-01"}
@@ -295,7 +296,7 @@ def test_11_an_entry_without_freshness_fails_loudly_even_with_a_recheck_by(inges
     with pytest.raises(Exception, match=r"general_facts\.json.*has no `freshness`"):
         ingest.mod11.DATA_DIR = ingest.env.data_dir
         ingest.write("general_facts.json", ingest.stamped([F(recheck_by="2027-01-01")], "2026-09-26"))
-        ingest.mod11.run(ingest.db())
+        ingest.mod11.run(ingest.db(), locs())
 
 
 @pytest.mark.parametrize("run", ["run04", "run11"])

@@ -27,7 +27,7 @@ import fixity_store
 from private_git_port import PrivateGit
 
 KEY_PREFIX = "input:"
-# (stable key, how to find it). Data files live in the private data dir; the others come from paths.py.
+# (stable key, how to find it). Data files live in the private data dir; the others come from the locations.
 DATA_FILES = ("manual_sources.json", "pilot_facts.json", "facts_batch1.json", "facts_batch2.json", "facts_batch3.json",
               "facts_batch4.json", "general_facts.json", "fact_revisions.jsonl", "privacy_rules.json", "entities.json",
               "subjects.json", "measurements_snapshot.json", "fact_hints.json", "claims.json", "measurements_config.json",
@@ -35,14 +35,14 @@ DATA_FILES = ("manual_sources.json", "pilot_facts.json", "facts_batch1.json", "f
 NOTES_KEY = KEY_PREFIX + "vault-source-notes"
 
 
-def input_paths(paths_module):
-    """[(stable key, path)] for every file input the build can read. `paths_module` is paths.py (or a stand-in)."""
-    out = [(KEY_PREFIX + "vault-db", os.path.join(paths_module.BODYBUILDING_VAULT, "bodybuilding.db"))]
-    # The music inputs only exist for a checkout that has them configured (paths.py leaves the others None).
-    out += [(KEY_PREFIX + key, path) for key, path in (("concerts-csv", paths_module.CONCERTS_CSV),
-                                                         ("rym-export-csv", paths_module.RYM_EXPORT_CSV),
-                                                         ("scrobbles-json", paths_module.SCROBBLES_JSON)) if path]
-    out += [(KEY_PREFIX + "data/" + name, os.path.join(paths_module.PRIVATE_DATA_DIR, name)) for name in DATA_FILES]
+def input_paths(locations):
+    """[(stable key, path)] for every file input the build can read, for these `locations`."""
+    out = [(KEY_PREFIX + "vault-db", os.path.join(locations.bodybuilding_vault, "bodybuilding.db"))]
+    # The music inputs only exist for a checkout that has them configured (the others are None).
+    out += [(KEY_PREFIX + key, path) for key, path in (("concerts-csv", locations.concerts_csv),
+                                                         ("rym-export-csv", locations.rym_export_csv),
+                                                         ("scrobbles-json", locations.scrobbles_json)) if path]
+    out += [(KEY_PREFIX + "data/" + name, os.path.join(locations.private_data_dir, name)) for name in DATA_FILES]
     return out
 
 
@@ -61,10 +61,10 @@ def _notes_manifest(con):
             "file_mtime": max((r[3] for r in rows if r[3]), default=None)}
 
 
-def collect_inputs(con, paths_module):
+def collect_inputs(con, locations):
     """[(key, {state, sha256, size_bytes, file_mtime})] sorted by key."""
     out = []
-    for key, path in input_paths(paths_module):
+    for key, path in input_paths(locations):
         fp = fixity_store.fingerprint(path)
         out.append((key, {"state": fp["file_state"], "sha256": fp["content_sha256"],
                           "size_bytes": fp["size_bytes"], "file_mtime": fp["file_mtime"]}))
@@ -72,11 +72,11 @@ def collect_inputs(con, paths_module):
     return sorted(out, key=lambda kv: kv[0])
 
 
-def record(con, paths_module, code_dir, private_dir, git: PrivateGit):
+def record(con, locations, code_dir, git: PrivateGit):
     """Write the build_info row and the build_inputs manifest into `con` (a freshly built db). Does not commit.
     Returns the build_info id."""
     code = git.describe_repo(code_dir)
-    private = git.describe_repo(private_dir)
+    private = git.describe_repo(locations.private_data_dir)
     version = con.execute("PRAGMA user_version").fetchone()[0]
     cur = con.execute(
         "INSERT INTO build_info (built_at, schema_version, code_commit, code_dirty, private_commit, private_dirty, "
@@ -84,7 +84,7 @@ def record(con, paths_module, code_dir, private_dir, git: PrivateGit):
         (clock.now_iso(), version, code["commit"], code["dirty"], private["commit"], private["dirty"],
          platform.python_version(), sqlite3.sqlite_version))
     info_id, read_at = cur.lastrowid, clock.now_iso()
-    for key, d in collect_inputs(con, paths_module):
+    for key, d in collect_inputs(con, locations):
         con.execute("INSERT INTO build_inputs (build_id, input_key, state, sha256, size_bytes, file_mtime, read_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)", (info_id, key, d["state"], d["sha256"], d["size_bytes"], d["file_mtime"], read_at))
     return info_id

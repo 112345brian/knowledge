@@ -16,6 +16,7 @@ import privacy
 import privacy_store
 from privacy import Rules, resolve_visibility as rv
 import new_fact
+from appctx import app
 
 SYNTHETIC_NAMES = ["Zorblax", "Quenby", "Wumpfel"]
 
@@ -296,7 +297,7 @@ def _add(ingest, fact, **kw):
     import add_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     kw.setdefault("db_path", os.path.join(ingest.env.root, "none.db"))
-    return add_fact.append_fact(fact, data_path=path, **kw)
+    return app().add_fact.append_fact(fact, data_path=path, **kw)
 
 
 def _db_with(ingest, *subjects):

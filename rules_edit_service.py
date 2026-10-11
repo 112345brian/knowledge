@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 from privacy_rules_port import Rules
 from private_git_port import PrivateGit
+from locations import Locations
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class RulesEditDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
     git: PrivateGit
     rules: Rules
+    locations: Locations
 
 
 @dataclass
@@ -35,7 +37,7 @@ def edit_rules(deps, edit, describe, allow_dirty, dry_run):
     """`edit(rules) -> (new_rules, changed)`; `describe(old, new) -> (what, commit_message)`. An edit that
     changes nothing writes and commits nothing (and needs no clean tree). Raises privacy.PrivacyRulesError
     for unusable rules or an invalid edit and git's PrivateGitError for a dirty tree."""
-    path = deps.rules.rules_path()
+    path = deps.locations.privacy_rules()
     rules = deps.rules.load_rules(path)
     new, changed = edit(rules)
     if not changed:
@@ -58,3 +60,17 @@ def edit_rules(deps, edit, describe, allow_dirty, dry_run):
         except deps.git.PrivateGitError as e:
             result.commit_error = str(e)
     return result
+
+
+def rules_path(deps):
+    """Where the privacy rules file is (<private data dir>/privacy_rules.json)."""
+    return deps.locations.privacy_rules()
+
+
+def rules_file_exists(deps, path):
+    return deps.rules.rules_file_exists(path)
+
+
+def load_rules(deps, path=None):
+    """The rules in `path` (default: the rules file). Raises PrivacyRulesError if it is unusable."""
+    return deps.rules.load_rules(deps.locations.privacy_rules() if path is None else path)

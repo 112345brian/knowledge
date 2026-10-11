@@ -14,8 +14,6 @@ import sys
 
 import typer
 
-import lifecycle
-import queries
 
 app = typer.Typer(pretty_exceptions_enable=False, rich_markup_mode=None)
 
@@ -56,23 +54,26 @@ def _report(res, as_json):
         raise typer.Exit(1)
 
 
-def _call(fn, *args, as_json, **kw):
-    res = fn(*args, db=queries.existing_db_path(), **kw)
+def _call(c, fn, *args, as_json, **kw):
+    res = fn(*args, db=c.queries.existing_db_path(), **kw)
     _report(res, as_json)
 
 
 @app.command("supersede", help="Mark a fact superseded by another (appends a revision; never edits the entry).")
-def cmd_supersede(ref: str, by: str = typer.Option(..., "--by", help="The replacement fact (id or source_key)."),
+def cmd_supersede(ctx: typer.Context, ref: str, by: str = typer.Option(..., "--by", help="The replacement fact (id or source_key)."),
                   reason: str = REASON_OPT, allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
-    _call(lifecycle.supersede, ref, by, reason, allow_dirty=allow_dirty, as_json=as_json)
+    c = ctx.obj
+    _call(c, c.lifecycle.supersede, ref, by, reason, allow_dirty=allow_dirty, as_json=as_json)
 
 
 @app.command("retract", help="Mark a fact retracted (appends a revision; never edits the entry).")
-def cmd_retract(ref: str, reason: str = REASON_OPT, allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
-    _call(lifecycle.retract, ref, reason, allow_dirty=allow_dirty, as_json=as_json)
+def cmd_retract(ctx: typer.Context, ref: str, reason: str = REASON_OPT, allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
+    c = ctx.obj
+    _call(c, c.lifecycle.retract, ref, reason, allow_dirty=allow_dirty, as_json=as_json)
 
 
 @app.command("set-visibility", help="Promote to normal or demote to private (appends a revision). Lowering to normal is refused when the privacy rules keep the fact private.")
-def cmd_set_visibility(ref: str, visibility: Visibility, reason: str = REASON_OPT,
+def cmd_set_visibility(ctx: typer.Context, ref: str, visibility: Visibility, reason: str = REASON_OPT,
                        allow_dirty: bool = ALLOW_DIRTY_OPT, as_json: bool = JSON_OPT):
-    _call(lifecycle.set_visibility, ref, visibility.value, reason, allow_dirty=allow_dirty, as_json=as_json)
+    c = ctx.obj
+    _call(c, c.lifecycle.set_visibility, ref, visibility.value, reason, allow_dirty=allow_dirty, as_json=as_json)

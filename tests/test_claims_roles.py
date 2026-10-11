@@ -17,6 +17,7 @@ import pytest
 import claims_audit as ca
 import claims_store
 from conftest import REPO
+from appctx import locs
 
 TODAY = date(2026, 10, 4)
 
@@ -226,7 +227,7 @@ def seeded(claims):
     con = new_db()
     for s in ("Alpha fact one", "Beta fact two", "Gamma fact three"):
         add_fact(con, s)
-    mod.run(con, claims=claims)
+    mod.run(con, locs(), claims=claims)
     return con
 
 
@@ -240,7 +241,7 @@ def test_private_seed_claims_are_not_backfilled_beyond_defaults():
             assert isinstance(prefix, str)                                 # still plain prefixes: grounds
     for s in [p for c in claims for p in c["fact_match_prefixes"]]:
         add_fact(con, s)
-    mod.run(con, claims=claims)
+    mod.run(con, locs(), claims=claims)
     assert con.execute("SELECT COUNT(*) FROM claims").fetchone()[0] == 1
     assert con.execute("SELECT COUNT(*) FROM claims WHERE warrant IS NOT NULL OR qualifier IS NOT NULL OR inference_type IS NOT NULL").fetchone()[0] == 0
     assert {r[0] for r in con.execute("SELECT role FROM claim_facts")} == {"grounds"} and con.execute("SELECT COUNT(*) FROM claim_facts").fetchone()[0] == 3

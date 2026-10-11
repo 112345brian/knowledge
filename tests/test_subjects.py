@@ -18,6 +18,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
 import fact_queries
+from appctx import app, locs
 
 
 @pytest.fixture(autouse=True)
@@ -194,7 +195,7 @@ def write_subjects(env, data):
 
 def test_06_loads_no_hierarchy_without_a_file(ingest, capsys):
     con = ingest.db()
-    load06().run(con)
+    load06().run(con, locs())
     assert "no subjects.json: no subject hierarchy loaded" in capsys.readouterr().out
     assert sum(1 for p, _ in tree(con).values() if p) == 0
 
@@ -208,7 +209,7 @@ def test_06_loads_everything_from_the_file(ingest, capsys):
     con = ingest.db()
     con.execute("INSERT INTO subjects (name, domain) VALUES ('topic-a', 'example')")
     con.execute("INSERT INTO subjects (name) VALUES ('topic-a-detail')")
-    load06().run(con)
+    load06().run(con, locs())
     r = {x["name"]: x for x in con.execute(
         "SELECT s.*, p.name AS pname, rp.name AS rname FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id "
         "LEFT JOIN subjects rp ON rp.id = s.replaced_by_subject_id")}
@@ -225,14 +226,14 @@ def test_06_an_existing_subjects_domain_is_kept(ingest):
     write_subjects(ingest.env, {"subjects": [entry("x", domain="music")]})
     con = ingest.db()
     con.execute("INSERT INTO subjects (name, domain) VALUES ('x', 'general')")
-    load06().run(con)
+    load06().run(con, locs())
     assert con.execute("SELECT domain FROM subjects WHERE name = 'x'").fetchone()[0] == "general"
 
 
 def test_06_an_invalid_file_fails_the_build(ingest):
     write_subjects(ingest.env, {"subjects": [entry("a", parent="ghost")]})
     with pytest.raises(Exception, match="ghost") as e:
-        load06().run(ingest.db())
+        load06().run(ingest.db(), locs())
     assert type(e.value).__name__ == "SubjectsError"
 
 
@@ -241,7 +242,7 @@ def test_06_an_alias_equal_to_an_ingested_subject_name_fails_the_build(ingest):
     con = ingest.db()
     con.execute("INSERT INTO subjects (name) VALUES ('already-a-subject')")
     with pytest.raises(ValueError, match="already-a-subject"):
-        load06().run(con)
+        load06().run(con, locs())
 
 
 def test_db_triggers_block_alias_subject_collisions_both_ways():
@@ -263,7 +264,7 @@ def test_db_triggers_block_alias_subject_collisions_both_ways():
 def test_11_files_an_entry_under_its_aliass_canonical_subject(ingest):
     write_subjects(ingest.env, {"subjects": [entry("steroids", aliases=["aas"])]})
     con = ingest.db()
-    load06().run(con)
+    load06().run(con, locs())
     ingest.run11([F(subject="aas", statement="Filed under the alias.")], con=con)
     assert con.execute("SELECT s.name FROM facts f JOIN subjects s ON s.id = f.subject_id").fetchone()[0] == "steroids"
     assert con.execute("SELECT COUNT(*) FROM subjects WHERE name = 'aas'").fetchone()[0] == 0
@@ -293,7 +294,7 @@ SUBJ = {"subjects": [entry("steroids", aliases=["aas"]), entry("old", deprecated
 def test_append_fact_resolves_an_alias_and_reports_it(tmp_path):
     import add_fact
     path = data_with(tmp_path, SUBJ)
-    r = add_fact.append_fact(nf(subject="aas"), data_path=path, db_path=str(tmp_path / "none.db"))
+    r = app().add_fact.append_fact(nf(subject="aas"), data_path=path, db_path=str(tmp_path / "none.db"))
     assert r.ok, r.errors
     assert r.entry["subject"] == "steroids" and any("alias of 'steroids'" in n for n in r.notes)
     assert json.load(open(path))[0]["subject"] == "steroids"
@@ -302,9 +303,9 @@ def test_append_fact_resolves_an_alias_and_reports_it(tmp_path):
 def test_append_fact_refuses_a_deprecated_subject_naming_the_replacement(tmp_path):
     import add_fact
     path = data_with(tmp_path, SUBJ)
-    r = add_fact.append_fact(nf(subject="old"), data_path=path, db_path=str(tmp_path / "none.db"))
+    r = app().add_fact.append_fact(nf(subject="old"), data_path=path, db_path=str(tmp_path / "none.db"))
     assert not r.ok and "deprecated" in r.errors[0] and "'steroids'" in r.errors[0] and not os.path.exists(path)
-    r = add_fact.append_fact(nf(subject="dead"), data_path=path, db_path=str(tmp_path / "none.db"))
+    r = app().add_fact.append_fact(nf(subject="dead"), data_path=path, db_path=str(tmp_path / "none.db"))
     assert not r.ok and "no replacement" in r.errors[0]
 
 
@@ -312,7 +313,7 @@ def test_append_fact_without_a_file_or_with_unknown_subjects_is_unchanged(tmp_pa
     import add_fact
     for data in (None, {"subjects": []}):
         path = data_with(tmp_path, data)
-        r = add_fact.append_fact(nf(subject="whatever"), data_path=path, db_path=str(tmp_path / "none.db"))
+        r = app().add_fact.append_fact(nf(subject="whatever"), data_path=path, db_path=str(tmp_path / "none.db"))
         assert r.ok and r.entry["subject"] == "whatever"
         os.remove(path)
 
@@ -320,7 +321,7 @@ def test_append_fact_without_a_file_or_with_unknown_subjects_is_unchanged(tmp_pa
 def test_append_fact_with_a_corrupt_file_is_a_clear_error(tmp_path):
     import add_fact
     path = data_with(tmp_path, "{broken")
-    r = add_fact.append_fact(nf(), data_path=path, db_path=str(tmp_path / "none.db"))
+    r = app().add_fact.append_fact(nf(), data_path=path, db_path=str(tmp_path / "none.db"))
     assert not r.ok and "not valid JSON" in r.errors[0]
 
 
@@ -328,9 +329,9 @@ def test_add_facts_batch_resolves_aliases_and_refuses_deprecated(tmp_path):
     import facts_batch
     path = data_with(tmp_path, SUBJ)
     kw = dict(data_dir=os.path.dirname(path), db_path=str(tmp_path / "none.db"), commit=False, dry_run=True)
-    res = facts_batch.add_facts([{"statement": "One.", "subject": "aas", "no_decay": True, "recheck_rationale": "r"}], **kw)
+    res = app().facts_batch.add_facts([{"statement": "One.", "subject": "aas", "no_decay": True, "recheck_rationale": "r"}], **kw)
     assert res.items[0].subject == "steroids" and res.items[0].outcome == "would_save", res.items[0].errors
-    res = facts_batch.add_facts([{"statement": "One.", "subject": "aas", "no_decay": True, "recheck_rationale": "r"},
+    res = app().facts_batch.add_facts([{"statement": "One.", "subject": "aas", "no_decay": True, "recheck_rationale": "r"},
                                  {"statement": "Two.", "subject": "old", "no_decay": True, "recheck_rationale": "r"}], **kw)
     assert res.items[1].outcome == "invalid" and "'steroids'" in res.items[1].errors[0]
     assert res.items[0].outcome == "not_saved"                                   # all-or-nothing

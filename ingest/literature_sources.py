@@ -10,34 +10,14 @@ from ingest import source_ingest_rules
 from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 
 
-VAULT = None  # None: the configured vault; a caller or test may set a path
-
-def _vault():
-    if VAULT is not None:
-        return VAULT
-    import paths
-    return paths.settings().bodybuilding_vault
-
-
-SRC_DIR = None  # None: <vault>/sources; a caller or test may set a path
-
-def _src_dir():
-    if SRC_DIR is not None:
-        return SRC_DIR
-    import paths
-    return os.path.expanduser(f"{_vault()}/sources")
-
-
-
-
-def parse_all():
+def parse_all(locations):
     rows = []
-    for fp in sorted(glob.glob(os.path.join(_src_dir(), "*.md"))):
+    for fp in sorted(glob.glob(os.path.join(os.path.join(locations.bodybuilding_vault, "sources"), "*.md"))):
         base = os.path.basename(fp)
         if base == "README.md":
             continue
         text = open(fp, encoding="utf-8").read()
-        row = source_ingest_rules.note_to_source_row(base, text, _vault())
+        row = source_ingest_rules.note_to_source_row(base, text, locations.bodybuilding_vault)
         where = row.pop("where")
         row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
         row.update(acquisition_store.resolve(acquisition_store.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
@@ -46,8 +26,8 @@ def parse_all():
     return rows
 
 
-def run(con):
-    rows = parse_all()
+def run(con, locations):
+    rows = parse_all(locations)
     cur = con.cursor()
     existing = {r[0] for r in cur.execute("SELECT citekey FROM sources WHERE citekey IS NOT NULL")}
     inserted = 0
@@ -74,10 +54,3 @@ def run(con):
         inserted += 1
     con.commit()
     print(f"[literature_sources] parsed {len(rows)} files, inserted {inserted} new sources")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

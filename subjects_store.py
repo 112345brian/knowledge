@@ -33,7 +33,7 @@ import uuid
 import private_edit_store
 from private_git_port import PrivateGit
 
-SUBJECTS_FILENAME = "subjects.json"
+from locations import SUBJECTS_FILENAME  # noqa: E402  (one definition of the file names, with Locations)
 VERSION = 1
 RELATIONS = ("broader", "part-of", "subtype-of", "member-of")  # keep in sync with the CHECK in schema.sql
 DEFAULT_RELATION = "broader"
@@ -46,9 +46,8 @@ class SubjectsError(Exception):
     """subjects.json is unreadable or breaks a rule. The message is safe to show as is."""
 
 
-def data_path():
-    from paths import PRIVATE_DATA_DIR  # lazy: this module imports without a private repo
-    return os.path.join(PRIVATE_DATA_DIR, SUBJECTS_FILENAME)
+def data_path(data_dir):
+    return os.path.join(data_dir, SUBJECTS_FILENAME)
 
 
 def _entry(name, domain=None, parent=None, relation=None, description=None, aliases=(), deprecated=False, replaced_by=None):
@@ -134,10 +133,9 @@ def parse(data, source="subjects.json"):
     return entries
 
 
-def read_file(path=None):
-    """Entries from `path` (default: the private data dir's subjects.json); None when the file is absent
-    (the caller decides what that means). Corrupt or invalid -> SubjectsError."""
-    path = data_path() if path is None else path
+def read_file(path):
+    """Entries from `path` (a subjects.json); None when the file is absent (the caller decides what that
+    means). Corrupt or invalid -> SubjectsError."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -304,11 +302,10 @@ def deprecate(entries, subject, replaced_by=None, known=(), domain=None):
 EditResult = private_edit_store.EditResult
 
 
-def edit_file(edit, what, message, allow_dirty=False, dry_run=False, path=None, *, git: PrivateGit):
+def edit_file(edit, what, message, allow_dirty=False, dry_run=False, *, path, git: PrivateGit):
     """Load subjects.json (an absent file starts empty), apply `edit(entries) -> (new_entries, changed)`,
     refuse on a dirty private repo, write atomically and commit only that file (private_edit_store.edit_files).
     Never prints or exits. `what` / `message` describe the change for the report / commit."""
-    path = data_path() if path is None else path
 
     def compute():
         new, changed = edit(read_file(path) or [])

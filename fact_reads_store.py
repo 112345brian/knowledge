@@ -2,6 +2,7 @@
 knowledge.db, runs one `fact_queries` / `claims_store` function and closes it. Callers never see a connection.
 A db built with an older schema, or bad full-text syntax, surfaces as `FactQueryError`."""
 import functools
+import inspect
 import sqlite3
 
 import claims_store
@@ -12,14 +13,18 @@ from fact_reads_port import DatabaseNotFound, FactQueryError  # noqa: F401  (Dat
 
 def _one_shot(fn):
     @functools.wraps(fn)
-    def run(*args, **kwargs):
-        con = fact_queries.connect()
+    def run(db_path, *args, **kwargs):
+        con = fact_queries.connect(db_path)
         try:
             return fn(con, *args, **kwargs)
         except sqlite3.OperationalError as e:
             raise FactQueryError(str(e)) from e
         finally:
             con.close()
+    # the wrapped function takes an open connection; this one takes the path of the db and opens its own
+    params = list(inspect.signature(fn).parameters.values())[1:]
+    run.__signature__ = inspect.Signature(
+        [inspect.Parameter("db_path", inspect.Parameter.POSITIONAL_OR_KEYWORD), *params])
     return run
 
 
@@ -40,8 +45,8 @@ def audit_claims(con):
     return claims_store.audit_claims(con), claims_store.unparseable_rechecks(con)
 
 
-def latest_build_info(db_path=None):
-    """The latest build row of `db_path` (default: the configured db), or None."""
+def latest_build_info(db_path):
+    """The latest build row of `db_path`, or None."""
     con = fact_queries.connect(db_path)
     try:
         return fact_queries.latest_build_info(con)
@@ -54,4 +59,3 @@ def latest_build_info(db_path=None):
 compare_build_info = fact_queries.compare_build_info
 subject_context = fact_queries.subject_context
 existing_db_path = fact_queries.existing_db_path
-default_db_path = fact_queries.default_db_path

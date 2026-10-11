@@ -20,6 +20,7 @@ from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
 import fact_queries
+from appctx import app, locs
 
 
 @pytest.fixture(autouse=True)
@@ -272,7 +273,7 @@ def test_add_fact_stores_private_when_it_mentions_a_private_entity(tmp_path):
     d = tmp_path / "data"
     write_entities(str(d), ent("zed", "Zed Name", aliases=["Zeddy"], private=True))
     fact = new_fact.NewFact(statement="Lunch with zeddy.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r", visibility="normal")
-    res = add_fact.resolve_privacy(fact, str(d / "general_facts.json"), str(tmp_path / "none.db"))
+    res = app().add_fact.resolve_privacy(fact, str(d / "general_facts.json"), str(tmp_path / "none.db"))
     assert res.visibility == "private" and "Zed Name" in res.explain()
 
 
@@ -297,7 +298,7 @@ def test_step13_links_facts_and_writes_the_tables(ingest, capsys):
                         F(statement="Call my brother.", visibility="normal")])
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert "4 entities (1 private), 4 fact links" in capsys.readouterr().out
     links = {(r[0], r[1]) for r in con.execute("SELECT f.statement, e.entity_key FROM fact_entities fe JOIN facts f ON f.id = fe.fact_id JOIN entities e ON e.id = fe.entity_id")}
     assert links == {("Lunch with Zeddy at Acme.", "zed"), ("Lunch with Zeddy at Acme.", "acme"), ("Plain.", "acme"), ("Call my brother.", "bro")}
@@ -311,7 +312,7 @@ def test_step13_without_a_file_does_nothing(ingest, capsys):
     con = ingest.run04([F()])
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert "no entities.json" in capsys.readouterr().out
     assert con.execute("SELECT COUNT(*) FROM entities").fetchone()[0] == 0
 
@@ -322,11 +323,11 @@ def test_step13_fails_the_build_on_a_name_collision_and_on_a_bad_file(ingest):
     con = ingest.run04([F()])                       # no entities.json yet
     write_entities(ingest.env.data_dir, ent("a", "Same", aliases=["x"]), ent("b", "Other", aliases=["X"]))
     with pytest.raises(Exception, match="claimed twice") as e:
-        mod13.run(con)
+        mod13.run(con, locs())
     assert type(e.value).__name__ == "EntitiesError"
     open(os.path.join(ingest.env.data_dir, "entities.json"), "w").write("{")
     with pytest.raises(Exception, match="not valid JSON"):
-        mod13.run(con)
+        mod13.run(con, locs())
     # and the privacy pass in 04/11 refuses to run at all on a broken entity file (fail closed)
     with pytest.raises(Exception, match="not valid JSON") as e:
         ingest.run04([F()])
@@ -340,7 +341,7 @@ def test_a_rebuild_privatizes_old_facts_end_to_end(ingest):
     assert con.execute("SELECT visibility FROM facts").fetchone()[0] == "private"
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert con.execute("SELECT COUNT(*) FROM fact_entities").fetchone()[0] == 1
 
 
@@ -352,7 +353,7 @@ def test_step13_refuses_to_build_if_a_fact_mentioning_a_private_entity_is_not_pr
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
     with pytest.raises(ValueError, match="not stored private"):
-        mod13.run(con)
+        mod13.run(con, locs())
 
 
 # ------------------------------------------------------------------ queries

@@ -35,15 +35,14 @@ import privacy_store
 import review_service
 import review_store
 import revisions_store
-from wiring import bind
+from wiring import bind_all
 
-DEPS = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
+API = ("list_pending", "current_states", "default_data_dir", "rules_with_db_context", "pending_view", "resolve_ref",
+       "approve", "reject")
 
-list_pending = bind(review_service.list_pending, DEPS)
-current_states = bind(review_service.current_states, DEPS)
-default_data_dir = bind(review_service.default_data_dir, DEPS)
-rules_with_db_context = bind(review_service.rules_with_db_context, DEPS)
-pending_view = bind(review_service.pending_view, DEPS)
-resolve_ref = bind(review_service.resolve_ref, DEPS)
-approve = bind(review_service.approve, DEPS)
-reject = bind(review_service.reject, DEPS)
+
+def compose(locations):
+    """The review API wired to the real adapters for these `locations`."""
+    deps = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store,
+                                     reads=review_store, locations=locations)
+    return bind_all(review_service, deps, API)

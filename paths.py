@@ -1,21 +1,17 @@
-"""Loads path values from a private data checkout instead of hardcoding
-machine-specific paths here. The private values and fact/source data live
-outside this repository.
+"""Reads where this person's data lives from the private data checkout, once, at an entry point.
 
-Nothing is read when this module is imported. `settings()` loads the private checkout's `local_paths.py` on
-first use and returns one frozen `Settings`; `configure(settings)` replaces it (a test, an embedding
-program), `configure(None)` forgets it. The old module-level names (`paths.PRIVATE_DATA_DIR`, ...) still
-resolve, lazily, through the same object, so scripts that read them at their own start-up keep working.
+`load()` returns a `Locations` (see locations.py) and keeps nothing: no cache, no module-level names, no
+override. Whoever starts the program (the Typer app's `Container`, `build.py`, a tool's `main()`, a test)
+calls it and hands the result down. The private values and fact/source data live outside this repository.
 
-If the private data checkout isn't available, the first use fails with a clear ModuleNotFoundError.
+If the private data checkout isn't available, `load()` fails with a clear ModuleNotFoundError.
 
 Set KNOWLEDGE_PRIVATE_DIR to point at the checkout from anywhere else, e.g. a
 `.claude/worktrees/*` git worktree where the sibling path doesn't exist. When
 it is set it wins, and a bad value is an error, never a silent fallback.
 """
+import importlib.util
 import os
-import sys
-from typing import Optional
 
 from locations import Locations
 
@@ -25,11 +21,8 @@ _SIBLING_DIR = os.path.abspath(
 )
 
 
-Settings = Locations  # the old name; the value object now lives in the model ring (locations.py)
-
-
 def load():
-    """Read the private checkout's local_paths.py (no caching; `settings()` caches)."""
+    """Read the private checkout's local_paths.py and return the `Locations` it describes."""
     override = os.environ.get(_ENV_VAR)
     private_dir = os.path.abspath(os.path.expanduser(override)) if override else _SIBLING_DIR
     if not os.path.isfile(os.path.join(private_dir, "local_paths.py")):
@@ -39,55 +32,24 @@ def load():
             f"your knowledge-private checkout, or check it out at {_SIBLING_DIR}.",
             name="local_paths",
         )
-    if private_dir not in sys.path:
-        sys.path.insert(0, private_dir)
-    import local_paths as local
+    # Executed from its file each time: two checkouts in one process (tests, tools) never share a cached module.
+    spec = importlib.util.spec_from_file_location("local_paths", os.path.join(private_dir, "local_paths.py"))
+    local = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(local)
     declared = getattr(local, "CLIENT_SOURCES", None)
     # A local_paths.py written before CLIENT_SOURCES existed has no such name but does define the music inputs:
     # it built everything then, so it keeps doing so (build.py says it is guessing). A config that names the
     # sources, or defines no music inputs, is taken at its word.
     implicit = declared is None and bool(getattr(local, "CONCERTS_CSV", None))
     sources = ("concerts", "ratings", "scrobbles", "measurements", "claims") if implicit else tuple(declared or ())
+
+    def path(name):
+        value = getattr(local, name, None)
+        return os.path.expanduser(value) if value else None
+
     return Locations(
         knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
-        bodybuilding_vault=local.BODYBUILDING_VAULT, health_dir=local.HEALTH_DIR,
+        bodybuilding_vault=os.path.expanduser(local.BODYBUILDING_VAULT), health_dir=os.path.expanduser(local.HEALTH_DIR),
         client_sources=sources, client_sources_implicit=implicit,
-        concerts_csv=getattr(local, "CONCERTS_CSV", None), rym_export_csv=getattr(local, "RYM_EXPORT_CSV", None),
-        scrobbles_json=getattr(local, "SCROBBLES_JSON", None),
+        concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
     )
-
-
-_current: Optional[Settings] = None
-
-
-def settings():
-    global _current
-    if _current is None:
-        _current = load()
-    return _current
-
-
-def configure(new: Optional[Settings]):
-    """Use `new` instead of reading local_paths.py; None forgets the cached value so the next use reloads."""
-    global _current
-    _current = new
-
-
-class Defaults:
-    """The `FactDefaults` port: where the facts file and the db are, resolved from `settings()` on every call."""
-    data_path = property(lambda self: settings().data_path)
-    db_path = property(lambda self: settings().db_path)
-
-
-_LEGACY = {
-    "KNOWLEDGE_DB_DIR": "knowledge_db_dir", "PRIVATE_DATA_DIR": "private_data_dir",
-    "BODYBUILDING_VAULT": "bodybuilding_vault", "HEALTH_DIR": "health_dir",
-    "CLIENT_SOURCES": "client_sources", "CLIENT_SOURCES_IMPLICIT": "client_sources_implicit",
-    "CONCERTS_CSV": "concerts_csv", "RYM_EXPORT_CSV": "rym_export_csv", "SCROBBLES_JSON": "scrobbles_json",
-}
-
-
-def __getattr__(name):
-    if name in _LEGACY:
-        return getattr(settings(), _LEGACY[name])
-    raise AttributeError(f"module 'paths' has no attribute {name!r}")

@@ -18,34 +18,6 @@ from client import measurement_rules
 from client.snapshot_date import read_snapshot_date
 
 
-DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if DATA_DIR is not None:
-        return DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-VAULT = None  # None: the configured vault; a caller or test may set a path
-
-def _vault():
-    if VAULT is not None:
-        return VAULT
-    import paths
-    return paths.settings().bodybuilding_vault
-
-
-VAULT_DB = None  # None: <vault>/bodybuilding.db; a caller or test may set a path
-
-def _vault_db():
-    if VAULT_DB is not None:
-        return VAULT_DB
-    import paths
-    return os.path.expanduser(f"{_vault()}/bodybuilding.db")
-
-
-
 # The vault db has no per-row load timestamp (only the date each reading was taken), so the
 # date_added of these rows, and the retrieved_date of the vault-db sources, is the date the
 # snapshot was taken. It is read from the data (measurements_snapshot.json, written once by
@@ -189,10 +161,10 @@ def create_sources(cur, group):
     return {key: get_or_create_source(cur, *spec) for key, spec in group.items()}
 
 
-def run(con):
+def run(con, locations):
     global SNAPSHOT_DATE
-    SNAPSHOT_DATE = read_snapshot_date(_data_dir())  # raises, naming the file, if it is not in the data
-    vault = sqlite3.connect(_vault_db())
+    SNAPSHOT_DATE = read_snapshot_date(locations.private_data_dir)  # raises, naming the file, if it is not in the data
+    vault = sqlite3.connect(os.path.join(locations.bodybuilding_vault, "bodybuilding.db"))
     vault.row_factory = sqlite3.Row
     cur = con.cursor()
     _subject_cache.clear()
@@ -202,7 +174,7 @@ def run(con):
     _muscle_cache.clear()
     inserted_before = cur.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
-    config = load_config(_data_dir())
+    config = load_config(locations.private_data_dir)
     ids = {name: get_source_id(cur, citekey) for name, citekey in config["manual_sources"].items()}
 
     # ---------------- DEXA: both scans, full field set from bodycomp_dexa ----------------
@@ -226,7 +198,7 @@ def run(con):
         insert_measurements(cur, measurement_rules.strength_measurements(latest), ids)
 
     # ---------------- Daily/weekly summary tables ----------------
-    summary, raw = measurement_rules.vault_db_sources(_vault(), measurement_rules.stale_note(SNAPSHOT_DATE))
+    summary, raw = measurement_rules.vault_db_sources(locations.bodybuilding_vault, measurement_rules.stale_note(SNAPSHOT_DATE))
     ids.update(create_sources(cur, summary))
 
     for row in vault.execute("SELECT * FROM nutrition_daily"):
@@ -310,10 +282,3 @@ def run(con):
     print(f"  plus {n_sets} training_sets ({len(_exercise_cache)} exercises), "
           f"{n_foods} food_log_entries ({len(_food_cache)} foods), {n_meals} meal_log_entries, "
           f"{n_volume} muscle_volume_weekly rows ({len(_muscle_cache)} muscles)")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

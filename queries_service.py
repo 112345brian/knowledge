@@ -4,80 +4,84 @@ binds it to the real adapter, and `knowledge.py` is a thin printer over that."""
 from dataclasses import dataclass
 
 from fact_reads_port import FactReads
+from locations import Locations
 
 
 @dataclass(frozen=True)
 class QueriesDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
-    reads: FactReads
+    fact_reads: FactReads
+    locations: Locations
 
 
 def search_facts(deps, terms, **filters):
-    return deps.reads.search_facts(terms, **filters)
+    return deps.fact_reads.search_facts(deps.locations.db_path, terms, **filters)
 
 
 def list_facts(deps, **filters):
-    return deps.reads.list_facts(**filters)
+    return deps.fact_reads.list_facts(deps.locations.db_path, **filters)
 
 
 def get_fact(deps, fact_id):
-    return deps.reads.get_fact(fact_id)
+    return deps.fact_reads.get_fact(deps.locations.db_path, fact_id)
 
 
 def list_subjects(deps, include_pending=False):
-    return deps.reads.list_subjects(include_pending=include_pending)
+    return deps.fact_reads.list_subjects(deps.locations.db_path, include_pending=include_pending)
 
 
 def fact_as_of(deps, fact_id, as_of):
-    return deps.reads.fact_as_of(fact_id, as_of)
+    return deps.fact_reads.fact_as_of(deps.locations.db_path, fact_id, as_of)
 
 
 def history(deps, ref):
     """The revisions of a fact (id or source_key), oldest first; [] when there are none."""
-    return deps.reads.get_history(ref)
-
-
-def source_ids(deps, citekey):
-    """A source's identifiers and the ones it shares with another source, or None for an unknown citekey."""
-    return deps.reads.source_ids(citekey)
+    return deps.fact_reads.get_history(deps.locations.db_path, ref)
 
 
 def pending(deps):
     """Pending (unreviewed) facts of the built db, oldest first."""
-    return deps.reads.list_pending()
+    return deps.fact_reads.list_pending(deps.locations.db_path)
+
+
+def source_ids(deps, citekey):
+    """A source's identifiers and the ones it shares with another source, or None for an unknown citekey."""
+    return deps.fact_reads.source_ids(deps.locations.db_path, citekey)
 
 
 def audit_claims(deps):
     """(claims with a stale premise, cited facts whose recheck_by is not an ISO date)."""
-    return deps.reads.audit_claims()
+    return deps.fact_reads.audit_claims(deps.locations.db_path)
 
 
 def audit_sources(deps):
-    return deps.reads.audit_sources()
+    return deps.fact_reads.audit_sources(deps.locations.db_path, deps.locations.bodybuilding_vault)
 
 
 def audit_source_status(deps):
-    return deps.reads.audit_source_status()
+    return deps.fact_reads.audit_source_status(deps.locations.db_path)
 
 
 def build_info(deps, compare_db=None):
     """(this db's latest build info or None, the other db's when `compare_db` is given, the differing inputs
     or None when nothing was compared). Raises DatabaseNotFound for a missing db."""
-    mine = deps.reads.latest_build_info()
+    mine = deps.fact_reads.latest_build_info(deps.locations.db_path)
     if compare_db is None:
         return mine, None, None
-    other = deps.reads.latest_build_info(compare_db)
-    return mine, other, deps.reads.compare_build_info(other, mine)
+    other = deps.fact_reads.latest_build_info(compare_db)
+    return mine, other, deps.fact_reads.compare_build_info(other, mine)
 
 
 def subject_context(deps):
     """({subject: parent}, known subjects), or None when there is no usable db."""
-    return deps.reads.subject_context()
+    return deps.fact_reads.subject_context(deps.locations.db_path, deps.locations.data_path)
 
 
 def existing_db_path(deps):
-    return deps.reads.existing_db_path()
+    """The built db's path when it exists, else None (a source_key still resolves without one)."""
+    return deps.fact_reads.existing_db_path(deps.locations.db_path)
 
 
 def default_db_path(deps):
-    return deps.reads.default_db_path()
+    """Where the built db is (whether or not it exists yet)."""
+    return deps.locations.db_path

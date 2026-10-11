@@ -17,6 +17,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import facts_batch_rules
 import new_fact
 import fact_queries
+from appctx import app
 
 
 @pytest.fixture(autouse=True)
@@ -48,18 +49,18 @@ def _con():
 
 def test_add_fact_stores_stripped_text_and_omits_blank_and_none():
     import add_fact
-    assert add_fact.build_entry(nf(applies_to="  adult men, 18-35  "))["applies_to"] == "adult men, 18-35"
+    assert app().add_fact.build_entry(nf(applies_to="  adult men, 18-35  "))["applies_to"] == "adult men, 18-35"
     for blank in (None, "", "   ", "\n\t "):
-        assert "applies_to" not in add_fact.build_entry(nf(applies_to=blank)), repr(blank)
-    assert add_fact.validate_fact(nf(applies_to="general"), db_path="/nonexistent")[0] == []
-    assert add_fact.validate_fact(nf(applies_to="  "), db_path="/nonexistent")[0] == []     # blank is fine: it becomes absent
-    assert add_fact.validate_fact(nf(applies_to=5), db_path="/nonexistent")[0]
+        assert "applies_to" not in app().add_fact.build_entry(nf(applies_to=blank)), repr(blank)
+    assert app().add_fact.validate_fact(nf(applies_to="general"), db_path="/nonexistent")[0] == []
+    assert app().add_fact.validate_fact(nf(applies_to="  "), db_path="/nonexistent")[0] == []     # blank is fine: it becomes absent
+    assert app().add_fact.validate_fact(nf(applies_to=5), db_path="/nonexistent")[0]
 
 
 def test_explicit_general_is_kept_and_distinct_from_absent():
     import add_fact
-    assert add_fact.build_entry(nf(applies_to="general"))["applies_to"] == "general"
-    assert "applies_to" not in add_fact.build_entry(nf())
+    assert app().add_fact.build_entry(nf(applies_to="general"))["applies_to"] == "general"
+    assert "applies_to" not in app().add_fact.build_entry(nf())
 
 
 def test_cli_flag_round_trips(tmp_path):
@@ -232,9 +233,9 @@ def test_add_fact_resolution_scans_applies_to(tmp_path):
     path = str(data / "general_facts.json")
     db = str(tmp_path / "none.db")
     clean = nf(statement="Innocent.", subject="x", visibility="normal", applies_to="adults")
-    assert add_fact.resolve_privacy(clean, path, db).visibility == "normal"
+    assert app().add_fact.resolve_privacy(clean, path, db).visibility == "normal"
     tainted = nf(statement="Innocent.", subject="x", visibility="normal", applies_to="Zorbak relatives")
-    res = add_fact.resolve_privacy(tainted, path, db)
+    res = app().add_fact.resolve_privacy(tainted, path, db)
     assert res.visibility == "private" and "zorbak" in res.explain().lower()
 
 

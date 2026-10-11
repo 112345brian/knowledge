@@ -79,7 +79,8 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions_store.default_data_dir()
+    import paths
+    data_dir = args.data_dir or paths.load().private_data_dir
     try:
         result = backfill(data_dir, apply=args.apply)
     except (revisions.RevisionError, OSError) as e:

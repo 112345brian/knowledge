@@ -24,7 +24,6 @@ from typing import Optional
 
 import typer
 
-import add_fact
 from fact_rules import KIND_VALUES, VALID_TRUST
 from new_fact import NewFact
 
@@ -44,7 +43,7 @@ HELP = (
 
 def register(app):
     @app.command("add-fact", help=HELP)
-    def cmd_add_fact(
+    def cmd_add_fact(ctx: typer.Context, 
         statement: str = typer.Argument(..., help="The fact itself, as a full sentence."),
         subject: str = typer.Option(..., "--subject", help="kebab-case subject name, e.g. 'car-maintenance'. Reused if it already exists, otherwise created."),
         trust_level: Trust = typer.Option(..., "--trust"),
@@ -69,6 +68,7 @@ def register(app):
         session_id: Optional[str] = typer.Option(None, "--session-id", help="The conversation/session the fact was captured in."),
         allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the facts file."),
     ):
+        c = ctx.obj
         fact = NewFact(
             statement=statement, subject=subject, trust_level=trust_level.value, no_decay=no_decay, domain=domain,
             is_original_claim=is_original_claim, is_personal=not not_personal, visibility=visibility, kind=kind.value,
@@ -77,7 +77,7 @@ def register(app):
             source_locator=source_locator, source_quote=source_quote, origin_path=origin_path,
             captured_via=captured_via, session_id=session_id,
         )
-        result = add_fact.record_fact(fact, allow_dirty=allow_dirty)
+        result = c.add_fact.record_fact(fact, allow_dirty=allow_dirty)
         if result.repo is None and result.refused is None:
             print(f"note: {result.data_dir} is not inside a git repository; the change will not be committed.", file=sys.stderr)
         if result.refused is not None:
@@ -92,9 +92,9 @@ def register(app):
         added = result.added
         if added.privacy is not None and added.privacy.raised_above_request:
             print(f"note: stored as private although {fact.visibility} was requested -- {added.privacy.explain()}", file=sys.stderr)
-        print(f"Added to {add_fact.data_file_label()} ({added.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
+        print(f"Added to {c.add_fact.data_file_label()} ({added.total} facts total). Run `python3 build.py` to rebuild knowledge.db.")
         if result.commit_error is not None:
-            print(f"error: the fact IS in {add_fact.data_file_path()} but is NOT committed: {result.commit_error}", file=sys.stderr)
+            print(f"error: the fact IS in {c.add_fact.data_file_path()} but is NOT committed: {result.commit_error}", file=sys.stderr)
             raise typer.Exit(3)
         if result.repo is not None:
             print(f"Committed {result.commit} in {result.repo}: {result.message}")

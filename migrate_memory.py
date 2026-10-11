@@ -43,11 +43,16 @@ import add_fact
 import clock
 import migrate_memory_service
 import migrate_memory_store
-import paths
 import private_git
-from wiring import bind
+from wiring import bind_all
 
-DEPS = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,
-                                            defaults=paths.Defaults())
+API = ("migrate",)
 
-migrate = bind(migrate_memory_service.migrate, DEPS)
+
+def compose(locations, add_fact_api=None):
+    """The memory-migration API wired to the real adapters for these `locations`; it adds each fact through
+    the single-fact API (pass the one already composed, or one is built)."""
+    add_fact_api = add_fact.compose(locations) if add_fact_api is None else add_fact_api
+    deps = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store,
+                                                    add_fact=add_fact_api, locations=locations)
+    return bind_all(migrate_memory_service, deps, API)

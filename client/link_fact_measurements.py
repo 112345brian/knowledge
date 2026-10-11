@@ -7,10 +7,10 @@ whose measurements back the fact. This step runs after the facts step and the me
 from ingest import facts
 
 
-def run(con):
+def run(con, locations):
     cur = con.cursor()
     linked = 0
-    for item in facts.load_items():
+    for item in facts.load_items(locations):
         metric = item.get("measurement_metric_link")
         if not metric:
             continue

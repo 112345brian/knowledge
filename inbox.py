@@ -17,7 +17,7 @@ Checks on every request (a request that fails one gets a 4xx and touches nothing
   * every fact field is HTML-escaped (statements may contain markup or injection text).
 
 CLI first (#34). Every button calls the same library function as a CLI command:
-    list pending -> review.list_pending           (`review-pending`)
+    list pending -> app.review.list_pending       (`review-pending`)
     approve      -> review.approve                (`approve`)
     reject       -> review.reject                 (`reject`)
     edit         -> lifecycle.edit_fact           (`edit`)
@@ -50,8 +50,6 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import lifecycle
-import review
 from fact_rules import VALID_TRUST
 from review_rules import status_word
 
@@ -74,11 +72,11 @@ BLANK_CLEARS = ("trust_rationale", "recheck_by", "notes")
 
 # --------------------------------------------------------------------------- view model
 
-def view_model(db_path, data_dir):
+def view_model(app, db_path, data_dir):
     """Everything the page shows: {facts, hidden_reviewed, missing_from_snapshot, error}. The
     overlay of current state on the db snapshot lives in review.pending_view (a library, so the
     rule behind each visibility is computed there, not here)."""
-    return review.pending_view(db_path, data_dir)
+    return app.review.pending_view(db_path, data_dir)
 
 
 # --------------------------------------------------------------------------- rendering
@@ -227,21 +225,21 @@ def run_action(server, form):
     common = dict(via=VIA, data_dir=server.data_dir, db=server.db_path)
     with server.mutation_lock:
         if action == "approve":
-            return _from_review(action, review.approve([ref], reason=form.get("reason", "").strip() or "approved in inbox", **common))
+            return _from_review(action, server.app.review.approve([ref], reason=form.get("reason", "").strip() or "approved in inbox", **common))
         if action == "reject":
-            return _from_review(action, review.reject([ref], form.get("reason", ""), **common))
+            return _from_review(action, server.app.review.reject([ref], form.get("reason", ""), **common))
         if action == "approve_shown":
             refs = [r for r in form.get("refs", "").split(",") if r.strip()]
             if not refs:
                 return {"action": action, "ok": False, "errors": ["no facts to approve"], "notes": [], "commit": None, "items": []}
-            return _from_review(action, review.approve(refs, reason="bulk approved in inbox", **common))
+            return _from_review(action, server.app.review.approve(refs, reason="bulk approved in inbox", **common))
         if action == "edit_fact":
-            res = lifecycle.edit_fact(ref, form.get("reason", ""), statement=form.get("statement"), trust_level=form.get("trust_level"),
+            res = server.app.lifecycle.edit_fact(ref, form.get("reason", ""), statement=form.get("statement"), trust_level=form.get("trust_level"),
                             trust_rationale=form.get("trust_rationale"), recheck_by=form.get("recheck_by"),
                             notes=form.get("notes"), expect_status="pending", **common)
             return _from_revise(action, res)
         if action == "make_private":
-            res = lifecycle.set_visibility(ref, form.get("visibility", "private"),
+            res = server.app.lifecycle.set_visibility(ref, form.get("visibility", "private"),
                                            form.get("reason", "").strip() or "made private in inbox",
                                            expect_status="pending", raise_only=True, **common)
             return _from_visibility(action, ref, res)
@@ -254,7 +252,8 @@ class InboxServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
 
-    def __init__(self, db_path, data_dir, port=0, token=None):
+    def __init__(self, app, db_path, data_dir, port=0, token=None):
+        self.app = app
         self.db_path = db_path
         self.data_dir = data_dir
         self.token = token or secrets.token_urlsafe(32)
@@ -267,10 +266,10 @@ class InboxServer(ThreadingHTTPServer):
         return {f"127.0.0.1:{port}", f"localhost:{port}"}
 
 
-def make_server(db_path, data_dir=None, port=0, token=None):
+def make_server(app, db_path, data_dir=None, port=0, token=None):
     """An InboxServer bound to 127.0.0.1:port (0 = any free port). Not started."""
-    data_dir = review.default_data_dir() if data_dir is None else data_dir
-    return InboxServer(db_path, data_dir, port, token)
+    data_dir = app.review.default_data_dir() if data_dir is None else data_dir
+    return InboxServer(app, db_path, data_dir, port, token)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -319,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
         return "application/json" in self.headers.get("Accept", "")
 
     def _page(self, status=200, flash=None):
-        vm = view_model(self.server.db_path, self.server.data_dir)
+        vm = view_model(self.server.app, self.server.db_path, self.server.data_dir)
         self._send(status, render_page(vm, self.server.token, flash))
 
     # -- verbs
@@ -385,9 +384,9 @@ class Handler(BaseHTTPRequestHandler):
         self._method_not_allowed()
 
 
-def serve(db_path, data_dir=None, port=DEFAULT_PORT, on_ready=None):
+def serve(app, db_path, data_dir=None, port=DEFAULT_PORT, on_ready=None):
     """Serve until interrupted. `on_ready(url)` is called once the socket is bound."""
-    server = make_server(db_path, data_dir, port)
+    server = make_server(app, db_path, data_dir, port)
     try:
         if on_ready:
             on_ready(f"http://127.0.0.1:{server.server_address[1]}/")

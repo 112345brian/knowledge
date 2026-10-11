@@ -44,7 +44,6 @@ Callers must read the result: tests/test_facts_batch.py scans the repo and fails
 `add_facts(...)` call.
 """
 from dataclasses import dataclass
-import os
 
 import facts_batch_rules
 import modes
@@ -53,9 +52,9 @@ from facts_batch_rules import (BatchResult, DEFAULT_CAPTURED_VIA, DEFAULT_TRUST,
                                MAX_BATCH)
 from new_fact import DataFileError
 from add_fact_port import AddFact
-from fact_defaults_port import FactDefaults
 from facts_file_port import FactsFile
 from private_git_port import PrivateGit
+from locations import FACTS_FILENAME, Locations
 
 
 @dataclass(frozen=True)
@@ -64,7 +63,7 @@ class FactsBatchDeps:
     git: PrivateGit
     facts_file: FactsFile
     add_fact: AddFact
-    defaults: FactDefaults
+    locations: Locations
 
 _norm = facts_batch_rules.norm
 _parse_item = facts_batch_rules.parse_item
@@ -89,8 +88,8 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
     Session) turns on the mode gate. `dry_run` validates and resolves but writes and commits nothing.
     """
     result = BatchResult(dry_run=bool(dry_run))
-    data_path = deps.defaults.data_path if data_dir is None else os.path.join(data_dir, os.path.basename(deps.defaults.data_path))
-    db_path = deps.defaults.db_path if db_path is None else db_path
+    data_path = deps.locations.data_path if data_dir is None else deps.locations.in_data_dir(FACTS_FILENAME, data_dir)
+    db_path = deps.locations.db_path if db_path is None else db_path
 
     if not isinstance(items, list):
         result.errors.append(f"items must be a list, got {type(items).__name__}")
@@ -186,9 +185,9 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
     repo = None
     if commit:
         try:
-            repo = deps.git.find_repo(os.path.dirname(data_path))
+            repo = deps.git.find_repo(deps.facts_file.data_dir_of(data_path))
             if repo is None:
-                result.notes.append(f"{os.path.dirname(data_path)} is not inside a git repository; the change will not be committed.")
+                result.notes.append(f"{deps.facts_file.data_dir_of(data_path)} is not inside a git repository; the change will not be committed.")
             elif not allow_dirty:
                 deps.git.ensure_clean_tree(repo)
         except deps.git.PrivateGitError as e:

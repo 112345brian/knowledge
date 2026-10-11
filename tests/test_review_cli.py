@@ -17,6 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_knowledge import Env as BaseEnv, ok  # noqa: E402
+from appctx import app
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 T1, T2 = "2026-09-01T00:00:00+00:00", "2026-09-02T00:00:00+00:00"
@@ -349,6 +350,6 @@ def test_no_caller_discards_the_result_of_review_approve_or_reject():
 
 def test_the_scan_catches_a_discarded_result(tmp_path):
     import ast
-    tree = ast.parse("import review\nreview.approve(['x'])\nres = review.reject(['y'], 'r')\n")
+    tree = ast.parse("import review\nreview.approve(['x'])\nres = app().review.reject(['y'], 'r')\n")
     bare = [n for n in ast.walk(tree) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)]
     assert len(bare) == 1 and bare[0].value.func.attr == "approve"

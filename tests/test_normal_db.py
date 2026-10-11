@@ -269,35 +269,34 @@ def hooked(tmp_path, monkeypatch):
     """build.main() with a fake pipeline that makes the fixture full DB, so the real hook runs."""
     db_dir = tmp_path / "db"
     fixture = leak_test.build_fixture(str(tmp_path))
-    monkeypatch.setattr(build, "build", lambda target: shutil.copy(fixture, target))
+    monkeypatch.setattr(build, "build", lambda target, locations: shutil.copy(fixture, target))
     monkeypatch.setattr(build, "report", lambda p: None)
-    monkeypatch.setattr(build, "DB_DIR", str(db_dir))
-    monkeypatch.setattr(build, "LIVE_DB", str(db_dir / "knowledge.db"))
-    monkeypatch.setattr(build, "BACKUP_DIR", str(db_dir / "backups"))
     monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", lambda path=None: rules())
     return db_dir
 
 
-def run_main(*args):
-    sys.argv = ["build.py", *args]
-    build.main()
+def run_main(db_dir, *args):
+    from locations import Locations
+    locations = Locations(knowledge_db_dir=str(db_dir), private_data_dir=str(db_dir.parent / "data"),
+                          bodybuilding_vault=str(db_dir.parent / "vault"), health_dir=str(db_dir.parent / "health"))
+    build.main(locations, list(args))
 
 
 def test_build_writes_both_dbs_into_the_same_dir(hooked, capsys):
-    run_main()
+    run_main(hooked)
     assert sorted(p.name for p in hooked.iterdir() if p.is_file()) == ["knowledge-normal.db", "knowledge.db"]
     assert leak_test.scan(str(hooked / "knowledge-normal.db"), M) == []
     assert "facts: 2" in capsys.readouterr().out
 
 
 def test_normal_failure_exits_nonzero_but_keeps_the_main_build(hooked, monkeypatch, capsys):
-    run_main()
+    run_main(hooked)
 
     def boom(*a, **k):
         raise normal_db.NormalDbError("kaboom")
     monkeypatch.setattr(normal_db, "build_normal_atomic", boom)
     with pytest.raises(SystemExit) as ei:
-        run_main()
+        run_main(hooked)
     assert ei.value.code not in (0, None)
     err = capsys.readouterr().err
     assert "normal-only DB failed" in err and "kaboom" in err
@@ -312,12 +311,12 @@ def test_bad_rules_file_fails_the_normal_build_closed(hooked, monkeypatch, capsy
         raise privacy.PrivacyRulesError("corrupt rules")
     monkeypatch.setattr(importlib.import_module("privacy_store"), "load_rules", bad)
     with pytest.raises(SystemExit):
-        run_main()
+        run_main(hooked)
     assert (hooked / "knowledge.db").exists() and not (hooked / "knowledge-normal.db").exists()
     assert "corrupt rules" in capsys.readouterr().err
 
 
 def test_check_builds_a_normal_db_in_a_temp_dir_only(hooked, capsys):
-    run_main("--check")
+    run_main(hooked, "--check")
     assert not hooked.exists()
     assert "Normal-only DB" in capsys.readouterr().out

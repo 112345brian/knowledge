@@ -244,7 +244,7 @@ def lib(env, monkeypatch):
 
 
 def test_connect_is_read_only(lib, env):
-    con = fact_queries.connect()
+    con = fact_queries.connect(env.db)
     try:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             con.execute("UPDATE facts SET statement = 'x' WHERE id = 1")
@@ -260,23 +260,23 @@ def test_connect_is_read_only(lib, env):
 def test_connect_missing_db_raises_not_exits(lib, env):
     os.remove(env.db)
     with pytest.raises(fact_queries.DatabaseNotFound, match="run `python3 knowledge.py build` first"):
-        fact_queries.connect()
+        fact_queries.connect(env.db)
     assert not os.path.exists(env.db)  # ro open must not create it either
 
 
-def test_connect_path_with_uri_special_characters(lib, tmp_path):
+def test_connect_path_with_uri_special_characters(lib, env, tmp_path):
     import shutil
     odd = tmp_path / "we ird#dir?x"
     odd.mkdir()
     dst = odd / "k.db"
-    shutil.copy(fact_queries.default_db_path(), dst)
+    shutil.copy(env.db, dst)
     con = fact_queries.connect(str(dst))
     assert con.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 5
     con.close()
 
 
-def test_functions_return_dicts_and_never_print_or_exit(lib, capsys):
-    con = fact_queries.connect()
+def test_functions_return_dicts_and_never_print_or_exit(lib, env, capsys):
+    con = fact_queries.connect(env.db)
     hits = fact_queries.search_facts(con, "protein", personal=False)
     assert {h["id"] for h in hits} == {1}
     assert set(hits[0]) == {"id", "subject", "trust_level", "status", "kind", "valid_from", "valid_to", "applies_to", "statement"}

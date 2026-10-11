@@ -5,17 +5,16 @@ adapter. `add_fact` is the facade that binds it to the real adapters, keeps the 
 """
 from dataclasses import dataclass
 from typing import Optional
-import os
 
 import new_fact
 import privacy
 from new_fact import AddResult, DataFileError
 from clock_port import Clock
-from fact_defaults_port import FactDefaults
 from facts_file_port import FactsFile
 from ids_port import Ids
 from privacy_rules_port import Rules
 from private_git_port import PrivateGit
+from locations import Locations
 
 
 @dataclass(frozen=True)
@@ -25,13 +24,13 @@ class AddFactDeps:
     rules: Rules
     clock: Clock
     ids: Ids
-    defaults: FactDefaults
+    locations: Locations
     git: PrivateGit
 
 
 def validate_fact(deps, fact, db_path=None):
     """Returns (errors, notes). Never prints. Same rules and messages the CLI has always had."""
-    db_path = deps.defaults.db_path if db_path is None else db_path
+    db_path = deps.locations.db_path if db_path is None else db_path
     errors, notes = new_fact.check_fact(fact), []
     if fact.source_citekey:
         error, note = deps.facts_file.citekey_problem(db_path, fact.source_citekey)
@@ -56,7 +55,7 @@ def resolve_privacy(deps, fact, data_path, db_path):
     context comes from the db when it has a subjects table (parents for tag inheritance, and the set
     of known subjects) plus subjects already in the facts file; with no usable db the unknown-subject
     rule is not enforced (nothing to compare against). Raises privacy.PrivacyRulesError."""
-    rules = deps.rules.load_rules(os.path.join(deps.facts_file.data_dir_of(data_path), privacy.RULES_FILENAME))
+    rules = deps.rules.load_rules(deps.locations.privacy_rules(deps.facts_file.data_dir_of(data_path)))
     parents, known = deps.facts_file.subject_tree(db_path)
     if known is not None:
         known |= deps.facts_file.file_subjects(data_path)
@@ -79,8 +78,8 @@ def canonicalize_subject(deps, fact, data_path):
 def append_fact(deps, fact, data_path=None, db_path=None):
     """Validate and append one fact. Returns an AddResult; never prints or exits. The stored
     visibility is the most restrictive of the request, the subject tag and the keyword list (#31)."""
-    data_path = deps.defaults.data_path if data_path is None else data_path
-    db_path = deps.defaults.db_path if db_path is None else db_path
+    data_path = deps.locations.data_path if data_path is None else data_path
+    db_path = deps.locations.db_path if db_path is None else db_path
     errors, notes = validate_fact(deps, fact, db_path)
     if errors:
         return AddResult(ok=False, errors=errors, notes=notes)
@@ -125,8 +124,8 @@ def record_fact(deps, fact, data_path=None, db_path=None, allow_dirty=False):
     """Append one fact and, when the data file lives in a git repo, commit only that file. The tree must be
     clean first (unless allow_dirty). A non-git data dir (a throwaway test layout) is written without
     committing. Returns a RecordResult; never prints or exits."""
-    data_path = deps.defaults.data_path if data_path is None else data_path
-    out = RecordResult(data_dir=os.path.dirname(data_path))
+    data_path = deps.locations.data_path if data_path is None else data_path
+    out = RecordResult(data_dir=deps.facts_file.data_dir_of(data_path))
     try:
         out.repo = deps.git.find_repo(out.data_dir)
         if out.repo is not None and not allow_dirty:

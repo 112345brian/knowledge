@@ -36,7 +36,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import textmatch
 
-RULES_FILENAME = "privacy_rules.json"
+from locations import PRIVACY_RULES_FILENAME as RULES_FILENAME  # the one definition of the file names lives with Locations
 VERSION = 1
 VALID_VISIBILITY = ("private", "normal")  # keep in sync with the CHECK on facts.visibility
 VALID_TAGS = ("private", "normal")

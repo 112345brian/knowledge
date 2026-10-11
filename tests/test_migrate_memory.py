@@ -23,6 +23,7 @@ import migrate_memory as mm  # noqa: E402
 import fact_rules
 import migrate_memory_rules
 import new_fact
+from appctx import app
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 TODAY = date(2026, 10, 3)
@@ -82,8 +83,9 @@ class W:
             f.write(data)
         return path
 
-    def run(self, **kw):
-        return mm.migrate(root=self.projects, data_path=self.facts, db_path=self.db, today=TODAY, **kw)
+    def run(self, application=None, **kw):
+        application = application or app()
+        return application.migrate_memory.migrate(root=self.projects, data_path=self.facts, db_path=self.db, today=TODAY, **kw)
 
     def entries(self):
         if not os.path.exists(self.facts):
@@ -287,7 +289,7 @@ def test_empty_body_falls_back_to_description(w):
 def test_empty_projects_dir_and_missing_root(w):
     r = w.run()
     assert r.files == [] and r.exit_code == 0 and r.index_files == 0
-    missing = mm.migrate(root=os.path.join(w.root, "nope"), data_path=w.facts, db_path=w.db)
+    missing = app().migrate_memory.migrate(root=os.path.join(w.root, "nope"), data_path=w.facts, db_path=w.db)
     assert missing.refused and "not a directory" in missing.refused and missing.exit_code == 1
 
 
@@ -413,7 +415,8 @@ def test_commit_failure_is_exit_3_and_facts_are_kept(w):
 def test_interrupted_run_commits_what_was_written_and_rerun_finishes(w, monkeypatch):
     for n in ("a.md", "b.md", "c.md"):
         w.mem("p", n)
-    real = add_fact.append_fact
+    application = app()
+    real = application.add_fact.append_fact
     calls = []
 
     def flaky(fact, **kw):
@@ -422,10 +425,9 @@ def test_interrupted_run_commits_what_was_written_and_rerun_finishes(w, monkeypa
             raise KeyboardInterrupt
         return real(fact, **kw)
 
-    monkeypatch.setattr(add_fact, "append_fact", flaky)
+    monkeypatch.setattr(application.add_fact, "append_fact", flaky)
     with pytest.raises(KeyboardInterrupt):
-        w.run()
-    monkeypatch.setattr(add_fact, "append_fact", real)
+        w.run(application)
     assert len(w.entries()) == 1 and w.status() == ""      # first fact written and committed
     r = w.run()
     assert sorted(actions(r)) == ["added", "added", "unchanged"]
@@ -439,7 +441,7 @@ def test_killed_run_leaving_a_dirty_tree_needs_allow_dirty_then_completes(w):
     w.run()
     # simulate a hard kill after writing one more fact: uncommitted facts file
     w.mem("p", "c.md")
-    add_fact.append_fact(new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=w.facts, db_path=w.db)
+    app().add_fact.append_fact(new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=w.facts, db_path=w.db)
     assert w.run().refused
     r = w.run(allow_dirty=True)
     assert actions(r).count("added") == 1 and len([e for e in w.entries() if e["source_key"].startswith("mm-")]) == 3
@@ -450,7 +452,7 @@ def test_concurrent_add_fact_and_two_migrations_lose_and_duplicate_nothing(w):
         w.mem("p", f"{i}.md")
 
     def adder(i):
-        res = add_fact.append_fact(new_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", no_decay=True, recheck_rationale="no decay"),
+        res = app().add_fact.append_fact(new_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", no_decay=True, recheck_rationale="no decay"),
                                    data_path=w.facts, db_path=w.db)
         assert res.ok
 
@@ -556,5 +558,5 @@ def test_migrate_memory_reads_ok_from_every_append_fact_result():
 
 
 def test_discard_scan_detects_a_discard():
-    tree = ast.parse("add_fact.append_fact(f)\nr = add_fact.append_fact(f)\n")
+    tree = ast.parse("app().add_fact.append_fact(f)\nr = app().add_fact.append_fact(f)\n")
     assert _discarded_calls(tree, "append_fact") == [1]

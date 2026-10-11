@@ -31,7 +31,7 @@ import validtime
 from fact_rules import FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE
 from timestamps import has_offset, parse_as_of, parse_timestamp  # noqa: F401  (re-exported: callers use revisions.parse_timestamp)
 
-REVISIONS_FILENAME = "fact_revisions.jsonl"
+from locations import REVISIONS_FILENAME  # noqa: E402  (one definition of the file names, with Locations)
 VALID_STATUS = ("pending", "active", "superseded", "retracted")
 MUTABLE_FIELDS = ("statement", "trust_level", "trust_rationale", "status", "visibility",
                   "superseded_by", "recheck_by", "recheck_rationale", "freshness", "kind", "valid_from", "valid_to", "applies_to", "notes")

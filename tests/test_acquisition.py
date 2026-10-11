@@ -18,6 +18,7 @@ import pytest
 import acquisition_store as aq
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+from appctx import locs
 
 DARWIN = aq.available()
 needs_xattr = pytest.mark.skipif(not DARWIN, reason="needs macOS and the xattr command")
@@ -234,9 +235,8 @@ def run02(ingest, tmp_path, monkeypatch, notes, attrs=None):
     spec = __import__("importlib.util").util.spec_from_file_location("m02", os.path.join(REPO, "ingest", "literature_sources.py"))
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.SRC_DIR = str(d)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs(bodybuilding_vault=str(d.parent)))
     return con
 
 
@@ -274,7 +274,7 @@ def test_01_manual_sources_take_data_first(ingest, monkeypatch):
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs())
     rows = {r["citekey"]: r for r in con.execute("SELECT * FROM sources")}
     assert (rows["m1"]["where_from"], rows["m1"]["acquired_via"], rows["m1"]["acquired_at"]) == ("https://data.example", "export", WHEN)
     assert rows["m1"]["acquired_note"] == "from macOS file attributes: acquired_at"

@@ -1,9 +1,11 @@
 """Composition root for the script-backed commands: binds `scripts_service` to `script_runner`."""
 import script_runner
 import scripts_service
-from wiring import bind
+from wiring import bind_all
 
-DEPS = scripts_service.ScriptsDeps(runner=script_runner)
+API = ("build", "clean_concerts")
 
-build = bind(scripts_service.build, DEPS)
-clean_concerts = bind(scripts_service.clean_concerts, DEPS)
+
+def compose():
+    """The script-backed commands wired to the real runner."""
+    return bind_all(scripts_service, scripts_service.ScriptsDeps(runner=script_runner), API)

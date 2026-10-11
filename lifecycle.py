@@ -53,11 +53,15 @@ import lifecycle_store
 import private_git
 import review
 import revisions_store
-from wiring import bind
+from wiring import bind_all
 
-DEPS = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)
+API = ("supersede", "retract", "set_visibility", "edit_fact")
 
-supersede = bind(lifecycle_service.supersede, DEPS)
-retract = bind(lifecycle_service.retract, DEPS)
-set_visibility = bind(lifecycle_service.set_visibility, DEPS)
-edit_fact = bind(lifecycle_service.edit_fact, DEPS)
+
+def compose(locations, review_api=None):
+    """The lifecycle API wired to the real adapters for these `locations`. It reads review state through the
+    review API (pass the one already composed, or one is built)."""
+    review_api = review.compose(locations) if review_api is None else review_api
+    deps = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review_api,
+                                           lifecycle_reads=lifecycle_store, locations=locations)
+    return bind_all(lifecycle_service, deps, API)

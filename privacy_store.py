@@ -16,17 +16,9 @@ import entities_store as entities_lib
 from privacy import PrivacyRulesError, Rules, RULES_FILENAME, VERSION, parse_rules, resolve_visibility, subject_chain
 
 
-def rules_path(data_dir=None):
-    if data_dir is None:
-        from paths import PRIVATE_DATA_DIR  # lazy: keeps this module importable without a private repo
-        data_dir = PRIVATE_DATA_DIR
-    return os.path.join(data_dir, RULES_FILENAME)
-
-
-def load_rules(path=None):
-    """Rules from `path` (default: PRIVATE_DATA_DIR/privacy_rules.json). Absent file -> empty
-    rules. A file that is unreadable, corrupt JSON or not an object raises PrivacyRulesError."""
-    path = rules_path() if path is None else path
+def load_rules(path):
+    """Rules from the privacy rules file at `path`. Absent file -> empty rules. A file that is unreadable,
+    corrupt JSON or not an object raises PrivacyRulesError."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

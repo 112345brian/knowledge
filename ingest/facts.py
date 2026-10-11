@@ -18,31 +18,12 @@ import privacy
 import privacy_store
 
 
-DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if DATA_DIR is not None:
-        return DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-VAULT = None  # None: the configured vault; a caller or test may set a path
-
-def _vault():
-    if VAULT is not None:
-        return VAULT
-    import paths
-    return paths.settings().bodybuilding_vault
-
-
-
-def load_items():
+def load_items(locations):
     """All entries, each with `_is_pilot`, `_where` (file, index) and `_source_key` (its own, or the deterministic
     legacy-... key from revisions.derive_keys until backfill_source_keys.py writes one)."""
     items = []
     for name, is_pilot in [("pilot_facts.json", True)] + [(f"facts_batch{i}.json", False) for i in range(1, 5)]:
-        batch = json.load(open(os.path.join(_data_dir(), name)))
+        batch = json.load(open(os.path.join(locations.private_data_dir, name)))
         for index, (item, key) in enumerate(zip(batch, revisions.derive_keys(batch, name))):
             item["_is_pilot"] = is_pilot
             item["_source_key"] = key
@@ -64,15 +45,15 @@ def get_or_create_subject(cur, name, cache):
     return sid
 
 
-def run(con):
+def run(con, locations):
     # Fail early on a corrupt rules file; an absent one means empty rules (#31).
-    rules = privacy_store.load_rules(os.path.join(_data_dir(), privacy.RULES_FILENAME))
-    hints = load_hints(_data_dir())   # the author's vault hints (fact_hints.json), or none
+    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
+    hints = load_hints(locations.private_data_dir)   # the author's vault hints (fact_hints.json), or none
     cur = con.cursor()
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
-    items = load_items()
+    items = load_items(locations)
     inserted = skipped = 0
     bad_citekeys = set()
     derived = 0
@@ -92,7 +73,7 @@ def run(con):
 
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
-        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), _vault(), hints)
+        origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), locations.bodybuilding_vault, hints)
         origin_file_id = get_or_create_vault_file(cur, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
@@ -148,10 +129,3 @@ def run(con):
     print("  facts by freshness:", dict(cur.execute("SELECT freshness, COUNT(*) FROM facts GROUP BY freshness").fetchall()))
     print("  facts by trust_level:", dict(cur.execute("SELECT trust_level, COUNT(*) FROM facts GROUP BY trust_level").fetchall()))
     print("  facts by is_personal:", dict(cur.execute("SELECT is_personal, COUNT(*) FROM facts GROUP BY is_personal").fetchall()))
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

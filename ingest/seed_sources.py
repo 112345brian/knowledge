@@ -20,49 +20,21 @@ import source_status
 from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
 
 
-PRIVATE_DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if PRIVATE_DATA_DIR is not None:
-        return PRIVATE_DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-VAULT = None  # None: the configured vault; a caller or test may set a path
-
-def _vault():
-    if VAULT is not None:
-        return VAULT
-    import paths
-    return paths.settings().bodybuilding_vault
-
-
-HEALTH = None  # None: the configured health dir; a caller or test may set a path
-
-def _health():
-    if HEALTH is not None:
-        return HEALTH
-    import paths
-    return paths.settings().health_dir
-
-
-
 FIELDS = ("citekey", "name", "source_type", "author", "publisher", "url",
           "published_date", "retrieved_date", "description", "origin_path")
 
 
-def load_sources():
-    items = json.load(open(os.path.join(_data_dir(), "manual_sources.json")))
+def load_sources(locations):
+    items = json.load(open(os.path.join(locations.private_data_dir, "manual_sources.json")))
     for s in items:
         if s.get("origin_path"):
-            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], _vault(), _health())
+            s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], locations.bodybuilding_vault, locations.health_dir)
     return items
 
 
-def run(con):
+def run(con, locations):
     cur = con.cursor()
-    sources = load_sources()
+    sources = load_sources(locations)
     for s in sources:
         author = s.get("author")
         publisher_id = get_or_create_publisher(cur, s.get("publisher"))
@@ -86,10 +58,3 @@ def run(con):
         link_authors(cur, source_id, author)
     con.commit()
     print(f"[seed_sources] inserted {len(sources)} manual sources")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

@@ -7,7 +7,8 @@ composition ring because binding is wiring, not domain: the domain ring holds on
 """
 import functools
 import inspect
-from typing import Any, Callable
+from types import SimpleNamespace
+from typing import Any, Callable, Iterable, Mapping, Union
 
 
 def bind(fn: Callable, deps: Any) -> Callable:
@@ -20,3 +21,13 @@ def bind(fn: Callable, deps: Any) -> Callable:
     params = list(inspect.signature(fn).parameters.values())[1:]
     setattr(bound, "__signature__", inspect.Signature(params, return_annotation=inspect.signature(fn).return_annotation))
     return bound
+
+
+def bind_all(service, deps: Any, names: Union[Iterable[str], Mapping[str, str]]) -> SimpleNamespace:
+    """The public API of one composition root: `names` is either the service function names, or a mapping of
+    public name -> service function name. Each is bound to `deps`; `deps` itself is kept as `.deps` so a test or
+    a debugger can see what the root wired."""
+    mapping = dict(names) if isinstance(names, Mapping) else {n: n for n in names}
+    api = SimpleNamespace(**{public: bind(getattr(service, fn), deps) for public, fn in mapping.items()})
+    api.deps = deps
+    return api

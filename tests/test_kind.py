@@ -20,6 +20,7 @@ import fact_rules
 import facts_batch_rules
 import new_fact
 import fact_queries
+from appctx import app
 
 VOCAB = ("observation", "measurement", "decision", "preference", "plan", "definition",
          "inference", "rule", "lesson", "unclassified")
@@ -48,14 +49,14 @@ def test_vocabulary_is_the_documented_one():
 def test_new_fact_defaults_to_unclassified_and_every_kind_is_accepted():
     assert nf().kind == "unclassified"
     for k in VOCAB:
-        errors, _ = add_fact.validate_fact(nf(kind=k), db_path="/nonexistent")
+        errors, _ = app().add_fact.validate_fact(nf(kind=k), db_path="/nonexistent")
         assert errors == [], k
-        assert add_fact.build_entry(nf(kind=k))["kind"] == k
+        assert app().add_fact.build_entry(nf(kind=k))["kind"] == k
 
 
 @pytest.mark.parametrize("bad", ["", "Decision", "guess", None, 5, " decision"])
 def test_add_fact_rejects_an_invalid_kind(bad):
-    errors, _ = add_fact.validate_fact(nf(kind=bad), db_path="/nonexistent")
+    errors, _ = app().add_fact.validate_fact(nf(kind=bad), db_path="/nonexistent")
     assert any("kind" in e for e in errors), errors
 
 

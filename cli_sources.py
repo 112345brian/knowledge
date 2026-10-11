@@ -8,7 +8,6 @@ import sys
 
 import typer
 
-import queries
 from fact_reads_port import DatabaseNotFound, FactQueryError
 
 app = typer.Typer(help="Sources: their persistent identifiers.", pretty_exceptions_enable=False, rich_markup_mode=None)
@@ -22,9 +21,10 @@ def _fail(msg):
 
 
 @app.command("ids", help="Show a source's identifiers (DOI, ISBN, ISSN, PMID, arXiv, other) and any it shares with another source.")
-def cmd_ids(citekey: str, as_json: bool = JSON_OPT):
+def cmd_ids(ctx: typer.Context, citekey: str, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        info = queries.source_ids(citekey)
+        info = c.queries.source_ids(citekey)
     except DatabaseNotFound as e:
         _fail(e)
     except FactQueryError as e:

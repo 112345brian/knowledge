@@ -8,20 +8,12 @@ Runs after the artist imports so the member artists already exist
 from their own solo credits rather than being created fresh here with
 nothing else attached.
 """
-import sqlite3, os
-from client.music_shared import load_artist_cache, seed_artist_members
+from client.music_shared import load_artist_cache, load_artist_rules, seed_artist_members
 
 
-def run(con):
+def run(con, locations):
     cur = con.cursor()
     artist_cache = load_artist_cache(cur)
-    inserted = seed_artist_members(cur, artist_cache)
+    inserted = seed_artist_members(cur, artist_cache, load_artist_rules(locations.private_data_dir))
     con.commit()
     print(f"[seed_artist_members] inserted {inserted} artist_members rows")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

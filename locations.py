@@ -3,7 +3,6 @@
 Model ring: imports nothing else in the repo and does no I/O. An entry point reads `local_paths.py` once
 (`paths.load()`), builds a `Locations`, and hands it down; nothing below an entry point looks configuration
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
-`data_path` and `db_path` make a `Locations` satisfy the `FactDefaults` port directly.
 """
 import posixpath
 from dataclasses import dataclass

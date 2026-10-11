@@ -16,21 +16,30 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import port_conformance  # noqa: E402
 import wiring  # noqa: E402
+from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service", "entities_service", "subjects_service")
+            "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service")
 
 
-def test_every_facade_binds_adapters_that_satisfy_the_protocols():
-    import add_fact, add_fact_store, clock, ids, lifecycle, lifecycle_store, migrate_memory, migrate_memory_store
-    import facts_batch, private_git, privacy_store, review, review_store, revisions_store
-    import entities, rules_edit, subjects
-    for facade in (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit, entities, subjects):
-        for field in dataclasses.fields(facade.DEPS):
-            adapter = getattr(facade.DEPS, field.name)
-            assert adapter is not None, f"{facade.__name__}.DEPS.{field.name} is unset"
-            assert port_conformance.conformance_problems(field.name, adapter) == [], f"{facade.__name__}.DEPS.{field.name}"
+def test_every_composition_root_binds_adapters_that_satisfy_the_protocols():
+    import add_fact_store, clock, ids, lifecycle_store, migrate_memory_store
+    import private_git, privacy_store, review_store, revisions_store
+    from locations import Locations
+    import container
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/vault", health_dir="/x/h")
+    app = container.Container(loc)
+    for name in ("review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects",
+                 "queries", "scripts"):
+        deps = getattr(app, name).deps
+        for field in dataclasses.fields(deps):
+            value = getattr(deps, field.name)
+            assert value is not None, f"{name}.deps.{field.name} is unset"
+            if field.name == "locations":
+                assert isinstance(value, Locations)
+                continue
+            assert port_conformance.conformance_problems(field.name, value) == [], f"{name}.deps.{field.name}"
     # the adapters themselves, so a rename fails here even if no facade binds that port
     for name, adapter in {"git": private_git, "revisions": revisions_store, "rules": privacy_store,
                           "reads": review_store, "lifecycle_reads": lifecycle_store, "facts_file": add_fact_store,
@@ -96,7 +105,8 @@ def test_review_service_approves_against_in_memory_fakes():
     import review_service
     reads = FakeReads({"k1": {"status": "pending"}, "k2": {"status": "active"}})
     fake_rev = FakeRevisions()
-    p = review_service.ReviewDeps(git=Untouched("git"), revisions=fake_rev, rules=Untouched("rules"), reads=reads)
+    p = review_service.ReviewDeps(git=Untouched("git"), revisions=fake_rev, rules=Untouched("rules"), reads=reads,
+                                  locations=_fake_locations())
     result = review_service.approve(p, ["k1", "k2", "nope"], reason="ok", commit=False)
     assert [(i.ref, i.outcome) for i in result.items] == [("k1", "approved"), ("k2", "skipped"), ("nope", "unknown")]
     assert fake_rev.calls == [("k1", {"status": "active"}, "ok", {"status": "pending"})]
@@ -110,7 +120,7 @@ def test_review_service_reports_a_failed_write_per_item():
         def append_revision(self, key, *a, **k):
             return revisions.RevisionResult(False, ["disk on fire"])
     p = review_service.ReviewDeps(git=Untouched("git"), revisions=Failing(), rules=Untouched("rules"),
-                                  reads=FakeReads({"k1": {"status": "pending"}}))
+                                  reads=FakeReads({"k1": {"status": "pending"}}), locations=_fake_locations())
     (item,) = review_service.approve(p, ["k1"], commit=False).items
     assert item.outcome == "error" and "disk on fire" in item.reason
 
@@ -149,7 +159,8 @@ def test_use_cases_do_not_print_open_files_or_exit():
 
 DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleDeps", "add_fact_service": "AddFactDeps",
                 "facts_batch_service": "FactsBatchDeps", "migrate_memory_service": "MigrateMemoryDeps",
-                "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps"}
+                "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps",
+                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
@@ -159,7 +170,7 @@ def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
         for f in dataclasses.fields(cls):
             assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
-            assert f.name in port_conformance.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
+            assert f.name == "locations" or f.name in port_conformance.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
 
 
 def test_a_service_uses_exactly_the_dependencies_it_declares():
@@ -245,16 +256,16 @@ class FakeIds:
         return "f-000000000001"
 
 
-class FakeDefaults:
-    data_path = "/data/general_facts.json"
-    db_path = "/data/knowledge.db"
+def _fake_locations():
+    from locations import Locations
+    return Locations(knowledge_db_dir="/data", private_data_dir="/data", bodybuilding_vault="/vault", health_dir="/health")
 
 
 def _record_deps(git):
     import add_fact_service
     files = FakeFactsFile()
     return add_fact_service.AddFactDeps(facts_file=files, rules=FakeRules(), clock=FakeClock(), ids=FakeIds(),
-                                        defaults=FakeDefaults(), git=git), files
+                                        locations=_fake_locations(), git=git), files
 
 
 def _fact(**kw):
@@ -325,6 +336,6 @@ def test_library_and_composition_modules_import_without_a_private_repo():
     env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": "/nonexistent/knowledge-private"}
     r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
-    r = subprocess.run([sys.executable, "-c", "import add_fact; add_fact.data_file_path()"], cwd=REPO, env=env,
+    r = subprocess.run([sys.executable, "-c", "import container; container.Container().add_fact.data_file_path()"], cwd=REPO, env=env,
                        capture_output=True, text=True)
     assert r.returncode != 0 and "local_paths.py not found" in r.stderr

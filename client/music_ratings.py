@@ -17,38 +17,27 @@ rather than carried into empty columns.
 Idempotent: re-running deletes and re-inserts this source file's own albums.
 """
 import sqlite3, csv, os
-from client.music_shared import load_artist_cache, get_or_create_artist
+from client.music_shared import load_artist_cache, get_or_create_artist, load_artist_rules
 from ingest.shared import get_or_create
 from client import music_ingest_rules
 
 
-CSV_PATH = None  # None: the configured RYM export; a caller or test may set a path
-
-def _csv_path():
-    if CSV_PATH is not None:
-        return CSV_PATH
-    import paths
-    return os.path.expanduser(paths.settings().rym_export_csv)
-
-
-
-
-
-def run(con):
+def run(con, locations):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", "path", _csv_path())
+    import_source_id = get_or_create(cur, "import_sources", "path", locations.rym_export_csv)
     cur.execute("DELETE FROM albums WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
+    rules = load_artist_rules(locations.private_data_dir)
 
     inserted = 0
-    with open(_csv_path(), encoding="utf-8-sig") as f:
+    with open(locations.rym_export_csv, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             album = music_ingest_rules.album_from_row(row)
             if album is None:
                 continue
             name, title, release_year, rating, rym_id = album
 
-            artist_id = get_or_create_artist(cur, artist_cache, name)
+            artist_id = get_or_create_artist(cur, artist_cache, name, rules)
             cur.execute(
                 """INSERT INTO albums (artist_id, title, release_year, rating, rym_id, import_source_id)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -59,10 +48,3 @@ def run(con):
     con.commit()
     print(f"[music_ratings] inserted {inserted} albums")
     print(f"  artists: {cur.execute('SELECT COUNT(*) FROM artists').fetchone()[0]}")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

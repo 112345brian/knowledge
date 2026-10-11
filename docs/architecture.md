@@ -77,6 +77,7 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 
 | Module | Role | What it is |
 | --- | --- | --- |
+| `container` | composition root | wires every use case for one Locations; made by an entry point |
 | `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
 | `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
@@ -140,7 +141,6 @@ and the fact entry itself are still dicts and functions over dicts (`revisions`,
 | `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) |  |
 | `fact_ingest_rules` | pipeline rules | fact-file ingest rules |
-| `fact_defaults_port` | domain service | interface for configured fact and database paths |
 | `facts_file_port` | domain service | interface for the persisted fact file and its lookups |
 | `fact_queries` | infrastructure | CLI read-only SQL |
 | `fact_rules` | model | allowed values |

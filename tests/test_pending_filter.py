@@ -92,7 +92,7 @@ def test_show_by_explicit_id_displays_any_status(env):
 
 
 def test_library_functions(lib, env):
-    con = fact_queries.connect()
+    con = fact_queries.connect(env.db)
     assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3]
     assert [r["id"] for r in fact_queries.list_facts(con, include_pending=True)] == [1, 2, 3, 6, 7]
     assert [r["id"] for r in fact_queries.list_facts(con, status="pending")] == [6, 7]

@@ -17,17 +17,6 @@ from client.music_shared import load_artist_cache, get_or_create_artist, load_ar
 from client import music_ingest_rules
 
 
-CSV_PATH = None  # None: the configured concerts CSV; a caller or test may set a path
-
-def _csv_path():
-    if CSV_PATH is not None:
-        return CSV_PATH
-    import paths
-    return os.path.expanduser(paths.settings().concerts_csv)
-
-
-
-
 def get_or_create(cur, table, **fields):
     where = " AND ".join(f"{k} IS :{k}" for k in fields)
     row = cur.execute(f"SELECT id FROM {table} WHERE {where}", fields).fetchone()
@@ -39,18 +28,19 @@ def get_or_create(cur, table, **fields):
     return cur.lastrowid
 
 
-def run(con):
+def run(con, locations):
     cur = con.cursor()
-    import_source_id = get_or_create(cur, "import_sources", path=_csv_path())
+    import_source_id = get_or_create(cur, "import_sources", path=locations.concerts_csv)
     cur.execute("DELETE FROM concert_attendances WHERE import_source_id = ?", (import_source_id,))
     artist_cache = load_artist_cache(cur)
-    known_festivals = load_artist_rules().get("festivals", [])
+    rules = load_artist_rules(locations.private_data_dir)
+    known_festivals = rules.get("festivals", [])
 
     inserted = 0
     unresolved_festival_names = 0
     billing_counts = {}
 
-    with open(_csv_path(), encoding="utf-8-sig") as f:
+    with open(locations.concerts_csv, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             concert = music_ingest_rules.concert_from_csv(row, known_festivals)
             if concert is None:
@@ -62,10 +52,10 @@ def run(con):
                 unresolved_festival_names += 1
             billing_counts[billing] = billing_counts.get(billing, 0) + 1
 
-            artist_id = get_or_create_artist(cur, artist_cache, name)
+            artist_id = get_or_create_artist(cur, artist_cache, name, rules)
             venue_id = get_or_create(cur, "venues", name=venue, city_state=city_state) if venue else None
             festival_id = get_or_create(cur, "festivals", name=festival_name) if festival_name else None
-            supporting_id = get_or_create_artist(cur, artist_cache, supporting_for) if supporting_for else None
+            supporting_id = get_or_create_artist(cur, artist_cache, supporting_for, rules) if supporting_for else None
 
             cur.execute(
                 """INSERT INTO concert_attendances (artist_id, start_date, end_date, venue_id, festival_id,
@@ -83,10 +73,3 @@ def run(con):
     print(f"  festival rows with no resolvable festival name: {unresolved_festival_names} (Location held a bare city or similar -- not guessed)")
     for b, n in billing_counts.items():
         print(f"  billing={b}: {n}")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

@@ -15,19 +15,8 @@ import sys
 import entities_store
 
 
-DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if DATA_DIR is not None:
-        return DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-
-
-def run(con):
-    found = entities_store.read_file(os.path.join(_data_dir(), entities_store.ENTITIES_FILENAME))
+def run(con, locations):
+    found = entities_store.read_file(os.path.join(locations.private_data_dir, entities_store.ENTITIES_FILENAME))
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return
@@ -38,10 +27,3 @@ def run(con):
     con.commit()
     private = sum(1 for e in found if e["private"])
     print(f"[link_entities] {result['entities']} entities ({private} private), {result['links']} fact links")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

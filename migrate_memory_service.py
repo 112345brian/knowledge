@@ -47,9 +47,9 @@ import revisions
 from migrate_memory_rules import FileResult, MigrationReport, plan_file
 from add_fact_port import AddFact
 from clock_port import Clock
-from fact_defaults_port import FactDefaults
 from memory_files_port import MemoryFiles
 from private_git_port import PrivateGit
+from locations import Locations
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class MigrateMemoryDeps:
     clock: Clock
     memory: MemoryFiles
     add_fact: AddFact
-    defaults: FactDefaults
+    locations: Locations
 
 DEFAULT_ROOT = "~/.claude/projects"
 
@@ -68,8 +68,8 @@ def migrate(deps, root=None, data_path=None, db_path=None, dry_run=False, allow_
     """Plan and (unless dry_run) perform the import. Returns a MigrationReport; never prints or
     exits. Writes at most `data_path` and one commit of exactly that file."""
     root = DEFAULT_ROOT if root is None else root
-    data_path = deps.defaults.data_path if data_path is None else data_path
-    db_path = deps.defaults.db_path if db_path is None else db_path
+    data_path = deps.locations.data_path if data_path is None else data_path
+    db_path = deps.locations.db_path if db_path is None else db_path
     report = MigrationReport(root=deps.memory.absolute_root(root), dry_run=dry_run)
     if not deps.memory.root_exists(report.root):
         report.refused = f"memory root {report.root} is not a directory"

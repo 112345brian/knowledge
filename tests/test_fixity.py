@@ -13,6 +13,7 @@ import fixity_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
+from appctx import app, locs
 
 @pytest.fixture(autouse=True)
 def _restore_modules():
@@ -238,9 +239,8 @@ def test_02_fills_the_source_fixity_columns(ingest, tmp_path, monkeypatch):
     d = tmp_path / "sources"
     write(d / "smith2020.md", b"---\ntitle: T\nyear: 2020\n---\nbody\n")
     write(d / "README.md", b"skipped")
-    monkeypatch.setattr(mod, "SRC_DIR", str(d))
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs(bodybuilding_vault=str(d.parent)))
     r = con.execute("SELECT * FROM sources").fetchone()
     assert con.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 1
     assert r["content_sha256"] == sha(b"---\ntitle: T\nyear: 2020\n---\nbody\n")
@@ -252,7 +252,7 @@ def test_02_fills_the_source_fixity_columns(ingest, tmp_path, monkeypatch):
 def test_add_fact_records_the_baseline_when_the_origin_file_is_readable(tmp_path):
     import add_fact
     p = write(tmp_path / "o.md", b"origin")
-    entry = add_fact.build_entry(new_fact.NewFact(statement="s", subject="x", trust_level="low", no_decay=True,
+    entry = app().add_fact.build_entry(new_fact.NewFact(statement="s", subject="x", trust_level="low", no_decay=True,
                                                   recheck_rationale="r", origin_path=p))
     assert entry["origin_path"] == p and entry["extracted_from_sha256"] == sha(b"origin")
 
@@ -260,11 +260,11 @@ def test_add_fact_records_the_baseline_when_the_origin_file_is_readable(tmp_path
 def test_add_fact_unreadable_or_absent_origin_records_no_hash(tmp_path):
     import add_fact
     kw = dict(statement="s", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
-    entry = add_fact.build_entry(new_fact.NewFact(origin_path=str(tmp_path / "nope.md"), **kw))
+    entry = app().add_fact.build_entry(new_fact.NewFact(origin_path=str(tmp_path / "nope.md"), **kw))
     assert "extracted_from_sha256" not in entry and entry["origin_path"].endswith("nope.md")
-    entry = add_fact.build_entry(new_fact.NewFact(**kw))
+    entry = app().add_fact.build_entry(new_fact.NewFact(**kw))
     assert "origin_path" not in entry and "extracted_from_sha256" not in entry
-    entry = add_fact.build_entry(new_fact.NewFact(origin_path="   ", **kw))
+    entry = app().add_fact.build_entry(new_fact.NewFact(origin_path="   ", **kw))
     assert "origin_path" not in entry
 
 
@@ -283,29 +283,29 @@ def test_backfill_dry_run_apply_idempotent_and_byte_preserving(tmp_path):
     write(data / "pilot_facts.json", text.encode())
     resolve = lambda notes: note if notes == "via notes" else None  # noqa: E731
 
-    res, unresolved = bf.backfill(str(data), apply=False, resolve=resolve)
+    res, unresolved = bf.backfill(str(data), "/nonexistent-vault", apply=False, resolve=resolve)
     assert res["pilot_facts.json"] == 2 and len(unresolved) == 1
     assert (data / "pilot_facts.json").read_text() == text  # dry run wrote nothing
 
-    bf.backfill(str(data), apply=True, resolve=resolve)
+    bf.backfill(str(data), "/nonexistent-vault", apply=True, resolve=resolve)
     new = json.loads((data / "pilot_facts.json").read_text())
     assert [e.get("extracted_from_sha256") for e in new] == [sha(b"note body"), sha(b"note body"), None, None, "keep"]
     assert [{k: v for k, v in e.items() if k != "extracted_from_sha256"} for e in new] == \
            [{k: v for k, v in e.items() if k != "extracted_from_sha256"} for e in items]
 
-    res, _ = bf.backfill(str(data), apply=True, resolve=resolve)
+    res, _ = bf.backfill(str(data), "/nonexistent-vault", apply=True, resolve=resolve)
     assert res["pilot_facts.json"] == 0  # idempotent
 
 
 def test_backfill_default_resolver_is_the_facts_step_rule():
     """The tool used to look the resolver up on a step module and crashed when the rule moved: the default
     must be the rule the facts step applies."""
-    import paths
     from ingest import backfill_extracted_hashes as bf, fact_ingest_rules
-    resolve = bf._resolver()
+    loc = locs()
+    resolve = bf._resolver(loc.private_data_dir, loc.bodybuilding_vault)
     assert resolve(None) is None
     notes = "Some Note.md, extracted 2026-01-01"
-    assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, paths.BODYBUILDING_VAULT) != None  # noqa: E711
+    assert resolve(notes) == fact_ingest_rules.resolve_origin_path(notes, loc.bodybuilding_vault) != None  # noqa: E711
 
 
 # ------------------------------------------------------------------ CLI

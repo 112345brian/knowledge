@@ -32,7 +32,6 @@ Batch semantics (decided, tested):
 Library code never prints or exits.
 """
 from dataclasses import dataclass
-import os
 
 import privacy
 import review_rules
@@ -43,6 +42,7 @@ from privacy_rules_port import Rules
 from private_git_port import PrivateGit
 from review_reads_port import ReviewReads
 from revisions_port import Revisions
+from locations import Locations
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,7 @@ class ReviewDeps:
     revisions: Revisions
     rules: Rules
     reads: ReviewReads
+    locations: Locations
 
 def list_pending(deps, db):
     """Pending facts of a built db, oldest first (see review_store.list_pending)."""
@@ -60,12 +61,12 @@ def list_pending(deps, db):
 
 def current_states(deps, data_dir=None):
     """{source_key: current mutable snapshot incl. revision}; raises revisions.RevisionError."""
-    return deps.reads.current_states(data_dir)
+    return deps.reads.current_states(deps.locations.data_dir if data_dir is None else data_dir)
 
 
 def default_data_dir(deps):
     """The private data directory the revision log lives in (what `data_dir=None` means)."""
-    return deps.reads.default_data_dir()
+    return deps.locations.data_dir
 
 
 # --------------------------------------------------------------------------- display (the inbox page)
@@ -74,7 +75,7 @@ def rules_with_db_context(deps, data_dir, db):
     """The privacy rules of `data_dir` plus the subject tree from the db (read-only), as
     `privacy check` does. A missing or odd db only means less context, never a crash.
     Raises privacy.PrivacyRulesError when the rules file is unusable."""
-    rules = deps.rules.load_rules(deps.rules.rules_path(data_dir))
+    rules = deps.rules.load_rules(deps.locations.privacy_rules(data_dir))
     if db is None:
         return rules
     try:
@@ -141,8 +142,8 @@ def _transition(deps, refs, to_status, outcome, reason, via, session_id, data_di
     if not isinstance(reason, str) or not reason.strip():
         result.errors.append("reason is required")
         return result
-    data_dir = deps.reads.default_data_dir() if data_dir is None else data_dir
-    log_path = os.path.join(data_dir, revisions.REVISIONS_FILENAME)
+    data_dir = deps.locations.data_dir if data_dir is None else data_dir
+    log_path = deps.locations.revisions_log(data_dir)
     try:
         states = current_states(deps, data_dir)
     except revisions.RevisionError as e:

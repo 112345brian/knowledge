@@ -29,7 +29,7 @@ addopts = "-n auto"
 
 [tool.mypy]
 python_version = "3.11"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "fact_defaults_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
+files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "entities.py", "subjects.py", "tests/port_types.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
@@ -74,6 +74,7 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.container",
     "kn.script_runner_port",
     "kn.scripts",
     "kn.scripts_service",
@@ -122,7 +123,6 @@ source_modules = [
     "kn.facts_file_port",
     "kn.clock_port",
     "kn.ids_port",
-    "kn.fact_defaults_port",
     "kn.add_fact_port",
     "kn.privacy_rules_port",
     "kn.revisions_port",
@@ -220,6 +220,7 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.container",
     "kn.script_runner_port",
     "kn.scripts",
     "kn.scripts_service",
@@ -270,7 +271,6 @@ source_modules = [
     "kn.facts_file_port",
     "kn.clock_port",
     "kn.ids_port",
-    "kn.fact_defaults_port",
     "kn.add_fact_port",
     "kn.privacy_rules_port",
     "kn.revisions_port",
@@ -475,6 +475,7 @@ source_modules = [
     "kn.source_status",
 ]
 forbidden_modules = [
+    "kn.container",
     "kn.script_runner_port",
     "kn.scripts",
     "kn.scripts_service",
@@ -521,7 +522,6 @@ forbidden_modules = [
     "kn.entity_queries_port",
     "kn.entity_queries_store",
     "kn.export_music_taste",
-    "kn.fact_defaults_port",
     "kn.fact_ingest_rules",
     "kn.fact_queries",
     "kn.facts",
@@ -643,7 +643,6 @@ source_modules = [
     "kn.facts_file_port",
     "kn.clock_port",
     "kn.ids_port",
-    "kn.fact_defaults_port",
     "kn.add_fact_port",
     "kn.privacy_rules_port",
     "kn.revisions_port",

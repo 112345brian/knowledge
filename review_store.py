@@ -8,11 +8,6 @@ import revisions
 import revisions_store
 
 
-def default_data_dir():
-    """The private data directory the revision log lives in (what `data_dir=None` means)."""
-    return revisions_store.default_data_dir()
-
-
 def db_exists(db_path):
     """Whether the built db file is there."""
     return os.path.exists(db_path)
@@ -32,10 +27,9 @@ def list_pending(db):
         return [dict(zip(names, r)) for r in cur.fetchall()]
 
 
-def current_states(data_dir=None):
+def current_states(data_dir):
     """{source_key: current mutable snapshot incl. revision} from the entry files and revision
     log, in entry order (dict order). Raises revisions.RevisionError if either is unusable."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
     entries = revisions_store.load_entries(data_dir)
     # The file name matters: it is what marks an entry in pilot_facts.json / facts_batch*.json that
     # has no `freshness` as legacy ('unreviewed'/'recheck') instead of an error.

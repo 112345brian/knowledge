@@ -12,6 +12,7 @@ import claims_store as ca
 import clock
 from conftest import REPO
 from test_claims_audit import add_claim, add_fact, load_seed, new_db
+from appctx import locs
 
 TODAY = "2026-10-03"
 
@@ -29,14 +30,14 @@ def test_inference_type_is_nullable_checked_and_not_backfilled():
 
 def test_seed_claims_leave_inference_type_null():
     con = new_db()
-    load_seed().run(con, claims=[dict(statement="Example conclusion", notes=None, fact_match_prefixes=[])])
+    load_seed().run(con, locs(), claims=[dict(statement="Example conclusion", notes=None, fact_match_prefixes=[])])
     assert con.execute("SELECT COUNT(*) FROM claims WHERE inference_type IS NOT NULL").fetchone()[0] == 0
 
 
 def test_seed_claims_accepts_optional_inference_type(monkeypatch):
     con = new_db()
     seed = load_seed()
-    seed.run(con, claims=[dict(statement="s", notes="n", fact_match_prefixes=[], inference_type="inductive")])
+    seed.run(con, locs(), claims=[dict(statement="s", notes="n", fact_match_prefixes=[], inference_type="inductive")])
     assert con.execute("SELECT inference_type FROM claims").fetchone()[0] == "inductive"
 
 
@@ -148,7 +149,7 @@ def test_flipping_a_seeded_claims_fact_to_superseded_surfaces_it_then_reverts():
     seed = load_seed()
     claims = [dict(statement="Example conclusion", notes=None, fact_match_prefixes=["Example premise"])]
     add_fact(con, "Example premise x")
-    seed.run(con, claims=claims)
+    seed.run(con, locs(), claims=claims)
     assert ca.audit_claims(con, TODAY) == []
     con.execute("UPDATE facts SET status='superseded'")
     assert {r["claim_id"] for r in ca.audit_claims(con, TODAY)} == {1}

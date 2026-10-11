@@ -91,11 +91,6 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
-path = "fact_defaults_port"
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
 path = "add_fact_port"
 layer = "domain_services"
 depends_on = []
@@ -183,17 +178,17 @@ depends_on = ["subjects_service", "subjects_store", "entity_queries_store", "pri
 [[modules]]
 path = "rules_edit_service"  # USE CASE: edit the privacy rules file, through ports only
 layer = "application"
-depends_on = ["privacy_rules_port", "private_git_port"]
+depends_on = ["privacy_rules_port", "private_git_port", "locations"]
 
 [[modules]]
 path = "entities_service"  # USE CASE: entity commands through ports
 layer = "application"
-depends_on = ["entity_files_port", "entity_migration_port", "entity_queries_port", "private_git_port"]
+depends_on = ["entity_files_port", "entity_migration_port", "entity_queries_port", "private_git_port", "locations"]
 
 [[modules]]
 path = "subjects_service"  # USE CASE: subject commands through ports
 layer = "application"
-depends_on = ["entity_queries_port", "private_git_port", "subject_files_port"]
+depends_on = ["entity_queries_port", "private_git_port", "subject_files_port", "locations"]
 
 [[modules]]
 path = "paths"          # the only module that knows personal paths
@@ -210,13 +205,13 @@ path = "privacy"        # DOMAIN: pure rules + resolver, no file/db/git access (
 layer = "domain_services"
 depends_on = [
     "textmatch",
+    "locations",
 ]
 
 [[modules]]
 path = "privacy_store"  # ADAPTER for privacy: rules file (load/save) and the db (apply_rules_to_db)
 layer = "infrastructure"
 depends_on = [
-    "paths",            # lazy import of PRIVATE_DATA_DIR, so the module imports without a private repo
     "privacy",
     "entities_store",
 ]
@@ -254,7 +249,6 @@ depends_on = [
     "add_fact_store",
     "clock",
     "ids",
-    "paths",
     "wiring",
     "privacy_store",
     "private_git",
@@ -263,7 +257,7 @@ depends_on = [
 [[modules]]
 path = "add_fact_service"  # USE CASE: add one fact, through ports only
 layer = "application"
-depends_on = ["new_fact", "privacy", "clock_port", "fact_defaults_port", "facts_file_port", "ids_port", "privacy_rules_port", "private_git_port"]
+depends_on = ["new_fact", "privacy", "clock_port", "facts_file_port", "ids_port", "privacy_rules_port", "private_git_port", "locations"]
 
 [[modules]]
 path = "fact_rules"     # DOMAIN: pure vocabulary (allowed values, key shapes) shared by add_fact and revisions
@@ -277,6 +271,7 @@ depends_on = [
     "fact_rules",
     "timestamps",
     "validtime",
+    "locations",
 ]
 
 [[modules]]
@@ -284,7 +279,6 @@ path = "revisions_store"  # ADAPTER for revisions: entry files, the log file and
 layer = "infrastructure"
 depends_on = [
     "clock",
-    "paths",            # lazy
     "revisions",
     "locks",
 ]
@@ -295,7 +289,6 @@ layer = "infrastructure"
 depends_on = [
     "add_fact_store",
     "new_fact",
-    "paths",
     "revisions_store",
     "build_info_store",
     "entities_store",
@@ -342,7 +335,7 @@ depends_on = [
 [[modules]]
 path = "review_service"  # USE CASE: review, through ports only
 layer = "application"
-depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port", "fact_state"]
+depends_on = ["privacy", "review_rules", "revisions", "privacy_rules_port", "private_git_port", "review_reads_port", "revisions_port", "fact_state", "locations"]
 
 [[modules]]
 path = "timestamps"     # DOMAIN: pure revision-time parsing, shared by revisions (storage) and modes (policy)
@@ -438,6 +431,7 @@ depends_on = [
     "leak_rules",
     "normal_rules",
     "privacy_store",
+    "paths",
 ]
 
 [[modules]]
@@ -494,7 +488,7 @@ depends_on = [
 [[modules]]
 path = "lifecycle_service"  # USE CASE: supersede/retract/set-visibility/edit, through ports only
 layer = "application"
-depends_on = ["lifecycle_rules", "privacy", "review_rules", "revisions", "lifecycle_reads_port", "private_git_port", "reviews_port", "revisions_port"]
+depends_on = ["lifecycle_rules", "privacy", "review_rules", "revisions", "lifecycle_reads_port", "private_git_port", "reviews_port", "revisions_port", "locations"]
 
 [[modules]]
 path = "facts_batch_rules" # DOMAIN: batch result types, item parsing, the duplicate test (pure)
@@ -512,13 +506,12 @@ depends_on = [
     "facts_batch_service",
     "wiring",
     "private_git",
-    "paths",
 ]
 
 [[modules]]
 path = "facts_batch_service"  # USE CASE: batch add_facts, through ports only
 layer = "application"
-depends_on = ["facts_batch_rules", "modes", "new_fact", "privacy", "add_fact_port", "fact_defaults_port", "facts_file_port", "private_git_port"]
+depends_on = ["facts_batch_rules", "modes", "new_fact", "privacy", "add_fact_port", "facts_file_port", "private_git_port", "locations"]
 
 [[modules]]
 path = "migrate_memory_rules" # DOMAIN: memory-file parsing, the mapping to a NewFact, the per-file decision (pure)
@@ -546,13 +539,12 @@ depends_on = [
     "migrate_memory_store",
     "wiring",
     "private_git",
-    "paths",
 ]
 
 [[modules]]
 path = "migrate_memory_service"  # USE CASE: migrate memory files, through ports only
 layer = "application"
-depends_on = ["migrate_memory_rules", "revisions", "add_fact_port", "clock_port", "fact_defaults_port", "memory_files_port", "private_git_port"]
+depends_on = ["migrate_memory_rules", "revisions", "add_fact_port", "clock_port", "memory_files_port", "private_git_port", "locations"]
 
 [[modules]]
 path = "identifiers"   # #48 DOI / ISBN / ISSN / PMID / arXiv normalization and checksums (pure)
@@ -579,7 +571,7 @@ depends_on = ["claims_store", "fact_queries", "fact_reads_port", "review_store"]
 [[modules]]
 path = "queries_service"   # APPLICATION SERVICE: the read side (search, list, show, history, audits, build info)
 layer = "application"
-depends_on = ["fact_reads_port"]
+depends_on = ["fact_reads_port", "locations"]
 
 [[modules]]
 path = "queries"           # COMPOSITION ROOT: binds queries_service to fact_reads_store
@@ -605,6 +597,11 @@ depends_on = []
 path = "scripts_service"      # APPLICATION SERVICE: build / clean-concerts as a script run
 layer = "application"
 depends_on = ["script_runner_port"]
+
+[[modules]]
+path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
+layer = "composition"
+depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -663,11 +660,11 @@ depends_on = ["private_git_port"]
 path = "entities_store"   # ADAPTER #42 entities.json: validation, term matching, edits, linking
 layer = "infrastructure"
 depends_on = [
-    "paths",
     "private_edit_store",
     "private_git_port",
     "textmatch",
     "entity_rules",
+    "locations",
 ]
 
 [[modules]]
@@ -685,9 +682,9 @@ depends_on = [
 path = "subjects_store"   # ADAPTER #43 the subject hierarchy as data: validation, alias resolution, edits through private_edit
 layer = "infrastructure"
 depends_on = [
-    "paths",
     "private_edit_store",
     "private_git_port",
+    "locations",
 ]
 
 # ===================================================================== CLI
@@ -707,8 +704,6 @@ depends_on = [
     "cli_lifecycle",        # registration lines (CLI-internal)
     "cli_migrate",        # registration lines (CLI-internal)
     "privacy",
-    "review",
-    "rules_edit",
     "revisions",
     "cli_entities",
     "cli_sources",
@@ -716,24 +711,20 @@ depends_on = [
     "fact_rules",
     "validtime",
     "private_git_port",
-    "queries",
     "fact_reads_port",
-    "scripts",
+    "container",
 ]
 
 [[modules]]
 path = "cli_lifecycle"  # supersede, retract, set-visibility
 layer = "cli"
 depends_on = [
-    "lifecycle",
-    "queries",
 ]
 
 [[modules]]
 path = "cli_migrate"
 layer = "cli"
 depends_on = [
-    "migrate_memory",
     "migrate_memory_service",
 ]
 
@@ -741,7 +732,6 @@ depends_on = [
 path = "cli_facts_batch"
 layer = "cli"
 depends_on = [
-    "facts_batch",
     "facts_batch_rules",
 ]
 
@@ -758,27 +748,24 @@ depends_on = [
 path = "cli_inbox"
 layer = "cli"
 depends_on = [
-    "lifecycle",        # `edit` -> lifecycle.edit_fact
 ]
 
 [[modules]]
 path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
 layer = "cli"
 depends_on = [
-    "entities",
     "entity_rules",
 ]
 
 [[modules]]
 path = "cli_add_fact"   # `knowledge.py add-fact` (#7)
 layer = "cli"
-depends_on = ["add_fact", "fact_rules", "new_fact"]
+depends_on = ["fact_rules", "new_fact"]
 
 [[modules]]
 path = "cli_sources"   # source ids (#48)
 layer = "cli"
 depends_on = [
-    "queries",
     "fact_reads_port",
 ]
 
@@ -786,7 +773,6 @@ depends_on = [
 path = "cli_subjects"   # subject list|show|alias|describe|deprecate (#43)
 layer = "cli"
 depends_on = [
-    "subjects",
     "fact_reads_port",
 ]
 
@@ -798,8 +784,6 @@ depends_on = [
 path = "inbox"          # #33. Pure serving: no revisions / privacy / private_git / sqlite3 (import-linter
 layer = "serving"       # "serving-reads-facts-through-modes"); writes and display state come from lifecycle / review.
 depends_on = [
-    "lifecycle",        # edit_fact, set_visibility(raise_only=True)
-    "review",           # list/approve/reject, pending_view, status_word
     "fact_rules",
     "review_rules",
 ]
@@ -827,7 +811,6 @@ depends_on = [
     "acquisition_store",
     "fixity_store",
     "identifiers",
-    "paths",
 ]
 
 [[modules]]
@@ -857,6 +840,7 @@ depends_on = [
     "revisions",
     "revisions_store",
     "locks",
+    "paths",
 ]
 
 [[modules]]
@@ -868,6 +852,7 @@ depends_on = [
     "revisions",
     "revisions_store",
     "locks",
+    "paths",
 ]
 
 [[modules]]
@@ -890,7 +875,6 @@ path = "ingest.seed_sources"
 layer = "pipeline"
 depends_on = [
     "ingest.shared",
-    "paths",
     "ingest.source_ingest_rules",
     "acquisition_store",
     "source_status",
@@ -901,7 +885,6 @@ path = "ingest.literature_sources"
 layer = "pipeline"
 depends_on = [
     "ingest.shared",
-    "paths",
     "ingest.source_ingest_rules",
     "acquisition_store",
     "fixity_store",
@@ -912,7 +895,6 @@ path = "client.measurements"
 layer = "pipeline"
 depends_on = [
     "client.measurement_rules",
-    "paths",
     "client.snapshot_date",
 ]
 
@@ -922,7 +904,6 @@ layer = "pipeline"
 depends_on = [
     "ingest.shared",
     "ingest.fact_ingest_rules",
-    "paths",
     "privacy",
     "privacy_store",
     "revisions",
@@ -935,7 +916,6 @@ path = "client.seed_claims"
 layer = "pipeline"
 depends_on = [
     "claims_audit",
-    "paths",
 ]
 
 [[modules]]
@@ -950,7 +930,6 @@ path = "client.concerts"
 layer = "pipeline"
 depends_on = [
     "client.music_ingest_rules",
-    "paths",
     "client.music_shared",
 ]
 
@@ -960,7 +939,6 @@ layer = "pipeline"
 depends_on = [
     "ingest.shared",
     "client.music_ingest_rules",
-    "paths",
     "client.music_shared",
 ]
 
@@ -970,7 +948,6 @@ layer = "pipeline"
 depends_on = [
     "ingest.shared",
     "client.music_ingest_rules",
-    "paths",
     "client.music_shared",
 ]
 
@@ -986,7 +963,6 @@ path = "ingest.seed_general_facts"
 layer = "pipeline"
 depends_on = [
     "ingest.fact_ingest_rules",
-    "paths",
     "privacy",
     "privacy_store",
     "revisions",
@@ -999,7 +975,6 @@ depends_on = [
 path = "ingest.apply_fact_revisions"
 layer = "pipeline"
 depends_on = [
-    "paths",
     "privacy",
     "revisions",
     "privacy_store",
@@ -1024,7 +999,6 @@ path = "ingest.link_entities"
 layer = "pipeline"
 depends_on = [
     "entities_store",
-    "paths",
 ]
 
 [[modules]]
@@ -1039,7 +1013,6 @@ path = "client.music_shared"
 layer = "pipeline"
 depends_on = [
     "client.artist_rules",
-    "paths",
 ]
 
 [[modules]]
@@ -1049,6 +1022,7 @@ depends_on = [
     "client.snapshot_date",
     "locks",
     "revisions_store",
+    "paths",
 ]
 
 [[modules]]

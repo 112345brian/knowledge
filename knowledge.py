@@ -44,11 +44,8 @@ import typer
 
 import validtime
 import privacy
-import queries
-import review
+import container
 import revisions
-import rules_edit
-import scripts
 from private_git_port import PrivateGitError
 from fact_rules import KIND_VALUES
 from fact_reads_port import DatabaseNotFound, FactQueryError
@@ -79,6 +76,14 @@ class Status(str, enum.Enum):
 # ---- thin CLI printers (Typer) ----
 
 app = typer.Typer(help=__doc__, pretty_exceptions_enable=False, rich_markup_mode=None)
+
+
+@app.callback()
+def _entry(ctx: typer.Context):
+    """The one place a command line is turned into a wired application: every command reads `ctx.obj`."""
+    ctx.obj = container.Container()
+
+
 import cli_facts_batch; cli_facts_batch.register(app)  # `add-facts` (#32)
 import cli_add_fact; cli_add_fact.register(app)  # `add-fact` (#7)
 
@@ -122,17 +127,19 @@ INCLUDE_PENDING_OPT = typer.Option(False, "--include-pending", help="Also show p
 
 
 @app.command("build", help="Rebuild knowledge.db from schema.sql + scripts + data/.")
-def cmd_build(check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
-    raise typer.Exit(scripts.build(check=check))
+def cmd_build(ctx: typer.Context, check: bool = typer.Option(False, "--check", help="Build into a throwaway file and report counts; live DB untouched.")):
+    c = ctx.obj
+    raise typer.Exit(c.scripts.build(check=check))
 
 
 @app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
-def cmd_clean_concerts():
-    raise typer.Exit(scripts.clean_concerts())
+def cmd_clean_concerts(ctx: typer.Context):
+    c = ctx.obj
+    raise typer.Exit(c.scripts.clean_concerts())
 
 
 @app.command("search", help="Full-text search over facts (statement/trust_rationale/notes).")
-def cmd_search(
+def cmd_search(ctx: typer.Context, 
     terms: str,
     subject: Optional[str] = None,
     trust: Optional[Trust] = None,
@@ -147,9 +154,10 @@ def cmd_search(
     identifier: Optional[str] = IDENTIFIER_OPT,
     as_json: bool = JSON_OPT,
 ):
+    c = ctx.obj
     personal = _personal(personal_only, not_personal)
     try:
-        rows = _read(queries.search_facts, terms, subject=subject, trust=trust.value if trust else None,
+        rows = _read(c.queries.search_facts, terms, subject=subject, trust=trust.value if trust else None,
                       personal=personal, limit=limit, status=status.value if status else None,
                       include_pending=include_pending, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
@@ -178,9 +186,9 @@ def _print_validity(r, valid_at=None, verdict=None):
         print(f"Valid on {valid_at}: {'yes' if verdict else 'NO'}")
 
 
-def _show_as_of(fact_id, as_of, as_json, valid_at=None):
+def _show_as_of(c, fact_id, as_of, as_json, valid_at=None):
     try:
-        kind, r = _read(queries.fact_as_of, fact_id, as_of)
+        kind, r = _read(c.queries.fact_as_of, fact_id, as_of)
     except ValueError as e:
         _fail(e)
     if kind == "no-fact":
@@ -207,14 +215,15 @@ def _show_as_of(fact_id, as_of, as_json, valid_at=None):
 
 
 @app.command("show", help="Show one fact in full, with its sources. --as-of DATE shows it as it stood then (end of that day, UTC; or an ISO timestamp).")
-def cmd_show(fact_id: int, as_json: bool = JSON_OPT,
+def cmd_show(ctx: typer.Context, fact_id: int, as_json: bool = JSON_OPT,
              as_of: Optional[str] = typer.Option(None, "--as-of", help="YYYY-MM-DD (end of that day, UTC) or an ISO-8601 timestamp."),
              valid_at: Optional[str] = typer.Option(None, "--valid-at", help="Also say whether the fact was true on this date, YYYY-MM-DD (valid time, #40). Exit 1 when it was not.")):
+    c = ctx.obj
     if valid_at is not None and not validtime.is_valid_date(valid_at):
         _fail(f"--valid-at {valid_at!r} must be a real date, YYYY-MM-DD")
     if as_of is not None:
-        return _show_as_of(fact_id, as_of, as_json, valid_at)
-    f = _read(queries.get_fact, fact_id)
+        return _show_as_of(c, fact_id, as_of, as_json, valid_at)
+    f = _read(c.queries.get_fact, fact_id)
     if not f:
         _fail(f"no fact with id {fact_id}")
     verdict = None if valid_at is None else validtime.contains(f["valid_from"], f["valid_to"], valid_at)
@@ -258,12 +267,13 @@ def _revision_diff(prev, cur):
 
 
 @app.command("history", help="Every revision of a fact, oldest first. REF is a fact id (digits) or a source_key.")
-def cmd_history(ref: str, as_json: bool = JSON_OPT):
+def cmd_history(ctx: typer.Context, ref: str, as_json: bool = JSON_OPT):
+    c = ctx.obj
     ref = ref.strip()
     if not ref:
         _fail("give a fact id or a source_key")
     key = int(ref) if ref.isascii() and ref.isdigit() else ref
-    rows = _read(queries.history, key)
+    rows = _read(c.queries.history, key)
     if not rows:
         _fail(f"no revision history for {ref!r} (unknown fact id or source_key, or the fact has no revisions)")
     if as_json:
@@ -290,9 +300,10 @@ def cmd_history(ref: str, as_json: bool = JSON_OPT):
 
 
 @app.command("audit-claims", help="List claims whose premises (cited facts) are superseded, retracted or past recheck_by. Exit 1 when a grounds/backing premise is stale; a stale rebuttal is listed as information only (it strengthens the claim).")
-def cmd_audit_claims(as_json: bool = JSON_OPT):
+def cmd_audit_claims(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        rows, unparsed = _read(queries.audit_claims)
+        rows, unparsed = _read(c.queries.audit_claims)
     except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
@@ -322,10 +333,11 @@ def cmd_audit_claims(as_json: bool = JSON_OPT):
 
 
 @app.command("build-info", help="Which inputs and code produced this knowledge.db: the latest build row and its input manifest. --compare OTHER.db lists inputs that differ (exit 1 when any).")
-def cmd_build_info(compare: Optional[str] = typer.Option(None, "--compare", help="Another knowledge.db to compare input hashes against."),
+def cmd_build_info(ctx: typer.Context, compare: Optional[str] = typer.Option(None, "--compare", help="Another knowledge.db to compare input hashes against."),
                    as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        mine, other, diff = _read(queries.build_info, compare)
+        mine, other, diff = _read(c.queries.build_info, compare)
     except FactQueryError as e:
         _fail(f"{e} (rebuild knowledge.db with the current schema)")
     if mine is None:
@@ -346,9 +358,10 @@ def cmd_build_info(compare: Optional[str] = typer.Option(None, "--compare", help
 
 
 @app.command("audit-source-status", help="List active/pending facts that cite a retracted source, one under an expression of concern, or one that was superseded (with its replacement). Exit 1 when any are found.")
-def cmd_audit_source_status(as_json: bool = JSON_OPT):
+def cmd_audit_source_status(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        rows, orphans = _read(queries.audit_source_status)
+        rows, orphans = _read(c.queries.audit_source_status)
     except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
@@ -375,9 +388,10 @@ def cmd_audit_source_status(as_json: bool = JSON_OPT):
 
 
 @app.command("audit-sources", help="List facts whose source file changed, went missing or moved since the fact was extracted (SHA-256 baseline). Exit 1 when any are found.")
-def cmd_audit_sources(as_json: bool = JSON_OPT):
+def cmd_audit_sources(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        rows, unbaselined = _read(queries.audit_sources)
+        rows, unbaselined = _read(c.queries.audit_sources)
     except FactQueryError as e:
         _fail(f"audit failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
@@ -399,8 +413,9 @@ def cmd_audit_sources(as_json: bool = JSON_OPT):
 
 
 @app.command("subjects", help="List subjects (indented under parent) with counts of their active facts.")
-def cmd_subjects(include_pending: bool = INCLUDE_PENDING_OPT, as_json: bool = JSON_OPT):
-    rows = _read(queries.list_subjects, include_pending=include_pending)
+def cmd_subjects(ctx: typer.Context, include_pending: bool = INCLUDE_PENDING_OPT, as_json: bool = JSON_OPT):
+    c = ctx.obj
+    rows = _read(c.queries.list_subjects, include_pending=include_pending)
     if as_json:
         _emit_json(rows)
         return
@@ -410,7 +425,7 @@ def cmd_subjects(include_pending: bool = INCLUDE_PENDING_OPT, as_json: bool = JS
 
 
 @app.command("facts", help="List/filter facts without full-text search. Active facts by default; --include-pending adds pending ones, --status X shows only status X.")
-def cmd_facts(
+def cmd_facts(ctx: typer.Context, 
     subject: Optional[str] = None,
     trust: Optional[Trust] = None,
     status: Optional[Status] = None,
@@ -424,9 +439,10 @@ def cmd_facts(
     identifier: Optional[str] = IDENTIFIER_OPT,
     as_json: bool = JSON_OPT,
 ):
+    c = ctx.obj
     personal = _personal(personal_only, not_personal)
     try:
-        rows = _read(queries.list_facts, subject=subject, trust=trust.value if trust else None,
+        rows = _read(c.queries.list_facts, subject=subject, trust=trust.value if trust else None,
                       status=status.value if status else None, include_pending=include_pending,
                       personal=personal, limit=limit, kind=kind.value if kind else None, valid_at=valid_at, entity=entity, identifier=identifier)
     except ValueError as e:
@@ -480,9 +496,10 @@ def _report_review(res, as_json):
 
 
 @app.command("review-pending", help="List pending (unreviewed) facts, oldest first.")
-def cmd_review_pending(as_json: bool = JSON_OPT):
+def cmd_review_pending(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        rows = _read(queries.pending)
+        rows = _read(c.queries.pending)
     except FactQueryError as e:
         _fail(f"review-pending failed: {e} (rebuild knowledge.db with the current schema)")
     if as_json:
@@ -502,31 +519,33 @@ def cmd_review_pending(as_json: bool = JSON_OPT):
 
 @app.command("approve", help="Approve pending facts (REF is a fact id or a source_key): appends an 'active' revision "
                              "and commits it to the data repo. Only pending facts change; others are skipped.")
-def cmd_approve(
+def cmd_approve(ctx: typer.Context, 
     refs: Optional[List[str]] = typer.Argument(None, help="Fact ids or source_keys."),
     reason: str = typer.Option("approved", "--reason", help="Why; recorded as the revision's change_reason."),
     all_: bool = typer.Option(False, "--all", help="Approve every pending fact."),
     allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
     as_json: bool = JSON_OPT,
 ):
+    c = ctx.obj
     refs = list(refs or [])
     if all_ and refs:
         raise typer.BadParameter("give REF... or --all, not both")
     if not all_ and not refs:
         raise typer.BadParameter("give at least one REF, or --all")
-    res = review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=queries.existing_db_path())
+    res = c.review.approve(["all"] if all_ else refs, reason=reason, via="cli", allow_dirty=allow_dirty, db=c.queries.existing_db_path())
     _report_review(res, as_json)
 
 
 @app.command("reject", help="Reject pending facts (REF is a fact id or a source_key): appends a 'retracted' revision. "
                             "Only pending facts change; others are skipped.")
-def cmd_reject(
+def cmd_reject(ctx: typer.Context, 
     refs: List[str] = typer.Argument(..., help="Fact ids or source_keys."),
     reason: str = typer.Option(..., "--reason", help="Why; recorded as the revision's change_reason."),
     allow_dirty: bool = ALLOW_DIRTY_OPT_REVIEW,
     as_json: bool = JSON_OPT,
 ):
-    res = review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=queries.existing_db_path())
+    c = ctx.obj
+    res = c.review.reject(list(refs), reason, via="cli", allow_dirty=allow_dirty, db=c.queries.existing_db_path())
     _report_review(res, as_json)
 
 
@@ -543,18 +562,18 @@ class Requested(str, enum.Enum):
     private = "private"
 
 
-def _load_rules():
+def _load_rules(c):
     try:
-        return rules_edit.load_rules()
+        return c.rules_edit.load_rules()
     except privacy.PrivacyRulesError as e:
         _fail(e)
 
 
-def _db_context(rules):
+def _db_context(c, rules):
     """`rules` with the subject tree and the known-subject list from the live db (see
     queries.subject_context). No db -> empty context, so the unknown-subject rule is not enforced
     (nothing to compare against)."""
-    ctx = queries.subject_context()
+    ctx = c.queries.subject_context()
     if ctx is None:
         return rules
     parents, known = ctx
@@ -568,20 +587,22 @@ def _resolution_json(res):
 
 
 @privacy_app.command("check", help="Resolve the visibility a statement would be stored with, and name the rule that raised it.")
-def cmd_privacy_check(statement: str,
+def cmd_privacy_check(ctx: typer.Context, statement: str,
                       subject: str = typer.Option(..., "--subject", help="Subject the fact would be filed under."),
                       requested: Requested = typer.Option(Requested.normal, "--requested",
                                                           help="What the caller asks for; default normal shows what the rules alone do."),
                       as_json: bool = JSON_OPT):
-    res = privacy.check(subject, statement, _db_context(_load_rules()), requested=requested.value)
+    c = ctx.obj
+    res = privacy.check(subject, statement, _db_context(c, _load_rules(c)), requested=requested.value)
     _emit_json(_resolution_json(res)) if as_json else print(res.explain())
 
 
 @privacy_app.command("rules", help="Show the loaded privacy rules (subject tags and keywords).")
-def cmd_privacy_rules(as_json: bool = JSON_OPT):
-    path = rules_edit.rules_path()
-    rules = _load_rules()
-    exists = rules_edit.rules_file_exists(path)
+def cmd_privacy_rules(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
+    path = c.rules_edit.rules_path()
+    rules = _load_rules(c)
+    exists = c.rules_edit.rules_file_exists(path)
     if as_json:
         _emit_json({"path": path, "exists": exists, "version": privacy.VERSION,
                     "subject_tags": dict(sorted(rules.subject_tags.items())), "keywords": sorted(rules.keywords)})
@@ -602,10 +623,10 @@ def cmd_privacy_rules(as_json: bool = JSON_OPT):
 
 
 
-def _edit_rules(edit, describe, allow_dirty, dry_run):
+def _edit_rules(c, edit, describe, allow_dirty, dry_run):
     """Shared body of the rules-editing commands: run rules_edit.edit_rules and print what it did."""
     try:
-        res = rules_edit.edit_rules(edit, describe, allow_dirty, dry_run)
+        res = c.rules_edit.edit_rules(edit, describe, allow_dirty, dry_run)
     except privacy.PrivacyRulesError as e:
         _fail(e)
     except PrivateGitError as e:
@@ -639,34 +660,38 @@ class Tag(str, enum.Enum):
 
 
 @privacy_app.command("tag", help="Tag a subject private (inherited by its children); --tag normal only registers it as a known subject.")
-def cmd_privacy_tag(subject: str, tag: Tag = typer.Option(Tag.private, "--tag"),
+def cmd_privacy_tag(ctx: typer.Context, subject: str, tag: Tag = typer.Option(Tag.private, "--tag"),
                     allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
-    _edit_rules(lambda r: privacy.tag_subject(r, subject, tag.value),
+    c = ctx.obj
+    _edit_rules(c, lambda r: privacy.tag_subject(r, subject, tag.value),
                 lambda old, new: (f"tag subject {subject} {tag.value}", f"privacy: tag {subject} ({tag.value})"),
                 allow_dirty, dry_run)
 
 
 @privacy_app.command("untag", help="Remove a subject's tag.")
-def cmd_privacy_untag(subject: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
-    _edit_rules(lambda r: privacy.untag_subject(r, subject),
+def cmd_privacy_untag(ctx: typer.Context, subject: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    c = ctx.obj
+    _edit_rules(c, lambda r: privacy.untag_subject(r, subject),
                 lambda old, new: (f"untag subject {subject}", f"privacy: untag {subject}"),
                 allow_dirty, dry_run)
 
 
 @privacy_app.command("add-keyword", help="Add a name/keyword; statements containing it as a whole word become private. Literal text, case-insensitive.")
-def cmd_privacy_add_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+def cmd_privacy_add_keyword(ctx: typer.Context, keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    c = ctx.obj
     def describe(old, new):
         kw = next(k for k in new.keywords if k not in old.keywords)
         return f"add keyword {kw!r}", f"privacy: add keyword {kw!r}"
-    _edit_rules(lambda r: privacy.add_keyword(r, keyword), describe, allow_dirty, dry_run)
+    _edit_rules(c, lambda r: privacy.add_keyword(r, keyword), describe, allow_dirty, dry_run)
 
 
 @privacy_app.command("remove-keyword", help="Remove a keyword. Facts already stored private stay private.")
-def cmd_privacy_remove_keyword(keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+def cmd_privacy_remove_keyword(ctx: typer.Context, keyword: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT):
+    c = ctx.obj
     def describe(old, new):
         kw = next(k for k in old.keywords if k not in new.keywords)
         return f"remove keyword {kw!r}", f"privacy: remove keyword {kw!r}"
-    _edit_rules(lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
+    _edit_rules(c, lambda r: privacy.remove_keyword(r, keyword), describe, allow_dirty, dry_run)
 
 import cli_sources; app.add_typer(cli_sources.app, name="source")  # source ids (#48)
 import cli_entities; app.add_typer(cli_entities.app, name="entity")  # entity list|show|add|alias|tag|untag|migrate-keywords (#42)
@@ -677,7 +702,7 @@ import cli_lifecycle; app.add_typer(cli_lifecycle.app)  # supersede, retract, se
 import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
 
-from cli_inbox import register as _register_inbox; _register_inbox(app, queries.default_db_path)  # inbox, edit (#33)
+from cli_inbox import register as _register_inbox; _register_inbox(app)  # inbox, edit (#33)
 
 
 def main(argv=None):

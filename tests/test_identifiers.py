@@ -14,6 +14,7 @@ import identifiers as ids
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import fact_queries
+from appctx import locs
 
 
 @pytest.fixture(autouse=True)
@@ -136,9 +137,9 @@ def write_vault(tmp_path, notes):
 
 def run02(ingest, tmp_path, notes):
     mod = load("literature_sources.py")
-    mod.SRC_DIR = write_vault(tmp_path, notes)
+    src = write_vault(tmp_path, notes)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs(bodybuilding_vault=os.path.dirname(src)))
     return con
 
 
@@ -216,7 +217,7 @@ def test_manual_sources_take_identifiers_as_fields_or_a_mapping(ingest):
                    {"citekey": "m2", "name": "M2", "source_type": "primary", "identifiers": {"isbn": "0-306-40615-2", "other": ["reg-77", "reg-78"]}},
                    {"citekey": "m3", "name": "M3", "source_type": "primary"}], f)
     con = ingest.db()
-    load("seed_sources.py").run(con)
+    load("seed_sources.py").run(con, locs())
     assert ("m1", "doi", "10.5555/abc123") in table(con) and ("m2", "isbn", "9780306406157") in table(con)
     assert con.execute("SELECT COUNT(*) FROM source_identifiers WHERE source_id = (SELECT id FROM sources WHERE citekey = 'm3')").fetchone()[0] == 0
 

@@ -15,6 +15,7 @@ import sys
 
 import pytest
 import new_fact
+from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")  # the library facade, imported in-process
@@ -262,7 +263,7 @@ def fact(af, **kw):
 
 def test_function_api_append_returns_structured_result(af, tmp_path):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="  Stripped.  "), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="  Stripped.  "), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert res.ok and res.errors == [] and res.total == 1
     assert res.entry["statement"] == "Stripped."
     assert json.loads(p.read_text())[0] == res.entry
@@ -270,7 +271,7 @@ def test_function_api_append_returns_structured_result(af, tmp_path):
 
 def test_function_api_validation_errors_are_returned_not_printed(af, tmp_path, capsys):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="  ", subject="Bad Subject"), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="  ", subject="Bad Subject"), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert not res.ok
     assert any("statement is empty" in e for e in res.errors)
     assert any("kebab-case" in e for e in res.errors)
@@ -279,13 +280,13 @@ def test_function_api_validation_errors_are_returned_not_printed(af, tmp_path, c
 
 
 def test_function_api_citekey_note_returned_when_db_missing(af, tmp_path):
-    res = af.append_fact(fact(af, source_citekey="k"), data_path=str(tmp_path / "f.json"), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, source_citekey="k"), data_path=str(tmp_path / "f.json"), db_path=str(tmp_path / "none.db"))
     assert res.ok and any("skipping citekey check" in n for n in res.notes)
 
 
 def test_function_api_nul_in_statement_is_pinned(af, tmp_path):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="bad\x00fact"), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="bad\x00fact"), data_path=str(p), db_path=str(tmp_path / "none.db"))
     # Today's behavior (accepted) is preserved by the refactor; making NUL a refusal is a separate,
     # deliberate decision because every caller would then need to handle the new outcome.
     assert res.ok
@@ -300,14 +301,14 @@ def test_failed_replace_leaves_original_intact_and_no_temp_files(af, tmp_path, m
     def boom(*a, **k):
         raise OSError("disk full")
     monkeypatch.setattr(af.os, "replace", boom)
-    res = af.append_fact(fact(af), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert not res.ok and any("disk full" in e for e in res.errors)
     assert p.read_bytes() == before
     assert os.listdir(tmp_path) == ["facts.json"]  # no temp file, and no lock file inside the data dir
 
 
 def test_build_entry_matches_cli_shape(af):
-    entry = af.build_entry(fact(af, domain="health", notes="n"))
+    entry = app().add_fact.build_entry(fact(af, domain="health", notes="n"))
     assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind", "domain", "notes", "recheck_rationale"]
 
 
@@ -358,10 +359,10 @@ def test_a_bad_frozen_clock_is_not_silently_replaced_by_the_real_one(env):
 # ---------------------------------------------------------------- status (#6)
 
 def test_status_defaults_to_pending_accepts_active_and_rejects_the_rest(af):
-    assert af.build_entry(fact(af))["status"] == "pending"
-    assert af.build_entry(fact(af, status="active"))["status"] == "active"
-    assert af.validate_fact(fact(af), db_path="/nonexistent")[0] == []
-    assert af.validate_fact(fact(af, status="active"), db_path="/nonexistent")[0] == []
+    assert app().add_fact.build_entry(fact(af))["status"] == "pending"
+    assert app().add_fact.build_entry(fact(af, status="active"))["status"] == "active"
+    assert app().add_fact.validate_fact(fact(af), db_path="/nonexistent")[0] == []
+    assert app().add_fact.validate_fact(fact(af, status="active"), db_path="/nonexistent")[0] == []
     for bad in ("superseded", "retracted", "", "ACTIVE", None, 1):
-        errors, _ = af.validate_fact(fact(af, status=bad), db_path="/nonexistent")
+        errors, _ = app().add_fact.validate_fact(fact(af, status=bad), db_path="/nonexistent")
         assert any("status" in e for e in errors), bad

@@ -644,7 +644,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r == "application service"} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",
@@ -717,7 +717,7 @@ def test_composition_roots_import_only_what_they_use():
         assert not unused, f"{name}.py re-exports instead of using: {unused}"
 
 
-def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
+def test_inbox_imports_only_pure_rule_modules_and_the_standard_library():
     """Direct check on the real file, independent of both tools: serving holds no write logic."""
     import ast
     tree = ast.parse(_read(os.path.join(REPO, "inbox.py")))
@@ -728,7 +728,7 @@ def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             imported.add(node.module.split(".")[0])
-    assert imported & local == {"lifecycle", "review", "fact_rules", "review_rules"}, imported & local
+    assert imported & local == {"fact_rules", "review_rules"}, imported & local   # pure inner-ring helpers; review and lifecycle arrive as `app`
     assert "sqlite3" not in imported
 
 
@@ -792,6 +792,6 @@ def test_unused_allowlist_entry_is_reported_by_tach(tree):
     """`exact = true`: a depends_on entry that is not imported any more fails, so the allowlists
     (including the `paths` one) cannot silently stay wider than the code."""
     (tree / "add_fact.py").write_text(
-        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["add_fact"]["depends_on"] if d != "paths"))
+        "".join(f"import {d}\n" for d in _tach_modules(_read(TACH_TOML))["add_fact"]["depends_on"] if d != "private_git"))
     rc, out = _check(tree, "tach")
-    assert rc != 0 and "paths" in out, out
+    assert rc != 0 and "private_git" in out, out

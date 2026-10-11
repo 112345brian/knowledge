@@ -12,13 +12,12 @@ import identifiers
 HINTS_FILENAME = "fact_hints.json"
 
 
-def load_hints(data_dir=None):
+def load_hints(data_dir):
     """The author's fact-ingest hints from fact_hints.json in the private data dir (see fact_ingest_rules.Hints), or
     NO_HINTS when the file is absent. A file that is not valid JSON or not a valid hints object fails the build."""
     import json
     import os
-    from paths import PRIVATE_DATA_DIR
-    path = os.path.join(PRIVATE_DATA_DIR if data_dir is None else data_dir, HINTS_FILENAME)
+    path = os.path.join(data_dir, HINTS_FILENAME)
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

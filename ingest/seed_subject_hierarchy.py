@@ -36,8 +36,8 @@ def run_entries(con, entries):
                                  "it equals an existing subject name or another alias") from None
 
 
-def run(con):
-    entries = subjects_store.read_file()  # raises SubjectsError on a bad file: the build fails loudly
+def run(con, locations):
+    entries = subjects_store.read_file(locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
         print("[seed_subject_hierarchy] no subjects.json: no subject hierarchy loaded")
         return
@@ -51,10 +51,3 @@ def run(con):
         a = cur.execute("SELECT COUNT(*) FROM subject_aliases").fetchone()[0]
         d = cur.execute("SELECT COUNT(*) FROM subjects WHERE deprecated = 1").fetchone()[0]
         print(f"  {a} aliases, {d} deprecated subjects")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

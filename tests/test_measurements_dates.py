@@ -10,6 +10,7 @@ import pytest
 from schema_helper import full_schema
 
 from test_add_fact import Env, REPO
+from appctx import locs
 
 SNAPSHOT = "2026-09-11"
 
@@ -67,7 +68,7 @@ def m03(tmp_path, monkeypatch):
     spec.loader.exec_module(mod)
     vault = str(tmp_path / "bodybuilding.db")
     make_vault(vault)
-    mod.VAULT_DB = vault
+    vault_dir = str(tmp_path)        # the step reads <vault>/bodybuilding.db
 
     class Ctx:
         env = e
@@ -86,7 +87,7 @@ def m03(tmp_path, monkeypatch):
                 json.dump({"version": 1, "manual_sources": {"dexa-2026": "source-a", "dexa-2025": "source-b",
                           "labcorp": "source-c", "tape": "source-d", "strength": "source-e", "unlocated": "source-f"},
                           "scans": [["2025-01-01", "dexa-2025"], ["2026-01-01", "dexa-2026"]]}, f)
-            mod.run(con)
+            mod.run(con, locs(bodybuilding_vault=vault_dir))
             return con
 
         @staticmethod

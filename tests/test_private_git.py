@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from test_add_fact import Env  # noqa: E402
 import private_git  # noqa: E402
 import new_fact
+from appctx import app
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 
@@ -200,7 +201,7 @@ def test_knowledge_py_wrapper_propagates_the_refusal(g):
 
 
 def test_append_fact_library_function_has_no_git_side_effects(g):
-    code = ("import add_fact, new_fact; r = add_fact.append_fact(new_fact.NewFact(statement='L.', subject='lib', "
+    code = ("import container, new_fact; r = container.Container().add_fact.append_fact(new_fact.NewFact(statement='L.', subject='lib', "
             "trust_level='low', no_decay=True, recheck_rationale='r')); print(r.ok)")
     p = subprocess.run([sys.executable, "-c", code], env=g.env, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        capture_output=True, text=True)

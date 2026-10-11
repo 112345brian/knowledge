@@ -17,6 +17,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import facts_batch_rules
 import new_fact
 import fact_queries
+from appctx import app
 
 
 @pytest.fixture(autouse=True)
@@ -155,15 +156,15 @@ def nf(**kw):
 
 def test_add_fact_validates_and_writes_the_interval():
     import add_fact
-    assert add_fact.validate_fact(nf(valid_from="2024-03", valid_to="2024-05-31"), db_path="/nonexistent")[0] == []
-    e = add_fact.build_entry(nf(valid_from="2024-03", valid_to="2024-05-31"))
+    assert app().add_fact.validate_fact(nf(valid_from="2024-03", valid_to="2024-05-31"), db_path="/nonexistent")[0] == []
+    e = app().add_fact.build_entry(nf(valid_from="2024-03", valid_to="2024-05-31"))
     assert (e["valid_from"], e["valid_to"]) == ("2024-03", "2024-05-31")
-    e = add_fact.build_entry(nf())
+    e = app().add_fact.build_entry(nf())
     assert "valid_from" not in e and "valid_to" not in e
-    errs = add_fact.validate_fact(nf(valid_from="2024-05", valid_to="2024-03"), db_path="/nonexistent")[0]
+    errs = app().add_fact.validate_fact(nf(valid_from="2024-05", valid_to="2024-03"), db_path="/nonexistent")[0]
     assert any("before" in m for m in errs)
-    assert add_fact.validate_fact(nf(valid_from="2023-02-29"), db_path="/nonexistent")[0]
-    assert add_fact.validate_fact(nf(valid_to=""), db_path="/nonexistent")[0]
+    assert app().add_fact.validate_fact(nf(valid_from="2023-02-29"), db_path="/nonexistent")[0]
+    assert app().add_fact.validate_fact(nf(valid_to=""), db_path="/nonexistent")[0]
 
 
 def test_cli_flags_round_trip_and_bad_range_is_refused(tmp_path):

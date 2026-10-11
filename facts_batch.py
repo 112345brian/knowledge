@@ -46,10 +46,16 @@ Callers must read the result: tests/test_facts_batch.py scans the repo and fails
 import add_fact
 import add_fact_store
 import facts_batch_service
-import paths
 import private_git
-from wiring import bind
+from wiring import bind_all
 
-DEPS = facts_batch_service.FactsBatchDeps(git=private_git, facts_file=add_fact_store, add_fact=add_fact, defaults=paths.Defaults())
+API = ("add_facts",)
 
-add_facts = bind(facts_batch_service.add_facts, DEPS)
+
+def compose(locations, add_fact_api=None):
+    """The batch-add API wired to the real adapters for these `locations`; it adds each item through the
+    single-fact API (pass the one already composed, or one is built)."""
+    add_fact_api = add_fact.compose(locations) if add_fact_api is None else add_fact_api
+    deps = facts_batch_service.FactsBatchDeps(git=private_git, facts_file=add_fact_store, add_fact=add_fact_api,
+                                              locations=locations)
+    return bind_all(facts_batch_service, deps, API)

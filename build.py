@@ -27,43 +27,9 @@ KEEP_BACKUPS = build_rules.KEEP_BACKUPS
 
 STEPS = None   # the step files to run, relative to HERE; None = the core steps plus those of the enabled client sources
 
-# None means "the configured value" (paths.settings(), resolved when used, never at import); a test or an
-# embedding program may set a path here.
-DB_DIR = None
-LIVE_DB = None
-BACKUP_DIR = None
 
-
-def _settings():
-    import paths
-    return paths.settings()
-
-
-def _db_dir():
-    return DB_DIR if DB_DIR is not None else _settings().db_dir
-
-
-def _live_db():
-    return LIVE_DB if LIVE_DB is not None else os.path.join(_db_dir(), "knowledge.db")
-
-
-def _backup_dir():
-    return BACKUP_DIR if BACKUP_DIR is not None else os.path.join(_db_dir(), "backups")
-
-
-def _client_sources():
-    return _settings().client_sources
-
-
-def _client_sources_implicit():
-    return _settings().client_sources_implicit
-
-
-
-def schema_sql(sources=None):
-    """The schema text for `sources` (default: this checkout's CLIENT_SOURCES): schema.sql plus the fragment of
-    each enabled client source."""
-    sources = _client_sources() if sources is None else sources
+def schema_sql(sources):
+    """The schema text for `sources`: schema.sql plus the fragment of each enabled client source."""
     parts = []
     for name in build_rules.schema_files(sources):
         with open(os.path.join(HERE, name)) as f:
@@ -97,20 +63,21 @@ class BuildError(Exception):
         self.cause = cause
 
 
-def record_build_info(con):
+def record_build_info(con, locations):
     """#47: which inputs and code produced this db (build_info / build_inputs)."""
-    import build_info_store, paths
-    build_info_store.record(con, paths, HERE, paths.PRIVATE_DATA_DIR, private_git)
+    import build_info_store
+    build_info_store.record(con, locations, HERE, private_git)
     con.commit()
 
 
-def build(target_path, sources=None):
+def build(target_path, locations, sources=None):
     """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
-    in `sources` (default: this checkout's CLIENT_SOURCES)."""
-    sources = build_rules.check_client_sources(_client_sources() if sources is None else sources)
-    print(client_sources_note(sources, implicit=_client_sources_implicit() and sources == _client_sources()))
-    import paths
-    missing = build_rules.missing_paths(sources, [n for n in ("CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON") if getattr(paths, n, None)])
+    in `sources` (default: the ones these `locations` enable)."""
+    sources = build_rules.check_client_sources(locations.client_sources if sources is None else sources)
+    print(client_sources_note(sources, implicit=locations.client_sources_implicit and sources == locations.client_sources))
+    configured = [name for name, value in (("CONCERTS_CSV", locations.concerts_csv), ("RYM_EXPORT_CSV", locations.rym_export_csv),
+                                           ("SCROBBLES_JSON", locations.scrobbles_json)) if value]
+    missing = build_rules.missing_paths(sources, configured)
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +
                          ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
@@ -126,11 +93,11 @@ def build(target_path, sources=None):
         for step in (build_rules.steps_for(sources) if STEPS is None else STEPS):
             try:
                 mod = load_module(os.path.join(HERE, step))
-                mod.run(con)
+                mod.run(con, locations)
             except Exception as e:
                 raise BuildError(step, e) from e
         try:
-            record_build_info(con)
+            record_build_info(con, locations)
         except Exception as e:
             raise BuildError("build_info", e) from e
         con.execute("VACUUM;")
@@ -139,7 +106,7 @@ def build(target_path, sources=None):
         con.close()
 
 
-def build_to_temp(directory):
+def build_to_temp(directory, locations):
     """Build into a fresh unique temp file in `directory`; return its path.
     On failure the temp file is removed and BuildError propagates."""
     tmp = os.path.join(directory, f"knowledge.db.building-{uuid.uuid4().hex}")
@@ -148,7 +115,7 @@ def build_to_temp(directory):
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     os.close(fd)
     try:
-        build(tmp)
+        build(tmp, locations)
     except BaseException:
         remove_db_files(tmp)
         raise
@@ -163,20 +130,20 @@ def remove_db_files(path):
             pass
 
 
-def prune_backups(keep=KEEP_BACKUPS):
+def prune_backups(backup_dir, keep=KEEP_BACKUPS):
     """Keep only the `keep` most recent backups (see build_rules.backups_to_prune)."""
-    for old in build_rules.backups_to_prune(os.listdir(_backup_dir()), keep):
-        os.remove(os.path.join(_backup_dir(), old))
+    for old in build_rules.backups_to_prune(os.listdir(backup_dir), keep):
+        os.remove(os.path.join(backup_dir, old))
         print(f"  pruned old backup {old}")
 
 
-def build_normal(full_path, directory, rules=None):
+def build_normal(full_path, directory, locations, rules=None):
     """Build + leak-check knowledge-normal.db in `directory` from the freshly built `full_path`.
     Privacy rules come from the private data dir (a bad rules file raises: fail closed)."""
     import normal_db
     if rules is None:
         import privacy_store
-        rules = privacy_store.load_rules()
+        rules = privacy_store.load_rules(locations.privacy_rules())
     path, counts = normal_db.build_normal_atomic(full_path, directory, rules)
     print(f"Built {path} (leak test passed)")
     print(normal_db.format_counts(counts))
@@ -194,17 +161,23 @@ def report(path):
     print(f"  file size: {os.path.getsize(path) / 1_000_000:.1f} MB")
 
 
-def main():
-    check_only = "--check" in sys.argv
+def main(locations=None, argv=None):
+    """Entry point. `locations` is read from the private checkout (paths.load()) unless the caller gives them."""
+    if locations is None:
+        import paths
+        locations = paths.load()
+    argv = sys.argv[1:] if argv is None else argv
+    check_only = "--check" in argv
+    live_db, db_dir, backup_dir = locations.db_path, locations.db_dir, locations.backup_dir
     try:
         if check_only:
             print("Building into a temp file (live DB untouched)...")
-            tmp = build_to_temp(tempfile.gettempdir())
+            tmp = build_to_temp(tempfile.gettempdir(), locations)
             try:
                 report(tmp)
                 with tempfile.TemporaryDirectory() as nd:
                     print("Normal-only DB (temp):")
-                    build_normal(tmp, nd)
+                    build_normal(tmp, nd, locations)
             except Exception as e:
                 print(f"error: normal DB build failed: {e}", file=sys.stderr)
                 sys.exit(1)
@@ -212,29 +185,29 @@ def main():
                 remove_db_files(tmp)
             return
 
-        os.makedirs(_db_dir(), exist_ok=True)
-        print(f"Rebuilding {_live_db()}...")
-        tmp = build_to_temp(_db_dir())
+        os.makedirs(db_dir, exist_ok=True)
+        print(f"Rebuilding {live_db}...")
+        tmp = build_to_temp(db_dir, locations)
     except BuildError as e:
         print(f"error: build failed in {e.stage}: {e.cause!r}; live DB left untouched", file=sys.stderr)
         sys.exit(1)
 
     try:
-        if os.path.exists(_live_db()):
-            os.makedirs(_backup_dir(), exist_ok=True)
-            backup = os.path.join(_backup_dir(), build_rules.backup_name(datetime.datetime.now()))
-            shutil.copy2(_live_db(), backup)
+        if os.path.exists(live_db):
+            os.makedirs(backup_dir, exist_ok=True)
+            backup = os.path.join(backup_dir, build_rules.backup_name(datetime.datetime.now()))
+            shutil.copy2(live_db, backup)
             print(f"Backed up existing DB to {backup}")
-            prune_backups()
-        os.replace(tmp, _live_db())
+            prune_backups(backup_dir)
+        os.replace(tmp, live_db)
     except BaseException:
         remove_db_files(tmp)
         raise
-    report(_live_db())
+    report(live_db)
 
     # The main build is done and stays in place whatever happens here.
     try:
-        build_normal(_live_db(), _db_dir())
+        build_normal(live_db, db_dir, locations)
     except Exception as e:
         print(f"error: knowledge.db was rebuilt, but the normal-only DB failed: {e}; "
               f"any previous knowledge-normal.db was removed", file=sys.stderr)

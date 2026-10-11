@@ -13,6 +13,7 @@ import clock
 from test_add_fact import Env
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import new_fact
+from appctx import app, locs
 
 FROZEN = "2026-10-03T08:00:00+00:00"
 ISO_UTC = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
@@ -95,7 +96,7 @@ def test_ingest_stores_a_quote_that_has_no_citekey(ingest):
 
 def test_mcp_without_a_quote_is_rejected(af, tmp_path):
     p = tmp_path / "f.json"
-    res = af.append_fact(nf(af, captured_via="mcp", session_id="s"), data_path=str(p), db_path=str(tmp_path / "n.db"))
+    res = app().add_fact.append_fact(nf(af, captured_via="mcp", session_id="s"), data_path=str(p), db_path=str(tmp_path / "n.db"))
     assert not res.ok and any("source_quote" in e for e in res.errors) and not p.exists()
 
 
@@ -103,14 +104,14 @@ def test_mcp_without_a_quote_is_rejected(af, tmp_path):
 def test_mcp_blank_quote_or_session_is_rejected(af, blank):
     for field in ("source_quote", "session_id"):
         kw = dict(MCP, **{field: blank})
-        errors, _ = af.validate_fact(nf(af, **kw))
+        errors, _ = app().add_fact.validate_fact(nf(af, **kw))
         assert any(field in e for e in errors), (field, blank)
 
 
 def test_mcp_with_full_provenance_is_accepted_and_stamped(af, tmp_path):
     p = tmp_path / "f.json"
     with clock.frozen(FROZEN):
-        res = af.append_fact(nf(af, **MCP), data_path=str(p), db_path=str(tmp_path / "n.db"))
+        res = app().add_fact.append_fact(nf(af, **MCP), data_path=str(p), db_path=str(tmp_path / "n.db"))
     assert res.ok, res.errors
     e = json.loads(p.read_text())[0]
     assert (e["captured_via"], e["session_id"], e["captured_at"], e["source_quote"]) == \
@@ -119,42 +120,42 @@ def test_mcp_with_full_provenance_is_accepted_and_stamped(af, tmp_path):
 
 
 def test_captured_at_from_the_caller_is_kept_but_must_be_a_utc_offset_timestamp(af):
-    ok, _ = af.validate_fact(nf(af, **MCP, captured_at="2026-10-03T08:00:00+00:00"))
+    ok, _ = app().add_fact.validate_fact(nf(af, **MCP, captured_at="2026-10-03T08:00:00+00:00"))
     assert ok == []
     for bad in ("2026-10-03", "2026-10-03T08:00:00", "yesterday", 5):
-        errors, _ = af.validate_fact(nf(af, **MCP, captured_at=bad))
+        errors, _ = app().add_fact.validate_fact(nf(af, **MCP, captured_at=bad))
         assert any("captured_at" in e for e in errors), bad
 
 
 def test_other_sources_do_not_require_provenance_fields(af):
     for via in ("cli", "migrate-memory", "some-future-thing"):
-        errors, _ = af.validate_fact(nf(af, captured_via=via))
+        errors, _ = app().add_fact.validate_fact(nf(af, captured_via=via))
         assert errors == [], via
 
 
 @pytest.mark.parametrize("bad", ["", "  ", "MCP", "has space", 7, ["mcp"]])
 def test_captured_via_must_be_a_kebab_token_when_given(af, bad):
-    errors, _ = af.validate_fact(nf(af, captured_via=bad))
+    errors, _ = app().add_fact.validate_fact(nf(af, captured_via=bad))
     assert any("captured_via" in e for e in errors), bad
 
 
 def test_a_quote_without_citekey_is_only_allowed_with_a_captured_via(af):
-    errors, _ = af.validate_fact(nf(af, source_quote="q"))
+    errors, _ = app().add_fact.validate_fact(nf(af, source_quote="q"))
     assert any("without --source-citekey" in e for e in errors)
-    errors, _ = af.validate_fact(nf(af, source_quote="q", captured_via="migrate-memory"))
+    errors, _ = app().add_fact.validate_fact(nf(af, source_quote="q", captured_via="migrate-memory"))
     assert errors == []
-    errors, _ = af.validate_fact(nf(af, source_locator="p. 1", captured_via="mcp", session_id="s", source_quote="q"))
+    errors, _ = app().add_fact.validate_fact(nf(af, source_locator="p. 1", captured_via="mcp", session_id="s", source_quote="q"))
     assert any("without --source-citekey" in e for e in errors)  # a locator still needs a citekey
 
 
 def test_provenance_key_order_is_after_the_existing_keys(af):
     with clock.frozen(FROZEN):
-        e = af.build_entry(nf(af, **MCP))
+        e = app().add_fact.build_entry(nf(af, **MCP))
     assert list(e)[-4:] == ["source_quote", "captured_via", "session_id", "captured_at"]
 
 
 def test_nul_in_quote_is_pinned_as_accepted(af):
-    errors, _ = af.validate_fact(nf(af, **dict(MCP, source_quote="a\x00b")))
+    errors, _ = app().add_fact.validate_fact(nf(af, **dict(MCP, source_quote="a\x00b")))
     assert errors == []
 
 
@@ -178,17 +179,17 @@ def test_cli_mcp_without_session_or_quote_is_rejected_and_writes_nothing(env):
 def test_full_round_trip_into_the_db(ingest, af):
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     with clock.frozen(FROZEN):
-        assert af.append_fact(nf(af, **MCP), data_path=path, db_path=os.path.join(ingest.env.root, "n.db")).ok
+        assert app().add_fact.append_fact(nf(af, **MCP), data_path=path, db_path=os.path.join(ingest.env.root, "n.db")).ok
     ingest.mod11.DATA_DIR = ingest.env.data_dir
     con = ingest.db()
-    ingest.mod11.run(con)
+    ingest.mod11.run(con, locs())
     r = con.execute("SELECT captured_via, session_id, captured_at, source_quote, visibility FROM facts").fetchone()
     assert tuple(r) == ("mcp", "sess-123", FROZEN, "I said so, in my own words.", "private")
 
 
 def test_session_id_or_captured_at_without_captured_via_is_rejected_not_silently_dropped(af, env):
     for kw in (dict(session_id="s"), dict(captured_at=FROZEN)):
-        errors, _ = af.validate_fact(nf(af, **kw))
+        errors, _ = app().add_fact.validate_fact(nf(af, **kw))
         assert any("without captured_via" in e for e in errors), kw
     r = env.cli("S.", "--subject", "x", "--trust", "low", "--no-decay", "--recheck-rationale", "no decay", "--session-id", "s")
     assert r.returncode == 1 and not os.path.exists(env.facts)

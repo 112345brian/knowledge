@@ -15,6 +15,7 @@ from schema_helper import full_schema
 
 from conftest import REPO
 import fact_queries
+from appctx import app
 
 DOC = os.path.join(REPO, "docs", "competency-questions.md")
 sys.path.insert(0, os.path.join(REPO, "tests"))
@@ -243,7 +244,7 @@ def test_cq_19_facts_about_an_entity(world):
 
 def test_cq_20_subject_hierarchy_and_meaning(world):
     import cli_subjects
-    rows = {r["name"]: r for r in cli_subjects._rows(world)}
+    rows = {r["name"]: r for r in cli_subjects._rows(app(), world)}
     assert (rows["protein"]["parent"], rows["protein"]["relation"], rows["protein"]["description"]) == ("nutrition", "part-of", "Dietary protein")
     assert rows["protein"]["aliases"] == ["prot"] and rows["family"]["deprecated"] is True and rows["nutrition"]["n_facts"] >= 1
 

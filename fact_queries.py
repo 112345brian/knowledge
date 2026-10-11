@@ -19,25 +19,14 @@ from fact_reads_port import DatabaseNotFound  # noqa: F401  (raised by connect; 
 
 
 
-def _settings():
-    """The configured settings, looked up on every call (never at import, never from a stale module binding)."""
-    import paths
-    return paths.settings()
 
 
-def default_db_path():
-    """Where the built db is, from the configured settings (resolved on every call, never at import)."""
-    return _settings().db_path
-
-
-
-
-def connect(db_path=None):
+def connect(db_path):
     """Open the knowledge db READ-ONLY. Raises DatabaseNotFound if it is missing.
 
     Everything in this module only reads; writes go through build.py, which
     makes its own connection."""
-    path = os.path.abspath(db_path or default_db_path())
+    path = os.path.abspath(db_path)
     if not os.path.exists(path):
         raise DatabaseNotFound(f"{path} doesn't exist -- run `python3 knowledge.py build` first")
     con = sqlite3.connect(pathlib.Path(path).as_uri() + "?mode=ro", uri=True)
@@ -45,17 +34,16 @@ def connect(db_path=None):
     return con
 
 
-def existing_db_path():
-    """The db path for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
-    path = default_db_path()
-    return path if os.path.exists(path) else None
+def existing_db_path(db_path):
+    """`db_path` for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
+    return db_path if os.path.exists(db_path) else None
 
 
-def subject_context():
+def subject_context(db_path, data_path):
     """({subject: parent}, known subjects) from the live db plus the subjects already in general_facts.json
     (the same notion of "known" as add-fact), or None when there is no usable db (nothing to compare against)."""
     try:
-        con = connect()
+        con = connect(db_path)
     except DatabaseNotFound:
         return None
     try:
@@ -67,7 +55,7 @@ def subject_context():
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= add_fact_store.file_subjects(_settings().data_path)
+        known |= add_fact_store.file_subjects(data_path)
     except DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
     return parents, known
@@ -213,9 +201,9 @@ def source_ids(con, citekey):
     return {"citekey": row[1], "name": row[2], "identifiers": ids, "conflicts": conflicts}
 
 
-def audit_sources(con):
+def audit_sources(con, vault):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity_store.audit_sources(con, search_roots=[_settings().bodybuilding_vault]), fixity_store.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[vault]), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):

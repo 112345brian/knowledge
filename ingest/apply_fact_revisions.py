@@ -23,21 +23,10 @@ import revisions
 import revisions_store
 
 
-DATA_DIR = None  # None: the configured private data dir; a caller or test may set a path
-
-def _data_dir():
-    if DATA_DIR is not None:
-        return DATA_DIR
-    import paths
-    return paths.settings().private_data_dir
-
-
-
-
-def run(con):
-    path = os.path.join(_data_dir(), revisions.REVISIONS_FILENAME)
+def run(con, locations):
+    path = os.path.join(locations.private_data_dir, revisions.REVISIONS_FILENAME)
     applied = revisions_store.apply_revisions(con, path)
-    rules = privacy_store.load_rules(os.path.join(_data_dir(), privacy.RULES_FILENAME))
+    rules = privacy_store.load_rules(os.path.join(locations.private_data_dir, privacy.RULES_FILENAME))
     floor = privacy_store.apply_rules_to_db(con, rules)
     con.execute("""UPDATE fact_revisions SET visibility = 'private'
                    WHERE visibility != 'private'
@@ -47,10 +36,3 @@ def run(con):
         print(f"  privacy rules raised {len(floor['raised'])} fact(s) to private after revisions")
     total = con.execute("SELECT COUNT(*) FROM fact_revisions").fetchone()[0]
     print(f"[apply_fact_revisions] applied {applied} revisions ({total} rows in fact_revisions incl. implicit revision 1)")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()

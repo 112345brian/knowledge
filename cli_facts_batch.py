@@ -17,7 +17,6 @@ from typing import Optional
 
 import typer
 
-import facts_batch
 from facts_batch_rules import DEFAULT_CAPTURED_VIA
 
 
@@ -84,7 +83,7 @@ def _print_result(result):
 
 def register(app):
     @app.command("add-facts", help="Add a batch of reviewed facts from a JSON list (FILE, or - / no argument for stdin) in one atomic write and one commit. --dry-run shows each item's resulting visibility and the rule behind it.")
-    def cmd_add_facts(
+    def cmd_add_facts(ctx: typer.Context, 
         file: Optional[str] = typer.Argument(None, help="JSON file; '-' or omitted reads stdin."),
         status: NewStatus = typer.Option(NewStatus.active, "--status", help="active (default: a human reviewed them) or pending (queue for review)."),
         captured_via: str = typer.Option(DEFAULT_CAPTURED_VIA, "--captured-via", help="Provenance token, e.g. cli, mcp. With 'mcp' every item needs source_quote and --session-id is required."),
@@ -93,8 +92,9 @@ def register(app):
         allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (the commit still holds only the facts file)."),
         as_json: bool = typer.Option(False, "--json", help="Machine-readable result."),
     ):
+        c = ctx.obj
         items = _read_items(file)
-        result = facts_batch.add_facts(items, status=status.value, captured_via=captured_via, session_id=session_id,
+        result = c.facts_batch.add_facts(items, status=status.value, captured_via=captured_via, session_id=session_id,
                                        dry_run=dry_run, allow_dirty=allow_dirty)
         if as_json:
             print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))

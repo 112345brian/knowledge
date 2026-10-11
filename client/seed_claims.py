@@ -13,11 +13,8 @@ import sys
 import claims_audit
 
 
-def load_claims(data_dir=None):
-    """Read optional claim data from the private companion repository."""
-    if data_dir is None:
-        from paths import PRIVATE_DATA_DIR
-        data_dir = PRIVATE_DATA_DIR
+def load_claims(data_dir):
+    """Read optional claim data (claims.json) from the private data dir `data_dir`."""
     path = os.path.join(data_dir, "claims.json")
     if not os.path.exists(path):
         return []
@@ -51,8 +48,8 @@ def _premise(entry, claim_statement):
     return entry["prefix"], role, _blank_to_none(entry.get("note"), "note")
 
 
-def run(con, claims=None, data_dir=None):
-    claims = load_claims(data_dir) if claims is None else claims
+def run(con, locations, claims=None):
+    claims = load_claims(locations.private_data_dir) if claims is None else claims
     cur = con.cursor()
     for c in claims:
         cur.execute("INSERT INTO claims (statement, notes, inference_type, warrant, qualifier) VALUES (?, ?, ?, ?, ?)",
@@ -67,10 +64,3 @@ def run(con, claims=None, data_dir=None):
             )
     con.commit()
     print(f"[seed_claims] inserted {len(claims)} claims")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()
