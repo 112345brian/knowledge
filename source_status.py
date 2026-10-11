@@ -29,6 +29,8 @@ source). Sources marked superseded with no replacement are reported separately, 
 """
 import enum
 import re
+from dataclasses import dataclass
+from typing import NamedTuple, Optional
 
 import validtime
 
@@ -67,18 +69,50 @@ def _text(value, where, field):
     return value.strip() or None
 
 
+@dataclass(frozen=True)
+class SourceState:
+    """A source's status fields as one validated value: its status, since when, why, which edition and when the
+    work was first published. Built from the loosely typed frontmatter or JSON the sources come from."""
+    status: SourceStatus = SourceStatus.ACTIVE
+    status_date: Optional[str] = None
+    status_note: Optional[str] = None
+    edition: Optional[str] = None
+    original_published_date: Optional[str] = None
+
+    @classmethod
+    def from_raw(cls, raw, where):
+        """`raw` is a dict with any of the five keys missing or None. A source with none of them is `active` with a
+        NULL status_date (legacy: no invented dates). Raises SourceStatusError naming `where` (the source) for an
+        unknown status or a bad status_date."""
+        out = {k: _text(raw.get(k), where, k) for k in _FIELDS}
+        status = out["status"] or DEFAULT_STATUS
+        if status not in STATUS_VALUES:
+            raise SourceStatusError(f"{where}: status {status!r} must be one of {list(STATUS_VALUES)}")
+        if out["status_date"] is not None and not validtime.is_valid_boundary(out["status_date"]):
+            raise SourceStatusError(f"{where}: status_date {out['status_date']!r} must be a real date: YYYY, YYYY-MM or YYYY-MM-DD")
+        out["status"] = SourceStatus(status)
+        return cls(**out)
+
+    @property
+    def flags_dependents(self):
+        return self.status.flags_dependents
+
+    def columns(self):
+        """The five `sources` columns, with the status as the plain string the db stores."""
+        return {"status": self.status.value, "status_date": self.status_date, "status_note": self.status_note,
+                "edition": self.edition, "original_published_date": self.original_published_date}
+
+
 def normalize_fields(raw, where):
-    """The five status columns from `raw` (a dict with those keys, any of them missing or None), validated.
-    A source with none of them is `active` with a NULL status_date (legacy: no invented dates).
-    Raises SourceStatusError naming `where` (the source) for an unknown status or a bad status_date."""
-    out = {k: _text(raw.get(k), where, k) for k in _FIELDS}
-    status = out["status"] or DEFAULT_STATUS
-    if status not in STATUS_VALUES:
-        raise SourceStatusError(f"{where}: status {status!r} must be one of {list(STATUS_VALUES)}")
-    out["status"] = status
-    if out["status_date"] is not None and not validtime.is_valid_boundary(out["status_date"]):
-        raise SourceStatusError(f"{where}: status_date {out['status_date']!r} must be a real date: YYYY, YYYY-MM or YYYY-MM-DD")
-    return out
+    """The five status columns from `raw`, validated (see SourceState.from_raw)."""
+    return SourceState.from_raw(raw, where).columns()
+
+
+class Relation(NamedTuple):
+    """`source <relation> related`: a directed edge between two sources, by citekey. A plain 3-tuple compares equal."""
+    source: str
+    relation: str
+    related: str
 
 
 def as_list(value):
@@ -103,7 +137,7 @@ def check_relations(relations, known_citekeys):
     relation, an unknown citekey, a self-relation or a cycle (per relation type)."""
     known = set(known_citekeys)
     seen, out = set(), []
-    for a, rel, b in relations:
+    for a, rel, b in (Relation(*r) for r in relations):
         if rel not in RELATIONS:
             raise SourceStatusError(f"source {a!r}: relation {rel!r} must be one of {list(RELATIONS)}")
         for who in (a, b):
@@ -113,7 +147,7 @@ def check_relations(relations, known_citekeys):
             raise SourceStatusError(f"source {a!r} cannot {rel.replace('-', ' ')} itself")
         if (a, rel, b) not in seen:
             seen.add((a, rel, b))
-            out.append((a, rel, b))
+            out.append(Relation(a, rel, b))
     for rel in RELATIONS:
         graph = {}
         for a, r, b in out:

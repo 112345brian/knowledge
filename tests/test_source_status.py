@@ -457,3 +457,19 @@ def test_the_status_enum_is_the_vocabulary_the_schema_and_the_audit_use():
     assert ss.STATUS_VALUES == ("active", "corrected", "expression-of-concern", "retracted", "superseded")
     assert ss.SourceStatus("retracted") == "retracted" and ss.DEFAULT_STATUS == "active"
     assert {s.value for s in ss.SourceStatus if s.flags_dependents} == set(ss.REASONS)
+
+
+def test_source_state_is_a_validated_typed_value():
+    s = ss.SourceState.from_raw({"status": "retracted", "status_date": "2019-07", "edition": " 3rd "}, "src")
+    assert s.status is ss.SourceStatus.RETRACTED and s.flags_dependents and s.edition == "3rd"
+    assert s.columns() == {"status": "retracted", "status_date": "2019-07", "status_note": None, "edition": "3rd",
+                           "original_published_date": None}
+    legacy = ss.SourceState.from_raw({}, "src")
+    assert legacy.status is ss.SourceStatus.ACTIVE and legacy.status_date is None and not legacy.flags_dependents
+    with pytest.raises(ss.SourceStatusError, match="src: status 'bogus'"):
+        ss.SourceState.from_raw({"status": "bogus"}, "src")
+
+
+def test_relations_are_typed_edges_that_still_equal_plain_triples():
+    (r,) = ss.check_relations([("a", "replaces", "b")], {"a", "b"})
+    assert isinstance(r, ss.Relation) and r == ("a", "replaces", "b") and (r.source, r.relation, r.related) == ("a", "replaces", "b")
