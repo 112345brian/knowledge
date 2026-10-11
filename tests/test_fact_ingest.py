@@ -12,7 +12,7 @@ import sys
 import pytest
 
 from test_add_fact import Env, REPO
-from appctx import app, frozen, locs
+from appctx import app, fixed_clock, locs
 
 LEGACY_04 = "2026-09-11"
 LEGACY_11 = "2026-09-26"
@@ -182,12 +182,10 @@ def test_no_hardcoded_date_constants_left_in_the_ingest_scripts():
 def test_a_fact_added_today_keeps_its_date_across_a_rebuild_on_a_later_day(ingest):
     from new_fact import NewFact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
-    with frozen("2026-10-03T08:00:00+00:00"):
-        res = app().add_fact.append_fact(NewFact(statement="Kept.", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=path,
-                          db_path=os.path.join(ingest.env.root, "none.db"))
+    res = app(clock=fixed_clock('2026-10-03T08:00:00+00:00')).add_fact.append_fact(NewFact(statement="Kept.", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=path,
+                      db_path=os.path.join(ingest.env.root, "none.db"))
     assert res.ok
-    with frozen("2027-03-01T00:00:00+00:00"):
-        ingest.mod11.DATA_DIR = ingest.env.data_dir
-        con = ingest.db()
-        ingest.mod11.run(con, locs())
+    ingest.mod11.DATA_DIR = ingest.env.data_dir
+    con = ingest.db()
+    ingest.mod11.run(con, locs())
     assert con.execute("SELECT date_added FROM facts").fetchone()[0] == "2026-10-03T08:00:00+00:00"

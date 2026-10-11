@@ -11,7 +11,7 @@ import pytest
 import claims_store as ca
 from conftest import REPO
 from test_claims_audit import add_claim, add_fact, load_seed, new_db
-from appctx import frozen, locs
+from appctx import locs
 
 TODAY = "2026-10-03"
 

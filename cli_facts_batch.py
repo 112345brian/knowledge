@@ -30,13 +30,12 @@ def _fail(msg):
     raise typer.Exit(1)
 
 
-def _read_items(source):
+def _read_items(inputs, source):
     try:
         if source in (None, "-"):
             text = sys.stdin.read()
         else:
-            with open(source, encoding="utf-8") as f:
-                text = f.read()
+            text = inputs.read_text(source)
     except OSError as e:
         _fail(f"could not read {source}: {e}")
     except UnicodeDecodeError as e:
@@ -93,7 +92,7 @@ def register(app):
         as_json: bool = typer.Option(False, "--json", help="Machine-readable result."),
     ):
         c = ctx.obj
-        items = _read_items(file)
+        items = _read_items(c.inputs, file)
         result = c.facts_batch.add_facts(items, status=status.value, captured_via=captured_via, session_id=session_id,
                                        dry_run=dry_run, allow_dirty=allow_dirty)
         if as_json:

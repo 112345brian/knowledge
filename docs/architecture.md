@@ -60,30 +60,38 @@ private-file editing receives that port rather than importing the Git adapter.
 6. The model imports no other module of the repo, and a domain service never imports an application service
    (contract `model-is-innermost` and tach's `model` / `domain_services` layers).
 
-### The pipeline is the outermost ring
+### Where I/O lives
 
-`build.py` and the `ingest/` and `client/` steps are batch drivers: their whole job is to populate the database.
-A step is `run(con, ctx)`: `con` is the database it writes through, and `ctx` is a `StepContext` (see
-`pipeline_context`) holding the `Locations` and an `Inputs` (`inputs_port`, implemented by `local_inputs`).
-A step reads files, lists directories, opens the vault's own database and fingerprints files only through
-`ctx.inputs`, and a test enforces that no step opens a file, globs, checks a path on disk or connects to sqlite
-itself. Its rules are pure modules (`*_ingest_rules`, `build_rules`, `revisions`, `privacy`, ...); the data files
-it loads for the fact tables go through the stores (`privacy_store`, `entities_store`, ...), which are
-infrastructure and so legitimately reachable from the outermost ring. Steps import no facade, CLI or serving
-module (tach enforces it). Configuration reaches them as `ctx.locations`; the entry points (`build.main`, the
-backfill and export tools) are the only code that reads it, once, with `paths.load()`, and the clock is a
-`Clock` handed to `build.main` like everything else.
+Raw file, sqlite-file and process calls (`open`, `os` file operations, `sqlite3.connect`, `shutil`, `subprocess`,
+`tempfile`) appear only in infrastructure modules and in three build-tooling adapters (`normal_db`, `leak_test`,
+`leak_scan_store`), whose whole job is building and scanning database files; a test enforces it for every module.
+Everything else reaches the disk through a port:
+
+| Who | Port | Adapter |
+| --- | --- | --- |
+| application services | the `*_port` protocols they declare | the stores, `clock`, `private_git`, `script_runner` |
+| build steps (`run(con, ctx)`) | `ctx.inputs` (`inputs_port`), `ctx.stores` (`step_stores_port`) | `local_inputs`, `local_stores` |
+| maintenance tools (backfills, exports) | `DataFiles` (`datafiles_port`), `Inputs` | `local_datafiles`, `local_inputs` |
+| `build.py` | `BuildFiles` (`build_files_port`) | `local_buildfiles` |
+| the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
+
+A step imports no infrastructure module (a test checks tach's graph), and it writes only through the connection it
+is given. Configuration reaches everything as `Locations`; the entry points (`container`, `build`, `normal_db`, the
+tools) are the only code that reads it, once, with `paths.load()`. The clock is a `Clock` handed down like
+everything else; nothing in the application holds ambient state.
 
 ### What is typed
 
 `fact_state` gives the fact lifecycle (status, visibility, who may replace whom) real types, `fact_entry` does the
 same for a fact entry and a revision record (`FactEntry`, `Revision`; `revisions` keeps its function names as thin
 delegations), and `source_status` types a source's status (`SourceStatus`, `SourceState`) and its relations
-(`Relation`).
+(`Relation`), `entity_rules` an entity (`Entity`) and `subject_rules` a subject (`Subject`) with the parsing,
+validation, matching and pure edits their files and lists are subject to.
 
 | Module | Role | What it is |
 | --- | --- | --- |
 | `acquisition_rules` | model | an acquisition record's vocabulary and validation (pure) |
+| `build_files_port` | domain service | port: the disk and process work of a database rebuild |
 | `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
 | `cli_build` | driving adapter | `build`, `clean-concerts` |
 | `cli_common` | driving adapter | helpers and options shared by the knowledge.py command modules |
@@ -98,6 +106,7 @@ delegations), and `source_status` types a source's status (`SourceStatus`, `Sour
 | `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
 | `fixity_rules` | model | a file fingerprint's vocabulary (pure) |
 | `inputs_port` | domain service | port: what a build step reads from outside the database |
+| `local_buildfiles` | infrastructure | the real disk, sqlite files and module loader (implements build_files_port) |
 | `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
 | `local_stores` | infrastructure | the privacy, entity, subject and revision stores, by name (implements step_stores_port) |

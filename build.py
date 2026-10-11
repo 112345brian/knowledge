@@ -17,7 +17,8 @@ it only after every step succeeds, so a failing step (exit 1, naming the step)
 leaves the previous knowledge.db byte-identical, and a reader holding the old
 file open keeps a consistent snapshot.
 """
-import sqlite3, os, sys, shutil, datetime, importlib.util, tempfile, uuid
+import os
+import sys
 
 import build_rules
 import local_inputs
@@ -31,13 +32,9 @@ KEEP_BACKUPS = build_rules.KEEP_BACKUPS
 STEPS = None   # the step files to run, relative to HERE; None = the core steps plus those of the enabled client sources
 
 
-def schema_sql(sources):
+def schema_sql(files, sources):
     """The schema text for `sources`: schema.sql plus the fragment of each enabled client source."""
-    parts = []
-    for name in build_rules.schema_files(sources):
-        with open(os.path.join(HERE, name)) as f:
-            parts.append(f.read())
-    return "\n".join(parts)
+    return "\n".join(files.read_text(os.path.join(HERE, name)) for name in build_rules.schema_files(sources))
 
 
 def client_sources_note(sources, implicit=False):
@@ -49,13 +46,6 @@ def client_sources_note(sources, implicit=False):
         note += ("  (assumed: local_paths.py defines the music inputs but no CLIENT_SOURCES; add "
                  f"CLIENT_SOURCES = {tuple(sources)!r} to make this explicit)")
     return note
-
-
-def load_module(path):
-    spec = importlib.util.spec_from_file_location(os.path.basename(path), path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 class BuildError(Exception):
@@ -73,7 +63,7 @@ def record_build_info(con, locations, clock):
     con.commit()
 
 
-def build(target_path, locations, clock, sources=None):
+def build(target_path, locations, clock, files, sources=None):
     """Build a fresh knowledge.db at `target_path`: the core schema and steps, plus the optional client sources
     in `sources` (default: the ones these `locations` enable)."""
     sources = build_rules.check_client_sources(locations.client_sources if sources is None else sources)
@@ -84,18 +74,17 @@ def build(target_path, locations, clock, sources=None):
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +
                          ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
-    if os.path.exists(target_path):
-        os.remove(target_path)
-    con = sqlite3.connect(target_path)
+    files.remove_if_exists(target_path)
+    con = files.open_database(target_path)
     try:
         con.execute("PRAGMA foreign_keys = ON;")
         try:
-            con.executescript(schema_sql(sources))
+            con.executescript(schema_sql(files, sources))
         except Exception as e:
             raise BuildError("schema", e) from e
         for step in (build_rules.steps_for(sources) if STEPS is None else STEPS):
             try:
-                mod = load_module(os.path.join(HERE, step))
+                mod = files.load_module(os.path.join(HERE, step))
                 mod.run(con, StepContext(locations, local_inputs, local_stores))
             except Exception as e:
                 raise BuildError(step, e) from e
@@ -109,34 +98,28 @@ def build(target_path, locations, clock, sources=None):
         con.close()
 
 
-def build_to_temp(directory, locations, clock):
+def build_to_temp(directory, locations, clock, files):
     """Build into a fresh unique temp file in `directory`; return its path.
     On failure the temp file is removed and BuildError propagates."""
-    tmp = os.path.join(directory, f"knowledge.db.building-{uuid.uuid4().hex}")
-    # Let the kernel apply umask at creation; reading it with os.umask(0) changes the
-    # process-wide setting while other threads may be creating files.
-    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-    os.close(fd)
+    tmp = os.path.join(directory, f"knowledge.db.building-{files.unique_token()}")
+    files.create_exclusive(tmp)
     try:
-        build(tmp, locations, clock)
+        build(tmp, locations, clock, files)
     except BaseException:
-        remove_db_files(tmp)
+        remove_db_files(files, tmp)
         raise
     return tmp
 
 
-def remove_db_files(path):
+def remove_db_files(files, path):
     for p in (path, path + "-journal", path + "-wal", path + "-shm"):
-        try:
-            os.remove(p)
-        except FileNotFoundError:
-            pass
+        files.remove_if_exists(p)
 
 
-def prune_backups(backup_dir, keep=KEEP_BACKUPS):
+def prune_backups(files, backup_dir, keep=KEEP_BACKUPS):
     """Keep only the `keep` most recent backups (see build_rules.backups_to_prune)."""
-    for old in build_rules.backups_to_prune(os.listdir(backup_dir), keep):
-        os.remove(os.path.join(backup_dir, old))
+    for old in build_rules.backups_to_prune(files.listdir(backup_dir), keep):
+        files.remove(os.path.join(backup_dir, old))
         print(f"  pruned old backup {old}")
 
 
@@ -153,18 +136,18 @@ def build_normal(full_path, directory, locations, rules=None):
     return path
 
 
-def report(path):
-    con = sqlite3.connect(path)
+def report(files, path):
+    con = files.open_database(path)
     cur = con.cursor()
     existing = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
     for table in build_rules.report_tables(existing):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"  {table}: {n}")
     con.close()
-    print(f"  file size: {os.path.getsize(path) / 1_000_000:.1f} MB")
+    print(f"  file size: {files.size(path) / 1_000_000:.1f} MB")
 
 
-def main(locations=None, argv=None, clock=None):
+def main(locations=None, argv=None, clock=None, files=None):
     """Entry point. `locations` is read from the private checkout (paths.load()) and `clock` from the environment
     (KNOWLEDGE_FROZEN_NOW, else the system clock) unless the caller gives them."""
     if locations is None:
@@ -173,44 +156,47 @@ def main(locations=None, argv=None, clock=None):
     if clock is None:
         import clock as clocks
         clock = clocks.from_environment()
+    if files is None:
+        import local_buildfiles
+        files = local_buildfiles
     argv = sys.argv[1:] if argv is None else argv
     check_only = "--check" in argv
     live_db, db_dir, backup_dir = locations.db_path, locations.db_dir, locations.backup_dir
     try:
         if check_only:
             print("Building into a temp file (live DB untouched)...")
-            tmp = build_to_temp(tempfile.gettempdir(), locations, clock)
+            tmp = build_to_temp(files.system_temp_dir(), locations, clock, files)
             try:
-                report(tmp)
-                with tempfile.TemporaryDirectory() as nd:
+                report(files, tmp)
+                with files.temporary_directory() as nd:
                     print("Normal-only DB (temp):")
                     build_normal(tmp, nd, locations)
             except Exception as e:
                 print(f"error: normal DB build failed: {e}", file=sys.stderr)
                 sys.exit(1)
             finally:
-                remove_db_files(tmp)
+                remove_db_files(files, tmp)
             return
 
-        os.makedirs(db_dir, exist_ok=True)
+        files.makedirs(db_dir)
         print(f"Rebuilding {live_db}...")
-        tmp = build_to_temp(db_dir, locations, clock)
+        tmp = build_to_temp(db_dir, locations, clock, files)
     except BuildError as e:
         print(f"error: build failed in {e.stage}: {e.cause!r}; live DB left untouched", file=sys.stderr)
         sys.exit(1)
 
     try:
-        if os.path.exists(live_db):
-            os.makedirs(backup_dir, exist_ok=True)
-            backup = os.path.join(backup_dir, build_rules.backup_name(datetime.datetime.now()))
-            shutil.copy2(live_db, backup)
+        if files.exists(live_db):
+            files.makedirs(backup_dir)
+            backup = os.path.join(backup_dir, build_rules.backup_name(clock.now()))
+            files.copy(live_db, backup)
             print(f"Backed up existing DB to {backup}")
-            prune_backups(backup_dir)
-        os.replace(tmp, live_db)
+            prune_backups(files, backup_dir)
+        files.replace(tmp, live_db)
     except BaseException:
-        remove_db_files(tmp)
+        remove_db_files(files, tmp)
         raise
-    report(live_db)
+    report(files, live_db)
 
     # The main build is done and stays in place whatever happens here.
     try:

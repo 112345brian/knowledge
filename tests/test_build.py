@@ -29,10 +29,10 @@ def env(tmp_path, monkeypatch):
     schema = tmp_path / "schema.sql"
     schema.write_text(SCHEMA_SQL)
     monkeypatch.setattr(build, "HERE", str(steps_dir))
-    monkeypatch.setattr(build, "schema_sql", lambda sources=None: schema.read_text())
+    monkeypatch.setattr(build, "schema_sql", lambda files, sources: schema.read_text())
     monkeypatch.setattr(build, "STEPS", ["a_step.py", "b_step.py"])
     # the fake schema has none of the real tables report() counts
-    monkeypatch.setattr(build, "report", lambda path: None)
+    monkeypatch.setattr(build, "report", lambda files, path: None)
     # ...nor the facts tables the normal DB is built from; tests/test_normal_db.py covers that hook
     # ...nor the build_info tables; tests/test_build_info.py covers that hook
     monkeypatch.setattr(build, "record_build_info", lambda con, locations, clock: None)
@@ -93,7 +93,8 @@ def test_prune_keeps_five_newest(env):
     for i in range(8):
         (env.backups / f"knowledge.db.bak-2026010{i}T000000").write_text("x")
     (env.backups / "unrelated.txt").write_text("keep me")
-    build.prune_backups(str(env.backups))
+    import local_buildfiles
+    build.prune_backups(local_buildfiles, str(env.backups))
     assert sorted(p.name for p in env.backups.iterdir()) == [
         "knowledge.db.bak-20260103T000000", "knowledge.db.bak-20260104T000000",
         "knowledge.db.bak-20260105T000000", "knowledge.db.bak-20260106T000000",

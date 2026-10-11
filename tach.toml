@@ -606,6 +606,16 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
+path = "build_files_port"    # DOMAIN SERVICE: the disk and process work of a database rebuild
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "local_buildfiles"    # INFRASTRUCTURE: the real disk, sqlite files and module loader for a rebuild
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
 path = "local_datafiles"     # INFRASTRUCTURE: the real files, the atomic writer, the inter-process lock
 layer = "infrastructure"
 depends_on = ["locks", "revisions_store"]
@@ -633,7 +643,7 @@ depends_on = ["script_runner_port"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock"]
+depends_on = ["add_fact", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -915,6 +925,7 @@ depends_on = [
     "local_inputs",
     "pipeline_context",
     "local_stores",
+    "local_buildfiles",
 ]
 
 [[modules]]

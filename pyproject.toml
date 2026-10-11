@@ -74,6 +74,8 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.build_files_port",
+    "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
     "kn.step_stores_port",
@@ -237,6 +239,8 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.build_files_port",
+    "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
     "kn.step_stores_port",
@@ -514,6 +518,8 @@ source_modules = [
     "kn.source_status",
 ]
 forbidden_modules = [
+    "kn.build_files_port",
+    "kn.local_buildfiles",
     "kn.datafiles_port",
     "kn.local_datafiles",
     "kn.step_stores_port",
@@ -673,6 +679,7 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.build_files_port",
     "kn.datafiles_port",
     "kn.step_stores_port",
     "kn.fixity_rules",
@@ -825,6 +832,7 @@ source_modules = [
     "kn.cli_subjects",
 ]
 forbidden_modules = [
+    "kn.local_buildfiles",
     "kn.local_datafiles",
     "kn.local_stores",
     "kn.local_inputs",

@@ -12,6 +12,7 @@ import clock as clocks
 import entities
 import facts_batch
 import lifecycle
+import local_inputs
 import migrate_memory
 import paths
 import queries
@@ -34,6 +35,11 @@ class Container:
     def clock(self):
         """The clock every use case is given: the one passed in, else KNOWLEDGE_FROZEN_NOW or the system clock."""
         return self._clock if self._clock is not None else clocks.from_environment()
+
+    @cached_property
+    def inputs(self):
+        """Read-only access to files the command line is pointed at (a facts JSON file for add-facts)."""
+        return local_inputs
 
     @cached_property
     def review(self):

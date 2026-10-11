@@ -12,7 +12,7 @@ import pytest
 import claims_store
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, file_hashes, GIT_ENV  # noqa: F401  (rw is a fixture)
-from appctx import app, frozen, system_clock
+from appctx import app, fixed_clock, system_clock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
@@ -46,8 +46,7 @@ def test_supersede_appends_one_revision_and_never_touches_the_entry(lw):
     w = lw
     seed_two(w)
     before = file_hashes(w)
-    with frozen(T3):
-        res = app().lifecycle.supersede("a", "b", "B replaces A", **kw(w))
+    res = app(clock=fixed_clock(T3)).lifecycle.supersede("a", "b", "B replaces A", **kw(w))
     assert res.ok and res.outcome == "superseded" and res.source_key == "a"
     assert (res.revision["revision"], res.revision["status"], res.revision["superseded_by"]) == (2, "superseded", "b")
     assert res.revision["change_reason"] == "B replaces A" and res.revision["statement"] == "Old fact A."
@@ -58,8 +57,7 @@ def test_supersede_appends_one_revision_and_never_touches_the_entry(lw):
 def test_after_a_rebuild_facts_shows_the_status_and_resolves_superseded_by_to_the_replacement_id(lw):
     w = lw
     seed_two(w)
-    with frozen(T3):
-        assert app().lifecycle.supersede("a", "b", "B replaces A", **kw(w)).ok
+    assert app(clock=fixed_clock(T3)).lifecycle.supersede("a", "b", "B replaces A", **kw(w)).ok
     con = w.build()
     ids = {r["source_key"]: r["id"] for r in con.execute("SELECT id, source_key FROM facts")}
     row = con.execute("SELECT status, superseded_by_fact_id FROM facts WHERE source_key = 'a'").fetchone()
@@ -70,8 +68,7 @@ def test_after_a_rebuild_facts_shows_the_status_and_resolves_superseded_by_to_th
 def test_history_shows_the_revision_with_its_reason_and_as_of_before_it_still_shows_active(lw):
     w = lw
     seed_two(w)
-    with frozen(T3):
-        assert app().lifecycle.retract("a", "turned out wrong", **kw(w)).ok
+    assert app(clock=fixed_clock(T3)).lifecycle.retract("a", "turned out wrong", **kw(w)).ok
     con = w.build()
     assert history(con, w, "a") == [(1, "active", None, "original entry"), (2, "retracted", None, "turned out wrong")]
     before = w.rs.get_fact_as_of(con, "a", "2026-10-02")   # between T1 (entry) and T3 (change)
@@ -199,11 +196,9 @@ def test_reason_is_required_for_both(lw, reason):
 def test_reversal_is_another_revision_through_the_library(lw):
     w = lw
     seed_two(w)
-    with frozen(T2):
-        assert app().lifecycle.retract("a", "oops", **kw(w)).ok
-    with frozen(T3):
-        assert w.rs.append_revision("a", {"status": "active", "superseded_by": None}, "restored", "cli",
-                                    data_dir=w.env.data_dir, clock=system_clock()).ok
+    assert app(clock=fixed_clock(T2)).lifecycle.retract("a", "oops", **kw(w)).ok
+    assert w.rs.append_revision("a", {"status": "active", "superseded_by": None}, "restored", "cli",
+                                data_dir=w.env.data_dir, clock=fixed_clock(T3)).ok
     con = w.build()
     assert [h[1] for h in history(con, w, "a")] == ["active", "retracted", "active"]
     assert con.execute("SELECT status FROM facts WHERE source_key='a'").fetchone()[0] == "active"
@@ -261,10 +256,8 @@ def test_a_fact_retracted_by_another_process_after_we_looked_is_not_superseded(l
 def test_a_clock_going_backwards_is_refused_with_the_revision_message(lw):
     w = lw
     seed_two(w)
-    with frozen(T3):
-        assert app().lifecycle.supersede("a", "b", "x", **kw(w)).ok
-    with frozen(T2):
-        res = app().lifecycle.retract("a", "late", **kw(w))
+    assert app(clock=fixed_clock(T3)).lifecycle.supersede("a", "b", "x", **kw(w)).ok
+    res = app(clock=fixed_clock(T2)).lifecycle.retract("a", "late", **kw(w))
     assert not res.ok and res.outcome == "error" and "clock went backwards" in res.reason
     assert len(w.log_lines()) == 1
 

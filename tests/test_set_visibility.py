@@ -14,7 +14,7 @@ import privacy_store
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, file_hashes  # noqa: F401  (rw is a fixture)
 from test_lifecycle import lw, kw, history, Cli  # noqa: F401  (lw is a fixture)
-from appctx import app, frozen
+from appctx import app, fixed_clock
 
 
 def write_rules(w, tags=None, keywords=None):
@@ -32,8 +32,7 @@ def test_raising_to_private_always_works_without_a_db_and_leaves_the_entry_alone
     w = lw
     w.seed(general=[entry("a", visibility="normal", statement="Plain statement.")])
     before = file_hashes(w)
-    with frozen(T3):
-        res = app().lifecycle.set_visibility("a", "private", "keep this to myself", **kw(w))
+    res = app(clock=fixed_clock(T3)).lifecycle.set_visibility("a", "private", "keep this to myself", **kw(w))
     assert res.ok and res.outcome == "visibility_set" and res.revision["visibility"] == "private"
     assert res.revision["change_reason"] == "keep this to myself" and res.revision["revision"] == 2
     assert file_hashes(w) == before
@@ -45,8 +44,7 @@ def test_history_shows_the_visibility_revision_and_as_of_before_it_shows_the_ear
     w = lw
     w.seed(general=[entry("a", visibility="private", statement="Plain statement.")])
     con = w.build()
-    with frozen(T3):
-        assert app().lifecycle.set_visibility("a", "normal", "why", db=con, **kw(w)).ok
+    assert app(clock=fixed_clock(T3)).lifecycle.set_visibility("a", "normal", "why", db=con, **kw(w)).ok
     con = w.build()
     hist = w.rs.get_history(con, "a")
     assert [(h["revision"], h["visibility"], h["change_reason"]) for h in hist] == [(1, "private", "original entry"), (2, "normal", "why")]
@@ -60,8 +58,7 @@ def test_after_a_demotion_the_built_history_is_private_throughout_by_design(lw):
     keeps the earlier 'normal'. Documented deviation from the issue's wording, see README."""
     w = lw
     w.seed(general=[entry("a", visibility="normal", statement="Plain statement.")])
-    with frozen(T3):
-        assert app().lifecycle.set_visibility("a", "private", "why", **kw(w)).ok
+    assert app(clock=fixed_clock(T3)).lifecycle.set_visibility("a", "private", "why", **kw(w)).ok
     con = w.build()
     assert [h["visibility"] for h in w.rs.get_history(con, "a")] == ["private", "private"]
     assert w.rs.get_fact_as_of(con, "a", "2026-10-02")["visibility"] == "private"

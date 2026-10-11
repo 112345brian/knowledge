@@ -13,7 +13,7 @@ import pytest
 from test_add_fact import Env, REPO
 import fact_rules
 import new_fact
-from appctx import app, fixed_clock, frozen, locs, system_clock
+from appctx import app, fixed_clock, locs, system_clock
 import local_datafiles
 
 T1 = "2026-10-01T08:00:00+00:00"
