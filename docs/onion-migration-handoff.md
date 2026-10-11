@@ -59,7 +59,16 @@ integrated result, not a replacement for reviewing them.
    `artist_directory` is their only caller. `identity_rules.artist_rules_from_mapping` still builds a second
    `ArtistRules` (`build_records`) beside `client.artist_rules.ArtistRules`: another parallel definition for the port collapse.
 4. ~~`remove_db_files` duplicated~~ Done: one definition in `build_rules`, taking the file port's `remove_if_exists`.
-5. **Not run:** the acceptance commands with a real private checkout (the suite is hermetic by design).
+5. **Real private checkout (partly run).** `build --check` and a real build into a scratch DB, against a copy of
+   `knowledge-private`, compared table by table with `origin/main`. Found and fixed: facts, manual sources and
+   literature notes had started storing the *expanded* vault path (`C:/Users/x/MEGA/...`) instead of the path as
+   `local_paths.py` writes it (`~/MEGA/...`), and 13 facts lost their origin vault file because the expanded vault
+   no longer matched the `~/...` text in their `notes`. `Locations` now carries `notes_vault_written` /
+   `health_dir_written` (`*_stored` properties). The hermetic suite missed it because every fixture vault is
+   absolute. Remaining differences from main are timestamps/commit and main's own Windows mojibake (`â€”`).
+   Not yet run: the real MEGA inputs (see the OS-agnostic paths task).
+   The private data also needs `ingest.backfill_dates --apply` and `client.backfill_snapshot_date --apply` before
+   any build passes, on main as well; the private clone itself has not been modified.
 6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated
    but may conflict on README and docs.
 
