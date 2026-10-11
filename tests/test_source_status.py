@@ -124,8 +124,10 @@ def test_02_reads_status_fields_and_relations_from_frontmatter(ingest, tmp_path)
     r = {x["citekey"]: x for x in con.execute("SELECT * FROM sources")}
     assert (r["old2015"]["status"], r["old2015"]["status_date"], r["old2015"]["status_note"], r["old2015"]["original_published_date"]) == \
         ("retracted", "2019-07", "https://example.org/notice", "2014-11-02")
-    rows = mod.parse_all(locs(notes_vault=mod.vault))
-    assert [x["relations"] for x in rows if x["citekey"] == "new2020"] == [[("new2020", "replaces", "old2015")]]
+    ctx = locs(notes_vault=mod.vault)
+    from ingest import source_readers
+    rows = source_readers.VaultNotes(ctx.inputs, ctx.locations).records()
+    assert [x.relations for x in rows if x.citekey == "new2020"] == [(("new2020", "replaces", "old2015"),)]
 
 
 @pytest.mark.parametrize("fm, msg", [

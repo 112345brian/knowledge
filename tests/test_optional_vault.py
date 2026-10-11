@@ -74,11 +74,11 @@ def test_the_vault_input_is_listed_only_when_a_vault_is_configured():
 def test_no_vault_means_no_citation_notes():
     import local_inputs
     import local_stores
-    from ingest import literature_sources
+    from ingest import source_readers
     from locations import Locations
     from pipeline_context import StepContext
     ctx = StepContext(Locations(knowledge_db_dir="/db", private_data_dir="/data"), local_inputs, local_stores)
-    assert literature_sources.parse_all(ctx) == []
+    assert source_readers.VaultNotes(ctx.inputs, ctx.locations).records() == []
 
 
 def test_the_core_does_not_name_the_bodybuilding_vault():

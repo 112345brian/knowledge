@@ -2,56 +2,13 @@
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after seed_sources.py.
 """
-import sqlite3, os, glob, sys
-
-import acquisition_rules
-from ingest import source_ingest_rules
-from ingest.shared import link_authors, get_or_create_publisher, collect_identifiers, add_source_identifiers
-
-
-def parse_all(ctx):
-    rows = []
-    if not ctx.locations.notes_vault:  # no notes vault configured: there are no citation notes to read
-        return rows
-    for fp in ctx.inputs.list_files(os.path.join(ctx.locations.notes_vault, "sources"), "*.md"):
-        base = os.path.basename(fp)
-        if base == "README.md":
-            continue
-        text = ctx.inputs.read_text(fp)
-        row = source_ingest_rules.note_to_source_row(base, text, ctx.locations.notes_vault)
-        where = row.pop("where")
-        row["identifiers"] = collect_identifiers(row.pop("raw_identifiers"), where)
-        row.update(ctx.inputs.acquisition(acquisition_rules.normalize_data(row.pop("raw_acquired"), where), fp))  # #46
-        row.update(ctx.inputs.fingerprint(fp))  # #38
-        rows.append(row)
-    return rows
+import source_ingest_service
+from ingest import source_readers
 
 
 def run(con, ctx):
-    rows = parse_all(ctx)
-    cur = con.cursor()
-    existing = {r[0] for r in cur.execute("SELECT citekey FROM sources WHERE citekey IS NOT NULL")}
-    inserted = 0
-    for r in rows:
-        if r["citekey"] in existing:
-            continue
-        row = {k: v for k, v in r.items() if k not in ("author", "publisher", "relations", "identifiers")}
-        row["publisher_id"] = get_or_create_publisher(cur, r.get("publisher"))
-        cur.execute(
-            """INSERT INTO sources (citekey, name, source_type, publisher_id, url, published_date, retrieved_date, description, origin_path,
-                                    content_sha256, size_bytes, file_mtime, mime_type, file_state,
-                                    status, status_date, status_note, edition, original_published_date,
-                                    acquired_at, acquired_via, where_from, acquired_note)
-               VALUES (:citekey, :name, :source_type, :publisher_id, :url, :published_date, '2026-09-11', :description, :origin_path,
-                       :content_sha256, :size_bytes, :file_mtime, :mime_type, :file_state,
-                       :status, :status_date, :status_note, :edition, :original_published_date,
-                       :acquired_at, :acquired_via, :where_from, :acquired_note)""",
-            row,
-        )
-        source_id = cur.lastrowid
-        add_source_identifiers(cur, source_id, r["citekey"], r["identifiers"])
-        link_authors(cur, source_id, r["author"])
-        existing.add(r["citekey"])
-        inserted += 1
+    sources = ctx.stores.source_repository(con)
+    records = source_readers.VaultNotes(ctx.inputs, ctx.locations).records()
+    inserted = source_ingest_service.add_sources(sources, records, skip_known=True, report=print)
     con.commit()
-    print(f"[literature_sources] parsed {len(rows)} files, inserted {inserted} new sources")
+    print(f"[literature_sources] parsed {len(records)} files, inserted {inserted} new sources")

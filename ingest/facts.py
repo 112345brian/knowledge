@@ -11,7 +11,8 @@ import sqlite3, json, os, sys
 
 from ingest import fact_ingest_rules
 import fixity_rules
-from ingest.shared import get_or_create_vault_file, load_hints
+import source_ingest_service
+from ingest.shared import load_hints
 import revisions
 import privacy
 
@@ -48,6 +49,7 @@ def run(con, ctx):
     rules = ctx.stores.load_privacy_rules(os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
     hints = load_hints(ctx.inputs, ctx.locations.private_data_dir)   # the author's vault hints (fact_hints.json), or none
     cur = con.cursor()
+    sources = ctx.stores.source_repository(con)
     citekey_to_id = {r[0]: r[1] for r in cur.execute("SELECT citekey, id FROM sources WHERE citekey IS NOT NULL")}
     subject_cache = {}
 
@@ -72,7 +74,7 @@ def run(con, ctx):
         subject_id = get_or_create_subject(cur, subj, subject_cache)
 
         origin_path = item.get("origin_path") or fact_ingest_rules.resolve_origin_path(item.get("notes"), ctx.locations.notes_vault, hints)
-        origin_file_id = get_or_create_vault_file(cur, origin_path, ctx.inputs)
+        origin_file_id = source_ingest_service.vault_file_id(sources, ctx.inputs, origin_path)
         measured_metric = item.get("measurement_metric_link")
         is_original = 1 if item.get("is_original_claim") else 0
         is_personal = fact_ingest_rules.classify_is_personal(stmt, item.get("notes"), is_original, measured_metric, hints)
