@@ -117,7 +117,7 @@ validation, matching and pure edits their files and lists are subject to.
 | `music_export_store` | infrastructure | the SQL behind the music-taste export (implements music_export_port) |
 | `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
 | `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
-| `local_stores` | infrastructure | the privacy, entity, subject and revision stores, by name (implements step_stores_port) |
+| `local_stores` | infrastructure | the privacy, entity, subject, revision and claims stores, by name (implements step_stores_port) |
 | `locations` | model | where the data lives, as one immutable value (pure) |
 | `pipeline_context` | model | what a build step is given besides its connection (a value, no I/O) |
 | `queries` | composition root | binds queries_service to fact_reads_store |
@@ -155,7 +155,8 @@ validation, matching and pure edits their files and lists are subject to.
 | `build_info_store` | infrastructure | which inputs and code produced the db |
 | `build_rules` | pipeline rules | step order, backups |
 | `claims_audit` | domain service | staleness rules |
-| `claims_store` | infrastructure | claims audit SQL + clock |
+| `claims_rules` | domain service | claim normalization and the premise-matching (LIKE) policy |
+| `claims_store` | infrastructure | claims audit SQL + claim/premise INSERTs (repository) |
 | `clean_concerts_csv` | ETL adapter (driving, batch) | idempotent cleanup of the concerts CSV (concerts source) |
 | `cli_entities` | driving adapter | entity commands (#42) |
 | `cli_facts_batch` | driving adapter | `knowledge.py add-facts` |

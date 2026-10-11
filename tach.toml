@@ -408,10 +408,18 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
-path = "claims_store"   # ADAPTER for claims_audit: reads claims/facts and the clock
+path = "claims_rules"   # DOMAIN: claim normalization and the premise-matching policy, pure (no db)
+layer = "domain_services"
+depends_on = [
+    "claims_audit",
+]
+
+[[modules]]
+path = "claims_store"   # ADAPTER for claims_audit and claims_rules: audit SQL, claim/premise INSERTs
 layer = "infrastructure"
 depends_on = [
     "claims_audit",
+    "claims_rules",
 ]
 
 [[modules]]
@@ -663,9 +671,9 @@ layer = "infrastructure"
 depends_on = ["locks", "revisions_store"]
 
 [[modules]]
-path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject and revision stores, by name
+path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject, revision and claims stores, by name
 layer = "infrastructure"
-depends_on = ["entities_store", "privacy_store", "revisions_store", "subjects_store"]
+depends_on = ["claims_store", "entities_store", "privacy_store", "revisions_store", "subjects_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -1046,7 +1054,7 @@ depends_on = [
 path = "client.seed_claims"
 layer = "pipeline"
 depends_on = [
-    "claims_audit",
+    "claims_rules",
 ]
 
 [[modules]]
