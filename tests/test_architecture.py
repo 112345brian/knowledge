@@ -700,11 +700,15 @@ ENTRY_POINTS = {"container", "build", "normal_db", "backfill_dates", "backfill_s
                 "backfill_snapshot_date", "export_music_taste", "clean_concerts_csv"}
 
 
+CONFIGURATION_READERS = {"container", "build", "normal_db"}   # the tools reach it through the container
+
+
 def test_only_entry_points_read_the_configuration():
     """`paths` is how configuration is read. Only the places a process starts may import it; everything else is
     handed a Locations. tach's allowlist is the enforcement, this pins who is on it."""
     importers = {n for n, m in _tach_modules(_read(TACH_TOML)).items() if "paths" in m.get("depends_on", [])}
-    assert importers == ENTRY_POINTS, f"unexpected: {sorted(importers - ENTRY_POINTS)}; gone: {sorted(ENTRY_POINTS - importers)}"
+    assert importers == CONFIGURATION_READERS, (
+        f"unexpected: {sorted(importers - CONFIGURATION_READERS)}; gone: {sorted(CONFIGURATION_READERS - importers)}")
 
 
 def _all_source_trees():
