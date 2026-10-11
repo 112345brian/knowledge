@@ -3,7 +3,6 @@ relations, and record the vault files facts point at. It talks to a `SourceRepos
 no step. `report` receives the lines the build prints (a warning for a malformed or duplicate identifier)."""
 from typing import Callable, Iterable, List, Optional
 
-import acquisition_rules
 import source_status
 from inputs_port import Inputs
 from source_record import NO_ACQUISITION, SourceRecord

@@ -81,9 +81,11 @@ source_modules = [
     "kn.step_stores_port",
     "kn.local_stores",
     "kn.fixity_rules",
+    "kn.source_record",
     "kn.acquisition_rules",
     "kn.subject_rules",
     "kn.inputs_port",
+    "kn.sources_port",
     "kn.local_inputs",
     "kn.pipeline_context",
     "kn.container",
@@ -176,9 +178,11 @@ source_modules = [
     "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
+    "kn.source_repository_store",
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.source_ingest_service",
     "kn.textmatch",
     "kn.validtime",
 ]
@@ -227,6 +231,7 @@ forbidden_modules = [
     "kn.seed_claims",
     "kn.seed_general_facts",
     "kn.seed_sources",
+    "kn.source_readers",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
 ]
@@ -246,9 +251,11 @@ source_modules = [
     "kn.step_stores_port",
     "kn.local_stores",
     "kn.fixity_rules",
+    "kn.source_record",
     "kn.acquisition_rules",
     "kn.subject_rules",
     "kn.inputs_port",
+    "kn.sources_port",
     "kn.local_inputs",
     "kn.pipeline_context",
     "kn.container",
@@ -343,9 +350,11 @@ source_modules = [
     "kn.private_edit_store",
     "kn.source_status",
     "kn.source_status_store",
+    "kn.source_repository_store",
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.source_ingest_service",
     "kn.textmatch",
     "kn.validtime",
 #planned:     "kn.mcp_server",
@@ -422,6 +431,7 @@ forbidden_modules = [
     "kn.seed_claims",
     "kn.seed_general_facts",
     "kn.seed_sources",
+    "kn.source_readers",
     "kn.seed_subject_hierarchy",
     "kn.backfill_extracted_hashes",
 ]
@@ -503,6 +513,7 @@ name = "The model ring imports no other module of the repo"
 type = "forbidden"
 source_modules = [
     "kn.fixity_rules",
+    "kn.source_record",
     "kn.acquisition_rules",
     "kn.subject_rules",
     "kn.pipeline_context",
@@ -525,6 +536,7 @@ forbidden_modules = [
     "kn.step_stores_port",
     "kn.local_stores",
     "kn.inputs_port",
+    "kn.sources_port",
     "kn.local_inputs",
     "kn.container",
     "kn.script_runner_port",
@@ -644,14 +656,17 @@ forbidden_modules = [
     "kn.seed_claims",
     "kn.seed_general_facts",
     "kn.seed_sources",
+    "kn.source_readers",
     "kn.seed_subject_hierarchy",
     "kn.shared",
     "kn.snapshot_date",
     "kn.source_ingest_rules",
     "kn.source_status_store",
+    "kn.source_repository_store",
     "kn.subject_files_port",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.source_ingest_service",
     "kn.subjects_store",
 ]
 allow_indirect_imports = true
@@ -683,9 +698,11 @@ source_modules = [
     "kn.datafiles_port",
     "kn.step_stores_port",
     "kn.fixity_rules",
+    "kn.source_record",
     "kn.acquisition_rules",
     "kn.subject_rules",
     "kn.inputs_port",
+    "kn.sources_port",
     "kn.pipeline_context",
     "kn.script_runner_port",
     "kn.fact_reads_port",
@@ -752,9 +769,11 @@ forbidden_modules = [
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
+    "kn.source_repository_store",
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.source_ingest_service",
 ]
 allow_indirect_imports = true
 
@@ -778,6 +797,7 @@ source_modules = [
     "kn.rules_edit_service",
     "kn.entities_service",
     "kn.subjects_service",
+    "kn.source_ingest_service",
 ]
 forbidden_modules = [
     "sqlite3", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt", "subprocess", "socket",
@@ -796,9 +816,11 @@ forbidden_modules = [
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
+    "kn.source_repository_store",
     "kn.subjects_store",
     "kn.subjects",
     "kn.subjects_service",
+    "kn.source_ingest_service",
 ]
 allow_indirect_imports = true
 
@@ -851,5 +873,6 @@ forbidden_modules = [
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",
+    "kn.source_repository_store",
 ]
 allow_indirect_imports = true
