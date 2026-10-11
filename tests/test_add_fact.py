@@ -14,6 +14,7 @@ import subprocess
 import sys
 
 import pytest
+import new_fact
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")  # the library facade, imported in-process
@@ -256,7 +257,7 @@ def af(tmp_path_factory):
 def fact(af, **kw):
     base = dict(statement="A fact.", subject="x", trust_level="low", no_decay=True, recheck_rationale="no decay")
     base.update(kw)
-    return af.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_function_api_append_returns_structured_result(af, tmp_path):

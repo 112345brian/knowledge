@@ -44,13 +44,6 @@ import clock
 import migrate_memory_service
 import migrate_memory_store
 import private_git
-from migrate_memory_rules import (ACTIONS, CAPTURED_VIA, FACT_TYPES, FileResult, HASH_MARKER, HASH_RE,  # noqa: F401  (the public API)
-                                  MAX_FILE_BYTES, MemoryFile, MigrationReport, QUOTE_LINES, QUOTE_MAX, RECHECK_DAYS,
-                                  SKIPPED_TYPES, STATEMENT_MAX, _collapse, _field, build_fact, make_quote,
-                                  make_statement, parse_frontmatter, parse_modified, plan_file, recheck_date,
-                                  source_key_for, subject_for)
-from migrate_memory_service import DEFAULT_ROOT  # noqa: F401
-from migrate_memory_store import discover, existing_entries, read_memory_file  # noqa: F401  (the public API)
 from ports import bind
 
 DEPS = migrate_memory_service.MigrateMemoryDeps(git=private_git, clock=clock, memory=migrate_memory_store, add_fact=add_fact,

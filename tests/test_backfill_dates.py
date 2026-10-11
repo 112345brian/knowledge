@@ -10,6 +10,7 @@ import pytest
 
 from test_add_fact import Env, REPO
 from test_fact_ingest import ingest  # noqa: F401  (fixture)
+import new_fact
 
 SNAP = "measurements_snapshot.json"
 
@@ -207,8 +208,8 @@ def test_a_concurrent_add_fact_append_is_not_lost(world, tmp_path):
     d = str(tmp_path / "copy")
     legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "freshness": "no-decay", "recheck_rationale": "no decay"} for i in range(3)]
     put(d, "general_facts.json", json.dumps(legacy, indent=2) + "\n")
-    script = ("import sys, add_fact; "
-              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
+    script = ("import sys, add_fact, new_fact; "
+              "r = add_fact.append_fact(new_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
               "sys.exit(0 if r.ok else 1)")
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=world.env, cwd=REPO,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) for i in range(4)]

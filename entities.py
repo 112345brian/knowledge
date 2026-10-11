@@ -6,8 +6,6 @@ import entities_service
 import private_git
 from ports import bind
 
-ENTITY_TYPES = entities_store.ENTITY_TYPES
-EntitiesError = entities_store.EntitiesError
 DEPS = entities_service.EntitiesDeps(git=private_git, entity_files=entities_store, entity_migration=entity_migration_store,
                                       entity_queries=entity_queries_store)
 

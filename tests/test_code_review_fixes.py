@@ -17,6 +17,7 @@ import types
 import pytest
 
 from test_fact_revisions import world, T1, T2  # noqa: F401  (fixture import)
+import new_fact
 
 NAME = "Quenbyx"  # synthetic; the keyword the rules list
 
@@ -125,7 +126,7 @@ def test_add_fact_raises_to_private_for_a_listed_name_in_any_text_field(world, f
     kw = {field: f"{NAME} mentioned this"}
     if field in ("source_locator", "source_quote"):
         kw["source_citekey"] = "ck"  # a locator or quote needs a citekey (no db here: the check is skipped)
-    fact = af.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale=kw.pop("recheck_rationale", "does not decay"), visibility="normal", **kw)
     res = af.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
                          db_path=os.path.join(world.env.db_dir, "none.db"))
@@ -136,7 +137,7 @@ def test_add_fact_raises_to_private_for_a_listed_name_in_any_text_field(world, f
 def test_add_fact_stays_normal_without_a_listed_name(world):
     write_rules(world)
     af = world.af
-    fact = af.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale="does not decay", notes="nothing sensitive", visibility="normal")
     res = af.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
                          db_path=os.path.join(world.env.db_dir, "none.db"))
@@ -238,7 +239,7 @@ def test_atomic_writers_never_touch_the_process_umask_and_new_files_follow_it(wo
     monkeypatch.setattr(os, "umask", boom)
     # add_fact: first fact creates general_facts.json
     af = world.af
-    fact = af.NewFact(statement="A fact.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A fact.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale="does not decay", visibility="private")
     facts_path = os.path.join(world.env.data_dir, "general_facts.json")
     assert af.append_fact(fact, data_path=facts_path, db_path=os.path.join(world.env.db_dir, "none.db")).ok

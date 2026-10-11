@@ -34,7 +34,7 @@ application services (*_service)  --------------------uses----------------------
 domain services (pure rules: privacy, modes, revisions, new_fact, ... *_rules, the *_port.py protocols)
         |  built from
         v
-model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status)   <- imports nothing else
+model (fact_rules, timestamps, validtime, textmatch, identifiers, source_status, entity_rules)   <- imports nothing else
 ```
 
 Rules (each one is a failing test or contract if broken):
@@ -101,6 +101,7 @@ private-file editing receives that port rather than importing the Git adapter.
 | `clock` | infrastructure | time |
 | `clock_port` | domain service | interface for time required by use cases |
 | `add_fact_port` | domain service | interface exposing single-fact operations to batch callers |
+| `entity_rules` | model | entity types and the entities error (pure) |
 | `entities` | composition root | binds entity use cases to file, migration and query adapters |
 | `entity_files_port` | domain service | interface for persisted entity data |
 | `entity_migration_port` | domain service | interface for keyword migration |

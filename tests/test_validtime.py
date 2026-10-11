@@ -14,6 +14,8 @@ import pytest
 import validtime
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import facts_batch_rules
+import new_fact
 
 
 @pytest.fixture(autouse=True)
@@ -147,7 +149,7 @@ def nf(**kw):
     import add_fact
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_add_fact_validates_and_writes_the_interval():
@@ -175,7 +177,7 @@ def test_cli_flags_round_trip_and_bad_range_is_refused(tmp_path):
 
 def test_batch_items_take_validity():
     import facts_batch
-    assert {"valid_from", "valid_to"} <= facts_batch.ITEM_KEYS
+    assert {"valid_from", "valid_to"} <= facts_batch_rules.ITEM_KEYS
 
 
 # ------------------------------------------------------------------ ingest + revisions

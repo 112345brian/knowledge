@@ -16,6 +16,9 @@ import add_fact
 import revisions
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_rules
+import facts_batch_rules
+import new_fact
 
 VOCAB = ("observation", "measurement", "decision", "preference", "plan", "definition",
          "inference", "rule", "lesson", "unclassified")
@@ -34,11 +37,11 @@ def _restore_modules():
 def nf(**kw):
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_vocabulary_is_the_documented_one():
-    assert add_fact.KIND_VALUES == VOCAB
+    assert fact_rules.KIND_VALUES == VOCAB
 
 
 def test_new_fact_defaults_to_unclassified_and_every_kind_is_accepted():
@@ -197,4 +200,4 @@ def privacy_rules():
 
 def test_batch_items_take_kind(tmp_path):
     import facts_batch
-    assert "kind" in facts_batch.ITEM_KEYS
+    assert "kind" in facts_batch_rules.ITEM_KEYS

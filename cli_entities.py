@@ -18,6 +18,7 @@ from typing import List, Optional
 import typer
 
 import entities as entity_usecases
+from entity_rules import ENTITY_TYPES, EntitiesError
 
 app = typer.Typer(help="Entities: the people, organizations, places, projects and substances facts are about. "
                        "A private entity makes every fact that mentions it private. Edits go to entities.json "
@@ -28,7 +29,7 @@ JSON_OPT = typer.Option(False, "--json", help="Print machine-readable JSON inste
 ALLOW_DIRTY_OPT = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (the commit still holds only the files touched).")
 DRY_RUN_OPT = typer.Option(False, "--dry-run", help="Report what would change and commit; write nothing.")
 
-EType = enum.Enum("EType", {t: t for t in entity_usecases.ENTITY_TYPES}, type=str)
+EType = enum.Enum("EType", {t: t for t in ENTITY_TYPES}, type=str)
 
 
 def _fail(msg, code=1):
@@ -39,7 +40,7 @@ def _fail(msg, code=1):
 def _load():
     try:
         return entity_usecases.read_file()
-    except entity_usecases.EntitiesError as e:
+    except EntitiesError as e:
         _fail(e)
 
 

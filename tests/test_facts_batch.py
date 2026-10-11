@@ -13,6 +13,10 @@ import time
 import pytest
 
 from test_fact_revisions import world  # noqa: F401  (fixture)
+import add_fact_store
+import modes
+import new_fact
+import facts_batch_rules
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -162,7 +166,7 @@ def test_bad_batch_shapes(fb):
     for bad in ("text", {"statement": "x"}, None, 5):
         r = w.fb.add_facts(bad, commit=False)
         assert not r.ok and r.errors and not r.items
-    r = w.fb.add_facts([it(f"Fact {i}.") for i in range(w.fb.MAX_BATCH + 1)], commit=False)
+    r = w.fb.add_facts([it(f"Fact {i}.") for i in range(facts_batch_rules.MAX_BATCH + 1)], commit=False)
     assert not r.ok and "limit" in r.errors[0] and not os.path.exists(w.env.facts)
 
 
@@ -194,7 +198,7 @@ def test_corrupt_privacy_rules_is_a_batch_error(fb):
 
 def test_duplicates_in_one_batch_and_against_the_file_are_skipped_per_item(fb):
     w = fb
-    assert w.af.append_fact(w.af.NewFact("Already here.", "coffee", "medium", no_decay=True, recheck_rationale="no decay")).ok
+    assert w.af.append_fact(new_fact.NewFact("Already here.", "coffee", "medium", no_decay=True, recheck_rationale="no decay")).ok
     r = w.fb.add_facts([it("Already here."), it("New one."), it("  new   ONE. "), it("Already here.", subject="plans")], commit=False)
     assert [i.outcome for i in r.items] == ["duplicate", "saved", "duplicate", "saved"]
     assert r.ok and [x["statement"] for x in w.env.entries()] == ["Already here.", "New one.", "Already here."]
@@ -217,7 +221,7 @@ def test_rerunning_the_same_file_writes_and_commits_nothing(fb):
 
 def test_dry_run_reports_visibility_and_rule_and_writes_nothing(fb):
     w = fb
-    assert w.af.append_fact(w.af.NewFact("Exists.", "coffee", "low", no_decay=True, recheck_rationale="no decay")).ok
+    assert w.af.append_fact(new_fact.NewFact("Exists.", "coffee", "low", no_decay=True, recheck_rationale="no decay")).ok
     d = make_repo(w)
     open(os.path.join(d, "stray.txt"), "w").write("x")  # a dirty tree does not stop a dry run
     n = commits(d)
@@ -301,7 +305,7 @@ def test_concurrent_batches_and_single_adds_lose_nothing(fb):
         return w.fb.add_facts([it(f"B{n} item {j}.") for j in range(5)], commit=False).ok
 
     def single(n):
-        return w.af.append_fact(w.af.NewFact(f"Single {n}.", "coffee", "low", no_decay=True, recheck_rationale="no decay")).ok
+        return w.af.append_fact(new_fact.NewFact(f"Single {n}.", "coffee", "low", no_decay=True, recheck_rationale="no decay")).ok
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
         futs = [ex.submit(batch, n) for n in range(8)] + [ex.submit(single, n) for n in range(8)]
@@ -323,7 +327,7 @@ def test_identical_concurrent_batches_write_each_fact_once(fb):
 
 def test_mode_gate_refuses_private_results_in_normal_mode_per_item(fb):
     w = fb
-    s = w.fb.modes.Session("normal")
+    s = modes.Session("normal")
     r = w.fb.add_facts([it("Fine."), it("Mentions alice."), it("Also fine.")], session=s, commit=False)
     assert [i.outcome for i in r.items] == ["saved", "refused", "saved"] and not r.ok
     assert "database private" in r.items[1].errors[0]
@@ -332,9 +336,9 @@ def test_mode_gate_refuses_private_results_in_normal_mode_per_item(fb):
 
 def test_mode_off_refuses_the_whole_call_and_private_mode_defaults_requests_private(fb):
     w = fb
-    r = w.fb.add_facts([it()], session=w.fb.modes.Session("off"), commit=False)
+    r = w.fb.add_facts([it()], session=modes.Session("off"), commit=False)
     assert not r.ok and r.errors and not os.path.exists(w.env.facts)
-    r = w.fb.add_facts([it()], session=w.fb.modes.Session("private"), commit=False)
+    r = w.fb.add_facts([it()], session=modes.Session("private"), commit=False)
     assert r.ok and r.items[0].visibility == "private" and not r.items[0].raised
 
 
@@ -343,19 +347,19 @@ def test_mode_off_refuses_the_whole_call_and_private_mode_defaults_requests_priv
 def test_append_records_is_one_write_with_an_in_lock_reject_hook_and_append_record_is_unchanged(fb):
     w = fb
     p = os.path.join(w.env.data_dir, "x.json")
-    assert w.af.append_record(p, {"n": 0}) == 1
-    total, rej = w.af.append_records(p, [{"n": 1}, {"n": 1}, {"n": 2}], reject=lambda ex, r: "dup" if r in ex else None)
+    assert add_fact_store.append_record(p, {"n": 0}) == 1
+    total, rej = add_fact_store.append_records(p, [{"n": 1}, {"n": 1}, {"n": 2}], reject=lambda ex, r: "dup" if r in ex else None)
     assert total == 3 and rej == [(1, "dup")]
     before = digest(p)
-    assert w.af.append_records(p, [{"n": 2}], reject=lambda ex, r: "dup") == (3, [(0, "dup")]) and digest(p) == before
-    assert w.af.append_records(p, []) == (3, []) and digest(p) == before
+    assert add_fact_store.append_records(p, [{"n": 2}], reject=lambda ex, r: "dup") == (3, [(0, "dup")]) and digest(p) == before
+    assert add_fact_store.append_records(p, []) == (3, []) and digest(p) == before
     q = os.path.join(w.env.data_dir, "y.json")
-    assert w.af.append_records(q, [{"a": 1}, {"a": 2}]) == (2, []) and json.load(open(q)) == [{"a": 1}, {"a": 2}]
+    assert add_fact_store.append_records(q, [{"a": 1}, {"a": 2}]) == (2, []) and json.load(open(q)) == [{"a": 1}, {"a": 2}]
 
 
 def test_add_fact_still_resolves_privacy_the_same_way(fb):
     w = fb
-    r = w.af.append_fact(w.af.NewFact("Hello Alice.", "coffee", "low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    r = w.af.append_fact(new_fact.NewFact("Hello Alice.", "coffee", "low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     assert r.ok and r.entry["visibility"] == "private" and r.privacy.raised_above_request
 
 

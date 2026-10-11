@@ -161,7 +161,6 @@ path = "rules_edit"   # FACADE (composition root): binds rules_edit_service to p
 layer = "composition"
 depends_on = [
     "ports",
-    "privacy",
     "privacy_store",
     "private_git",
     "rules_edit_service",
@@ -200,7 +199,7 @@ depends_on = []
 [[modules]]
 path = "private_git"    # the only module that runs git against knowledge-private
 layer = "infrastructure"
-depends_on = []
+depends_on = ["private_git_port"]
 
 [[modules]]
 path = "privacy"        # DOMAIN: pure rules + resolver, no file/db/git access (import-linter "domain-has-no-infrastructure")
@@ -250,12 +249,9 @@ depends_on = [
     "add_fact_service",
     "add_fact_store",
     "clock",
-    "fact_rules",
     "ids",
-    "new_fact",
     "paths",
     "ports",
-    "privacy",
     "privacy_store",
     "private_git",
 ]
@@ -330,13 +326,10 @@ path = "review"         # FACADE (composition root): binds review_service to the
 layer = "composition"
 depends_on = [
     "ports",
-    "privacy",
     "privacy_store",
     "private_git",
-    "review_rules",
     "review_service",
     "review_store",
-    "revisions",
     "revisions_store",
 ]
 
@@ -483,14 +476,11 @@ depends_on = [
 path = "lifecycle"      # FACADE (composition root): binds lifecycle_service to the real adapters
 layer = "composition"
 depends_on = [
-    "lifecycle_rules",
     "lifecycle_service",
     "lifecycle_store",
     "ports",
-    "privacy",
     "private_git",
     "review",
-    "revisions",
     "revisions_store",
 ]
 
@@ -512,9 +502,7 @@ layer = "composition"
 depends_on = [
     "add_fact",
     "add_fact_store",
-    "facts_batch_rules",
     "facts_batch_service",
-    "modes",
     "ports",
     "private_git",
 ]
@@ -546,7 +534,6 @@ layer = "composition"
 depends_on = [
     "add_fact",
     "clock",
-    "migrate_memory_rules",
     "migrate_memory_service",
     "migrate_memory_store",
     "ports",
@@ -569,6 +556,11 @@ layer = "model"
 depends_on = [
     "validtime",
 ]
+
+[[modules]]
+path = "entity_rules"   # #42 entity vocabulary and error type, shared by entities_store and the entity CLI (pure)
+layer = "model"
+depends_on = []
 
 [[modules]]
 path = "textmatch"   # #42 literal whole-word matching, shared by privacy keywords and entity aliases (pure)
@@ -621,6 +613,7 @@ depends_on = [
     "private_edit_store",
     "private_git_port",
     "textmatch",
+    "entity_rules",
 ]
 
 [[modules]]
@@ -671,6 +664,7 @@ depends_on = [
     "cli_subjects",
     "fact_rules",
     "validtime",
+    "private_git_port",
 ]
 
 [[modules]]
@@ -686,6 +680,7 @@ path = "cli_migrate"
 layer = "cli"
 depends_on = [
     "migrate_memory",
+    "migrate_memory_service",
 ]
 
 [[modules]]
@@ -693,6 +688,7 @@ path = "cli_facts_batch"
 layer = "cli"
 depends_on = [
     "facts_batch",
+    "facts_batch_rules",
 ]
 
 # cli_inbox is the ONE documented exception to "the CLI never imports serving": the `inbox` command
@@ -716,12 +712,13 @@ path = "cli_entities"   # entity list|show|add|alias|tag|untag|migrate-keywords 
 layer = "cli"
 depends_on = [
     "entities",
+    "entity_rules",
 ]
 
 [[modules]]
 path = "cli_add_fact"   # `knowledge.py add-fact` (#7)
 layer = "cli"
-depends_on = ["add_fact"]
+depends_on = ["add_fact", "fact_rules", "new_fact"]
 
 [[modules]]
 path = "cli_sources"   # source ids (#48)
@@ -748,6 +745,8 @@ layer = "serving"       # "serving-reads-facts-through-modes"); writes and displ
 depends_on = [
     "lifecycle",        # edit_fact, set_visibility(raise_only=True)
     "review",           # list/approve/reject, pending_view, status_word
+    "fact_rules",
+    "review_rules",
 ]
 
 #planned: [[modules]]

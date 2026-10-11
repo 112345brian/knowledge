@@ -25,9 +25,11 @@ from typing import Optional
 import typer
 
 import add_fact
+from fact_rules import KIND_VALUES, VALID_TRUST
+from new_fact import NewFact
 
-Trust = enum.Enum("Trust", [(v, v) for v in sorted(add_fact.VALID_TRUST)], type=str)
-Kind = enum.Enum("Kind", [(v, v) for v in add_fact.KIND_VALUES], type=str)
+Trust = enum.Enum("Trust", [(v, v) for v in sorted(VALID_TRUST)], type=str)
+Kind = enum.Enum("Kind", [(v, v) for v in KIND_VALUES], type=str)
 
 
 HELP = (
@@ -67,7 +69,7 @@ def register(app):
         session_id: Optional[str] = typer.Option(None, "--session-id", help="The conversation/session the fact was captured in."),
         allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the facts file."),
     ):
-        fact = add_fact.NewFact(
+        fact = NewFact(
             statement=statement, subject=subject, trust_level=trust_level.value, no_decay=no_decay, domain=domain,
             is_original_claim=is_original_claim, is_personal=not not_personal, visibility=visibility, kind=kind.value,
             valid_from=valid_from, valid_to=valid_to, applies_to=applies_to, trust_rationale=trust_rationale, notes=notes,

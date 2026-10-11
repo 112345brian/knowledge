@@ -2,7 +2,7 @@
 rules in `review_rules` (domain) through the ports in `ports` (it imports no adapter). `review` is the
 facade that binds these functions to the real adapters and keeps the public API.
 
-New ad hoc facts are written with status 'pending' (add_fact.NewFact.status). Approving one
+New ad hoc facts are written with status 'pending' (new_fact.NewFact.status). Approving one
 never edits its entry in the JSON data files; it appends a revision (#30) that carries the whole
 fact with status 'active', so the history reads: revision 1 pending, revision 2 active. A rebuild
 then shows the fact as active. Rejecting appends a 'retracted' revision the same way.
@@ -51,9 +51,6 @@ class ReviewDeps:
     revisions: Revisions
     rules: Rules
     reads: ReviewReads
-
-TRUST_LEVELS = revisions.VALID_TRUST
-
 
 def list_pending(deps, db):
     """Pending facts of a built db, oldest first (see review_store.list_pending)."""

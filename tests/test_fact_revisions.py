@@ -12,6 +12,8 @@ import pytest
 
 import clock
 from test_add_fact import Env, REPO
+import fact_rules
+import new_fact
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -113,7 +115,7 @@ def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(wor
     assert keys == world.rv.derive_keys(items, "f.json")
     assert keys[2] == "mine"
     assert keys[1] == keys[0] + "-2"
-    assert len(set(keys)) == 5 and all(world.af.SOURCE_KEY_RE.match(k) for k in keys)
+    assert len(set(keys)) == 5 and all(fact_rules.SOURCE_KEY_RE.match(k) for k in keys)
     assert keys[0] != world.rv.derive_keys(items, "g.json")[0]  # the file name is part of the identity
     # a partly keyed list derives the same keys for the unkeyed entries
     partial = [dict(items[0], source_key="x"), items[1]]
@@ -121,14 +123,14 @@ def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(wor
 
 
 def test_every_new_fact_gets_a_unique_valid_source_key(world):
-    keys = {world.af.build_entry(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay"))["source_key"] for _ in range(50)}
-    assert len(keys) == 50 and all(world.af.SOURCE_KEY_RE.match(k) for k in keys)
+    keys = {world.af.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay"))["source_key"] for _ in range(50)}
+    assert len(keys) == 50 and all(fact_rules.SOURCE_KEY_RE.match(k) for k in keys)
 
 
 def test_a_supplied_source_key_is_used_and_a_bad_one_is_refused(world):
-    f = world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="my-key")
+    f = new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="my-key")
     assert world.af.build_entry(f)["source_key"] == "my-key"
-    errors, _ = world.af.validate_fact(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="Bad Key!"))
+    errors, _ = world.af.validate_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="Bad Key!"))
     assert any("source_key" in e for e in errors)
 
 
@@ -636,8 +638,8 @@ def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):
     os.makedirs(d)
     legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "freshness": "no-decay", "recheck_rationale": "no decay"} for i in range(3)]
     open(os.path.join(d, "general_facts.json"), "w").write(json.dumps(legacy, indent=2) + "\n")
-    script = ("import sys, add_fact; "
-              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
+    script = ("import sys, add_fact, new_fact; "
+              "r = add_fact.append_fact(new_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=env, cwd=REPO) for i in range(6)]

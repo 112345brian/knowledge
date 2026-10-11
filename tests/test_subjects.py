@@ -16,6 +16,7 @@ import pytest
 import subjects_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import new_fact
 
 
 @pytest.fixture(autouse=True)
@@ -273,7 +274,7 @@ def nf(**kw):
     import add_fact
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def data_with(tmp_path, data):

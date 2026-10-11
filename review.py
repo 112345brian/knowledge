@@ -30,16 +30,12 @@ Batch semantics (decided, tested):
     A batch with nothing to do neither checks the tree nor commits.
 Library code never prints or exits.
 """
-import privacy  # noqa: F401  (tests and callers use review.privacy.PrivacyRulesError)
 import private_git
 import privacy_store
 import review_service
 import review_store
-import revisions  # noqa: F401  (review.revisions.RevisionError)
 import revisions_store
 from ports import bind
-from review_rules import ItemResult, OUTCOMES, ReviewResult, status_word, visibility_basis  # noqa: F401  (the public API)
-from review_service import TRUST_LEVELS  # noqa: F401
 
 DEPS = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
 

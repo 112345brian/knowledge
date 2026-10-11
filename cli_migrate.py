@@ -12,6 +12,7 @@ import sys
 import typer
 
 import migrate_memory
+from migrate_memory_service import DEFAULT_ROOT
 
 
 def _text(report, verbose):
@@ -43,7 +44,7 @@ def register(app):
                  help="Import Claude Code memory (~/.claude/projects/*/memory/*.md) as private pending facts. "
                       "feedback files are skipped; a second run adds nothing. Use --dry-run first.")
     def cmd_migrate_memory(
-        memory_root: str = typer.Option(migrate_memory.DEFAULT_ROOT, "--memory-root",
+        memory_root: str = typer.Option(DEFAULT_ROOT, "--memory-root",
                                         help="Folder holding <project>/memory/*.md (default ~/.claude/projects)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written; write nothing."),
         as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON instead of text."),

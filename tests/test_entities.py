@@ -18,6 +18,7 @@ import entities_store
 import textmatch
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import new_fact
 
 
 @pytest.fixture(autouse=True)
@@ -269,7 +270,7 @@ def test_add_fact_stores_private_when_it_mentions_a_private_entity(tmp_path):
     import add_fact
     d = tmp_path / "data"
     write_entities(str(d), ent("zed", "Zed Name", aliases=["Zeddy"], private=True))
-    fact = add_fact.NewFact(statement="Lunch with zeddy.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r", visibility="normal")
+    fact = new_fact.NewFact(statement="Lunch with zeddy.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r", visibility="normal")
     res = add_fact.resolve_privacy(fact, str(d / "general_facts.json"), str(tmp_path / "none.db"))
     assert res.visibility == "private" and "Zed Name" in res.explain()
 

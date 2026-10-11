@@ -12,6 +12,7 @@ import pytest
 import fixity_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import new_fact
 
 @pytest.fixture(autouse=True)
 def _restore_modules():
@@ -251,7 +252,7 @@ def test_02_fills_the_source_fixity_columns(ingest, tmp_path, monkeypatch):
 def test_add_fact_records_the_baseline_when_the_origin_file_is_readable(tmp_path):
     import add_fact
     p = write(tmp_path / "o.md", b"origin")
-    entry = add_fact.build_entry(add_fact.NewFact(statement="s", subject="x", trust_level="low", no_decay=True,
+    entry = add_fact.build_entry(new_fact.NewFact(statement="s", subject="x", trust_level="low", no_decay=True,
                                                   recheck_rationale="r", origin_path=p))
     assert entry["origin_path"] == p and entry["extracted_from_sha256"] == sha(b"origin")
 
@@ -259,11 +260,11 @@ def test_add_fact_records_the_baseline_when_the_origin_file_is_readable(tmp_path
 def test_add_fact_unreadable_or_absent_origin_records_no_hash(tmp_path):
     import add_fact
     kw = dict(statement="s", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
-    entry = add_fact.build_entry(add_fact.NewFact(origin_path=str(tmp_path / "nope.md"), **kw))
+    entry = add_fact.build_entry(new_fact.NewFact(origin_path=str(tmp_path / "nope.md"), **kw))
     assert "extracted_from_sha256" not in entry and entry["origin_path"].endswith("nope.md")
-    entry = add_fact.build_entry(add_fact.NewFact(**kw))
+    entry = add_fact.build_entry(new_fact.NewFact(**kw))
     assert "origin_path" not in entry and "extracted_from_sha256" not in entry
-    entry = add_fact.build_entry(add_fact.NewFact(origin_path="   ", **kw))
+    entry = add_fact.build_entry(new_fact.NewFact(origin_path="   ", **kw))
     assert "origin_path" not in entry
 
 

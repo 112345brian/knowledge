@@ -20,6 +20,9 @@ sys.path.insert(0, REPO)
 
 import add_fact  # noqa: E402
 import migrate_memory as mm  # noqa: E402
+import fact_rules
+import migrate_memory_rules
+import new_fact
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 TODAY = date(2026, 10, 3)
@@ -112,23 +115,23 @@ def actions(report):
 # ------------------------------------------------------------------ frontmatter parsing
 
 def test_parse_nested_and_top_level_and_quotes_and_block_scalars():
-    f, body = mm.parse_frontmatter(
+    f, body = migrate_memory_rules.parse_frontmatter(
         '---\nname: "Quoted: name"\ndescription: >\n  folded\n  text\nmetadata:\n  type: project\n  modified: 2026-01-02\n'
         'originSessionId: abc\n---\nBody here\n')
     assert f["name"] == "Quoted: name" and f["description"] == "folded text"
-    assert mm._field(f, "type") == "project" and mm._field(f, "modified") == "2026-01-02"
-    assert mm._field(f, "originSessionId") == "abc" and body == "Body here"
+    assert migrate_memory_rules._field(f, "type") == "project" and migrate_memory_rules._field(f, "modified") == "2026-01-02"
+    assert migrate_memory_rules._field(f, "originSessionId") == "abc" and body == "Body here"
 
 
 def test_parse_handles_crlf_and_bom():
-    f, body = mm.parse_frontmatter("﻿---\r\ntype: user\r\n---\r\nhi\r\n")
+    f, body = migrate_memory_rules.parse_frontmatter("﻿---\r\ntype: user\r\n---\r\nhi\r\n")
     assert f["type"] == "user" and body == "hi"
 
 
 @pytest.mark.parametrize("text", ["", "no frontmatter\n", "---\ntype: user\nnever closed\n"])
 def test_parse_rejects_missing_or_unclosed_frontmatter(text):
     with pytest.raises(ValueError):
-        mm.parse_frontmatter(text)
+        migrate_memory_rules.parse_frontmatter(text)
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -140,7 +143,7 @@ def test_parse_rejects_missing_or_unclosed_frontmatter(text):
     ("yesterday", None), ("2026-13-45", None), ("", None), (None, None), ("   ", None),
 ])
 def test_parse_modified(value, expected):
-    assert mm.parse_modified(value) == expected
+    assert migrate_memory_rules.parse_modified(value) == expected
 
 
 # ------------------------------------------------------------------ the happy path
@@ -160,12 +163,12 @@ def test_migrates_fact_types_with_full_provenance_and_one_commit(w):
     by_subject = {e["subject"]: e for e in es}
     assert set(by_subject) == {"claude-memory-project", "claude-memory-user", "claude-memory-reference"}
     for e in es:
-        assert re.fullmatch(add_fact.SUBJECT_RE.pattern, e["subject"])
+        assert re.fullmatch(new_fact.SUBJECT_RE.pattern, e["subject"])
         assert e["status"] == "pending" and e["visibility"] == "private" and e["is_personal"] is True
         assert e["trust_level"] == "unverified" and e["captured_via"] == "migrate-memory"
         assert re.fullmatch(r"mm-[0-9a-f]{16}", e["source_key"])
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", e["recheck_by"])
-        assert mm.HASH_MARKER in e["notes"]
+        assert migrate_memory_rules.HASH_MARKER in e["notes"]
     p = by_subject["claude-memory-project"]
     assert p["statement"] == "First line. Second line." and p["session_id"] == "sess-1"
     assert p["source_quote"] == "First line.\nSecond line."
@@ -227,7 +230,7 @@ def test_long_body_is_cut_in_the_statement_but_kept_whole_in_notes(w):
     w.mem("p", "long.md", body=body)
     r = w.run()
     e = w.entries()[0]
-    assert len(e["statement"]) <= mm.STATEMENT_MAX and e["statement"].endswith(" [...]")
+    assert len(e["statement"]) <= migrate_memory_rules.STATEMENT_MAX and e["statement"].endswith(" [...]")
     assert body in e["notes"] and "statement is cut" in e["notes"]
     assert r.files[0].detail == "statement cut, full text in notes"
 
@@ -239,7 +242,7 @@ def test_short_body_is_not_duplicated_into_notes(w):
 
 
 def test_huge_file_is_refused_not_truncated(w):
-    w.mem("p", "big.md", body="x" * (mm.MAX_FILE_BYTES + 10))
+    w.mem("p", "big.md", body="x" * (migrate_memory_rules.MAX_FILE_BYTES + 10))
     w.mem("p", "ok.md")
     r = w.run()
     assert actions(r) == ["problem", "added"] and "limit" in r.files[0].detail and r.exit_code == 1
@@ -250,7 +253,7 @@ def test_body_at_the_limit_boundary_and_over_statement_limit_with_no_spaces(w):
     w.mem("p", "nospace.md", body="y" * 2000)
     w.run()
     e = w.entries()[0]
-    assert len(e["statement"]) <= mm.STATEMENT_MAX and "y" * 2000 in e["notes"]
+    assert len(e["statement"]) <= migrate_memory_rules.STATEMENT_MAX and "y" * 2000 in e["notes"]
 
 
 # ------------------------------------------------------------------ odd files
@@ -311,16 +314,16 @@ def test_project_folder_without_memory_dir_is_ignored(w):
 # ------------------------------------------------------------------ identity and collisions
 
 def test_source_key_is_stable_and_depends_on_place_not_content():
-    assert mm.source_key_for("p", "a.md") == mm.source_key_for("p", "a.md")
-    assert mm.source_key_for("p", "a.md") != mm.source_key_for("p2", "a.md")
-    assert mm.source_key_for("p", "a.md") != mm.source_key_for("p", "b.md")
-    assert add_fact.SOURCE_KEY_RE.match(mm.source_key_for("p" * 500, "é.md"))
+    assert migrate_memory_rules.source_key_for("p", "a.md") == migrate_memory_rules.source_key_for("p", "a.md")
+    assert migrate_memory_rules.source_key_for("p", "a.md") != migrate_memory_rules.source_key_for("p2", "a.md")
+    assert migrate_memory_rules.source_key_for("p", "a.md") != migrate_memory_rules.source_key_for("p", "b.md")
+    assert fact_rules.SOURCE_KEY_RE.match(migrate_memory_rules.source_key_for("p" * 500, "é.md"))
 
 
 def test_colliding_derived_keys_second_file_is_a_problem(w, monkeypatch):
     w.mem("p", "a.md")
     w.mem("p", "b.md")
-    monkeypatch.setitem(mm.plan_file.__globals__, "source_key_for", lambda project, name: "mm-collide")  # the rules module
+    monkeypatch.setitem(migrate_memory_rules.plan_file.__globals__, "source_key_for", lambda project, name: "mm-collide")  # the rules module
     r = w.run()
     assert actions(r) == ["added", "problem"] and "collides" in r.files[1].detail
     assert len(w.entries()) == 1 and r.exit_code == 1
@@ -328,7 +331,7 @@ def test_colliding_derived_keys_second_file_is_a_problem(w, monkeypatch):
 
 def test_existing_key_in_any_entry_file_counts_as_migrated(w):
     w.mem("p", "a.md")
-    key = mm.source_key_for("p", "a.md")
+    key = migrate_memory_rules.source_key_for("p", "a.md")
     with open(os.path.join(w.data_dir, "facts_batch1.json"), "w") as f:
         json.dump([{"source_key": key, "subject": "x", "statement": "s", "notes": "no marker"}], f)
     git(w.private, "add", "-A")
@@ -436,7 +439,7 @@ def test_killed_run_leaving_a_dirty_tree_needs_allow_dirty_then_completes(w):
     w.run()
     # simulate a hard kill after writing one more fact: uncommitted facts file
     w.mem("p", "c.md")
-    add_fact.append_fact(add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=w.facts, db_path=w.db)
+    add_fact.append_fact(new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=w.facts, db_path=w.db)
     assert w.run().refused
     r = w.run(allow_dirty=True)
     assert actions(r).count("added") == 1 and len([e for e in w.entries() if e["source_key"].startswith("mm-")]) == 3
@@ -447,7 +450,7 @@ def test_concurrent_add_fact_and_two_migrations_lose_and_duplicate_nothing(w):
         w.mem("p", f"{i}.md")
 
     def adder(i):
-        res = add_fact.append_fact(add_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", no_decay=True, recheck_rationale="no decay"),
+        res = add_fact.append_fact(new_fact.NewFact(statement=f"manual {i}", subject="manual", trust_level="low", no_decay=True, recheck_rationale="no decay"),
                                    data_path=w.facts, db_path=w.db)
         assert res.ok
 

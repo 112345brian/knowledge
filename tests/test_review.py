@@ -11,6 +11,7 @@ import sys
 import pytest
 
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
+import new_fact
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -68,9 +69,9 @@ def test_a_new_fact_added_through_add_fact_is_pending_in_the_entry_and_after_a_b
     w = rw
     w.seed()
     path = os.path.join(w.env.data_dir, "general_facts.json")
-    r = w.af.append_fact(w.af.NewFact("Fresh.", "alpha", "low", no_decay=True, recheck_rationale="no decay"), data_path=path, db_path="/nonexistent")
+    r = w.af.append_fact(new_fact.NewFact("Fresh.", "alpha", "low", no_decay=True, recheck_rationale="no decay"), data_path=path, db_path="/nonexistent")
     assert r.ok and r.entry["status"] == "pending"
-    r2 = w.af.append_fact(w.af.NewFact("Reviewed.", "alpha", "low", no_decay=True, recheck_rationale="no decay", status="active"), data_path=path, db_path="/nonexistent")
+    r2 = w.af.append_fact(new_fact.NewFact("Reviewed.", "alpha", "low", no_decay=True, recheck_rationale="no decay", status="active"), data_path=path, db_path="/nonexistent")
     assert r2.ok and r2.entry["status"] == "active"
     status = dict(w.build().execute("SELECT statement, status FROM facts").fetchall())
     assert status == {"Fresh.": "pending", "Reviewed.": "active"}

@@ -52,6 +52,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import lifecycle
 import review
+from fact_rules import VALID_TRUST
+from review_rules import status_word
 
 # action -> CLI command path (words after `knowledge.py`). A dict, so iterating gives the names
 # tests/test_cli_parity.py checks against cli_parity.ACTIONS.
@@ -107,7 +109,7 @@ def _form(token, action, fields, label, extra=""):
 
 
 def _trust_options(selected):
-    return "".join(f'<option{" selected" if t == selected else ""}>{esc(t)}</option>' for t in sorted(review.TRUST_LEVELS))
+    return "".join(f'<option{" selected" if t == selected else ""}>{esc(t)}</option>' for t in sorted(VALID_TRUST))
 
 
 def render_fact(f, token):
@@ -181,7 +183,7 @@ def render_flash(result):
 def _item_message(it):
     if it.outcome == "skipped" and it.reason:
         m = re.search(r"'(active|retracted|superseded|pending)'", it.reason)
-        return f"already {review.status_word(m.group(1))}" if m else it.reason
+        return f"already {status_word(m.group(1))}" if m else it.reason
     return it.reason or ""
 
 
@@ -197,13 +199,13 @@ def _from_revise(action, res):
 
 
 def _from_visibility(action, ref, res):
-    """A lifecycle.LifecycleResult (set_visibility) in the page's item shape."""
+    """A lifecycle_rules.LifecycleResult (set_visibility) in the page's item shape."""
     if res.outcome == "visibility_set":
         outcome, message = "changed", "make-private: visibility"
     elif res.outcome == "unchanged":
         outcome = "skipped"
         m = re.search(r"status is '(active|retracted|superseded)'", res.reason or "")
-        message = (f"already {review.status_word(m.group(1))}: nothing changed" if m
+        message = (f"already {status_word(m.group(1))}: nothing changed" if m
                    else "already private: nothing changed")
     elif res.outcome == "refused":
         outcome, message = "refused", "refused: " + (res.reason or "")

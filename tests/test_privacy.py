@@ -15,6 +15,7 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import privacy
 import privacy_store
 from privacy import Rules, resolve_visibility as rv
+import new_fact
 
 SYNTHETIC_NAMES = ["Zorblax", "Quenby", "Wumpfel"]
 
@@ -312,7 +313,7 @@ def _db_with(ingest, *subjects):
 def test_add_fact_stores_the_resolved_visibility_and_explains_it(ingest):
     write_rules(ingest, subject_tags={"family": "private"}, keywords=["quenby"])
     import add_fact
-    N = add_fact.NewFact
+    N = new_fact.NewFact
     a = _add(ingest, N(statement="Plain.", subject="family", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     b = _add(ingest, N(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     c = _add(ingest, N(statement="Neutral.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
@@ -324,7 +325,7 @@ def test_add_fact_stores_the_resolved_visibility_and_explains_it(ingest):
 def test_add_fact_unknown_subject_is_private_when_a_db_exists(ingest):
     db = _db_with(ingest, ("known", None))
     import add_fact
-    N = add_fact.NewFact
+    N = new_fact.NewFact
     a = _add(ingest, N(statement="x", subject="known", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     b = _add(ingest, N(statement="y", subject="brand-new", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     c = _add(ingest, N(statement="z", subject="brand-new", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
@@ -337,7 +338,7 @@ def test_add_fact_uses_the_db_tree_for_tag_inheritance(ingest):
     write_rules(ingest, subject_tags={"family": "private"})
     db = _db_with(ingest, ("family", None), ("cousins", "family"))
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="cousins", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="cousins", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     assert r.entry["visibility"] == "private"
 
 
@@ -345,14 +346,14 @@ def test_add_fact_with_a_corrupt_rules_file_refuses_and_writes_nothing(ingest):
     with open(os.path.join(ingest.env.data_dir, "privacy_rules.json"), "w") as f:
         f.write("{oops")
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     assert not r.ok and "privacy_rules.json" in r.errors[0]
     assert not os.path.exists(os.path.join(ingest.env.data_dir, "general_facts.json"))
 
 
 def test_add_fact_without_rules_keeps_todays_behavior(ingest):
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     assert r.ok and r.entry["visibility"] == "normal" and r.privacy.visibility == "normal"
 
 
@@ -366,7 +367,7 @@ def test_add_fact_cli_applies_the_rules(ingest):
 def test_add_then_remove_rule_then_rebuild_keeps_the_fact_private(ingest):
     write_rules(ingest, keywords=["quenby"])
     import add_fact
-    _add(ingest, add_fact.NewFact(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    _add(ingest, new_fact.NewFact(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     write_rules(ingest, keywords=[])
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     assert vis(ingest.run11(json.load(open(path)))) == {"Saw Quenby.": "private"}

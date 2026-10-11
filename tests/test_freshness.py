@@ -18,6 +18,8 @@ import pytest
 from test_add_fact import Env, REPO, env  # noqa: F401  (env is a fixture)
 from test_fact_ingest import F, ingest, LEGACY_04  # noqa: F401  (ingest is a fixture)
 from test_fact_revisions import world, entry, rec, write_log, T1, T2, T3  # noqa: F401  (world is a fixture)
+import new_fact
+import migrate_memory_rules
 
 sys.path.insert(0, REPO)
 
@@ -164,7 +166,7 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
     base = dict(statement="S.", subject="x", trust_level="low")
 
     def errs(**kw):
-        return af.validate_fact(af.NewFact(**base, **kw), db_path="/nonexistent")[0]
+        return af.validate_fact(new_fact.NewFact(**base, **kw), db_path="/nonexistent")[0]
 
     assert errs(recheck_by="2027-01-01") == []
     assert errs(no_decay=True, recheck_rationale="does not decay") == []
@@ -178,24 +180,24 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
         assert errs(no_decay=bad, recheck_by="2027-01-01")
     # a caller cannot supply freshness at all, so cannot supply 'unreviewed'
     with pytest.raises(TypeError):
-        af.NewFact(**base, freshness="unreviewed", recheck_by="2027-01-01")
+        new_fact.NewFact(**base, freshness="unreviewed", recheck_by="2027-01-01")
     with pytest.raises(TypeError):
-        af.NewFact(**base, volatility="static")
+        new_fact.NewFact(**base, volatility="static")
 
 
 def test_the_entry_stores_the_derived_freshness_explicitly(world):
     af = world.af
-    e1 = af.build_entry(af.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
-    e2 = af.build_entry(af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
+    e1 = af.build_entry(new_fact.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
+    e2 = af.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
     assert (e1["freshness"], e1["recheck_by"]) == ("recheck", "2027-01-01")
     assert (e2["freshness"], e2["recheck_rationale"], "recheck_by" in e2) == ("no-decay", "r", False)
 
 
 def test_a_refused_library_add_writes_nothing(world, tmp_path):
     p = tmp_path / "f.json"
-    res = world.af.append_fact(world.af.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
+    res = world.af.append_fact(new_fact.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
-    res = world.af.append_fact(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
+    res = world.af.append_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
                                data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
 

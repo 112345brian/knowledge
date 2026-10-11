@@ -45,11 +45,8 @@ Callers must read the result: tests/test_facts_batch.py scans the repo and fails
 """
 import add_fact
 import add_fact_store
-import modes  # noqa: F401  (kept importable as facts_batch.modes)
 import facts_batch_service
 import private_git
-from facts_batch_rules import (BatchResult, DEFAULT_CAPTURED_VIA, DEFAULT_TRUST, ITEM_KEYS, ItemResult,  # noqa: F401  (the public API)
-                               MAX_BATCH)
 from ports import bind
 
 DEPS = facts_batch_service.FactsBatchDeps(git=private_git, facts_file=add_fact_store, add_fact=add_fact, defaults=add_fact._Defaults())

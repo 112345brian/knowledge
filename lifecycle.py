@@ -51,11 +51,8 @@ Library code never prints or exits. Callers must check `.ok` (tests/test_lifecyc
 import lifecycle_service
 import lifecycle_store
 import private_git
-import privacy  # noqa: F401  (kept importable as lifecycle.privacy)
 import review
-import revisions  # noqa: F401  (kept importable as lifecycle.revisions)
 import revisions_store
-from lifecycle_rules import CHANGED_OUTCOMES, LifecycleResult, OUTCOMES, ReviseResult  # noqa: F401  (the public API)
 from ports import bind
 
 DEPS = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)

@@ -5,14 +5,10 @@ net) and keeps the public API. `knowledge.py privacy ...` calls this and imports
     edit_rules(edit, describe, allow_dirty, dry_run) -> RulesEditResult   (writes and commits the rules file)
     load_rules() / rules_path() / rules_file_exists(path)                (read-only)
 """
-import privacy  # noqa: F401  (rules_edit.privacy.PrivacyRulesError)
 import private_git
 import privacy_store
 import rules_edit_service
 from ports import bind
-from privacy import PrivacyRulesError  # noqa: F401  (raised for an unusable rules file or an invalid edit)
-from private_git import PrivateGitError  # noqa: F401  (raised for a dirty knowledge-private tree)
-from rules_edit_service import RulesEditResult  # noqa: F401
 
 DEPS = rules_edit_service.RulesEditDeps(rules=privacy_store, git=private_git)
 

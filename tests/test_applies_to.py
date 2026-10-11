@@ -14,6 +14,8 @@ import pytest
 
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import facts_batch_rules
+import new_fact
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +32,7 @@ def nf(**kw):
     import add_fact
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def _con():
@@ -70,7 +72,7 @@ def test_cli_flag_round_trips(tmp_path):
 
 def test_batch_items_take_applies_to():
     import facts_batch
-    assert "applies_to" in facts_batch.ITEM_KEYS
+    assert "applies_to" in facts_batch_rules.ITEM_KEYS
 
 
 # ------------------------------------------------------------------ schema + ingest

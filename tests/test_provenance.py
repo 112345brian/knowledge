@@ -12,6 +12,7 @@ import pytest
 import clock
 from test_add_fact import Env
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import new_fact
 
 FROZEN = "2026-10-03T08:00:00+00:00"
 ISO_UTC = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
@@ -31,7 +32,7 @@ def af(ingest):  # noqa: F811  (add_fact imported against the throwaway private 
 def nf(af, **kw):
     base = dict(statement="A fact.", subject="x", trust_level="low", no_decay=True, recheck_rationale="no decay")
     base.update(kw)
-    return af.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 MCP = dict(captured_via="mcp", session_id="sess-123", source_quote="I said so, in my own words.")

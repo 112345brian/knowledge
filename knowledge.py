@@ -50,6 +50,7 @@ import review
 import revisions
 import rules_edit
 import script_runner
+from private_git_port import PrivateGitError
 from fact_rules import KIND_VALUES
 from fact_queries import (DB_PATH, DatabaseNotFound, QueryError, connect, existing_db_path,  # noqa: F401  (library functions kept importable here)
                           fact_as_of, get_fact, list_facts, list_subjects, search_facts)
@@ -626,7 +627,7 @@ def _edit_rules(edit, describe, allow_dirty, dry_run):
         res = rules_edit.edit_rules(edit, describe, allow_dirty, dry_run)
     except privacy.PrivacyRulesError as e:
         _fail(e)
-    except rules_edit.PrivateGitError as e:
+    except PrivateGitError as e:
         _fail(e)
     if not res.changed:
         print(f"no change: {res.path} already has this rule state")

@@ -11,12 +11,7 @@ import add_fact_service
 import add_fact_store
 import clock
 import ids
-import new_fact  # noqa: F401  (add_fact.new_fact)
-import privacy  # noqa: F401  (kept importable as add_fact.privacy)
 import privacy_store
-from add_fact_store import append_record, append_records  # noqa: F401  (re-exported: facts_batch, tests)
-from fact_rules import FRESHNESS_VALUES, KIND_VALUES, SOURCE_KEY_RE, VALID_TRUST, VALID_VISIBILITY, VIA_RE  # noqa: F401  (re-exported: callers use add_fact.VALID_TRUST etc.)
-from new_fact import (AddResult, DATE_RE, DataFileError, NewFact, SUBJECT_RE, VALID_NEW_STATUS)  # noqa: F401  (re-exported)
 from paths import KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
 from ports import bind
 import private_git

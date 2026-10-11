@@ -66,7 +66,7 @@ def test_git_only_runs_inside_private_git():
     assert problems == [], "git must only be run by private_git.py:\n" + "\n".join(problems)
 
 
-MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status"}  # the innermost ring: imports nothing else
+MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules"}  # the innermost ring: imports nothing else
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
 
@@ -687,6 +687,27 @@ def test_model_ring_is_pinned_and_the_contract_forbids_every_other_module():
     assert "ignore_imports" not in contract
 
 
+def test_composition_roots_import_only_what_they_use():
+    """A composition root binds services to adapters and publishes its own functions. It must not re-export
+    other modules' names (that hides where a name lives and lets callers reach infrastructure through it):
+    every name a composition module imports has to be used in that module."""
+    import ast
+    roles = _architecture_roles()
+    for name in sorted(n for n, r in roles.items() if r == "composition root"):
+        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        imported = {}
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    imported[(a.asname or a.name).split(".")[0]] = node.lineno
+            elif isinstance(node, ast.ImportFrom):
+                for a in node.names:
+                    imported[a.asname or a.name] = node.lineno
+        used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        unused = {k: v for k, v in imported.items() if k not in used}
+        assert not unused, f"{name}.py re-exports instead of using: {unused}"
+
+
 def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
     """Direct check on the real file, independent of both tools: serving holds no write logic."""
     import ast
@@ -698,7 +719,7 @@ def test_inbox_imports_only_review_lifecycle_and_the_standard_library():
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             imported.add(node.module.split(".")[0])
-    assert imported & local == {"lifecycle", "review"}, imported & local
+    assert imported & local == {"lifecycle", "review", "fact_rules", "review_rules"}, imported & local
     assert "sqlite3" not in imported
 
 

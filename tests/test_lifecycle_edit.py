@@ -10,6 +10,8 @@ import pytest
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import rw, make_repo, git, pend  # noqa: F401  (rw is a fixture)
 from test_lifecycle import lw, kw  # noqa: F401  (lw is a fixture)
+import privacy
+import review_rules
 
 
 def seed(w):
@@ -150,4 +152,4 @@ def test_pending_view_edge_inputs(lw, tmp_path):
     vm = w.review.pending_view(str(db), w.env.data_dir)
     assert vm["error"] is None and [f["ref"] for f in vm["facts"]] == ["p1"]
     assert vm["facts"][0]["basis"].startswith(("private", "normal"))
-    assert w.review.visibility_basis("s", "text", "normal", w.review.privacy.Rules()) == "normal: no privacy rule applies"
+    assert review_rules.visibility_basis("s", "text", "normal", privacy.Rules()) == "normal: no privacy rule applies"

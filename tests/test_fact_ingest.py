@@ -180,7 +180,8 @@ def test_no_hardcoded_date_constants_left_in_the_ingest_scripts():
 
 def test_a_fact_added_today_keeps_its_date_across_a_rebuild_on_a_later_day(ingest):
     import clock
-    from add_fact import NewFact, append_fact
+    from add_fact import append_fact
+    from new_fact import NewFact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     with clock.frozen("2026-10-03T08:00:00+00:00"):
         res = append_fact(NewFact(statement="Kept.", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay"), data_path=path,

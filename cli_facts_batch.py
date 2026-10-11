@@ -18,6 +18,7 @@ from typing import Optional
 import typer
 
 import facts_batch
+from facts_batch_rules import DEFAULT_CAPTURED_VIA
 
 
 class NewStatus(str, enum.Enum):
@@ -86,7 +87,7 @@ def register(app):
     def cmd_add_facts(
         file: Optional[str] = typer.Argument(None, help="JSON file; '-' or omitted reads stdin."),
         status: NewStatus = typer.Option(NewStatus.active, "--status", help="active (default: a human reviewed them) or pending (queue for review)."),
-        captured_via: str = typer.Option(facts_batch.DEFAULT_CAPTURED_VIA, "--captured-via", help="Provenance token, e.g. cli, mcp. With 'mcp' every item needs source_quote and --session-id is required."),
+        captured_via: str = typer.Option(DEFAULT_CAPTURED_VIA, "--captured-via", help="Provenance token, e.g. cli, mcp. With 'mcp' every item needs source_quote and --session-id is required."),
         session_id: Optional[str] = typer.Option(None, "--session-id", help="The conversation the facts were captured in."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print each item's resulting visibility and the rule behind it; write and commit nothing."),
         allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (the commit still holds only the facts file)."),

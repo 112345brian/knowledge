@@ -33,16 +33,12 @@ import uuid
 import private_edit_store
 from private_git_port import PrivateGit
 import textmatch
+from entity_rules import ENTITY_TYPES, EntitiesError  # noqa: F401  (EntitiesError is raised here; callers import it from entity_rules)
 
 ENTITIES_FILENAME = "entities.json"
 VERSION = 1
-ENTITY_TYPES = ("person", "organization", "place", "project", "substance", "other")  # keep in sync with schema.sql
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _KEYS = {"id", "canonical_name", "type", "aliases", "private", "external_id", "notes"}
-
-
-class EntitiesError(Exception):
-    """entities.json is unreadable or breaks a rule. The message is safe to show as is."""
 
 
 def data_path(data_dir=None):

@@ -14,6 +14,8 @@ import pytest
 
 from test_add_fact import Env, REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_rules
+import new_fact
 
 FACT_COLUMNS_BEFORE_VISIBILITY = [
     "id", "subject_id", "statement", "is_original_claim", "is_personal", "trust_level", "trust_rationale",
@@ -86,7 +88,7 @@ def test_valid_values_agree_across_schema_ingest_and_add_fact(ingest):
     from ingest import fact_ingest_rules
     assert in_schema == {"private", "normal"}
     # one definition now: the ingest rules (steps 04 and 11) and add_fact both take it from fact_rules
-    assert in_schema == set(fact_rules.VALID_VISIBILITY) == set(add_fact.VALID_VISIBILITY)
+    assert in_schema == set(fact_rules.VALID_VISIBILITY) == set(fact_rules.VALID_VISIBILITY)
     assert set(fact_ingest_rules.VALID_VISIBILITY) == set(fact_rules.VALID_VISIBILITY)
 
 
@@ -117,21 +119,21 @@ def test_cli_rejects_invalid_visibility_and_writes_nothing(env, bad):
 def test_function_api_rejects_invalid_visibility_including_non_strings(ingest):
     import add_fact
     for bad in ("public", None, 1, ["normal"]):
-        errors, _ = add_fact.validate_fact(add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility=bad))
+        errors, _ = add_fact.validate_fact(new_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility=bad))
         assert any("visibility" in e for e in errors), bad
 
 
 def test_new_fact_defaults_to_private_when_visibility_is_omitted(ingest):
     import add_fact
-    assert add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low").visibility == "private"
+    assert new_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low").visibility == "private"
 
 
 def test_add_then_rebuild_round_trip(ingest):
     import add_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     nodb = os.path.join(ingest.env.root, "none.db")
-    add_fact.append_fact(add_fact.NewFact(statement="Open.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
-    add_fact.append_fact(add_fact.NewFact(statement="Closed.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low"), data_path=path, db_path=nodb)
+    add_fact.append_fact(new_fact.NewFact(statement="Open.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
+    add_fact.append_fact(new_fact.NewFact(statement="Closed.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low"), data_path=path, db_path=nodb)
     ingest.mod11.DATA_DIR = ingest.env.data_dir
     con = ingest.db()
     ingest.mod11.run(con)
