@@ -451,3 +451,9 @@ def test_leak_test_flags_a_status_note_planted_in_the_normal_db():
         con.commit()
         con.close()
         assert leak_test.scan_against_full(path, full)
+
+
+def test_the_status_enum_is_the_vocabulary_the_schema_and_the_audit_use():
+    assert ss.STATUS_VALUES == ("active", "corrected", "expression-of-concern", "retracted", "superseded")
+    assert ss.SourceStatus("retracted") == "retracted" and ss.DEFAULT_STATUS == "active"
+    assert {s.value for s in ss.SourceStatus if s.flags_dependents} == set(ss.REASONS)

@@ -14,7 +14,6 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import port_conformance  # noqa: E402
 import wiring  # noqa: E402
 from appctx import app
 
@@ -23,9 +22,9 @@ SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_ba
             "rules_edit_service", "entities_service", "subjects_service", "queries_service", "scripts_service")
 
 
-def test_every_composition_root_binds_adapters_that_satisfy_the_protocols():
-    import add_fact_store, clock, ids, lifecycle_store, migrate_memory_store
-    import private_git, privacy_store, review_store, revisions_store
+def test_composing_every_root_verifies_its_adapters_against_their_ports():
+    """compose() calls wiring.verify, so building the whole container is the check: a renamed method, a changed
+    parameter or a missing attribute on any adapter raises PortMismatch here, and at every real startup."""
     from locations import Locations
     import container
     loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/vault", health_dir="/x/h")
@@ -33,26 +32,35 @@ def test_every_composition_root_binds_adapters_that_satisfy_the_protocols():
     for name in ("review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects",
                  "queries", "scripts"):
         deps = getattr(app, name).deps
-        for field in dataclasses.fields(deps):
-            value = getattr(deps, field.name)
-            assert value is not None, f"{name}.deps.{field.name} is unset"
-            if field.name == "locations":
-                assert isinstance(value, Locations)
-                continue
-            assert port_conformance.conformance_problems(field.name, value) == [], f"{name}.deps.{field.name}"
-    # the adapters themselves, so a rename fails here even if no facade binds that port
-    for name, adapter in {"git": private_git, "revisions": revisions_store, "rules": privacy_store,
-                          "reads": review_store, "lifecycle_reads": lifecycle_store, "facts_file": add_fact_store,
-                          "clock": clock, "ids": ids, "memory": migrate_memory_store}.items():
-        assert port_conformance.conformance_problems(name, adapter) == [], name
+        assert dataclasses.is_dataclass(deps)
+        assert all(getattr(deps, f.name) is not None for f in dataclasses.fields(deps)), name
 
 
-def test_conformance_check_can_fail():
+def test_verify_rejects_a_wrong_adapter_a_renamed_method_and_an_unknown_port():
+    import review_service
+    from locations import Locations
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", bodybuilding_vault="/x/vault", health_dir="/x/h")
+
     class Bad:
         def find_repo(self):  # wrong parameters, and the rest is missing
             return None
-    problems = port_conformance.conformance_problems("git", Bad())
+    problems = wiring.conformance_problems("git", Bad())
     assert any("find_repo" in p for p in problems) and any("ensure_clean_tree is missing" in p for p in problems)
+    import private_git, privacy_store, review_store, revisions_store
+    ok = dict(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store, locations=loc)
+    assert wiring.verify(review_service.ReviewDeps(**ok)) is not None
+    with pytest.raises(wiring.PortMismatch, match="git"):
+        wiring.verify(review_service.ReviewDeps(**{**ok, "git": Bad()}))
+    with pytest.raises(wiring.PortMismatch, match="locations"):
+        wiring.verify(review_service.ReviewDeps(**{**ok, "locations": "/x"}))
+
+    import dataclasses as dc
+
+    @dc.dataclass(frozen=True)
+    class Stray:
+        mystery: object
+    with pytest.raises(wiring.PortMismatch, match="not a known port"):
+        wiring.verify(Stray(mystery=object()))
 
 
 def test_bind_keeps_the_public_signature_without_ports():
@@ -170,7 +178,7 @@ def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
         for f in dataclasses.fields(cls):
             assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
-            assert f.name == "locations" or f.name in port_conformance.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
+            assert f.name == "locations" or f.name in wiring.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
 
 
 def test_a_service_uses_exactly_the_dependencies_it_declares():

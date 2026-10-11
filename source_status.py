@@ -27,13 +27,30 @@ The audit lists active/pending facts that cite a source whose status is retracte
 superseded WITH a replacement (a `replaces` relation points at it; chains are followed to the newest
 source). Sources marked superseded with no replacement are reported separately, not as rows.
 """
+import enum
 import re
 
 import validtime
 
-STATUS_VALUES = ("active", "corrected", "expression-of-concern", "retracted", "superseded")  # keep in sync with schema.sql
+
+class SourceStatus(str, enum.Enum):
+    """A source's reliability over time. A `str` enum, so a value read from JSON or the db compares equal to it."""
+    ACTIVE = "active"
+    CORRECTED = "corrected"
+    EXPRESSION_OF_CONCERN = "expression-of-concern"
+    RETRACTED = "retracted"
+    SUPERSEDED = "superseded"
+
+    @property
+    def flags_dependents(self):
+        """Whether facts built on a source in this status are listed by the premise audit (a superseded source
+        only when something replaces it; see `REASONS`)."""
+        return self in (SourceStatus.RETRACTED, SourceStatus.EXPRESSION_OF_CONCERN, SourceStatus.SUPERSEDED)
+
+
+STATUS_VALUES = tuple(s.value for s in SourceStatus)  # keep in sync with schema.sql
 RELATIONS = ("replaces", "is-version-of")  # keep in sync with schema.sql
-DEFAULT_STATUS = "active"
+DEFAULT_STATUS = SourceStatus.ACTIVE.value
 REASONS = ("retracted", "expression-of-concern", "superseded")
 _FIELDS = ("status", "status_date", "status_note", "edition", "original_published_date")
 
