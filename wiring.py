@@ -140,20 +140,37 @@ def conformance_problems(name: str, adapter: Any, ports: Optional[Mapping[str, A
     `ports` adds a client source's own protocols to the core's."""
     proto = {**PORT_PROTOCOLS, **(ports or {})}[name]
     problems = []
-    for member, value in vars(proto).items():
-        if member.startswith("_") or member in ("__annotations__",):
-            continue
-        if not callable(value):
-            continue
+    methods, annotations = _protocol_members(proto)
+    for member, value in methods.items():
         impl = getattr(adapter, member, None)
         if impl is None:
             problems.append(f"{name}: {member} is missing")
             continue
         problems.extend(_call_problems(name, member, value, impl))
-    for member in getattr(proto, "__annotations__", {}):
+    for member in annotations:
         if not hasattr(adapter, member):
             problems.append(f"{name}: attribute {member} is missing")
     return problems
+
+
+def _protocol_members(proto: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return callable members and annotations from `proto` and its Protocol bases.
+
+    Base protocols are read before derived protocols, so a derived override wins. The
+    `typing.Protocol` helper class is not part of the port's declared contract.
+    """
+    methods: dict[str, Any] = {}
+    annotations: dict[str, Any] = {}
+    for base in reversed(proto.__mro__):
+        if base is object or not getattr(base, "_is_protocol", False):
+            continue
+        if base.__module__ == "typing" and base.__name__ == "Protocol":
+            continue
+        for member, value in vars(base).items():
+            if not member.startswith("_") and callable(value):
+                methods[member] = value
+        annotations.update(vars(base).get("__annotations__", {}))
+    return methods, annotations
 
 
 def verify(deps: Any, ports: Optional[Mapping[str, Any]] = None) -> Any:

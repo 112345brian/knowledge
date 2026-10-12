@@ -22,7 +22,7 @@ PORTS = {
 
 
 def _methods(proto):
-    return {n: v for n, v in vars(proto).items() if callable(v) and not n.startswith("_")}
+    return wiring._protocol_members(proto)[0]
 
 
 @pytest.mark.parametrize("name", sorted(PORTS))

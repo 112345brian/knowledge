@@ -31,7 +31,7 @@ SQL_WORDS = {"execute", "executemany", "executescript", "cursor", "sql", "query"
 
 
 def _methods(proto):
-    return {n: v for n, v in vars(proto).items() if callable(v) and not n.startswith("_")}
+    return wiring._protocol_members(proto)[0]
 
 
 # ------------------------------------------------------------------------------------------- port shape
@@ -105,6 +105,24 @@ def test_conformance_check_fails_for_a_fake_missing_a_method(monkeypatch):
         def add(self, fact):
             raise NotImplementedError
     assert any("tally is missing" in p for p in wiring.conformance_problems("build.facts", Missing()))
+
+
+def test_conformance_check_fails_for_a_fake_missing_an_inherited_method(monkeypatch):
+    from typing import Protocol
+
+    class Base(Protocol):
+        def inherited(self) -> None: ...
+
+    class Derived(Base, Protocol):
+        def own(self) -> None: ...
+
+    class MissingInherited:
+        def own(self) -> None:
+            pass
+
+    monkeypatch.setitem(wiring.PORT_PROTOCOLS, "build.inherited_test", Derived)
+    problems = wiring.conformance_problems("build.inherited_test", MissingInherited())
+    assert any("inherited is missing" in problem for problem in problems)
 
 
 def test_fake_ids_are_allocated_per_table_in_call_order():
