@@ -1,6 +1,6 @@
 """The SQLite adapters of the fact ingest (fact_ingest_store), over the real schema.
 
-`SqliteFactRepository` is `build_repositories_port.FactRepository`: one test per method, plus a round trip of a whole
+`SqliteFactRepository` is `build_repositories_port.FactRepository` less `link_measurements` (client logic): one test per method, plus a round trip of a whole
 `NewFact` and the check that each adapter has the shape of the protocol it is wired to.
 """
 import dataclasses
@@ -99,23 +99,6 @@ def test_a_source_link_is_written_once(con):
     repo.link_source(r.FactSourceLink(fact_id, source_id, "p. 1", "q"))
     repo.link_source(r.FactSourceLink(fact_id, source_id, "p. 2", "q2"))
     assert [tuple(row) for row in con.execute("SELECT locator, quote FROM fact_sources")] == [("p. 1", "q")]
-
-
-def test_measurements_of_a_metric_are_linked_and_counted(con):
-    with open(os.path.join(REPO, "client", "measurements.sql"), encoding="utf-8") as f:
-        con.executescript(f.read())
-    repo = store.SqliteFactRepository(con)
-    subject = subject_id(con, "body")
-    fact_id = repo.add(fact(subject))
-    source = con.execute("INSERT INTO sources (citekey, name, source_type) VALUES ('m', 'M', 'primary')").lastrowid
-    for key in ("weight", "height"):
-        con.execute("INSERT INTO metrics (key, label) VALUES (?, ?)", (key, key))
-    for metric, day in ((1, "2026-01-01"), (1, "2026-01-02"), (2, "2026-01-01")):
-        con.execute("INSERT INTO measurements (subject_id, metric_id, value, measured_at, source_id, trust_level) "
-                    "VALUES (?, ?, 1, ?, ?, 'high')", (subject, metric, day, source))
-    assert repo.link_measurements(fact_id, "weight") == 2
-    assert repo.link_measurements(fact_id, "nothing") == 0
-    assert con.execute("SELECT COUNT(*) FROM fact_measurements").fetchone()[0] == 2
 
 
 def test_facts_are_tallied_by_the_allowed_columns_only_in_value_order(con):

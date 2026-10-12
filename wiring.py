@@ -28,8 +28,8 @@ from entity_queries_port import EntityQueries
 from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
 from fact_revision_table_port import FactRevisionTable, RevisionLogReader
 from fact_reads_port import FactReads
-from build_repositories_port import FactRepository, SourceRepository, UnitOfWork
-from fact_ingest_port import FactRevisionWriter, Identity, PrivacyFloor
+from build_repositories_port import SourceRepository, UnitOfWork
+from fact_ingest_port import FactRevisionWriter, FactStore, Identity, PrivacyFloor
 from facts_file_port import FactsFile
 from ids_port import Ids
 from inputs_port import Inputs
@@ -78,7 +78,7 @@ PORT_PROTOCOLS = {
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
-    "facts": FactRepository, "revision_writer": FactRevisionWriter, "sources": SourceRepository,
+    "facts": FactStore, "revision_writer": FactRevisionWriter, "sources": SourceRepository,
     "unit_of_work": UnitOfWork, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
     "datafiles": DataFiles, "music_export": MusicExportReads,
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,

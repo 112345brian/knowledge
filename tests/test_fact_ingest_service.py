@@ -431,9 +431,11 @@ def test_no_caller_discards_an_ingest_report():
     assert offenders == [], offenders
 
 
-def test_the_lane_declares_no_fact_repository_of_its_own():
-    """The foundation's build_repositories_port.FactRepository is the one contract; the ingest imports it."""
+def test_the_lane_declares_no_fact_repository_of_its_own_and_asks_for_nothing_measurement_related():
+    """The foundation's FactRepository is the one contract; the ingest declares only the part it calls, and that
+    part has no measurement linking (client logic)."""
     import build_repositories_port
     import fact_ingest_port
     assert not hasattr(fact_ingest_port, "FactRepository")
-    assert svc.FactRepository is build_repositories_port.FactRepository
+    members = {m for m in vars(fact_ingest_port.FactStore) if not m.startswith("_")}
+    assert members <= set(vars(build_repositories_port.FactRepository)) and "link_measurements" not in members

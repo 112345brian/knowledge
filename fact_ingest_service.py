@@ -19,8 +19,8 @@ import build_records as r
 import fact_ingest_decisions as decisions
 import identity_service
 from fact_ingest_decisions import EntryRef, IngestedFact, IngestProfile, IngestReport
-from build_repositories_port import FactRepository, SourceRepository, UnitOfWork
-from fact_ingest_port import FactRevisionWriter, Identity, PrivacyFloor
+from build_repositories_port import SourceRepository, UnitOfWork
+from fact_ingest_port import FactRevisionWriter, FactStore, Identity, PrivacyFloor
 from ingest import fact_ingest_rules
 from inputs_port import Inputs
 from locations import FACTS_FILENAME, Locations
@@ -31,7 +31,7 @@ HINTS_FILENAME = "fact_hints.json"
 @dataclass(frozen=True)
 class FactIngestDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
-    facts: FactRepository
+    facts: FactStore
     revision_writer: FactRevisionWriter
     sources: SourceRepository
     unit_of_work: UnitOfWork

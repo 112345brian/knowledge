@@ -1,4 +1,5 @@
-"""SQLite adapters of the fact ingest: `build_repositories_port.FactRepository` and `UnitOfWork`, and the revision
+"""SQLite adapters of the fact ingest: the part of `build_repositories_port.FactRepository` the ingest uses (not
+`link_measurements`: that is client logic) and `UnitOfWork`, and the revision
 write of `fact_ingest_port.FactRevisionWriter`, over the build's connection.
 
 They store what they are told and decide nothing: which entries load, the row's values, the duplicate check and the
@@ -46,13 +47,6 @@ class SqliteFactRepository:
     def link_source(self, link: r.FactSourceLink) -> None:
         self._con.execute("INSERT OR IGNORE INTO fact_sources (fact_id, source_id, locator, quote) VALUES (?, ?, ?, ?)",
                           (link.fact_id, link.source_id, link.locator, link.quote))
-
-    def link_measurements(self, fact_id: r.FactId, metric_key: str) -> int:
-        cur = self._con.execute(
-            """INSERT INTO fact_measurements (fact_id, measurement_id)
-               SELECT ?, m.id FROM measurements m JOIN metrics mt ON mt.id = m.metric_id WHERE mt.key = ?""",
-            (fact_id, metric_key))
-        return cur.rowcount
 
     def tally(self, by: FactTally) -> Mapping[Any, int]:
         if by not in _TALLY_COLUMNS:

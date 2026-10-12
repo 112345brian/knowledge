@@ -636,7 +636,7 @@ layer = "application"
 depends_on = ["build_records", "build_repositories_port", "fact_ingest_decisions", "fact_ingest_port", "identity_service", "ingest.fact_ingest_rules", "inputs_port", "locations"]
 
 [[modules]]
-path = "fact_ingest_store"   # ADAPTER for build_repositories_port.FactRepository (and the revision write, the unit of work)
+path = "fact_ingest_store"   # ADAPTER for the ingest part of build_repositories_port.FactRepository (and the revision write, the unit of work)
 layer = "infrastructure"
 depends_on = ["build_records", "build_repositories_port", "revisions_store"]
 
