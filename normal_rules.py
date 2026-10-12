@@ -159,7 +159,7 @@ class FullDbRows:
       authors           (id, name) by id
       source_authors    (source_id, author_id, author_order) by source_id, author_id
       identifiers       (source_id, scheme, value) by source_id, scheme, value
-      entities          non-private (id, entity_key, canonical_name, name_norm, type, external_id, notes) by id
+      entities          ENTITY_COLS rows, every entity with its `private` flag (the rules drop the private ones), by id
       entity_aliases    (entity_id, alias, alias_norm) by entity_id, alias
       fact_entities     (fact_id, entity_id) by fact_id, entity_id
       build_info        the latest (id, built_at, schema_version), or None
@@ -258,9 +258,10 @@ def select_content(data, rules):
     identifier_rows = [tuple(r) for r in data.identifiers
                        if r[0] in in_sources and (r[1] != "other" or clean(r[2]) is not None)]
 
-    # 4b. entities (#42): never a private entity (the source lists none), only those an INCLUDED fact mentions,
-    # and only if the name passes the keyword rules; an alias, notes or external_id with a listed keyword is dropped
-    entity_by_id = {r[0]: r for r in data.entities}
+    # 4b. entities (#42): never a private entity (the flag is read with the row; anything but 0 counts as private),
+    # only those an INCLUDED fact mentions, and only if the name passes the keyword rules; an alias, notes or
+    # external_id with a listed keyword is dropped
+    entity_by_id = {r[0]: r for r in data.entities if r[5] == 0}
     linked = {}
     for fid, eid in data.fact_entities:
         if fid in fact_ids and eid in entity_by_id:
@@ -270,7 +271,7 @@ def select_content(data, rules):
         aliases_of.setdefault(eid, []).append((eid, alias, alias_norm))
     entity_rows, entity_alias_rows, link_rows = [], [], []
     for eid in sorted(linked):
-        _, key, name, norm, etype, external_id, notes = entity_by_id[eid]
+        _, key, name, norm, etype, _private, external_id, notes = entity_by_id[eid]
         if clean(name) is None or clean(norm) is None:
             continue
         entity_rows.append((eid, key, name, norm, etype, 0, clean(external_id), clean(notes)))

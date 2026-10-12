@@ -25,14 +25,6 @@ def subject_repository(con):
     return subject_repository_store.SqliteSubjects(con)
 
 
-def apply_revisions(con, path):
-    return revisions_store.apply_revisions(con, path)
-
-
-def insert_revision_row(cur, fact_id, revision):
-    return revisions_store.insert_revision_row(cur, fact_id, revision)
-
-
 def insert_claim(cur, claim):
     return claims_store.insert_claim(cur, claim)
 

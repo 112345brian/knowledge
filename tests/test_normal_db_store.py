@@ -29,7 +29,8 @@ def test_read_rows_returns_plain_rows_of_the_normal_visibility_only(full):
     assert [r[2] for r in data.facts if r[12] != "normal"] == []
     assert M["private fact text"] not in {r[2] for r in data.facts}
     assert {r[1] for r in data.subjects} >= {"nutrition", "sleep", M["private subject name"]}   # all subjects: the floor is policy
-    assert all(e[1] != "quillon-fernsby" for e in data.entities)                                # a private entity is never read
+    private_entities = [e for e in data.entities if e[1] == "quillon-fernsby"]                 # every entity is read, flagged:
+    assert [e[5] for e in private_entities] == [1]                                              # dropping the private one is policy
     assert data.build_info[1] == "2026-10-08T00:00:00+00:00"
     assert all(isinstance(r, tuple) for r in data.facts)                                         # no cursor or row object
 

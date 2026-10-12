@@ -211,3 +211,23 @@ def test_scan_reports_the_cell_and_derived_markers_cover_every_private_category(
     assert "vault path: Vault/x/y.md" in markers
     assert not any(k.startswith("private fact 7 statement") for k in markers)   # shareable and legit: not a marker
     assert any(k.startswith("private entity name") for k in markers)
+
+
+def test_a_private_entity_is_dropped_by_the_rules_even_when_the_source_lists_it():
+    """Which entity may enter is policy: the source reads every entity with its `private` flag and `select_content`
+    drops the private ones (and their aliases and links), so the rule does not depend on the adapter's WHERE."""
+    # ENTITY_COLS order: id, entity_key, canonical_name, name_norm, type, private, external_id, notes
+    data = rows(entities=[(1, "acme", "Acme", "acme", "organization", 0, None, None),
+                          (2, "quillon-fernsby", "Quillon Fernsby", "quillon fernsby", "person", 1, None, "secret note")],
+                entity_aliases=[(1, "Acme Inc", "acme inc"), (2, "Q.F.", "q.f.")],
+                fact_entities=[(1, 1), (1, 2)])
+    d = deps(data)
+    svc.build_normal_db(d, "/full.db", "/out/x.db", privacy.Rules())
+    content = d.sink.content
+    assert [r[1] for r in content["entities"].rows] == ["acme"]
+    assert [r[1] for r in content["entity_aliases"].rows] == ["Acme Inc"]
+    assert [tuple(r) for r in content["fact_entities"].rows] == [(1, 1)]
+    flagged = rows(entities=[(1, "acme", "Acme", "acme", "organization", 1, None, None)], fact_entities=[(1, 1)])
+    d2 = deps(flagged)
+    svc.build_normal_db(d2, "/full.db", "/out/y.db", privacy.Rules())
+    assert d2.sink.content["entities"].rows == []

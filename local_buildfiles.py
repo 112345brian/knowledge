@@ -47,10 +47,6 @@ def exists(path):
     return os.path.exists(path)
 
 
-def join(directory, name):
-    return os.path.join(directory, name)
-
-
 def replace(source, target):
     os.replace(source, target)
 

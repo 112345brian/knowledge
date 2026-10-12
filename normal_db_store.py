@@ -1,7 +1,8 @@
 """SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the
 normal DB. It copies into a FRESH, empty database (never deletes from a copy of the full DB: deletion leaves old
 pages, free-list garbage and FTS shadow rows holding the deleted text). It decides nothing; which rows go in is
-`normal_rules.select_content`. Stateless; the module is the adapter."""
+`normal_rules.select_content` (the visibility filter on facts and revisions below is only the read's narrowing: the
+rules check each row's visibility again, and a private entity is read with its flag and dropped there). Stateless; the module is the adapter."""
 import os
 import sqlite3
 
@@ -169,8 +170,8 @@ def read_rows(full_path):
             authors=q("SELECT id, name FROM authors ORDER BY id"),
             source_authors=q("SELECT source_id, author_id, author_order FROM source_authors ORDER BY source_id, author_id"),
             identifiers=q("SELECT source_id, scheme, value FROM source_identifiers ORDER BY source_id, scheme, value"),
-            entities=q("SELECT id, entity_key, canonical_name, name_norm, type, external_id, notes "
-                       "FROM entities WHERE private = 0 ORDER BY id"),
+            entities=q("SELECT id, entity_key, canonical_name, name_norm, type, private, external_id, notes "
+                       "FROM entities ORDER BY id"),
             entity_aliases=q("SELECT entity_id, alias, alias_norm FROM entity_aliases ORDER BY entity_id, alias"),
             fact_entities=q("SELECT fact_id, entity_id FROM fact_entities ORDER BY fact_id, entity_id"),
             build_info=tuple(latest) if latest else None,
