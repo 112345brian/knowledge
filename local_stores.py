@@ -22,24 +22,12 @@ def read_entities(path):
     return entities_store.read_file(path)
 
 
-def link_entities(con, entities):
-    return entities_store.link_facts(con, entities)
-
-
 def read_subjects(path):
     return subjects_store.read_file(path)
 
 
 def subject_repository(con):
     return subject_repository_store.SqliteSubjects(con)
-
-
-def apply_revisions(con, path):
-    return revisions_store.apply_revisions(con, path)
-
-
-def insert_revision_row(cur, fact_id, revision):
-    return revisions_store.insert_revision_row(cur, fact_id, revision)
 
 
 def insert_claim(cur, claim):
