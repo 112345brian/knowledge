@@ -30,6 +30,7 @@ import stat
 import unicodedata
 import uuid
 
+import locks
 import private_edit_store
 from private_git_port import PrivateGit
 import textmatch
@@ -38,16 +39,17 @@ from entity_rules import (ENTITY_TYPES, SLUG_RE, VERSION, EntitiesError, Entity,
                           parse, private_terms, set_private, slugify, terms, to_json, unique_id)  # (defined with the rules)
 
 from locations import ENTITIES_FILENAME  # noqa: E402  (one definition of the file names, with Locations)
+from locations import join_path
 
 
 def data_path(data_dir):
-    return os.path.join(data_dir, ENTITIES_FILENAME)
+    return join_path(data_dir, ENTITIES_FILENAME)
 
 
 def read_file(path):
     """Entities from `path` (an entities.json); None when the file is absent. Corrupt or invalid -> EntitiesError."""
     try:
-        with open(path, encoding="utf-8") as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         return None
@@ -73,7 +75,7 @@ def save(entities, path):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

@@ -7,14 +7,14 @@ A claim may also carry a `warrant` (why the cited grounds support it) and a `qua
 qualifier and note are stored as NULL; an unknown role fails the build. Normalization and the prefix-matching policy are
 `claims_rules` (pure); the INSERTs are the repository adapter `claims_store`, reached through `ctx.stores`."""
 import json
-import os
 
 import claims_rules
+import locations
 
 
 def load_claims(inputs, data_dir):
     """Read optional claim data (claims.json) from the private data dir `data_dir`."""
-    path = os.path.join(data_dir, "claims.json")
+    path = locations.join_path(data_dir, "claims.json")
     if not inputs.exists(path):
         return []
     try:

@@ -61,7 +61,7 @@ class Env:
         return subprocess.run(cmd, env=self.env, cwd=self.root, capture_output=True, text=True)
 
     def entries(self):
-        with open(self.facts) as f:
+        with open(self.facts, encoding="utf-8") as f:
             return json.load(f)
 
     def raw(self):
@@ -191,9 +191,10 @@ def test_knowledge_py_add_fact_forwards_to_the_same_behavior(env):
 # today so a change to them is deliberate, not accidental.
 
 def test_edge_very_long_statement_is_accepted(env):
-    r = env.cli("x" * 100_000, "--subject", "x", "--trust", "low")
+    n = 20_000 if sys.platform == "win32" else 100_000      # a Windows command line is capped at 32,767 characters
+    r = env.cli("x" * n, "--subject", "x", "--trust", "low")
     assert r.returncode == 0
-    assert len(env.entries()[0]["statement"]) == 100_000
+    assert len(env.entries()[0]["statement"]) == n
 
 
 def test_edge_nul_character_in_statement_is_accepted_today(env):
@@ -326,6 +327,7 @@ def test_db_without_a_sources_table_is_a_clean_error(env):
     assert not os.path.exists(env.facts)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX permission bits to preserve")
 def test_file_permissions_are_preserved_on_rewrite(env):
     with open(env.facts, "w") as f:
         json.dump([], f)

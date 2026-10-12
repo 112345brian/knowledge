@@ -27,8 +27,8 @@ import local_buildfiles
 
 # Bump rule: when this fails, schema.sql or a client/*.sql fragment changed. Bump `PRAGMA user_version` in schema.sql, then update BOTH
 # constants below (the version and the fingerprint the failure message prints).
-EXPECTED_SCHEMA_VERSION = 3
-EXPECTED_SCHEMA_FINGERPRINT = '45c24d8e1828765e'
+EXPECTED_SCHEMA_VERSION = 4
+EXPECTED_SCHEMA_FINGERPRINT = '84db0e9dd5daa5e0'
 
 
 def schema_text():

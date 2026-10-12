@@ -77,7 +77,9 @@ from cli_inbox import register as _register_inbox; _register_inbox(app)  # inbox
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:
-        app(args=argv, prog_name="knowledge.py")
+        # click would otherwise glob-expand `*` and `~` in arguments on Windows (cmd has no globbing), which corrupts
+        # a search term like `protei*`; the same command line must mean the same thing on every OS.
+        app(args=argv, prog_name="knowledge.py", windows_expand_args=False)
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
     return 0

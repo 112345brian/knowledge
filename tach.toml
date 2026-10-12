@@ -222,6 +222,7 @@ depends_on = [
     "fact_state",
     "privacy",
     "privacy_floor_service",
+    "locks",
 ]
 
 [[modules]]
@@ -247,6 +248,7 @@ depends_on = [
     "fixity_store",
     "subjects_store",
     "locks",
+    "locations",
 ]
 
 [[modules]]
@@ -291,6 +293,7 @@ depends_on = [
     "revision_apply_rules",
     "revision_apply_service",
     "revisions",
+    "locations",
 ]
 
 [[modules]]
@@ -328,6 +331,7 @@ layer = "infrastructure"
 depends_on = [
     "revisions",
     "revisions_store",
+    "locations",
 ]
 
 [[modules]]
@@ -584,6 +588,7 @@ depends_on = [
     "privacy",
     "privacy_store",
     "revisions_store",
+    "locations",
 ]
 
 [[modules]]
@@ -660,6 +665,7 @@ depends_on = [
     "migrate_memory_rules",
     "revisions",
     "revisions_store",
+    "locations",
 ]
 
 [[modules]]
@@ -838,7 +844,7 @@ depends_on = ["claims_store", "entity_repository_store", "fact_ingest_store", "p
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
 layer = "infrastructure"
-depends_on = ["acquisition_store", "fixity_store"]
+depends_on = ["acquisition_store", "fixity_store", "locations", "locks"]
 
 [[modules]]
 path = "script_runner_port"   # DOMAIN SERVICE: the port for running the standalone scripts
@@ -950,7 +956,7 @@ depends_on = [
 [[modules]]
 path = "fixity_store"   # ADAPTER #38 file fingerprints (reads files) and the changed-since-extraction audit
 layer = "infrastructure"
-depends_on = ["fixity_rules"]
+depends_on = ["fixity_rules", "locations"]
 
 [[modules]]
 path = "build_info_store"   # ADAPTER #47 which inputs and code produced the db; git state comes from private_git
@@ -959,6 +965,7 @@ depends_on = [
     "build_port",
     "fixity_store",
     "private_git_port",
+    "locations",
 ]
 
 [[modules]]
@@ -967,6 +974,7 @@ layer = "infrastructure"
 depends_on = [
     "validtime",
     "acquisition_rules",
+    "locations",
 ]
 
 [[modules]]
@@ -983,6 +991,7 @@ depends_on = [
     "textmatch",
     "entity_rules",
     "locations",
+    "locks",
 ]
 
 [[modules]]
@@ -995,6 +1004,7 @@ depends_on = [
     "private_edit_store",
     "private_git_port",
     "privacy_store",
+    "locations",
 ]
 
 [[modules]]
@@ -1020,6 +1030,7 @@ depends_on = [
     "private_git_port",
     "locations",
     "subject_rules",
+    "locks",
 ]
 
 # ===================================================================== CLI
@@ -1172,6 +1183,7 @@ layer = "pipeline"
 depends_on = [
     "ingest.fact_ingest_rules",
     "fact_ingest_service",
+    "locations",
 ]
 
 [[modules]]
@@ -1179,6 +1191,7 @@ path = "client.snapshot_date"
 layer = "pipeline"
 depends_on = [
     "client.measurement_rules",
+    "locations",
 ]
 
 [[modules]]
@@ -1202,6 +1215,7 @@ depends_on = [
     "ingest.backfill_rules",
     "revisions",
     "container",
+    "locations",
 ]
 
 [[modules]]
@@ -1212,6 +1226,7 @@ depends_on = [
     "ingest.backfill_source_keys",
     "revisions",
     "container",
+    "locations",
 ]
 
 [[modules]]
@@ -1266,6 +1281,7 @@ depends_on = [
     "client.measurements_store",
     "client.snapshot_date",
     "client.vault_reader_store",
+    "locations",
 ]
 
 [[modules]]
@@ -1281,6 +1297,7 @@ path = "client.seed_claims"
 layer = "pipeline"
 depends_on = [
     "claims_rules",
+    "locations",
 ]
 
 [[modules]]
@@ -1330,8 +1347,6 @@ depends_on = [
 path = "ingest.apply_fact_revisions"
 layer = "pipeline"
 depends_on = [
-    "privacy",
-    "revisions",
     "revision_apply_service",
 ]
 
@@ -1367,6 +1382,7 @@ layer = "pipeline"
 depends_on = [
     "client.snapshot_date",
     "container",
+    "locations",
 ]
 
 [[modules]]

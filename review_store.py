@@ -6,6 +6,7 @@ import os
 
 import revisions
 import revisions_store
+from locations import join_path
 
 
 def db_exists(db_path):
@@ -36,7 +37,7 @@ def current_states(data_dir):
     states = {e["key"]: revisions.implicit_revision(e["key"], e["entry"], e["legacy_date"], e["file"])
               for e in entries}
     base = {k: {f: s[f] for f in revisions.LEGACY_INHERITED} for k, s in states.items()}
-    for _, rec in revisions_store.read_log(os.path.join(data_dir, revisions.REVISIONS_FILENAME), base):
+    for _, rec in revisions_store.read_log(join_path(data_dir, revisions.REVISIONS_FILENAME), base):
         if rec["source_key"] in states:
             states[rec["source_key"]] = rec
     return states

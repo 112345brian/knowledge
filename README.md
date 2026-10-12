@@ -62,6 +62,17 @@ The build needs a private checkout containing a `local_paths.py`. It is found at
 A step that needs an optional setting you left out stops with a message naming it. `paths.py` and
 `locations.py` document the full set.
 
+#### Paths on Windows, macOS and Linux
+
+`local_paths.py` may write `~/...`. The database stores that text as written, so it never carries one machine's
+home directory; only reads expand it. `~` means the OS user's home unless `KNOWLEDGE_HOME` is set, which
+redirects it, e.g. `KNOWLEDGE_HOME=E:\` makes `~/MEGA/vault` read from `E:\MEGA\vault`. Set it in the
+environment of whatever runs the build; nothing about it is written to the database or to `local_paths.py`.
+Absolute paths in `local_paths.py` are not affected.
+
+All files the project reads and writes are UTF-8 with LF line endings on every OS, and paths handed
+between layers are joined by `locations.join_path`, which keeps the separator the directory already uses.
+
 ## Usage
 
 `knowledge.py` is the single entry point. Run `uv run python knowledge.py --help` for every command

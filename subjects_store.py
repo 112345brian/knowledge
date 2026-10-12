@@ -31,23 +31,25 @@ import stat
 import uuid
 
 import private_edit_store
+import locks
 from private_git_port import PrivateGit
 
 from locations import SUBJECTS_FILENAME  # noqa: E402  (one definition of the file names, with Locations)
 from subject_rules import (DEFAULT_DOMAIN, DEFAULT_RELATION, RELATIONS, SLUG_RE, VERSION, SubjectsError, Subject,  # noqa: F401
                            _ENTRY_KEYS, _copy, _entry, _index, add_alias, canonical, check_new_fact, deprecate, describe,
                            ensure_entry, parse, to_json)  # (defined with the rules)
+from locations import join_path
 
 
 def data_path(data_dir):
-    return os.path.join(data_dir, SUBJECTS_FILENAME)
+    return join_path(data_dir, SUBJECTS_FILENAME)
 
 
 def read_file(path):
     """Entries from `path` (a subjects.json); None when the file is absent (the caller decides what that
     means). Corrupt or invalid -> SubjectsError."""
     try:
-        with open(path, encoding="utf-8") as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         return None
@@ -72,7 +74,7 @@ def save(entries, path):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

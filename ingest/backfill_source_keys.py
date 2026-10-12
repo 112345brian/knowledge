@@ -33,6 +33,7 @@ import sys
 from ingest import backfill_rules
 import revisions
 from ingest.backfill_rules import rewrite_text, source_key_adder  # noqa: F401  (the public API)
+from locations import join_path
 
 
 def _backfill_file(files, path, name, adders, apply):
@@ -59,7 +60,7 @@ def backfill(files, data_dir, apply=False, extra_adders=(), source_keys=True):
     files.load_entries(data_dir)
     result = {}
     for name, _ in revisions.ENTRY_FILES:
-        path = os.path.join(data_dir, name)
+        path = join_path(data_dir, name)
         if not files.exists(path):
             continue
         result[name] = _backfill_file(files, path, name,

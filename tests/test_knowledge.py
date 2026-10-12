@@ -266,7 +266,7 @@ def test_connect_missing_db_raises_not_exits(lib, env):
 
 def test_connect_path_with_uri_special_characters(lib, env, tmp_path):
     import shutil
-    odd = tmp_path / "we ird#dir?x"
+    odd = tmp_path / ("we ird#dir%x" if sys.platform == "win32" else "we ird#dir%?x")   # `?` is not a Windows filename character
     odd.mkdir()
     dst = odd / "k.db"
     shutil.copy(env.db, dst)

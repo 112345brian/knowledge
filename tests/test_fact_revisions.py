@@ -12,6 +12,7 @@ import pytest
 
 from test_add_fact import Env, REPO
 import fact_rules
+from locations import canonical_path   # paths.load hands the build canonical (forward-slash) paths
 import new_fact
 from appctx import app, fixed_clock, locs, system_clock
 import local_datafiles
@@ -466,7 +467,7 @@ def test_invalid_logs_fail_the_build_naming_the_line(world, lines, pattern):
     write_log(world, *lines)
     with pytest.raises(world.rv.RevisionError, match=pattern):
         world.build()
-    assert str(world.log) in str(pytest.raises(world.rv.RevisionError, world.build).value)
+    assert canonical_path(str(world.log)) in str(pytest.raises(world.rv.RevisionError, world.build).value)
 
 
 def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(world):

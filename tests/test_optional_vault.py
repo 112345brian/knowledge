@@ -68,7 +68,7 @@ def test_the_vault_input_is_listed_only_when_a_vault_is_configured():
     without = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data"))
     assert not [k for k, _ in without if k.endswith("vault-db")]
     with_vault = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v"))
-    assert ("input:vault-db", os.path.join("/v", "bodybuilding.db")) in with_vault
+    assert ("input:vault-db", "/v/bodybuilding.db") in with_vault      # a POSIX fake joins as POSIX on every host
 
 
 def test_no_vault_means_no_citation_notes():

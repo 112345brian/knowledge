@@ -12,13 +12,14 @@ import fixity_store
 import locks
 import subjects_store
 from new_fact import DataFileError
+from locations import join_path
 
 
 def read_array(path):
     if not os.path.exists(path):
         return []
     try:
-        with open(path) as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             items = json.load(f)
     except json.JSONDecodeError as e:
         raise DataFileError(f"{path} is not valid JSON ({e}); left untouched") from e
@@ -34,14 +35,14 @@ def atomic_write_json(path, items):
     tmp = f"{os.path.abspath(path)}.{uuid.uuid4().hex}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as f:
             json.dump(items, f, indent=2, ensure_ascii=False)
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))  # an existing file keeps its mode
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -137,7 +138,7 @@ def canonical_subject(data_path, subject):
     """(canonical subject, notes, error) for a new fact's subject against subjects.json beside the facts file
     (#43). An alias is replaced by its canonical name and noted; a deprecated subject is an error naming the
     replacement. With no subjects.json the subject is unchanged. Never raises."""
-    path = os.path.join(data_dir_of(data_path), subjects_store.SUBJECTS_FILENAME)
+    path = join_path(data_dir_of(data_path), subjects_store.SUBJECTS_FILENAME)
     try:
         entries = subjects_store.read_file(path)
     except subjects_store.SubjectsError as e:

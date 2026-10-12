@@ -2,6 +2,7 @@
 (`normal_rules`, `leak_rules`) and the lifecycle (build, leak check, replace, remove the stale db on failure) are
 decided in the domain and the service, not in an adapter."""
 import os
+import posixpath
 import sys
 
 import pytest
@@ -13,7 +14,7 @@ import privacy  # noqa: E402
 from normal_rules import FullDbRows, Integrity, NormalDbError, TABLES  # noqa: E402
 
 DIR = "/out"
-FINAL = os.path.join(DIR, "knowledge-normal.db")
+FINAL = posixpath.join(DIR, "knowledge-normal.db")      # the fakes are POSIX on every host
 
 
 def fact(fid, subject, statement, visibility="normal", key=None):

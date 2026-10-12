@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 import build_records as r
 import entities_store as entities_lib
 import fact_state
+import locks
 import privacy_floor_service
 from privacy import PrivacyRulesError, Rules, RULES_FILENAME, VERSION, parse_rules
 from privacy_floor_service import FloorFact
@@ -27,7 +28,7 @@ def load_rules(path):
     """Rules from the privacy rules file at `path`. Absent file -> empty rules. A file that is unreadable,
     corrupt JSON or not an object raises PrivacyRulesError."""
     try:
-        with open(path, encoding="utf-8") as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         return _with_entities(Rules(), path)
@@ -66,7 +67,7 @@ def save_rules(rules, path):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

@@ -350,6 +350,8 @@ def test_check_failure_cleans_up_temp(env):
 
 # ---- #17: swap semantics -----------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SQLite on Windows opens files without FILE_SHARE_DELETE, so the "
+                     "live db cannot be replaced while a reader holds it; the build fails the publish and leaves it untouched")
 def test_reader_holding_old_db_keeps_working_and_next_open_sees_new(env):
     run_main(env)
     reader = sqlite3.connect(env.live)

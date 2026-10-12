@@ -24,6 +24,7 @@ import revision_apply_rules
 import revision_apply_service
 import revisions
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
+from locations import join_path
 
 _INSERT_REVISION_SQL = (
     "INSERT INTO fact_revisions (fact_id, " + ", ".join(REVISION_KEYS) + ") VALUES (?, "
@@ -38,7 +39,7 @@ _FIRST_REVISIONS_SQL = ("SELECT source_key, " + ", ".join(_FIRST_COLUMNS) + " FR
 
 def read_array(path):
     try:
-        with open(path) as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             items = json.load(f)
     except json.JSONDecodeError as e:
         raise RevisionError(f"{path} is not valid JSON ({e})") from e
@@ -50,7 +51,7 @@ def load_entries(data_dir):
     {file, index, key, entry, legacy_date}. Missing files are skipped. A duplicate key fails."""
     files = []
     for name, legacy_date in ENTRY_FILES:
-        path = os.path.join(data_dir, name)
+        path = join_path(data_dir, name)
         if os.path.exists(path):
             files.append((name, legacy_date, read_array(path)))
     return revisions.collect_entries(files)
@@ -78,7 +79,7 @@ def read_log(path, base=None):
     revisions.parse_log); callers that hold the entries or the db pass it."""
     if not os.path.exists(path):
         return []
-    with open(path, encoding="utf-8") as f:
+    with locks.open_retrying(path, encoding="utf-8") as f:
         return revisions.parse_log(f, path, base)
 
 
@@ -95,7 +96,7 @@ def atomic_write_text(path, text):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -116,7 +117,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     retracted by another process between the check and the write is never silently re-activated."""
     if data_dir is None:
         raise ValueError("append_revision needs the data dir the entry files and the revision log live in")
-    revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
+    revisions_path = join_path(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
     changes, bad = revisions.normalize_changes(changes)
     if bad:
         return RevisionResult(False, [bad])
@@ -133,7 +134,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
                 return result
             existing = ""
             if os.path.exists(revisions_path):
-                with open(revisions_path, encoding="utf-8", newline="") as f:
+                with locks.open_retrying(revisions_path, encoding="utf-8", newline="") as f:
                     existing = f.read()
             if existing and not existing.endswith("\n"):
                 existing += "\n"

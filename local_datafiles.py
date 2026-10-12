@@ -10,7 +10,7 @@ def exists(path):
 
 
 def read_text(path, encoding="utf-8", newline=None):
-    with open(path, encoding=encoding, newline=newline) as f:
+    with locks.open_retrying(path, encoding=encoding, newline=newline) as f:
         return f.read()
 
 

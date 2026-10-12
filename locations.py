@@ -4,7 +4,7 @@ Model ring: imports nothing else in the repo and does no I/O. An entry point rea
 (`paths.load()`), builds a `Locations`, and hands it down; nothing below an entry point looks configuration
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
 """
-import posixpath
+import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -13,6 +13,54 @@ REVISIONS_FILENAME = "fact_revisions.jsonl"
 PRIVACY_RULES_FILENAME = "privacy_rules.json"
 ENTITIES_FILENAME = "entities.json"
 SUBJECTS_FILENAME = "subjects.json"
+
+HOME_ENV_VAR = "KNOWLEDGE_HOME"   # where `~` means, when it must differ from the OS user's home (see expand_home)
+
+
+def expand_home(path, home):
+    """`path` with a leading `~`, `~/x` or its backslash spelling resolved under `home`; anything else is returned unchanged.
+
+    Pure: the caller supplies `home` (infrastructure reads HOME_ENV_VAR and the OS home). Only the *expanded*
+    form changes with `home`; the form `local_paths.py` wrote (`~/MEGA/...`) is what the database stores.
+    """
+    if path == "~":
+        return home
+    if path[:2] in ("~/", "~\\"):
+        return join_path(home, path[2:])
+    return path
+
+
+_WINDOWS_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|~\\)")
+
+
+def canonical_path(path):
+    """The OS-agnostic spelling of `path`, which is what the database stores: forward slashes.
+
+    Only a path that is unmistakably Windows (drive letter, UNC, or `~` + backslash) is rewritten; anything else,
+    including a POSIX name that contains a backslash, is returned unchanged. A POSIX path and an already
+    canonical one are fixed points. `build_info.platform` says which OS a database was written on, so a
+    canonical `C:/Users/x/v.md` is known to be a Windows path without being stored as one.
+    """
+    if path and _WINDOWS_ABSOLUTE.match(path):
+        return path.replace("\\", "/")
+    return path
+
+
+def join_path(directory, *names):
+    """`names` under `directory`, written with the separator `directory` already uses.
+
+    Pure string work, so a POSIX fake (a "/data" directory) and a native Windows path (backslashes, a drive
+    letter) both join correctly on any host: os.path.join would put a backslash into a fake's path on Windows,
+    and a POSIX join would put a slash into a native one. A directory that mixes both is joined with `/`, which
+    Windows accepts.
+    """
+    sep = "\\" if "\\" in directory and "/" not in directory else "/"
+    out = directory
+    for name in names:
+        if sep == "\\":
+            name = name.replace("/", "\\")
+        out = name if not out else out.rstrip("/\\") + sep + name.lstrip("/\\")
+    return out
 
 
 @dataclass(frozen=True)
@@ -36,6 +84,9 @@ class Locations:
     # does not carry one machine's home directory. None for locations built by hand: the field above is used.
     notes_vault_written: Optional[str] = None
     health_dir_written: Optional[str] = None
+    concerts_csv_written: Optional[str] = None      # the input files as written, for the same reason
+    rym_export_csv_written: Optional[str] = None
+    scrobbles_json_written: Optional[str] = None
 
     def need(self, field, setting, for_what):
         """The value of an optional path, or a ValueError naming the `local_paths.py` setting to define."""
@@ -47,12 +98,24 @@ class Locations:
     @property
     def notes_vault_stored(self):
         """The notes vault in the form the database stores and fact notes cite."""
-        return self.notes_vault_written or self.notes_vault
+        return canonical_path(self.notes_vault_written or self.notes_vault)
 
     @property
     def health_dir_stored(self):
         """The health directory in the form the database stores."""
-        return self.health_dir_written or self.health_dir
+        return canonical_path(self.health_dir_written or self.health_dir)
+
+    @property
+    def concerts_csv_stored(self):
+        return canonical_path(self.concerts_csv_written or self.concerts_csv)
+
+    @property
+    def rym_export_csv_stored(self):
+        return canonical_path(self.rym_export_csv_written or self.rym_export_csv)
+
+    @property
+    def scrobbles_json_stored(self):
+        return canonical_path(self.scrobbles_json_written or self.scrobbles_json)
 
     @property
     def db_dir(self):
@@ -60,11 +123,11 @@ class Locations:
 
     @property
     def db_path(self):
-        return posixpath.join(self.knowledge_db_dir, "knowledge.db")
+        return join_path(self.knowledge_db_dir, "knowledge.db")
 
     @property
     def backup_dir(self):
-        return posixpath.join(self.knowledge_db_dir, "backups")
+        return join_path(self.knowledge_db_dir, "backups")
 
     @property
     def data_dir(self):
@@ -73,11 +136,15 @@ class Locations:
     @property
     def data_path(self):
         """The ad hoc facts file (`general_facts.json`)."""
-        return posixpath.join(self.private_data_dir, FACTS_FILENAME)
+        return join_path(self.private_data_dir, FACTS_FILENAME)
 
     def in_data_dir(self, name, data_dir=None):
         """`name` inside `data_dir` (default: this person's private data dir)."""
-        return posixpath.join(self.private_data_dir if data_dir is None else data_dir, name)
+        return join_path(self.private_data_dir if data_dir is None else data_dir, name)
+
+    def in_notes_vault(self, *names):
+        """`names` under the (expanded) notes vault; a ValueError names the setting when no vault is configured."""
+        return join_path(self.need("notes_vault", "NOTES_VAULT", "a vault path"), *names)
 
     def revisions_log(self, data_dir=None):
         return self.in_data_dir(REVISIONS_FILENAME, data_dir)

@@ -102,7 +102,7 @@ def test_unreadable_file_is_missing_not_a_crash(tmp_path):
 
 
 def test_tilde_paths_are_expanded(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
     write(tmp_path / "v" / "n.md", b"abc")
     assert fixity_store.fingerprint("~/v/n.md")["content_sha256"] == sha(b"abc")
 

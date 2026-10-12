@@ -13,11 +13,7 @@ could otherwise lower a visibility that 04/11 had raised (or miss a name a rewor
 contains), so the current rules are re-applied here, raise-only. History is never more visible than
 the fact itself: every revision snapshot of a private fact is raised to private too.
 """
-import os
-
-import privacy
 import revision_apply_service
-import revisions
 
 
 def run(con, ctx):
@@ -25,8 +21,7 @@ def run(con, ctx):
         revision_repository=ctx.stores.revision_repository(con), privacy_repository=ctx.stores.privacy_repository(con),
         unit_of_work=ctx.stores.unit_of_work(con))
     done = revision_apply_service.apply_fact_revisions(
-        deps, os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME),
-        os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
+        deps, ctx.locations.revisions_log(), ctx.locations.privacy_rules())
     if done.raised:
         print(f"  privacy rules raised {len(done.raised)} fact(s) to private after revisions")
     print(f"[apply_fact_revisions] applied {done.applied} revisions ({done.total_revisions} rows in fact_revisions incl. implicit revision 1)")
