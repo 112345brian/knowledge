@@ -9,7 +9,8 @@ from clock_port import Clock
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
-from fact_ingest_port import FactRepository, PrivacyFloor
+from build_repositories_port import FactRepository, UnitOfWork
+from fact_ingest_port import FactRevisionWriter, PrivacyFloor
 from facts_file_port import FactsFile
 from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
@@ -73,7 +74,9 @@ subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
 music_export: MusicExportReads = music_export_store.open_reads("")
 subjects_repository: SubjectRepository = subject_repository_store.SqliteSubjects(sqlite3.connect(":memory:"))
-facts: FactRepository = fact_ingest_store
+facts: FactRepository = fact_ingest_store.SqliteFactRepository(sqlite3.connect(":memory:"))
+fact_revisions: FactRevisionWriter = fact_ingest_store.SqliteFactRevisions(sqlite3.connect(":memory:"))
+unit_of_work: UnitOfWork = fact_ingest_store.SqliteUnitOfWork(sqlite3.connect(":memory:"))
 privacy_floor: PrivacyFloor = local_stores
 revision_log: RevisionLogReader = local_stores
 rules_reader: PrivacyRulesReader = local_stores

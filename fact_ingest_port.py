@@ -1,30 +1,19 @@
-"""Ports of the fact ingest: the fact repository the two fact steps write through, and the privacy floor they apply
-after the last insert.
+"""Ports of the fact ingest that are not the build's repositories: which subject and vault file a name or path
+means, the revision a loaded fact starts with, and the privacy floor the fact steps apply after the last insert.
 
-Every method takes the build connection first, like `step_stores_port.StepStores`: the connection is the unit of
-work the build owns, and an in-memory fake simply ignores it. The adapter is `fact_ingest_store`.
+The fact repository itself is the foundation's `build_repositories_port.FactRepository` (and its `SourceRepository`
+and `UnitOfWork`); this lane no longer declares a second one. The adapters are `fact_ingest_store`'s.
 
-Subjects and vault files are not here: a subject is found or created by `subject_hierarchy_service` and a vault file
-recorded by `source_ingest_service`, so the build has one definition of each.
+Subjects and vault files are not a repository here: a subject is found or created by `subject_hierarchy_service` and a
+vault file recorded by `source_ingest_service` (through `identity_service`), so the build has one definition of each.
 """
-from typing import Any, Dict, Optional, Protocol, Tuple
+from typing import Any, Optional, Protocol
 
 
-class FactRepository(Protocol):
-    # --- identity (sources by citekey, facts by source key)
-    def source_ids_by_citekey(self, con) -> Dict[str, int]: ...
-    def fact_exists(self, con, source_key) -> bool: ...
-
-    # --- the fact and what hangs off it
-    def insert_fact(self, con, row) -> int:
-        """Insert a `fact_ingest_decisions.FactRow`; the new fact's id."""
-        ...
-    def insert_revision(self, con, fact_id, revision) -> None: ...
-    def link_source(self, con, fact_id, source_id, locator, quote) -> None: ...
-
-    # --- after the last insert
-    def facts_by(self, con, column) -> Dict[Any, int]: ...
-    def commit(self, con) -> None: ...
+class FactRevisionWriter(Protocol):
+    """The one revision write the ingest makes: revision 1 of a fact it just inserted. The same method as
+    `build_repositories_port.RevisionRepository.insert`, declared narrow because the ingest calls nothing else."""
+    def insert(self, fact_id, revision) -> None: ...
 
 
 class Identity(Protocol):

@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_link_table_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_link_table_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -379,7 +379,7 @@ depends_on = [
 ]
 
 [[modules]]
-path = "fact_ingest_port"  # DOMAIN: the fact repository and the privacy floor the fact steps write through
+path = "fact_ingest_port"  # DOMAIN: identity, the revision write and the privacy floor the fact steps go through
 layer = "domain_services"
 depends_on = []
 
@@ -633,12 +633,12 @@ depends_on = [
 [[modules]]
 path = "fact_ingest_service"  # USE CASE: load the fact files into facts, fact_sources, fact_revisions, through ports only
 layer = "application"
-depends_on = ["fact_ingest_decisions", "fact_ingest_port", "ingest.fact_ingest_rules", "inputs_port", "locations"]
+depends_on = ["build_records", "build_repositories_port", "fact_ingest_decisions", "fact_ingest_port", "identity_service", "ingest.fact_ingest_rules", "inputs_port", "locations"]
 
 [[modules]]
-path = "fact_ingest_store"   # ADAPTER for the fact repository: the SQL of the fact ingest
+path = "fact_ingest_store"   # ADAPTER for build_repositories_port.FactRepository (and the revision write, the unit of work)
 layer = "infrastructure"
-depends_on = ["fact_ingest_decisions", "revisions_store"]
+depends_on = ["build_records", "build_repositories_port", "revisions_store"]
 
 [[modules]]
 path = "facts_batch_service"  # USE CASE: batch add_facts, through ports only
@@ -787,7 +787,7 @@ depends_on = ["build_records"]
 [[modules]]
 path = "step_stores_port"    # DOMAIN SERVICE: the data files and table writers a build step uses
 layer = "domain_services"
-depends_on = ["fact_ingest_port", "subject_repository_port"]
+depends_on = ["build_repositories_port", "fact_ingest_port", "subject_repository_port"]
 
 [[modules]]
 path = "datafiles_port"      # DOMAIN SERVICE: the data files a maintenance tool reads and rewrites
