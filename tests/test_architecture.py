@@ -529,13 +529,13 @@ CASES = [
     ("domain-source-ingest-rules-imports-glob", "source_ingest_rules", "import glob",
      [("import-linter", ["kn.source_ingest_rules", "glob"])]),
     # ---- the base / client boundary: nothing outside client/ imports a client source (the shadow's `kncore`)
-    ("base-imports-a-client-module", "privacy", "import music_store",
-     [("tach", ["privacy", "music_store"]), ("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store", "BROKEN"])]),
+    ("base-imports-a-client-module", "privacy", "import music_store",   # a bare stem: only the shadow resolves it
+     [("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store", "BROKEN"])]),
     ("base-imports-a-client-module-from-the-package", "privacy", "from client import music_store",
      [("tach", ["privacy", "music_store"]), ("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store"])]),
     ("base-imports-a-client-module-lazily", "build_service", "def f():\n    import client.music_service",
      [("import-linter", ["never imports a client source", "kncore.build_service", "kn.music_service"])]),
-    ("base-ingest-step-imports-a-client-module", "seed_sources", "import music_records",
+    ("base-ingest-step-imports-a-client-module", "seed_sources", "from client import music_records",
      [("tach", ["seed_sources", "music_records"]), ("import-linter", ["never imports a client source", "kncore.seed_sources", "kn.music_records"])]),
     ("domain-music-ingest-rules-imports-pathlib", "music_ingest_rules", "from pathlib import Path",
      [("import-linter", ["kn.music_ingest_rules", "pathlib"])]),
