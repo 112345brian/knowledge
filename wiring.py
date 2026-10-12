@@ -19,6 +19,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 from add_fact_port import AddFact
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
+from build_repositories_port import MusicRepository, UnitOfWork
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
@@ -36,7 +37,6 @@ from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
 from music_export_port import MusicExportReads
-from music_repository_port import MusicRepository
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
@@ -81,7 +81,7 @@ PORT_PROTOCOLS = {
     "datafiles": DataFiles, "music_export": MusicExportReads,
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
     "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
-    "music": MusicRepository,
+    "music": MusicRepository, "unit_of_work": UnitOfWork,
     "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,

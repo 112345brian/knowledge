@@ -8,7 +8,8 @@ API = ("import_concerts", "import_ratings", "import_scrobbles", "seed_artist_mem
 
 
 def compose(con, inputs, locations):
-    """The music services wired to `con` (the build database), reading files through `inputs`."""
-    deps = music_ingest_service.MusicIngestDeps(music=music_store.SqliteMusicRepository(con), inputs=inputs,
-                                                locations=locations)
+    """The music services wired to `con` (the build database), reading files through `inputs`. The connection is
+    the unit of work: a step commits it once its writes are complete."""
+    deps = music_ingest_service.MusicIngestDeps(music=music_store.SqliteMusicRepository(con), unit_of_work=con,
+                                                inputs=inputs, locations=locations)
     return bind_all(music_ingest_service, deps, API)
