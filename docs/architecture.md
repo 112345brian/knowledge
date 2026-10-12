@@ -191,7 +191,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `entity_link_rules` | domain service | which facts mention which entities; a private mention must be stored private (pure) |
 | `entity_link_service` | application service | link facts to entities; refuse a private mention that is not stored private |
 | `entity_link_table_port` | domain service | port: the entity and link rows entity linking writes |
-| `fact_tables_store` | infrastructure | SQLite adapters for the revision, privacy-floor and entity-link ports |
+| `fact_tables_store` | infrastructure | SQLite adapter for the entity-link port |
 | `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
 | `export_music_taste` | ETL adapter (driving, batch) | exports the music dataset as one JSON file (music sources) |
 | `fact_ingest_rules` | domain service | fact-file ingest rules: which entries load, is_personal, origin note, date_added |
@@ -259,14 +259,13 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `identity_service` | application service | the one definition of source, subject and artist identity for the build |
 | `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |
 | `privacy` | domain service | visibility rules + resolver |
-| `privacy_store` | infrastructure | rules file, db apply |
-| `privacy_floor_service` | application service | apply the current privacy rules to a built database, raise-only |
-| `fact_privacy_table_port` | domain service | port: the rules reader and the subject/fact rows the privacy floor touches |
-| `privacy_rules_port` | domain service | interface for reading and editing privacy rules |
+| `privacy_store` | infrastructure | rules file; `SqlitePrivacyRepository` (the foundation's `PrivacyRepository`) |
+| `privacy_floor_service` | application service | apply the current privacy rules to a built database, raise-only (`FloorRows`: its own narrow row access) |
+| `privacy_rules_port` | domain service | interface for editing privacy rules (`load_rules` is `PrivacyRepository.load_rules`) |
 | `private_edit_store` | infrastructure | load-edit-write-commit flow for hand-curated files |
 | `private_git` | infrastructure | git around knowledge-private |
 | `private_git_port` | domain service | protocol for operations application code needs from the private-data Git adapter |
-| `revisions_port` | domain service | interface for entries and the revision log |
+| `revisions_port` | domain service | interface for entries and appending a revision (reading the log is `RevisionRepository.read_log`) |
 | `review_reads_port` | domain service | interface for review queue and fact-state reads |
 | `reviews_port` | domain service | interface exposing review operations to lifecycle |
 | `review` | composition root | binds review_service |
@@ -274,10 +273,9 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `review_service` | application service | approve / reject |
 | `review_store` | infrastructure | pending rows, states |
 | `revisions` | domain service | entries, keys, log format, next revision |
-| `revisions_store` | infrastructure | entry files, log file, lock, db |
+| `revisions_store` | infrastructure | entry files, log file, lock; `SqliteRevisionRepository` (the foundation's `RevisionRepository`) |
 | `revision_apply_rules` | domain service | what applying the revision log writes onto a fact (pure) |
 | `revision_apply_service` | application service | apply the log, then the privacy floor, then raise history of private facts |
-| `fact_revision_table_port` | domain service | port: the log reader and the facts/history rows a revision pass writes |
 | `rules_edit` | composition root | binds rules_edit_service; also the knowledge privacy commands' read access to the rules |
 | `rules_edit_service` | application service | edit privacy rules |
 | `script_runner` | infrastructure | starts the standalone scripts |

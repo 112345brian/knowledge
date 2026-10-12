@@ -19,14 +19,13 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 from add_fact_port import AddFact
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
+from build_repositories_port import PrivacyRepository, RevisionRepository, UnitOfWork
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFiles
 from entity_migration_port import EntityMigration
 from entity_link_table_port import EntityLinkTable
 from entity_queries_port import EntityQueries
-from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
-from fact_revision_table_port import FactRevisionTable, RevisionLogReader
 from fact_reads_port import FactReads
 from build_repositories_port import SourceRepository, UnitOfWork
 from fact_ingest_port import FactRevisionWriter, FactStore, Identity, PrivacyFloor
@@ -40,6 +39,7 @@ from music_export_port import MusicExportReads
 from music_repository_port import MusicRepository
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
+from privacy_floor_service import FloorRows
 from privacy_rules_port import Rules
 from review_reads_port import ReviewReads
 from reviews_port import Reviews
@@ -81,8 +81,8 @@ PORT_PROTOCOLS = {
     "facts": FactStore, "revision_writer": FactRevisionWriter, "sources": SourceRepository,
     "unit_of_work": UnitOfWork, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
     "datafiles": DataFiles, "music_export": MusicExportReads,
-    "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
-    "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
+    "revision_repository": RevisionRepository, "privacy_repository": PrivacyRepository, "unit_of_work": UnitOfWork,
+    "floor_rows": FloorRows, "link_table": EntityLinkTable,
     "music": MusicRepository,
     "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,

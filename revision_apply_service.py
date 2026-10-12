@@ -5,32 +5,22 @@ insert revisions >= 2, writing each touched fact's latest revision into its row 
 and how); (2) apply the CURRENT privacy rules, raise-only, because a revision can reword a statement to contain
 a listed name or write back a visibility the loading steps had raised; (3) raise every snapshot of a private
 fact to private, because history is never more visible than the fact itself. A violation in (1) stops the run
-before any rule is applied. Everything is read and written through the ports; nothing here knows SQL or files.
+before any rule is applied. Everything is read and written through the foundation's repositories (`build_repositories_port`); nothing here
+knows SQL or files.
 """
 from dataclasses import dataclass
 from typing import List
 
-import fact_state
 import revision_apply_rules
-from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
-from fact_revision_table_port import FactRevisionTable, RevisionLogReader
-from privacy_floor_service import PrivacyFloorDeps, apply_privacy_floor
-
-
-@dataclass(frozen=True)
-class RevisionLogDeps:
-    """What applying the log alone needs."""
-    revision_log: RevisionLogReader
-    revision_table: FactRevisionTable
+from build_repositories_port import PrivacyRepository, RevisionRepository, UnitOfWork
 
 
 @dataclass(frozen=True)
 class RevisionApplyDeps:
-    """What the whole pass needs: the log, the revision rows, the privacy rows and the rules."""
-    revision_log: RevisionLogReader
-    revision_table: FactRevisionTable
-    privacy_table: FactPrivacyTable
-    rules_reader: PrivacyRulesReader
+    """What the whole pass needs: the revision history, the privacy rules and the unit of work."""
+    revision_repository: RevisionRepository
+    privacy_repository: PrivacyRepository
+    unit_of_work: UnitOfWork
 
 
 @dataclass(frozen=True)
@@ -40,30 +30,32 @@ class RevisionRun:
     total_revisions: int
 
 
-def apply_revision_log(deps, path) -> int:
+def apply_revision_log(revisions: RevisionRepository, unit_of_work: UnitOfWork, path: str) -> int:
     """Validate the log at `path` against the facts and revision-1 rows, insert revisions >= 2, write each
     touched fact's latest revision into its row and commit. Raises RevisionError (naming path:line) on any
-    violation, before anything is written. Returns the number of revisions applied."""
-    table = deps.revision_table
-    fact_ids = table.fact_ids_by_source_key()
-    originals = table.original_revisions()
-    _, _, base = revision_apply_rules.originals_view(originals)
-    records = deps.revision_log.read_log(path, base)
-    revision_apply_rules.validate(path, records, fact_ids, originals)
+    violation, before anything is written. Returns the number of revisions applied.
+
+    Ids are allocated in call order: every record is inserted in log order, then the write-backs follow in order of
+    each fact's first appearance."""
+    fact_ids = revisions.fact_ids_by_source_key()
+    firsts = revisions.first_revisions()
+    records = revisions.read_log(path, revision_apply_rules.inherited_by_key(firsts))
+    revision_apply_rules.validate(path, records, fact_ids, firsts)
     for _, rec in records:
-        table.record_revision(fact_ids[rec["source_key"]], rec)
+        revisions.insert(fact_ids[rec["source_key"]], rec)
     for key, rec in revision_apply_rules.latest_by_key(records).items():
-        table.write_current_state(fact_ids[key], revision_apply_rules.current_state(rec, fact_ids))
-    table.commit()
+        revisions.write_back(revision_apply_rules.write_back(fact_ids[key], rec, fact_ids))
+    unit_of_work.commit()
     return len(records)
 
 
-def apply_fact_revisions(deps, log_path, rules_path) -> RevisionRun:
-    """The whole pass, in order: revisions applied, privacy rules applied, history of private facts raised."""
-    applied = apply_revision_log(RevisionLogDeps(deps.revision_log, deps.revision_table), log_path)
-    rules = deps.rules_reader.load_rules(rules_path)
-    floor = apply_privacy_floor(PrivacyFloorDeps(deps.privacy_table), rules)
-    table = deps.revision_table
-    table.raise_history_to_private(fact_state.facts_with_private_history(table.visibility_by_fact()))
-    table.commit()
-    return RevisionRun(applied, floor["raised"], table.revision_count())
+def apply_fact_revisions(deps: RevisionApplyDeps, log_path: str, rules_path: str) -> RevisionRun:
+    """The whole pass, in order: revisions applied (commit), privacy rules applied, history of private facts
+    raised (commit). Two commits by contract (docs/build-acceptance.md): nothing reads the database between them,
+    but the step's commit points are pinned, so they stay."""
+    applied = apply_revision_log(deps.revision_repository, deps.unit_of_work, log_path)
+    rules = deps.privacy_repository.load_rules(rules_path)
+    outcome = deps.privacy_repository.apply_rules(rules)
+    deps.privacy_repository.raise_history_of_private_facts()
+    deps.unit_of_work.commit()
+    return RevisionRun(applied, list(outcome.raised), deps.revision_repository.count())

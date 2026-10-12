@@ -22,8 +22,8 @@ import revisions
 
 def run(con, ctx):
     deps = revision_apply_service.RevisionApplyDeps(
-        revision_log=ctx.stores, revision_table=ctx.stores.fact_revision_table(con),
-        privacy_table=ctx.stores.fact_privacy_table(con), rules_reader=ctx.stores)
+        revision_repository=ctx.stores.revision_repository(con), privacy_repository=ctx.stores.privacy_repository(con),
+        unit_of_work=ctx.stores.unit_of_work(con))
     done = revision_apply_service.apply_fact_revisions(
         deps, os.path.join(ctx.locations.private_data_dir, revisions.REVISIONS_FILENAME),
         os.path.join(ctx.locations.private_data_dir, privacy.RULES_FILENAME))
