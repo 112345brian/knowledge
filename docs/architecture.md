@@ -196,9 +196,9 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `export_music_taste` | ETL adapter (driving, batch) | exports the music dataset as one JSON file (music sources) |
 | `fact_ingest_rules` | domain service | fact-file ingest rules: which entries load, is_personal, origin note, date_added |
 | `fact_ingest_decisions` | domain service | the decisions both fact steps share: screening, keys, the row, the implicit revision, the report (pure) |
-| `fact_ingest_port` | domain service | ports: the fact repository and the privacy floor the fact steps write through |
-| `fact_ingest_service` | application service | load the fact files into facts, fact_sources, fact_revisions, through ports |
-| `fact_ingest_store` | infrastructure | the fact repository's SQL: subjects, vault files, facts, revisions, source links |
+| `fact_ingest_port` | domain service | ports the fact steps go through besides the build's repositories: identity, the revision write, the privacy floor |
+| `fact_ingest_service` | application service | load the fact files into facts, fact_sources, fact_revisions, through `build_repositories_port.FactRepository` and `identity_service` |
+| `fact_ingest_store` | infrastructure | `FactRepository` in SQLite (facts, fact_sources, fact_measurements), the revision write, the unit of work; decides nothing |
 | `fact_ingest` | composition root | binds fact_ingest_service to the adapters a build step is given |
 | `facts_file_port` | domain service | interface for the persisted fact file and its lookups |
 | `fact_queries` | infrastructure | CLI read-only SQL |
