@@ -7,7 +7,6 @@ import privacy_store
 import revisions_store
 import source_repository_store
 import subject_repository_store
-import subjects_store
 
 
 def load_privacy_rules(path):
@@ -20,10 +19,6 @@ def apply_privacy_rules(con, rules):
 
 def entity_repository(con):
     return entity_repository_store.SqliteEntityRepository(con)
-
-
-def read_subjects(path):
-    return subjects_store.read_file(path)
 
 
 def subject_repository(con):

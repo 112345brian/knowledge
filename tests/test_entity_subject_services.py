@@ -101,7 +101,7 @@ def test_the_ports_expose_only_io():
     members = lambda cls: {n for n in vars(cls) if not n.startswith("_")}  # noqa: E731
     assert members(entity_files_port.EntityFiles) == {"save", "edit_file"}
     assert members(entity_files_port.EntityFileReader) == {"read_file"}
-    assert members(subject_files_port.SubjectFiles) == {"read_file", "save", "edit_file"}
+    assert members(subject_files_port.SubjectFiles) == {"edit_file"}   # reading is SubjectRepository.read_file
 
 
 def test_add_entity_goes_through_the_locked_flow_and_saves_the_rule_result():

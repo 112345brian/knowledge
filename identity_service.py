@@ -25,6 +25,7 @@ from artist_directory import ArtistDirectory
 import build_records as r
 import identity_rules
 import inputs_port
+import subject_rules
 from build_repositories_port import MusicRepository, SourceRepository, SubjectRepository
 from build_steps_port import Diagnostics
 
@@ -125,9 +126,8 @@ class SubjectIdentity:
         domain to the schema default."""
         if name in self._cache:
             return self._cache[name]
-        found = self._subjects.find_by_name(name)
-        if found is None and via_aliases:
-            found = self._subjects.find_by_alias(name)
+        found, _via = subject_rules.identify(name, self._subjects.find_by_name,
+                                             self._subjects.find_by_alias if via_aliases else (lambda _alias: None))
         subject_id = found if found is not None else self._subjects.add(name, domain)
         self._cache[name] = subject_id
         return subject_id

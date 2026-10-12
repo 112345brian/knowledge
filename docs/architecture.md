@@ -294,8 +294,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `subjects_service` | application service | subject command operations |
 | `subjects_store` | infrastructure | subjects.json: hierarchy as data, aliases, edits |
 | `subject_files_port` | domain service | I/O only: read the subjects file, save it atomically, the locked `edit_file` git flow |
-| `subject_repository_port` | domain service | interface for the stored subjects: lookups, creation, placement, alias claims |
-| `subject_repository_store` | infrastructure | the stored subjects of a build database (implements subject_repository_port) |
+| `subject_repository_store` | infrastructure | the stored subjects of a build database (implements build_repositories_port.SubjectRepository) |
 | `subject_hierarchy_service` | application service | loads the subject hierarchy and resolves the subject a fact is filed under |
 | `textmatch` | model | whole-word term matching |
 | `timestamps` | model | revision-time parsing |
