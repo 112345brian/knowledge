@@ -13,8 +13,13 @@ import sys
 import pytest
 import typer.main
 
+import client_bootstrap
 import cli_parity
 import knowledge
+
+
+def all_actions():
+    return {**cli_parity.ACTIONS, **cli_parity.client_actions(client_bootstrap.registry().tools())}
 
 
 @pytest.fixture(scope="module")
@@ -23,11 +28,11 @@ def group():
 
 
 def test_every_registered_action_resolves_to_a_real_command(group):
-    assert cli_parity.actions_without_command(cli_parity.ACTIONS, group) == []
+    assert cli_parity.actions_without_command(all_actions(), group) == []
 
 
 def test_every_cli_command_is_registered(group):
-    assert set(group.commands) == {path[0] for path in cli_parity.ACTIONS.values()}
+    assert set(group.commands) == {path[0] for path in all_actions().values()}
 
 
 def test_registry_fails_for_a_stub_action_without_a_command(group):

@@ -1,0 +1,22 @@
+"""Static check (``uv run mypy``) that the in-memory fakes satisfy the build ports structurally.
+
+Runtime name/signature conformance is tests/test_build_contracts.py; these assignments add mypy's structural
+type check of parameter and return types.
+"""
+from build_composition import SessionOpener
+from build_repositories_port import (EntityRepository, FactRepository, PrivacyRepository, RevisionRepository,
+                                     SourceRepository, SubjectRepository, UnitOfWork)
+from build_steps_port import Diagnostics
+from fake_build_repositories import (CollectingDiagnostics, FakeEntities, FakeFacts, FakePrivacy, FakeRevisions,
+                                     FakeSessionOpener, FakeSources, FakeState, FakeSubjects, FakeUnitOfWork)
+
+_s = FakeState()
+sources: SourceRepository = FakeSources(_s)
+subjects: SubjectRepository = FakeSubjects(_s)
+facts: FactRepository = FakeFacts(_s)
+revisions: RevisionRepository = FakeRevisions(_s)
+privacy: PrivacyRepository = FakePrivacy(_s)
+entities: EntityRepository = FakeEntities(_s)
+unit_of_work: UnitOfWork = FakeUnitOfWork(_s)
+diagnostics: Diagnostics = CollectingDiagnostics()
+opener: SessionOpener = FakeSessionOpener()

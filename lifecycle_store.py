@@ -2,11 +2,13 @@
 The rules file and the db's subject tree (for lowering visibility), and the subjects named in the
 entry files. The rules are in `lifecycle_rules`; the use case is `lifecycle`.
 """
+import os
 import sqlite3
 
 import privacy
 import privacy_store
 import revisions_store
+from locations import join_path
 
 DB_ERRORS = (sqlite3.Error,)
 
@@ -17,7 +19,7 @@ def floor_inputs(data_dir, db):
         return ("lowering to normal needs the built db (for the subject tree the privacy rules apply to); "
                 "build it, or pass db=")
     try:
-        rules = privacy_store.load_rules(privacy_store.rules_path(data_dir))
+        rules = privacy_store.load_rules(join_path(data_dir, privacy.RULES_FILENAME))
         with revisions_store.connection(db) as con:
             rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
     except privacy.PrivacyRulesError as e:

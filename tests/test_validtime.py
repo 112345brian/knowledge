@@ -4,6 +4,7 @@ The library (validtime), the schema CHECKs, the writers (add_fact, add_facts), i
 (correcting validity appends a revision; show --as-of), `--valid-at` on search/facts/show in both
 knowledge.py and modes.py, the normal-only DB, and the rule that a past valid_to is not retraction.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -14,6 +15,11 @@ import pytest
 import validtime
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import facts_batch_rules
+import new_fact
+import fact_queries
+from appctx import app
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -147,20 +153,20 @@ def nf(**kw):
     import add_fact
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_add_fact_validates_and_writes_the_interval():
     import add_fact
-    assert add_fact.validate_fact(nf(valid_from="2024-03", valid_to="2024-05-31"), db_path="/nonexistent")[0] == []
-    e = add_fact.build_entry(nf(valid_from="2024-03", valid_to="2024-05-31"))
+    assert app().add_fact.validate_fact(nf(valid_from="2024-03", valid_to="2024-05-31"), db_path="/nonexistent")[0] == []
+    e = app().add_fact.build_entry(nf(valid_from="2024-03", valid_to="2024-05-31"))
     assert (e["valid_from"], e["valid_to"]) == ("2024-03", "2024-05-31")
-    e = add_fact.build_entry(nf())
+    e = app().add_fact.build_entry(nf())
     assert "valid_from" not in e and "valid_to" not in e
-    errs = add_fact.validate_fact(nf(valid_from="2024-05", valid_to="2024-03"), db_path="/nonexistent")[0]
+    errs = app().add_fact.validate_fact(nf(valid_from="2024-05", valid_to="2024-03"), db_path="/nonexistent")[0]
     assert any("before" in m for m in errs)
-    assert add_fact.validate_fact(nf(valid_from="2023-02-29"), db_path="/nonexistent")[0]
-    assert add_fact.validate_fact(nf(valid_to=""), db_path="/nonexistent")[0]
+    assert app().add_fact.validate_fact(nf(valid_from="2023-02-29"), db_path="/nonexistent")[0]
+    assert app().add_fact.validate_fact(nf(valid_to=""), db_path="/nonexistent")[0]
 
 
 def test_cli_flags_round_trip_and_bad_range_is_refused(tmp_path):
@@ -175,7 +181,7 @@ def test_cli_flags_round_trip_and_bad_range_is_refused(tmp_path):
 
 def test_batch_items_take_validity():
     import facts_batch
-    assert {"valid_from", "valid_to"} <= facts_batch.ITEM_KEYS
+    assert {"valid_from", "valid_to"} <= facts_batch_rules.ITEM_KEYS
 
 
 # ------------------------------------------------------------------ ingest + revisions
@@ -228,20 +234,20 @@ def _facts_db():
 def test_knowledge_valid_at_inside_outside_open_ended_and_point():
     import knowledge
     con = _facts_db()
-    ids = lambda at: [r["id"] for r in knowledge.list_facts(con, valid_at=at)]  # noqa: E731
+    ids = lambda at: [r["id"] for r in fact_queries.list_facts(con, valid_at=at)]  # noqa: E731
     assert ids("2024-02-01") == [1, 2]
     assert ids("2024-04-01") == [2]            # outside fact 1's interval
     assert ids("2024-03-15") == [1, 2, 5]
     assert ids("2024-03-16") == [1, 2]
     assert ids("2030-01-01") == [2, 3]         # open-ended is still true
     assert ids("2023-07-01") == [2, 4]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", valid_at="2024-06-01")] == [2, 3] or \
-        {r["id"] for r in knowledge.search_facts(con, "banana", valid_at="2024-06-01")} == {2, 3}
-    assert [r["id"] for r in knowledge.list_facts(con)] == [1, 2, 3, 4, 5]    # no --valid-at: no filter
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", valid_at="2024-06-01")] == [2, 3] or \
+        {r["id"] for r in fact_queries.search_facts(con, "banana", valid_at="2024-06-01")} == {2, 3}
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3, 4, 5]    # no --valid-at: no filter
     for bad in ("2024", "2024-02-30", "", "x' OR '1'='1"):
         with pytest.raises(ValueError):
-            knowledge.list_facts(con, valid_at=bad)
-    row = knowledge.list_facts(con)[0]
+            fact_queries.list_facts(con, valid_at=bad)
+    row = fact_queries.list_facts(con)[0]
     assert (row["valid_from"], row["valid_to"]) == ("2024-01-01", "2024-03-31")
 
 
@@ -314,15 +320,15 @@ def test_normal_db_includes_validity_with_the_same_checks():
     import normal_db
     import privacy
     import tempfile
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET valid_from = '2024-03', valid_to = '2024-05-31' WHERE id = 1")
         c.execute("UPDATE fact_revisions SET valid_from = '2024-03' WHERE fact_id = 1 AND revision = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 1").fetchone()) == ("2024-03", "2024-05-31")
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 2").fetchone()) == (None, None)
         assert con.execute("SELECT valid_from FROM fact_revisions WHERE fact_id = 1 AND revision = 1").fetchone()[0] == "2024-03"

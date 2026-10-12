@@ -14,6 +14,9 @@ import pytest
 
 from test_add_fact import Env, REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_rules
+import new_fact
+from appctx import app, locs
 
 FACT_COLUMNS_BEFORE_VISIBILITY = [
     "id", "subject_id", "statement", "is_original_claim", "is_personal", "trust_level", "trust_rationale",
@@ -86,7 +89,7 @@ def test_valid_values_agree_across_schema_ingest_and_add_fact(ingest):
     from ingest import fact_ingest_rules
     assert in_schema == {"private", "normal"}
     # one definition now: the ingest rules (steps 04 and 11) and add_fact both take it from fact_rules
-    assert in_schema == set(fact_rules.VALID_VISIBILITY) == set(add_fact.VALID_VISIBILITY)
+    assert in_schema == set(fact_rules.VALID_VISIBILITY) == set(fact_rules.VALID_VISIBILITY)
     assert set(fact_ingest_rules.VALID_VISIBILITY) == set(fact_rules.VALID_VISIBILITY)
 
 
@@ -117,31 +120,31 @@ def test_cli_rejects_invalid_visibility_and_writes_nothing(env, bad):
 def test_function_api_rejects_invalid_visibility_including_non_strings(ingest):
     import add_fact
     for bad in ("public", None, 1, ["normal"]):
-        errors, _ = add_fact.validate_fact(add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility=bad))
+        errors, _ = app().add_fact.validate_fact(new_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility=bad))
         assert any("visibility" in e for e in errors), bad
 
 
 def test_new_fact_defaults_to_private_when_visibility_is_omitted(ingest):
     import add_fact
-    assert add_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low").visibility == "private"
+    assert new_fact.NewFact(statement="s", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low").visibility == "private"
 
 
 def test_add_then_rebuild_round_trip(ingest):
     import add_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     nodb = os.path.join(ingest.env.root, "none.db")
-    add_fact.append_fact(add_fact.NewFact(statement="Open.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
-    add_fact.append_fact(add_fact.NewFact(statement="Closed.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low"), data_path=path, db_path=nodb)
+    app().add_fact.append_fact(new_fact.NewFact(statement="Open.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low", visibility="normal"), data_path=path, db_path=nodb)
+    app().add_fact.append_fact(new_fact.NewFact(statement="Closed.", subject="x", no_decay=True, recheck_rationale="no decay", trust_level="low"), data_path=path, db_path=nodb)
     ingest.mod11.DATA_DIR = ingest.env.data_dir
     con = ingest.db()
-    ingest.mod11.run(con)
+    ingest.mod11.run(con, locs())
     got = {r["statement"]: r["visibility"] for r in con.execute("SELECT statement, visibility FROM facts")}
     assert got == {"Open.": "normal", "Closed.": "private"}
 
 
 def test_callers_of_the_validating_functions_do_not_discard_the_result():
     """append_fact / validate_fact can refuse (e.g. a bad visibility). A caller that ignores the
-    return value would silently drop that refusal, so every call outside add_fact.py's own
+    return value would silently drop that refusal, so every call outside add_fact_service.py's own
     definitions must use the result."""
     offenders = []
     for root, dirs, files in os.walk(REPO):
@@ -150,7 +153,7 @@ def test_callers_of_the_validating_functions_do_not_discard_the_result():
             if not name.endswith(".py"):
                 continue
             path = os.path.join(root, name)
-            tree = ast.parse(open(path).read())
+            tree = ast.parse(open(path, encoding="utf-8").read())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                     f = node.value.func
@@ -161,6 +164,6 @@ def test_callers_of_the_validating_functions_do_not_discard_the_result():
 
 
 def test_add_fact_main_checks_ok_before_reporting_success():
-    src = open(os.path.join(REPO, "add_fact.py")).read()
-    main_src = src[src.index("def main("):]
+    src = open(os.path.join(REPO, "cli_add_fact.py")).read()
+    main_src = src[src.index("def cmd_add_fact("):]
     assert "result.ok" in main_src

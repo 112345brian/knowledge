@@ -5,6 +5,7 @@ The vocabulary is CHECK-enforced; the choice among kinds is self-reported guidan
 `show --as-of`), the query layers (`--kind` filter, row shape in knowledge and modes), the normal-only DB,
 and the batch tool. Temp dirs and fixture dbs only.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -16,6 +17,12 @@ import add_fact
 import revisions
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_rules
+import facts_batch_rules
+import new_fact
+import fact_queries
+from appctx import app
+import local_buildfiles
 
 VOCAB = ("observation", "measurement", "decision", "preference", "plan", "definition",
          "inference", "rule", "lesson", "unclassified")
@@ -34,24 +41,24 @@ def _restore_modules():
 def nf(**kw):
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_vocabulary_is_the_documented_one():
-    assert add_fact.KIND_VALUES == VOCAB
+    assert fact_rules.KIND_VALUES == VOCAB
 
 
 def test_new_fact_defaults_to_unclassified_and_every_kind_is_accepted():
     assert nf().kind == "unclassified"
     for k in VOCAB:
-        errors, _ = add_fact.validate_fact(nf(kind=k), db_path="/nonexistent")
+        errors, _ = app().add_fact.validate_fact(nf(kind=k), db_path="/nonexistent")
         assert errors == [], k
-        assert add_fact.build_entry(nf(kind=k))["kind"] == k
+        assert app().add_fact.build_entry(nf(kind=k))["kind"] == k
 
 
 @pytest.mark.parametrize("bad", ["", "Decision", "guess", None, 5, " decision"])
 def test_add_fact_rejects_an_invalid_kind(bad):
-    errors, _ = add_fact.validate_fact(nf(kind=bad), db_path="/nonexistent")
+    errors, _ = app().add_fact.validate_fact(nf(kind=bad), db_path="/nonexistent")
     assert any("kind" in e for e in errors), errors
 
 
@@ -128,12 +135,12 @@ def _db(rows):
 def test_knowledge_filters_and_row_shape_carry_kind():
     import knowledge
     con = _db([("decision", "normal"), ("plan", "normal"), ("decision", "private")])
-    assert [r["id"] for r in knowledge.list_facts(con, kind="decision")] == [1, 3]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", kind="plan")] == [2]
-    assert knowledge.list_facts(con, kind="rule") == []
-    assert knowledge.list_facts(con)[0]["kind"] == "decision"
-    assert knowledge.get_fact(con, 2)["kind"] == "plan"
-    assert [r["id"] for r in knowledge.list_facts(con, kind="x' OR '1'='1")] == []
+    assert [r["id"] for r in fact_queries.list_facts(con, kind="decision")] == [1, 3]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", kind="plan")] == [2]
+    assert fact_queries.list_facts(con, kind="rule") == []
+    assert fact_queries.list_facts(con)[0]["kind"] == "decision"
+    assert fact_queries.get_fact(con, 2)["kind"] == "plan"
+    assert [r["id"] for r in fact_queries.list_facts(con, kind="x' OR '1'='1")] == []
 
 
 def test_modes_filter_and_row_shape_carry_kind_and_keep_the_gate():
@@ -174,15 +181,15 @@ def test_normal_db_includes_kind_on_facts_and_revisions():
     import leak_test
     import normal_db
     import tempfile
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET kind = 'decision' WHERE id = 1")
         c.execute("UPDATE fact_revisions SET kind = 'decision' WHERE fact_id = 1 AND revision = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy_rules())
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy_rules())
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert con.execute("SELECT kind FROM facts WHERE id = 1").fetchone()[0] == "decision"
         assert con.execute("SELECT kind FROM facts WHERE id = 2").fetchone()[0] == "unclassified"
         assert {r[0] for r in con.execute("SELECT kind FROM fact_revisions")} <= set(VOCAB)
@@ -197,4 +204,4 @@ def privacy_rules():
 
 def test_batch_items_take_kind(tmp_path):
     import facts_batch
-    assert "kind" in facts_batch.ITEM_KEYS
+    assert "kind" in facts_batch_rules.ITEM_KEYS

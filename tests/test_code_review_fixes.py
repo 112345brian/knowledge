@@ -1,6 +1,6 @@
 """Regression tests for the findings of the /code-review pass (2026-10-04).
 
-1. review.current_states() raised on the REAL legacy entries (no `freshness` key, in pilot_facts.json /
+1. app().review.current_states() raised on the REAL legacy entries (no `freshness` key, in pilot_facts.json /
    facts_batch*.json) because it did not pass the entry's file to implicit_revision: so approve, reject,
    the inbox page and every lifecycle command failed on real data while fixture tests (which always
    carry `freshness`) passed.
@@ -17,6 +17,9 @@ import types
 import pytest
 
 from test_fact_revisions import world, T1, T2  # noqa: F401  (fixture import)
+import new_fact
+from appctx import app
+import local_buildfiles
 
 NAME = "Quenbyx"  # synthetic; the keyword the rules list
 
@@ -70,7 +73,7 @@ def full_db_file(world, tmp_path):
 def test_current_states_works_on_legacy_entries_without_freshness(world, mods):
     world.seed(pilot=[legacy("legacy-aaaaaaaaaa"),
                       legacy("legacy-bbbbbbbbbb", statement="Has a date.", recheck_by="2027-01-01")])
-    states = mods.review.current_states(world.env.data_dir)
+    states = app().review.current_states(world.env.data_dir)
     assert states["legacy-aaaaaaaaaa"]["freshness"] == "unreviewed"     # no recheck_by
     assert states["legacy-bbbbbbbbbb"]["freshness"] == "recheck"        # has one
     assert {s["status"] for s in states.values()} == {"active"}
@@ -78,7 +81,7 @@ def test_current_states_works_on_legacy_entries_without_freshness(world, mods):
 
 def test_retract_works_on_a_legacy_fact_and_the_build_shows_it(world, mods):
     world.seed(pilot=[legacy("legacy-aaaaaaaaaa")])
-    res = mods.lifecycle.retract("legacy-aaaaaaaaaa", "was wrong", data_dir=world.env.data_dir, commit=False)
+    res = app().lifecycle.retract("legacy-aaaaaaaaaa", "was wrong", data_dir=world.env.data_dir, commit=False)
     assert res.ok and res.outcome == "retracted", (res.outcome, res.reason, res.errors)
     con = world.build()
     assert con.execute("SELECT status, freshness FROM facts").fetchone()[:] == ("retracted", "unreviewed")
@@ -86,14 +89,14 @@ def test_retract_works_on_a_legacy_fact_and_the_build_shows_it(world, mods):
 
 def test_approve_on_a_legacy_fact_is_a_clean_skip_not_a_crash(world, mods):
     world.seed(pilot=[legacy("legacy-aaaaaaaaaa")])
-    res = mods.review.approve(["legacy-aaaaaaaaaa"], data_dir=world.env.data_dir, commit=False)
+    res = app().review.approve(["legacy-aaaaaaaaaa"], data_dir=world.env.data_dir, commit=False)
     assert not res.errors
     assert [i.outcome for i in res.items] == ["skipped"]
 
 
 def test_edit_works_on_a_legacy_fact(world, mods):
     world.seed(pilot=[legacy("legacy-aaaaaaaaaa")])
-    res = mods.lifecycle.edit_fact("legacy-aaaaaaaaaa", "clearer", statement="A clearer statement.",
+    res = app().lifecycle.edit_fact("legacy-aaaaaaaaaa", "clearer", statement="A clearer statement.",
                                    data_dir=world.env.data_dir, commit=False)
     assert res.ok, (res.message, res.errors)
 
@@ -125,9 +128,9 @@ def test_add_fact_raises_to_private_for_a_listed_name_in_any_text_field(world, f
     kw = {field: f"{NAME} mentioned this"}
     if field in ("source_locator", "source_quote"):
         kw["source_citekey"] = "ck"  # a locator or quote needs a citekey (no db here: the check is skipped)
-    fact = af.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale=kw.pop("recheck_rationale", "does not decay"), visibility="normal", **kw)
-    res = af.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
+    res = app().add_fact.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
                          db_path=os.path.join(world.env.db_dir, "none.db"))
     assert res.ok, res.errors
     assert res.entry["visibility"] == "private" and "another field" in res.privacy.explain()
@@ -136,9 +139,9 @@ def test_add_fact_raises_to_private_for_a_listed_name_in_any_text_field(world, f
 def test_add_fact_stays_normal_without_a_listed_name(world):
     write_rules(world)
     af = world.af
-    fact = af.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A harmless statement.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale="does not decay", notes="nothing sensitive", visibility="normal")
-    res = af.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
+    res = app().add_fact.append_fact(fact, data_path=os.path.join(world.env.data_dir, "general_facts.json"),
                          db_path=os.path.join(world.env.db_dir, "none.db"))
     assert res.ok and res.entry["visibility"] == "normal"
 
@@ -183,7 +186,7 @@ def test_normal_db_leaves_out_a_fact_whose_copied_text_has_a_listed_name(world, 
     dst.close()
     rules = mods.privacy.Rules(keywords=(NAME.lower(),))
     out = str(tmp_path / "normal.db")
-    mods.normal_db.build_normal_db(full, out, rules)
+    mods.normal_db.build_normal_db(local_buildfiles, full, out, rules)
     n = sqlite3.connect(out)
     assert [r[0] for r in n.execute("SELECT source_key FROM facts ORDER BY id")] == ["k2"]
     assert NAME.encode() not in open(out, "rb").read()
@@ -195,7 +198,7 @@ def test_normal_db_leaves_out_a_revision_with_a_listed_name_in_its_rationale(wor
     full = full_db_file(world, tmp_path)
     rules = mods.privacy.Rules(keywords=(NAME.lower(),))
     out = str(tmp_path / "normal.db")
-    mods.normal_db.build_normal_db(full, out, rules)
+    mods.normal_db.build_normal_db(local_buildfiles, full, out, rules)
     n = sqlite3.connect(out)
     # the current fact's rationale carries the name, so the fact (and with it all its history) is out
     assert n.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
@@ -207,7 +210,7 @@ def test_normal_db_leaves_out_a_revision_with_a_listed_name_in_its_rationale(wor
 def test_editing_a_text_field_to_add_a_listed_name_raises_visibility(world, mods, field, value):
     write_rules(world)
     world.seed(general=[new_style("k1")])
-    res = mods.lifecycle.edit_fact("k1", "added detail", data_dir=world.env.data_dir, commit=False, **{field: value})
+    res = app().lifecycle.edit_fact("k1", "added detail", data_dir=world.env.data_dir, commit=False, **{field: value})
     assert res.ok, (res.message, res.errors)
     assert res.revision["visibility"] == "private"
     assert any("another field" in n for n in res.notes), res.notes
@@ -216,7 +219,7 @@ def test_editing_a_text_field_to_add_a_listed_name_raises_visibility(world, mods
 def test_editing_a_text_field_without_a_listed_name_keeps_visibility(world, mods):
     write_rules(world)
     world.seed(general=[new_style("k1")])
-    res = mods.lifecycle.edit_fact("k1", "added detail", data_dir=world.env.data_dir, commit=False,
+    res = app().lifecycle.edit_fact("k1", "added detail", data_dir=world.env.data_dir, commit=False,
                                    notes="nothing sensitive")
     assert res.ok and res.revision["visibility"] == "normal"
 
@@ -238,10 +241,10 @@ def test_atomic_writers_never_touch_the_process_umask_and_new_files_follow_it(wo
     monkeypatch.setattr(os, "umask", boom)
     # add_fact: first fact creates general_facts.json
     af = world.af
-    fact = af.NewFact(statement="A fact.", subject="alpha", trust_level="low", no_decay=True,
+    fact = new_fact.NewFact(statement="A fact.", subject="alpha", trust_level="low", no_decay=True,
                       recheck_rationale="does not decay", visibility="private")
     facts_path = os.path.join(world.env.data_dir, "general_facts.json")
-    assert af.append_fact(fact, data_path=facts_path, db_path=os.path.join(world.env.db_dir, "none.db")).ok
+    assert app().add_fact.append_fact(fact, data_path=facts_path, db_path=os.path.join(world.env.db_dir, "none.db")).ok
     # revisions: first revision creates fact_revisions.jsonl
     key = json.load(open(facts_path))[0]["source_key"]
     assert world.append(key, {"trust_level": "high"}, "checked").ok  # real clock: add_fact stamped today's date

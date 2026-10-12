@@ -1,47 +1,117 @@
-"""Hexagonal architecture: the ports (ports.py) and the use cases that depend on them.
+"""Onion architecture: the ports (`*_port.py`) and the application services that depend on them.
 
-* every adapter module really satisfies the protocol its facade hands to a use case;
-* a use case runs against in-memory fakes, with no file, db, git or clock (the point of a port);
-* a use case touches `os` only for os.path string handling.
+* every adapter module really satisfies the protocol its facade hands to a service;
+* each service declares its dependencies as the required fields of its own `*Deps` class, and uses exactly those;
+* a service runs against in-memory fakes, with no file, db, git or clock (the point of a port);
+* a service touches `os` only for os.path string handling.
 """
 import ast
+import dataclasses
+import importlib
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ports  # noqa: E402
+import wiring  # noqa: E402
+from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service", "entities_service", "subjects_service")
+            "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service",
+            "privacy_floor_service", "entity_link_service", "revision_apply_service", "client.music_service", "normal_db_service", "build_service", "docs_service")
 
 
-def test_every_facade_binds_adapters_that_satisfy_the_protocols():
-    import add_fact, add_fact_store, clock, ids, lifecycle, lifecycle_store, migrate_memory, migrate_memory_store
-    import facts_batch, private_git, privacy_store, review, review_store, revisions_store
-    import rules_edit
-    for facade in (review, lifecycle, add_fact, facts_batch, migrate_memory, rules_edit):
-        bundle = facade.PORTS
-        for name in ports.PORT_PROTOCOLS:
-            adapter = getattr(bundle, name)
-            if adapter is None:
+def test_composing_every_root_verifies_its_adapters_against_their_ports():
+    """compose() calls wiring.verify, so building the whole container is the check: a renamed method, a changed
+    parameter or a missing attribute on any adapter raises PortMismatch here, and at every real startup."""
+    from locations import Locations
+    import container
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/vault", health_dir="/x/h")
+    app = container.Container(loc)
+    for name in ("review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects",
+                 "queries", "scripts"):
+        deps = getattr(app, name).deps
+        assert dataclasses.is_dataclass(deps)
+        assert all(getattr(deps, f.name) is not None for f in dataclasses.fields(deps)), name
+    assert dataclasses.is_dataclass(container.Container(loc).docs_at().deps)
+
+
+def test_every_declared_port_has_a_static_adapter_assignment():
+    """Mypy must check at least one concrete adapter against every core and client port."""
+    assigned = set()
+    for filename in ("port_types.py", "build_port_types.py", "client_port_types.py"):
+        tree = ast.parse(open(os.path.join(REPO, "tests", filename), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AnnAssign) and isinstance(node.annotation, ast.Name):
+                assigned.add(node.annotation.id)
+    from client import music_ingest
+    protocols = {proto.__name__ for proto in (*wiring.PORT_PROTOCOLS.values(), *music_ingest.ports().values())}
+    assert protocols <= assigned, f"ports without mypy adapter assignments: {sorted(protocols - assigned)}"
+
+
+def test_all_port_protocols_keep_commit_and_raw_sql_out_of_their_api():
+    """Only UnitOfWork exposes commit; ports never offer SQL execution or cursor access."""
+    root = Path(REPO)
+    paths = sorted((*root.glob("*_port.py"), *(root / "client").glob("*_port.py")))
+    commits = []
+    forbidden = {"execute", "executemany", "executescript", "cursor"}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for member in node.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        if member.name == "commit":
+                            commits.append((path.name, node.name))
+                        assert member.name not in forbidden, f"{path.name}.{node.name}.{member.name} leaks SQL access"
+    assert commits == [("build_repositories_port.py", "UnitOfWork")]
+
+
+def test_application_services_commit_only_through_unit_of_work():
+    offenders = []
+    paths = sorted((*Path(REPO).glob("*_service.py"), *(Path(REPO) / "client").glob("*_service.py")))
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "commit":
                 continue
-            assert ports.conformance_problems(name, adapter) == [], f"{facade.__name__}.PORTS.{name}"
-    # the adapters themselves, so a rename fails here even if no facade binds that port
-    for name, adapter in {"git": private_git, "revisions": revisions_store, "rules": privacy_store,
-                          "reads": review_store, "lifecycle_reads": lifecycle_store, "facts_file": add_fact_store,
-                          "clock": clock, "ids": ids, "memory": migrate_memory_store}.items():
-        assert ports.conformance_problems(name, adapter) == [], name
+            owner = node.func.value
+            if isinstance(owner, ast.Name) and owner.id == "unit_of_work":
+                continue
+            if not isinstance(owner, ast.Attribute) or owner.attr != "unit_of_work":
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert offenders == [], offenders
 
 
-def test_conformance_check_can_fail():
+def test_verify_rejects_a_wrong_adapter_a_renamed_method_and_an_unknown_port():
+    import review_service
+    from locations import Locations
+    loc = Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/vault", health_dir="/x/h")
+
     class Bad:
         def find_repo(self):  # wrong parameters, and the rest is missing
             return None
-    problems = ports.conformance_problems("git", Bad())
+    problems = wiring.conformance_problems("git", Bad())
     assert any("find_repo" in p for p in problems) and any("ensure_clean_tree is missing" in p for p in problems)
+    import private_git, privacy_store, review_store, revisions_store
+    ok = dict(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store,
+              clock=FakeClock(), locations=loc)
+    assert wiring.verify(review_service.ReviewDeps(**ok)) is not None
+    with pytest.raises(wiring.PortMismatch, match="git"):
+        wiring.verify(review_service.ReviewDeps(**{**ok, "git": Bad()}))
+    with pytest.raises(wiring.PortMismatch, match="locations"):
+        wiring.verify(review_service.ReviewDeps(**{**ok, "locations": "/x"}))
+
+    import dataclasses as dc
+
+    @dc.dataclass(frozen=True)
+    class Stray:
+        mystery: object
+    with pytest.raises(wiring.PortMismatch, match="not a known port"):
+        wiring.verify(Stray(mystery=object()))
 
 
 def test_bind_keeps_the_public_signature_without_ports():
@@ -50,9 +120,18 @@ def test_bind_keeps_the_public_signature_without_ports():
     def fn(ports_, a, b=2):
         """doc"""
         return (ports_, a, b)
-    bound = ports.bind(fn, "P")
+    bound = wiring.bind(fn, "P")
     assert bound(1) == ("P", 1, 2) and bound.__doc__ == "doc"
     assert list(inspect.signature(bound).parameters) == ["a", "b"]
+
+
+class Untouched:
+    """A dependency the code under test must not use: any attribute access fails the test."""
+    def __init__(self, name):
+        self._name = name
+
+    def __getattr__(self, attr):
+        raise AssertionError(f"the service touched {self._name}.{attr}")
 
 
 class FakeReads:
@@ -74,7 +153,7 @@ class FakeRevisions:
     def __init__(self):
         self.calls = []
 
-    def append_revision(self, key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
+    def append_revision(self, key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None, *, clock):
         import revisions
         self.calls.append((key, changes, reason, expect))
         return revisions.RevisionResult(True, revision={"source_key": key, **changes})
@@ -85,7 +164,8 @@ def test_review_service_approves_against_in_memory_fakes():
     import review_service
     reads = FakeReads({"k1": {"status": "pending"}, "k2": {"status": "active"}})
     fake_rev = FakeRevisions()
-    p = ports.Ports(reads=reads, revisions=fake_rev)
+    p = review_service.ReviewDeps(git=Untouched("git"), revisions=fake_rev, rules=Untouched("rules"), reads=reads,
+                                  clock=FakeClock(), locations=_fake_locations())
     result = review_service.approve(p, ["k1", "k2", "nope"], reason="ok", commit=False)
     assert [(i.ref, i.outcome) for i in result.items] == [("k1", "approved"), ("k2", "skipped"), ("nope", "unknown")]
     assert fake_rev.calls == [("k1", {"status": "active"}, "ok", {"status": "pending"})]
@@ -98,14 +178,15 @@ def test_review_service_reports_a_failed_write_per_item():
     class Failing(FakeRevisions):
         def append_revision(self, key, *a, **k):
             return revisions.RevisionResult(False, ["disk on fire"])
-    p = ports.Ports(reads=FakeReads({"k1": {"status": "pending"}}), revisions=Failing())
+    p = review_service.ReviewDeps(git=Untouched("git"), revisions=Failing(), rules=Untouched("rules"),
+                                  reads=FakeReads({"k1": {"status": "pending"}}), clock=FakeClock(), locations=_fake_locations())
     (item,) = review_service.approve(p, ["k1"], commit=False).items
     assert item.outcome == "error" and "disk on fire" in item.reason
 
 
 def _service_trees():
-    for name in SERVICES + ("ports",):
-        path = os.path.join(REPO, name + ".py")
+    for name in SERVICES + ("wiring",):
+        path = os.path.join(REPO, *name.split(".")) + ".py"
         yield name, ast.parse(open(path, encoding="utf-8").read())
 
 
@@ -133,3 +214,230 @@ def test_use_cases_do_not_print_open_files_or_exit():
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"print", "open", "exit", "input"}:
                 offenders.append(f"{name}.py:{node.lineno}: {node.func.id}()")
     assert offenders == [], offenders
+
+
+DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleDeps", "add_fact_service": "AddFactDeps",
+                "facts_batch_service": "FactsBatchDeps", "migrate_memory_service": "MigrateMemoryDeps",
+                "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps",
+                "subject_hierarchy_service": "HierarchyDeps", "fact_ingest_service": "FactIngestDeps",
+                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
+                "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
+                "revision_apply_service": "RevisionApplyDeps",
+                "client.music_service": "MusicIngestDeps",
+                "normal_db_service": "NormalDbDeps", "build_service": "BuildDeps", "docs_service": "DocsDeps"}
+
+
+def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
+    assert set(DEPS_CLASSES) == set(SERVICES)
+    from client import music_ingest
+    known_ports = {**wiring.PORT_PROTOCOLS, **music_ingest.ports()}   # a client source brings its own ports
+    for module, cls_name in DEPS_CLASSES.items():
+        cls = getattr(importlib.import_module(module), cls_name)
+        assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
+        for f in dataclasses.fields(cls):
+            assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
+            assert f.name == "locations" or f.name in known_ports, f"{cls_name}.{f.name} is not a known port"
+
+
+def test_a_service_uses_exactly_the_dependencies_it_declares():
+    """`deps.x` in a service must name a field of its Deps class, and every field must be used somewhere:
+    a declared-but-unused port is a wiring lie, and an undeclared one fails only when that path runs."""
+    for module, cls_name in DEPS_CLASSES.items():
+        declared = {f.name for f in dataclasses.fields(getattr(importlib.import_module(module), cls_name))}
+        tree = ast.parse(open(os.path.join(REPO, *module.split(".")) + ".py", encoding="utf-8").read())
+        used = {n.attr for n in ast.walk(tree)
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "deps"}
+        assert used <= declared, f"{module} uses undeclared dependencies: {sorted(used - declared)}"
+        assert declared <= used, f"{module} declares unused dependencies: {sorted(declared - used)}"
+
+
+class FakeGit:
+    class PrivateGitError(Exception):
+        pass
+
+    def __init__(self, repo="/repo", dirty=False, commit_fails=False, detached=False):
+        self.repo, self.dirty, self.commit_fails, self.detached = repo, dirty, commit_fails, detached
+        self.commits = []
+
+    def find_repo(self, directory):
+        return self.repo
+
+    def ensure_clean_tree(self, repo_dir):
+        if self.dirty:
+            raise self.PrivateGitError("working tree is dirty")
+
+    def commit_private_change(self, paths, message, repo_dir):
+        if self.commit_fails:
+            raise self.PrivateGitError("index.lock exists")
+        self.commits.append((list(paths), message))
+        return "abc1234"
+
+    def is_detached(self, repo_dir):
+        return self.detached
+
+
+class FakeFactsFile:
+    def __init__(self):
+        self.records = []
+
+    def citekey_problem(self, db_path, citekey):
+        return None, None
+
+    def subject_tree(self, db_path):
+        return {}, None
+
+    def file_subjects(self, data_path):
+        return set()
+
+    def data_dir_of(self, data_path):
+        return os.path.dirname(data_path)
+
+    def file_sha256(self, path):
+        return None
+
+    def canonical_subject(self, data_path, subject):
+        return subject, [], None
+
+    def append_record(self, path, record):
+        self.records.append(record)
+        return len(self.records)
+
+
+class FakeRules:
+    def load_rules(self, path):
+        import privacy
+        return privacy.parse_rules({})
+
+    def rules_path(self):
+        return "/nowhere/privacy_rules.json"
+
+
+class FakeClock:
+    is_fixed = True
+
+    def now(self):
+        import datetime
+        return datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+
+    def now_iso(self):
+        return "2026-01-01T00:00:00+00:00"
+
+
+class FakeIds:
+    def new_source_key(self):
+        return "f-000000000001"
+
+
+def _fake_locations():
+    from locations import Locations
+    return Locations(knowledge_db_dir="/data", private_data_dir="/data", notes_vault="/vault", health_dir="/health")
+
+
+def _record_deps(git):
+    import add_fact_service
+    files = FakeFactsFile()
+    return add_fact_service.AddFactDeps(facts_file=files, rules=FakeRules(), clock=FakeClock(), ids=FakeIds(),
+                                        locations=_fake_locations(), git=git), files
+
+
+def _fact(**kw):
+    import new_fact
+    base = dict(statement="A fact.", subject="x", trust_level="low", no_decay=True, recheck_rationale="no decay")
+    base.update(kw)
+    return new_fact.NewFact(**base)
+
+
+def test_record_fact_commits_only_the_facts_file_in_a_clean_repo():
+    import add_fact_service
+    git = FakeGit()
+    deps, files = _record_deps(git)
+    out = add_fact_service.record_fact(deps, _fact())
+    assert out.ok and out.commit == "abc1234" and out.repo == "/repo" and not out.detached
+    assert git.commits == [(["/data/general_facts.json"], "add-fact: x (low)")]
+    assert len(files.records) == 1
+
+
+def test_record_fact_refuses_a_dirty_tree_before_writing_anything():
+    import add_fact_service
+    git = FakeGit(dirty=True)
+    deps, files = _record_deps(git)
+    out = add_fact_service.record_fact(deps, _fact())
+    assert not out.ok and out.refused == "working tree is dirty" and out.added is None
+    assert files.records == [] and git.commits == []
+    # --allow-dirty is the only way past it
+    out = add_fact_service.record_fact(deps, _fact(), allow_dirty=True)
+    assert out.ok and len(files.records) == 1
+
+
+def test_record_fact_writes_without_committing_outside_a_git_repo():
+    import add_fact_service
+    git = FakeGit(repo=None)
+    deps, files = _record_deps(git)
+    out = add_fact_service.record_fact(deps, _fact())
+    assert out.ok and out.repo is None and out.commit is None and git.commits == []
+    assert len(files.records) == 1
+
+
+def test_record_fact_does_not_commit_an_invalid_fact():
+    import add_fact_service
+    git = FakeGit()
+    deps, files = _record_deps(git)
+    out = add_fact_service.record_fact(deps, _fact(statement="   "))
+    assert not out.ok and out.refused is None and out.added.errors
+    assert files.records == [] and git.commits == []
+
+
+def test_record_fact_reports_a_failed_commit_but_keeps_the_fact():
+    import add_fact_service
+    git = FakeGit(commit_fails=True)
+    deps, files = _record_deps(git)
+    out = add_fact_service.record_fact(deps, _fact())
+    assert out.added.ok and out.commit is None and out.commit_error == "index.lock exists"
+    assert len(files.records) == 1
+
+
+def test_library_and_composition_modules_import_without_a_private_repo():
+    """Configuration is injected, not read at import: with no knowledge-private checkout at all, every
+    composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
+    import subprocess
+    import glob
+    steps = sorted(os.path.splitext(p)[0].replace(os.sep, ".").replace("/", ".") for p in
+                   glob.glob("ingest/*.py") + glob.glob("client/*.py") if not p.endswith("__init__.py"))
+    code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
+            "fact_queries, knowledge, cli_add_fact, build, queries, " + ", ".join(steps) + "; print('ok')")
+    env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": "/nonexistent/knowledge-private"}
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
+    r = subprocess.run([sys.executable, "-c", "import container; container.Container().add_fact.data_file_path()"], cwd=REPO, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and "local_paths.py not found" in r.stderr
+
+
+def test_verify_checks_that_the_calls_the_protocol_allows_are_accepted():
+    """A matching parameter-name prefix is not enough: a required extra argument, a missing default, a wrong name
+    or the wrong order fails a call the protocol lets callers make."""
+    class Extra:                       # now(extra): the protocol's now() takes nothing
+        def now(self, extra): ...
+        def now_iso(self): ...
+        is_fixed = False
+
+    class Fine:
+        is_fixed = False
+        def now(self): ...
+        def now_iso(self, *a, **k): ...
+
+    problems = wiring.conformance_problems("clock", Extra())
+    assert any("clock.now" in p and "minimal call" in p for p in problems)
+    assert wiring.conformance_problems("clock", Fine()) == []
+
+    class Records(dict):               # append_records(path, records, reject): the protocol's reject has a default
+        pass
+    names = ("read_array", "append_record", "citekey_problem", "subject_tree", "file_subjects", "data_dir_of",
+             "file_sha256", "canonical_subject")
+    ok = type("FF", (), {n: (lambda self, *a, **k: None) for n in names})()
+    ok.append_records = lambda path, records, reject=None: None
+    assert wiring.conformance_problems("facts_file", ok) == []
+    ok.append_records = lambda path, records, reject: None
+    assert any("append_records" in p and "minimal call" in p for p in wiring.conformance_problems("facts_file", ok))
+    ok.append_records = lambda path, rows, reject=None: None       # wrong name: a call by keyword would fail
+    assert any("by parameter name" in p for p in wiring.conformance_problems("facts_file", ok))

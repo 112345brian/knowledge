@@ -22,7 +22,7 @@ Rules the code enforces:
   * Counts only count visible facts. A subject with no visible fact is absent in normal mode.
   * Revision snapshots are filtered one by one: a revision stored private never comes back in
     normal mode, and a fact whose CURRENT visibility is private shows no history at all.
-  * Claims, measurements and every other non-fact table are not exposed here.
+  * Non-fact tables are not exposed here.
   * Writes: `check_write` / `prepare_write` take the privacy.Resolution (#31), never a bare
     visibility string. The caller stores `resolution.visibility`; what the model asked for is only
     an input to the resolver. In private mode an unspecified request is 'private', never 'normal'.
@@ -43,7 +43,7 @@ __all__ = [
 
 MAX_LIMIT = 1000
 
-# Columns of a fact that normal mode never returns: the same ones normal_db.py leaves out of the
+# Columns of a fact that normal mode never returns: the same ones normal_rules.py (FACT_COLS) leaves out of the
 # normal-only database (a keyword heuristic, free text, a vault path, conversation provenance). A
 # fact being "normal" says its statement may be shown, not that its notes or where it came from may.
 NORMAL_HIDDEN_FIELDS = ("is_personal", "notes", "origin_file_id", "origin_path", "provided_by",

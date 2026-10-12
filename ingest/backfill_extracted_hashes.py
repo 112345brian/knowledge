@@ -24,29 +24,26 @@ import os
 import sys
 
 from ingest import backfill_source_keys
-import fixity_store
 from ingest import fact_ingest_rules
 from ingest.shared import load_hints
 import revisions
-import revisions_store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _resolver():
+def _resolver(inputs, data_dir, vault):
     """`notes -> vault file path or None`: the same rule the facts step uses (fact_ingest_rules.resolve_origin_path)."""
-    from paths import BODYBUILDING_VAULT
-    hints = load_hints()
-    return lambda notes: fact_ingest_rules.resolve_origin_path(notes, BODYBUILDING_VAULT, hints)
+    hints = load_hints(inputs, data_dir)
+    return lambda notes: fact_ingest_rules.resolve_origin_path(notes, vault, hints)
 
 
-def make_adder(resolve, unresolved):
+def make_adder(inputs, resolve, unresolved):
     """The `extra_adders` hook. `unresolved` collects (file, index, path-or-None) for skipped entries."""
     def adder(entry, filename, index):
         path = entry.get("origin_path") or resolve(entry.get("notes"))
         if not path:
             return {}
-        sha = fixity_store.fingerprint(path)["content_sha256"]
+        sha = inputs.fingerprint(path)["content_sha256"]
         if sha is None:
             unresolved.append((filename, index, path))
             return {}
@@ -54,12 +51,36 @@ def make_adder(resolve, unresolved):
     return adder
 
 
-def backfill(data_dir, apply=False, resolve=None):
+def backfill(files, inputs, data_dir, vault, apply=False, resolve=None):
     """Returns ({filename: entries_changed}, unresolved). Nothing is written unless apply=True."""
     unresolved = []
-    adder = make_adder(resolve or _resolver(), unresolved)
-    result = backfill_source_keys.backfill(data_dir, apply=apply, extra_adders=[adder], source_keys=False)
+    adder = make_adder(inputs, resolve or _resolver(inputs, data_dir, vault), unresolved)
+    result = backfill_source_keys.backfill(files, data_dir, apply=apply, extra_adders=[adder], source_keys=False)
     return result, unresolved
+
+
+def run(files, inputs, data_dir, vault, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles), `inputs` (an Inputs), `data_dir` and the notes `vault`:
+    backfills, reports, returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    try:
+        result, unresolved = backfill(files, inputs, data_dir, vault, apply=apply)
+    except (revisions.RevisionError, OSError) as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    verb = "updated" if apply else "would update"
+    for name, n in result.items():
+        print(f"  {name}: {verb} {n} entries", file=stdout)
+    for name, index, path in unresolved:
+        print(f"  skipped {name}[{index}]: origin file missing or unreadable: {path}", file=stdout)
+    total = sum(result.values())
+    print("note: baselines are hashes of the files as they are NOW (as of backfill), not at extraction time.", file=stdout)
+    if not apply:
+        print(f"dry run: {total} entries would get a baseline; nothing written. Re-run with --apply.", file=stdout)
+    else:
+        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.", file=stdout)
+    return 0
 
 
 def main(argv=None):
@@ -70,24 +91,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions_store.default_data_dir()
-    try:
-        result, unresolved = backfill(data_dir, apply=args.apply)
-    except (revisions.RevisionError, OSError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    verb = "updated" if args.apply else "would update"
-    for name, n in result.items():
-        print(f"  {name}: {verb} {n} entries")
-    for name, index, path in unresolved:
-        print(f"  skipped {name}[{index}]: origin file missing or unreadable: {path}")
-    total = sum(result.values())
-    print("note: baselines are hashes of the files as they are NOW (as of backfill), not at extraction time.")
-    if not args.apply:
-        print(f"dry run: {total} entries would get a baseline; nothing written. Re-run with --apply.")
-    else:
-        print(f"{verb} {total} entries in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, app.inputs, data_dir, app.locations.notes_vault_stored, apply=args.apply)
 
 
 if __name__ == "__main__":

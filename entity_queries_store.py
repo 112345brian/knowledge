@@ -2,9 +2,9 @@
 import fact_queries
 
 
-def entity_link_counts():
+def entity_link_counts(db_path):
     try:
-        con = fact_queries.connect()
+        con = fact_queries.connect(db_path)
     except fact_queries.DatabaseNotFound:
         return {}
     try:
@@ -17,9 +17,9 @@ def entity_link_counts():
         con.close()
 
 
-def known_subjects():
+def known_subjects(db_path):
     try:
-        con = fact_queries.connect()
+        con = fact_queries.connect(db_path)
     except fact_queries.DatabaseNotFound:
         return {}
     try:
@@ -30,9 +30,10 @@ def known_subjects():
         con.close()
 
 
-def subject_rows(db=None):
-    owns_connection = db is None
-    con = fact_queries.connect() if owns_connection else db
+def subject_rows(db):
+    """`db` is a read-only connection (left open) or the path of the built db (opened and closed here)."""
+    owns_connection = isinstance(db, str)
+    con = fact_queries.connect(db) if owns_connection else db
     try:
         rows = [dict(row) for row in con.execute(
             """SELECT s.id, s.name, s.domain, p.name AS parent, s.parent_relation AS relation, s.description,

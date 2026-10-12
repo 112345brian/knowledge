@@ -4,6 +4,7 @@ NULL means unknown and is distinct from an explicit "general"; blank/whitespace 
 it is a mutable revision field, part of the facts FTS, shown by show/search, privacy-scanned like the other
 free-text fields, and included in the normal-only DB and the modes row shapes.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -14,6 +15,11 @@ import pytest
 
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import facts_batch_rules
+import new_fact
+import fact_queries
+from appctx import app, system_clock
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +36,7 @@ def nf(**kw):
     import add_fact
     base = dict(statement="S.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r")
     base.update(kw)
-    return add_fact.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def _con():
@@ -45,18 +51,18 @@ def _con():
 
 def test_add_fact_stores_stripped_text_and_omits_blank_and_none():
     import add_fact
-    assert add_fact.build_entry(nf(applies_to="  adult men, 18-35  "))["applies_to"] == "adult men, 18-35"
+    assert app().add_fact.build_entry(nf(applies_to="  adult men, 18-35  "))["applies_to"] == "adult men, 18-35"
     for blank in (None, "", "   ", "\n\t "):
-        assert "applies_to" not in add_fact.build_entry(nf(applies_to=blank)), repr(blank)
-    assert add_fact.validate_fact(nf(applies_to="general"), db_path="/nonexistent")[0] == []
-    assert add_fact.validate_fact(nf(applies_to="  "), db_path="/nonexistent")[0] == []     # blank is fine: it becomes absent
-    assert add_fact.validate_fact(nf(applies_to=5), db_path="/nonexistent")[0]
+        assert "applies_to" not in app().add_fact.build_entry(nf(applies_to=blank)), repr(blank)
+    assert app().add_fact.validate_fact(nf(applies_to="general"), db_path="/nonexistent")[0] == []
+    assert app().add_fact.validate_fact(nf(applies_to="  "), db_path="/nonexistent")[0] == []     # blank is fine: it becomes absent
+    assert app().add_fact.validate_fact(nf(applies_to=5), db_path="/nonexistent")[0]
 
 
 def test_explicit_general_is_kept_and_distinct_from_absent():
     import add_fact
-    assert add_fact.build_entry(nf(applies_to="general"))["applies_to"] == "general"
-    assert "applies_to" not in add_fact.build_entry(nf())
+    assert app().add_fact.build_entry(nf(applies_to="general"))["applies_to"] == "general"
+    assert "applies_to" not in app().add_fact.build_entry(nf())
 
 
 def test_cli_flag_round_trips(tmp_path):
@@ -70,7 +76,7 @@ def test_cli_flag_round_trips(tmp_path):
 
 def test_batch_items_take_applies_to():
     import facts_batch
-    assert "applies_to" in facts_batch.ITEM_KEYS
+    assert "applies_to" in facts_batch_rules.ITEM_KEYS
 
 
 # ------------------------------------------------------------------ schema + ingest
@@ -148,13 +154,13 @@ def test_append_revision_library_cleans_the_value(tmp_path, monkeypatch):
     (d / "general_facts.json").write_text(json.dumps([{
         "source_key": "k1", "subject": "s", "statement": "Fact.", "trust_level": "low", "date_added": "2026-01-01T00:00:00+00:00",
         "freshness": "no-decay", "recheck_rationale": "r", "status": "active", "visibility": "private"}]))
-    r = revisions_store.append_revision("k1", {"applies_to": "  adults  "}, "scoped", "cli", data_dir=str(d))
+    r = revisions_store.append_revision("k1", {"applies_to": "  adults  "}, "scoped", "cli", data_dir=str(d), clock=system_clock())
     assert r.ok, r.errors
     assert r.revision["applies_to"] == "adults"
-    r = revisions_store.append_revision("k1", {"applies_to": "   "}, "cleared", "cli", data_dir=str(d))
+    r = revisions_store.append_revision("k1", {"applies_to": "   "}, "cleared", "cli", data_dir=str(d), clock=system_clock())
     assert r.ok and r.revision["applies_to"] is None
-    assert not revisions_store.append_revision("k1", {"applies_to": "   "}, "again", "cli", data_dir=str(d)).ok      # already null: no change
-    assert not revisions_store.append_revision("k1", {"applies_to": 5}, "bad", "cli", data_dir=str(d)).ok
+    assert not revisions_store.append_revision("k1", {"applies_to": "   "}, "again", "cli", data_dir=str(d), clock=system_clock()).ok      # already null: no change
+    assert not revisions_store.append_revision("k1", {"applies_to": 5}, "bad", "cli", data_dir=str(d), clock=system_clock()).ok
 
 
 # ------------------------------------------------------------------ search, FTS, rows
@@ -171,13 +177,13 @@ def _facts_db():
 def test_fts_indexes_applies_to_and_follows_updates():
     import knowledge
     con = _facts_db()
-    assert [r["id"] for r in knowledge.search_facts(con, "example population")] == [1]
-    assert [r["id"] for r in knowledge.search_facts(con, "creatine")] == [1, 2] or {r["id"] for r in knowledge.search_facts(con, "creatine")} == {1, 2}
+    assert [r["id"] for r in fact_queries.search_facts(con, "example population")] == [1]
+    assert [r["id"] for r in fact_queries.search_facts(con, "creatine")] == [1, 2] or {r["id"] for r in fact_queries.search_facts(con, "creatine")} == {1, 2}
     con.execute("UPDATE facts SET applies_to = 'teenagers' WHERE id = 1")
-    assert knowledge.search_facts(con, "example population") == []
-    assert [r["id"] for r in knowledge.search_facts(con, "teenagers")] == [1]
+    assert fact_queries.search_facts(con, "example population") == []
+    assert [r["id"] for r in fact_queries.search_facts(con, "teenagers")] == [1]
     con.execute("DELETE FROM facts WHERE id = 1")
-    assert knowledge.search_facts(con, "teenagers") == []
+    assert fact_queries.search_facts(con, "teenagers") == []
 
 
 def test_rows_carry_applies_to_in_both_layers():
@@ -185,9 +191,9 @@ def test_rows_carry_applies_to_in_both_layers():
     import modes
     import modes_store
     con = _facts_db()
-    rows = {r["id"]: r for r in knowledge.list_facts(con)}
+    rows = {r["id"]: r for r in fact_queries.list_facts(con)}
     assert rows[1]["applies_to"] == "example population" and rows[2]["applies_to"] is None
-    assert knowledge.get_fact(con, 1)["applies_to"] == "example population"
+    assert fact_queries.get_fact(con, 1)["applies_to"] == "example population"
     s = modes.Session(mode=modes.Mode.normal)
     assert {r["id"]: r["applies_to"] for r in modes_store.list_facts(s, con)} == {1: "example population", 2: None}
     assert modes_store.search_facts(s, con, "example population")[0]["id"] == 1
@@ -229,9 +235,9 @@ def test_add_fact_resolution_scans_applies_to(tmp_path):
     path = str(data / "general_facts.json")
     db = str(tmp_path / "none.db")
     clean = nf(statement="Innocent.", subject="x", visibility="normal", applies_to="adults")
-    assert add_fact.resolve_privacy(clean, path, db).visibility == "normal"
+    assert app().add_fact.resolve_privacy(clean, path, db).visibility == "normal"
     tainted = nf(statement="Innocent.", subject="x", visibility="normal", applies_to="Zorbak relatives")
-    res = add_fact.resolve_privacy(tainted, path, db)
+    res = app().add_fact.resolve_privacy(tainted, path, db)
     assert res.visibility == "private" and "zorbak" in res.explain().lower()
 
 
@@ -239,16 +245,16 @@ def test_normal_db_includes_applies_to_scans_it_and_indexes_it():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET applies_to = 'example population' WHERE id = 1")
         c.execute("UPDATE facts SET applies_to = 'Zorbak relatives' WHERE id = 2")
         c.execute("UPDATE fact_revisions SET applies_to = 'example population' WHERE fact_id = 1 AND revision = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("zorbak",)))
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert con.execute("SELECT applies_to FROM facts WHERE id = 1").fetchone()[0] == "example population"
         assert con.execute("SELECT COUNT(*) FROM facts WHERE id = 2").fetchone()[0] == 0   # keyword in applies_to: left out
         assert [r[0] for r in con.execute("SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'example population'")] == [1]

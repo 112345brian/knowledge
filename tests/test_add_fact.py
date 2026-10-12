@@ -14,9 +14,11 @@ import subprocess
 import sys
 
 import pytest
+import new_fact
+from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADD_FACT = os.path.join(REPO, "add_fact.py")
+ADD_FACT = os.path.join(REPO, "add_fact.py")  # the library facade, imported in-process
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
 
 ORDERED_FULL_KEYS = ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind",
@@ -55,11 +57,11 @@ class Env:
             args = (*args, "--no-decay")
             if "--recheck-rationale" not in args:
                 args = (*args, "--recheck-rationale", "no decay")
-        cmd = [sys.executable, ADD_FACT, *args] if via == "add_fact" else [sys.executable, KNOWLEDGE, "add-fact", *args]
+        cmd = [sys.executable, KNOWLEDGE, "add-fact", *args]
         return subprocess.run(cmd, env=self.env, cwd=self.root, capture_output=True, text=True)
 
     def entries(self):
-        with open(self.facts) as f:
+        with open(self.facts, encoding="utf-8") as f:
             return json.load(f)
 
     def raw(self):
@@ -142,14 +144,15 @@ def test_rejections_exit_1_and_write_nothing(env, args, needle):
     assert not os.path.exists(env.facts)
 
 
-def test_subject_with_leading_hyphen_is_read_as_a_flag_by_argparse_exit_2(env):
-    # Pinned today: "-car" never reaches validate(); argparse rejects it first.
+def test_subject_with_leading_hyphen_is_refused_by_validation(env):
+    # Typer (click) hands "-car" to the option as its value, so the kebab-case rule refuses it (exit 1);
+    # the old argparse script rejected it earlier with exit 2. Either way nothing is written.
     r = env.cli("S.", "--subject", "-car", "--trust", "low")
-    assert r.returncode == 2 and "expected one argument" in r.stderr
+    assert r.returncode == 1 and "kebab-case" in r.stderr
     assert not os.path.exists(env.facts)
 
 
-def test_invalid_trust_is_argparse_exit_2(env):
+def test_invalid_trust_is_a_usage_error_exit_2(env):
     r = env.cli("S.", "--subject", "x", "--trust", "bogus")
     assert r.returncode == 2
     assert not os.path.exists(env.facts)
@@ -188,9 +191,10 @@ def test_knowledge_py_add_fact_forwards_to_the_same_behavior(env):
 # today so a change to them is deliberate, not accidental.
 
 def test_edge_very_long_statement_is_accepted(env):
-    r = env.cli("x" * 100_000, "--subject", "x", "--trust", "low")
+    n = 20_000 if sys.platform == "win32" else 100_000      # a Windows command line is capped at 32,767 characters
+    r = env.cli("x" * n, "--subject", "x", "--trust", "low")
     assert r.returncode == 0
-    assert len(env.entries()[0]["statement"]) == 100_000
+    assert len(env.entries()[0]["statement"]) == n
 
 
 def test_edge_nul_character_in_statement_is_accepted_today(env):
@@ -255,12 +259,12 @@ def af(tmp_path_factory):
 def fact(af, **kw):
     base = dict(statement="A fact.", subject="x", trust_level="low", no_decay=True, recheck_rationale="no decay")
     base.update(kw)
-    return af.NewFact(**base)
+    return new_fact.NewFact(**base)
 
 
 def test_function_api_append_returns_structured_result(af, tmp_path):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="  Stripped.  "), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="  Stripped.  "), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert res.ok and res.errors == [] and res.total == 1
     assert res.entry["statement"] == "Stripped."
     assert json.loads(p.read_text())[0] == res.entry
@@ -268,7 +272,7 @@ def test_function_api_append_returns_structured_result(af, tmp_path):
 
 def test_function_api_validation_errors_are_returned_not_printed(af, tmp_path, capsys):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="  ", subject="Bad Subject"), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="  ", subject="Bad Subject"), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert not res.ok
     assert any("statement is empty" in e for e in res.errors)
     assert any("kebab-case" in e for e in res.errors)
@@ -277,13 +281,13 @@ def test_function_api_validation_errors_are_returned_not_printed(af, tmp_path, c
 
 
 def test_function_api_citekey_note_returned_when_db_missing(af, tmp_path):
-    res = af.append_fact(fact(af, source_citekey="k"), data_path=str(tmp_path / "f.json"), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, source_citekey="k"), data_path=str(tmp_path / "f.json"), db_path=str(tmp_path / "none.db"))
     assert res.ok and any("skipping citekey check" in n for n in res.notes)
 
 
 def test_function_api_nul_in_statement_is_pinned(af, tmp_path):
     p = tmp_path / "facts.json"
-    res = af.append_fact(fact(af, statement="bad\x00fact"), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af, statement="bad\x00fact"), data_path=str(p), db_path=str(tmp_path / "none.db"))
     # Today's behavior (accepted) is preserved by the refactor; making NUL a refusal is a separate,
     # deliberate decision because every caller would then need to handle the new outcome.
     assert res.ok
@@ -298,14 +302,14 @@ def test_failed_replace_leaves_original_intact_and_no_temp_files(af, tmp_path, m
     def boom(*a, **k):
         raise OSError("disk full")
     monkeypatch.setattr(af.os, "replace", boom)
-    res = af.append_fact(fact(af), data_path=str(p), db_path=str(tmp_path / "none.db"))
+    res = app().add_fact.append_fact(fact(af), data_path=str(p), db_path=str(tmp_path / "none.db"))
     assert not res.ok and any("disk full" in e for e in res.errors)
     assert p.read_bytes() == before
     assert os.listdir(tmp_path) == ["facts.json"]  # no temp file, and no lock file inside the data dir
 
 
 def test_build_entry_matches_cli_shape(af):
-    entry = af.build_entry(fact(af, domain="health", notes="n"))
+    entry = app().add_fact.build_entry(fact(af, domain="health", notes="n"))
     assert list(entry.keys()) == ["source_key", "subject", "statement", "trust_level", "is_original_claim", "is_personal", "date_added", "visibility", "status", "freshness", "kind", "domain", "notes", "recheck_rationale"]
 
 
@@ -323,6 +327,7 @@ def test_db_without_a_sources_table_is_a_clean_error(env):
     assert not os.path.exists(env.facts)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX permission bits to preserve")
 def test_file_permissions_are_preserved_on_rewrite(env):
     with open(env.facts, "w") as f:
         json.dump([], f)
@@ -356,10 +361,10 @@ def test_a_bad_frozen_clock_is_not_silently_replaced_by_the_real_one(env):
 # ---------------------------------------------------------------- status (#6)
 
 def test_status_defaults_to_pending_accepts_active_and_rejects_the_rest(af):
-    assert af.build_entry(fact(af))["status"] == "pending"
-    assert af.build_entry(fact(af, status="active"))["status"] == "active"
-    assert af.validate_fact(fact(af), db_path="/nonexistent")[0] == []
-    assert af.validate_fact(fact(af, status="active"), db_path="/nonexistent")[0] == []
+    assert app().add_fact.build_entry(fact(af))["status"] == "pending"
+    assert app().add_fact.build_entry(fact(af, status="active"))["status"] == "active"
+    assert app().add_fact.validate_fact(fact(af), db_path="/nonexistent")[0] == []
+    assert app().add_fact.validate_fact(fact(af, status="active"), db_path="/nonexistent")[0] == []
     for bad in ("superseded", "retracted", "", "ACTIVE", None, 1):
-        errors, _ = af.validate_fact(fact(af, status=bad), db_path="/nonexistent")
+        errors, _ = app().add_fact.validate_fact(fact(af, status=bad), db_path="/nonexistent")
         assert any("status" in e for e in errors), bad

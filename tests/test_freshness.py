@@ -7,6 +7,7 @@ carry the first two, and freshness is DERIVED by the writers, never passed in. T
 schema, every writer (add_fact, facts_batch, migrate_memory, the ingest scripts, revisions) and the
 normal-db copy. Fixtures only; nothing reads the real private data.
 """
+import contextlib
 import ast
 import json
 import os
@@ -18,6 +19,10 @@ import pytest
 from test_add_fact import Env, REPO, env  # noqa: F401  (env is a fixture)
 from test_fact_ingest import F, ingest, LEGACY_04  # noqa: F401  (ingest is a fixture)
 from test_fact_revisions import world, entry, rec, write_log, T1, T2, T3  # noqa: F401  (world is a fixture)
+import new_fact
+import migrate_memory_rules
+from appctx import app, locs
+import local_buildfiles
 
 sys.path.insert(0, REPO)
 
@@ -164,7 +169,7 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
     base = dict(statement="S.", subject="x", trust_level="low")
 
     def errs(**kw):
-        return af.validate_fact(af.NewFact(**base, **kw), db_path="/nonexistent")[0]
+        return app().add_fact.validate_fact(new_fact.NewFact(**base, **kw), db_path="/nonexistent")[0]
 
     assert errs(recheck_by="2027-01-01") == []
     assert errs(no_decay=True, recheck_rationale="does not decay") == []
@@ -178,24 +183,24 @@ def test_library_derives_freshness_and_refuses_the_edge_inputs(world):
         assert errs(no_decay=bad, recheck_by="2027-01-01")
     # a caller cannot supply freshness at all, so cannot supply 'unreviewed'
     with pytest.raises(TypeError):
-        af.NewFact(**base, freshness="unreviewed", recheck_by="2027-01-01")
+        new_fact.NewFact(**base, freshness="unreviewed", recheck_by="2027-01-01")
     with pytest.raises(TypeError):
-        af.NewFact(**base, volatility="static")
+        new_fact.NewFact(**base, volatility="static")
 
 
 def test_the_entry_stores_the_derived_freshness_explicitly(world):
     af = world.af
-    e1 = af.build_entry(af.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
-    e2 = af.build_entry(af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
+    e1 = app().add_fact.build_entry(new_fact.NewFact("S.", "x", "low", recheck_by="2027-01-01"))
+    e2 = app().add_fact.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="r", recheck_by="  "))
     assert (e1["freshness"], e1["recheck_by"]) == ("recheck", "2027-01-01")
     assert (e2["freshness"], e2["recheck_rationale"], "recheck_by" in e2) == ("no-decay", "r", False)
 
 
 def test_a_refused_library_add_writes_nothing(world, tmp_path):
     p = tmp_path / "f.json"
-    res = world.af.append_fact(world.af.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
+    res = app().add_fact.append_fact(new_fact.NewFact("S.", "x", "low"), data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
-    res = world.af.append_fact(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
+    res = app().add_fact.append_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_by="2027-01-01", recheck_rationale="r"),
                                data_path=str(p), db_path="/nonexistent")
     assert not res.ok and not p.exists()
 
@@ -210,7 +215,7 @@ def fb(world):
 
 
 def batch(w, items):
-    return w.fb.add_facts(items, data_dir=w.env.data_dir, commit=False, db_path="/nonexistent")
+    return app().facts_batch.add_facts(items, data_dir=w.env.data_dir, commit=False, db_path="/nonexistent")
 
 
 GOOD = {"statement": "Fine.", "subject": "coffee", "recheck_by": "2027-01-01"}
@@ -293,7 +298,7 @@ def test_11_an_entry_without_freshness_fails_loudly_even_with_a_recheck_by(inges
     with pytest.raises(Exception, match=r"general_facts\.json.*has no `freshness`"):
         ingest.mod11.DATA_DIR = ingest.env.data_dir
         ingest.write("general_facts.json", ingest.stamped([F(recheck_by="2027-01-01")], "2026-09-26"))
-        ingest.mod11.run(ingest.db())
+        ingest.mod11.run(ingest.db(), locs())
 
 
 @pytest.mark.parametrize("run", ["run04", "run11"])
@@ -427,12 +432,12 @@ def test_normal_db_copies_freshness_with_the_same_checks():
     import normal_db
     import tempfile
     import privacy
-    with tempfile.TemporaryDirectory() as tmp:
-        full = leak_test.build_fixture(tmp)
+    with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, tmp)
         out = os.path.join(tmp, "out")
         os.makedirs(out)
-        path, _ = normal_db.build_normal_atomic(full, out, privacy.Rules())
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, out, privacy.Rules())
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert "freshness" in {r[1] for r in con.execute("PRAGMA table_info(facts)")}
         assert {r[0] for r in con.execute("SELECT freshness FROM facts")} == {"unreviewed"}
         with pytest.raises(sqlite3.IntegrityError):
@@ -453,7 +458,7 @@ def test_every_production_NewFact_call_names_its_freshness_inputs():
     """A caller that builds a NewFact with neither recheck_by nor no_decay is a validation error at runtime; catch it here."""
     offenders = []
     for name, path in _py_sources():
-        for node in ast.walk(ast.parse(open(path).read())):
+        for node in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
             if isinstance(node, ast.Call):
                 f = node.func
                 called = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
@@ -467,7 +472,7 @@ def test_every_production_facts_insert_names_the_freshness_column():
     for name, path in _py_sources():
         if name == "normal_db.py":  # builds its column list in a variable; test_normal_db_copies_freshness covers it
             continue
-        text = open(path).read()
+        text = open(path, encoding="utf-8").read()
         for node in ast.walk(ast.parse(text)):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and "INSERT INTO facts (" in node.value:
                 if "freshness" not in node.value:

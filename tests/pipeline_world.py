@@ -9,6 +9,7 @@ the pipeline, so tests/test_pipeline_golden.py fails if a refactor changes what 
 import csv
 import json
 import os
+import pathlib
 import sqlite3
 import subprocess
 import sys
@@ -80,7 +81,7 @@ Body line.
 
 def _write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8", newline=chr(10)) as f:
         f.write(text)
 
 
@@ -106,9 +107,12 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
     rym = os.path.join(root, "rym.csv")
     scrobbles = os.path.join(root, "scrobbles.json")
     _write(os.path.join(private, "local_paths.py"),
-           f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\nBODYBUILDING_VAULT = {vault!r}\n"
-           f"HEALTH_DIR = {os.path.join(root, 'health')!r}\nCONCERTS_CSV = {concerts!r}\nRYM_EXPORT_CSV = {rym!r}\n"
-           f"SCROBBLES_JSON = {scrobbles!r}\nCLIENT_SOURCES = {tuple(sources)!r}\n")
+           # the inputs are written the way a person writes them (`~/...`) and KNOWLEDGE_HOME points `~` at the
+           # world: the build must read them there yet store the written form, never this machine's root
+           f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\n"
+           'NOTES_VAULT = "~/vault"\nHEALTH_DIR = "~/health"\nCONCERTS_CSV = "~/concerts.csv"\n'
+           'RYM_EXPORT_CSV = "~/rym.csv"\nSCROBBLES_JSON = "~/scrobbles.json"\n'
+           f"CLIENT_SOURCES = {tuple(sources)!r}\n")
 
     # --- synthetic source notes and structured records
     notes = [("alpha2020", "primary-research", "Alpha Study", "Smith, J", "Doe, A", 2020, "Journal A", "training"),
@@ -214,7 +218,7 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
         "aliases": {"artist a, artist b": "Artist A & Artist B"},
         "members": {"Artist A & Artist B": ["Artist A", "Artist B"]},
         "festivals": ["Example Festival"]}))
-    return {**os.environ, "KNOWLEDGE_PRIVATE_DIR": private, "KNOWLEDGE_FROZEN_NOW": "2026-10-01T00:00:00+00:00", "PYTHONHASHSEED": "0"}
+    return {**os.environ, "KNOWLEDGE_PRIVATE_DIR": private, "KNOWLEDGE_HOME": root,"KNOWLEDGE_FROZEN_NOW": "2026-10-01T00:00:00+00:00", "PYTHONHASHSEED": "0"}
 
 
 DUMP_SCRIPT = r"""
@@ -223,7 +227,8 @@ TS = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")  # CURRENT_TIMESTAMP d
 sys.path.insert(0, sys.argv[1])
 import build
 out = os.path.join(sys.argv[2], "pipeline.db")
-build.build(out)
+import paths, clock, local_buildfiles
+build.build(out, paths.load(), clock.from_environment(), local_buildfiles)
 con = sqlite3.connect(out)
 dump = {}
 for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name"):
@@ -233,7 +238,7 @@ for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type =
     # file_mtime is the real mtime of a file the test just wrote, and build_info records the commit and the
     # interpreter, so these differ on every run or machine
     rows = [["<TS>" if isinstance(v, str) and TS.match(v) else ("<MTIME>" if cols[i] == "file_mtime" and v is not None else
-                                                  "<ENV>" if name == "build_info" and cols[i] in ("code_commit", "private_commit", "python_version", "sqlite_version") and v is not None else v)
+                                                  "<ENV>" if name == "build_info" and cols[i] in ("code_commit", "private_commit", "code_dirty", "private_dirty", "python_version", "sqlite_version", "platform") and v is not None else v)
              for i, v in enumerate(r)] for r in con.execute(f'SELECT * FROM "{name}"')]
     rows.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
     dump[name] = {"columns": cols, "rows": rows}
@@ -251,6 +256,6 @@ def run_pipeline(root, repo=REPO, sources=("concerts", "ratings", "scrobbles", "
         raise RuntimeError(f"pipeline failed:\n{p.stdout[-2000:]}\n{p.stderr[-3000:]}")
     text = p.stdout.split("@@DUMP@@", 1)[1]
     # the world lives under a temp dir: its path is not part of what the pipeline ingests
-    for variant in {str(root), os.path.realpath(str(root))}:
+    for variant in {str(root), os.path.realpath(str(root)), pathlib.Path(root).as_posix()}:
         text = text.replace(json.dumps(variant)[1:-1], "<ROOT>")
     return json.loads(text)

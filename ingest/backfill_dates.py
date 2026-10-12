@@ -6,8 +6,7 @@ Until now the build filled a missing `date_added` from a constant in code
 and a missing date can become a build error. It inserts `"date_added": "<date>"` as the first key
 of every entry in pilot_facts.json, facts_batch1-4.json and general_facts.json that has none,
 using the date the constant stood for (revisions.ENTRY_FILES: 2026-09-11, or 2026-09-26 for
-general_facts.json), so no stored date changes. (The `measurements` client source has its own one-time
-backfill for its snapshot date: `python3 -m client.backfill_snapshot_date`.)
+general_facts.json), so no stored date changes. Optional source-specific backfills are registered with that source.
 
 It reuses backfill_source_keys.py's machinery, so the safety properties are the same:
   * dry run is the default; nothing is written without --apply
@@ -27,15 +26,13 @@ Usage:
     python3 -m ingest.backfill_dates --data-dir DIR ...    # a copy, for trying it out
 """
 import argparse
-import json
 import os
 import sys
 
 from ingest import backfill_rules
 from ingest import backfill_source_keys
 import revisions
-import revisions_store
-import locks
+from locations import join_path
 
 FILE_DATES = dict(revisions.ENTRY_FILES)
 
@@ -45,24 +42,44 @@ def date_adder(entry, filename, index):
     return {"date_added": FILE_DATES[filename]}
 
 
-def find_problems(data_dir):
+def find_problems(files, data_dir):
     """Entries/files that can't be backfilled safely. [(where, what)]"""
     problems = []
     for name, _ in revisions.ENTRY_FILES:
-        path = os.path.join(data_dir, name)
-        if not os.path.exists(path):
+        path = join_path(data_dir, name)
+        if not files.exists(path):
             continue
-        problems.extend(backfill_rules.date_problems(name, revisions_store.read_array(path)))
+        problems.extend(backfill_rules.date_problems(name, files.read_array(path)))
     return problems
 
 
-def backfill_dates(data_dir, apply=False):
+def backfill_dates(files, data_dir, apply=False):
     """Returns {filename: entries_changed}. Raises
     revisions.RevisionError (writing nothing) on a problem entry."""
-    problems = find_problems(data_dir)
+    problems = find_problems(files, data_dir)
     if problems:
         raise revisions.RevisionError("; ".join(f"{w}: {m}" for w, m in problems))
-    return backfill_source_keys.backfill(data_dir, apply=apply, extra_adders=[date_adder], source_keys=False)
+    return backfill_source_keys.backfill(files, data_dir, apply=apply, extra_adders=[date_adder], source_keys=False)
+
+
+def run(files, data_dir, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles) and `data_dir`: backfills, reports, returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    try:
+        result = backfill_dates(files, data_dir, apply=apply)
+    except (revisions.RevisionError, OSError) as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    verb = "updated" if apply else "would update"
+    for name, n in result.items():
+        print(f"  {name}: {verb} {n} entries", file=stdout)
+    total = sum(result.values())
+    if not apply:
+        print(f"dry run: {total} change(s) needed; nothing written. Re-run with --apply.", file=stdout)
+    else:
+        print(f"{verb} {total} item(s) in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.", file=stdout)
+    return 0
 
 
 def main(argv=None):
@@ -73,21 +90,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions_store.default_data_dir()
-    try:
-        result = backfill_dates(data_dir, apply=args.apply)
-    except (revisions.RevisionError, OSError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    verb = "updated" if args.apply else "would update"
-    for name, n in result.items():
-        print(f"  {name}: {verb} {n} entries")
-    total = sum(result.values())
-    if not args.apply:
-        print(f"dry run: {total} change(s) needed; nothing written. Re-run with --apply.")
-    else:
-        print(f"{verb} {total} item(s) in {data_dir}. Review with `git -C {data_dir} diff --stat` and commit.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, data_dir, apply=args.apply)
 
 
 if __name__ == "__main__":

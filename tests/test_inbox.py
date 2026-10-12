@@ -18,6 +18,7 @@ import typer.main
 
 from test_fact_revisions import world, entry, T1, T2, T3  # noqa: F401  (world is a fixture)
 from test_review import GIT_ENV, git, make_repo, pend
+from appctx import app, system_clock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,11 +48,11 @@ def ib(world, monkeypatch):
 
     def start(rules=None, repo=True, snapshot=True):
         if rules is not None:
-            privacy_store.save_rules(rules, privacy_store.rules_path(world.env.data_dir))
+            privacy_store.save_rules(rules, os.path.join(world.env.data_dir, "privacy_rules.json"))
         if repo:
             make_repo(world)
         db = rebuild_db() if snapshot else world.env.db
-        srv = inbox.make_server(db, world.env.data_dir)
+        srv = inbox.make_server(app(), db, world.env.data_dir)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         servers.append(srv)
         world.srv = srv
@@ -184,8 +185,8 @@ def test_list_overlays_current_state_not_the_stale_snapshot(ib):
     w = ib
     seed(w)
     srv = w.start()
-    assert w.review.approve("p1", data_dir=w.env.data_dir, commit=False).ok     # approved after the snapshot
-    assert w.rs.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir).ok
+    assert app().review.approve("p1", data_dir=w.env.data_dir, commit=False).ok     # approved after the snapshot
+    assert w.rs.append_revision("p2", {"statement": "Edited since the rebuild."}, "r", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok
     _, _, page = call(srv)
     assert "Pending p1." not in page and "Edited since the rebuild." in page
     assert '<span class="count">1</span> pending' in page and "already reviewed" in page
@@ -251,7 +252,7 @@ def test_bulk_approve_approves_exactly_the_facts_shown(ib):
     assert refs == "p1,p2" and "Approve all 2 shown" in page
     status, res = act(srv, action="approve_shown", refs=refs)
     assert status == 200 and [i[:2] for i in items(res)] == [("p1", "approved"), ("p2", "approved")]
-    states = w.review.current_states(w.env.data_dir)
+    states = app().review.current_states(w.env.data_dir)
     assert states["late"]["status"] == "pending"                    # never seen by the user: untouched
     assert n_commits(w) == 3                                         # init, the late fact, ONE batch commit
     assert not act(srv, action="approve_shown", refs="")[1]["ok"]
@@ -261,7 +262,7 @@ def test_approved_by_cli_while_the_page_is_open_is_a_clean_message(ib):
     w = ib
     seed(w)
     srv = w.start()
-    assert w.review.approve("p1", data_dir=w.env.data_dir).ok       # "the CLI"
+    assert app().review.approve("p1", data_dir=w.env.data_dir).ok       # "the CLI"
     status, res = act(srv, action="approve", ref="p1")
     assert status == 200 and res["ok"] and items(res) == [("p1", "skipped", "already approved")]
     assert log_count(w) == 1
@@ -271,11 +272,11 @@ def test_retracted_after_listing_is_never_reactivated_or_edited(ib):
     w = ib
     seed(w)
     srv = w.start()
-    assert w.review.reject("p1", "gone", data_dir=w.env.data_dir).ok
+    assert app().review.reject("p1", "gone", data_dir=w.env.data_dir).ok
     assert items(act(srv, action="approve", ref="p1")[1]) == [("p1", "skipped", "already rejected")]
     status, res = act(srv, action="edit_fact", ref="p1", reason="r", statement="Revived?")
     assert status == 200 and items(res) == [("p1", "skipped", "already rejected: nothing changed")]
-    assert w.review.current_states(w.env.data_dir)["p1"]["status"] == "retracted" and log_count(w) == 1
+    assert app().review.current_states(w.env.data_dir)["p1"]["status"] == "retracted" and log_count(w) == 1
 
 
 def test_concurrent_clicks_on_one_fact_write_once(ib):
@@ -310,14 +311,14 @@ def test_concurrent_with_a_cli_process_loses_no_writes(ib):
     w = ib
     w.seed(general=[pend(f"k{i}", date_added=T1) for i in range(6)])
     srv = w.start(repo=False)
-    code = ("import sys; sys.path.insert(0, %r); import review; "
-            "[review.approve(k, data_dir=%r, commit=False) for k in ('k0','k2','k4')]") % (REPO, w.env.data_dir)
+    code = ("import sys; sys.path.insert(0, %r); import container; c = container.Container(); "
+            "[c.review.approve(k, data_dir=%r, commit=False) for k in ('k0','k2','k4')]") % (REPO, w.env.data_dir)
     env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": w.env.private}
     proc = subprocess.Popen([sys.executable, "-c", code], env=env)
     for k in ("k1", "k3", "k5"):
         assert act(srv, action="approve", ref=k)[1]["ok"]
     assert proc.wait(timeout=60) == 0
-    assert {s["status"] for s in w.review.current_states(w.env.data_dir).values()} == {"active"}
+    assert {s["status"] for s in app().review.current_states(w.env.data_dir).values()} == {"active"}
     assert log_count(w) == 6
 
 
@@ -414,12 +415,12 @@ def test_edit_does_not_overwrite_a_concurrent_change(ib, monkeypatch):
 
     def sneaky(key, changes, *a, **kw):
         monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", real)
-        assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir).ok
+        assert real(key, {"statement": "Someone else."}, "r", "cli", data_dir=w.env.data_dir, clock=system_clock()).ok
         return real(key, changes, *a, **kw)
     monkeypatch.setattr(w.lifecycle.revisions_store, "append_revision", sneaky)
-    res = w.lifecycle.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)
+    res = app().lifecycle.edit_fact("p1", "mine", statement="Mine.", data_dir=w.env.data_dir, commit=False)
     assert not res.ok and res.outcome == "skipped" and "someone else" in res.message
-    assert w.review.current_states(w.env.data_dir)["p1"]["statement"] == "Someone else."
+    assert app().review.current_states(w.env.data_dir)["p1"]["statement"] == "Someone else."
 
 
 # ---------------------------------------------------------------- make private (raise only)

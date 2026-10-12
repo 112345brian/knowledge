@@ -20,6 +20,7 @@ import privacy
 import revisions
 import revisions_store
 from test_add_fact import REPO
+import fact_queries
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -78,7 +79,7 @@ def db(tmp_path):
     con.execute("INSERT INTO claim_facts (claim_id, fact_id) VALUES (1, 3)")
     con.commit()
     con.close()
-    ro = knowledge.connect(path)
+    ro = fact_queries.connect(path)
     yield ro
     ro.close()
 
@@ -227,10 +228,10 @@ def _strip_gate(rows):
 
 
 def test_compat_get_fact_matches_knowledge(db):
-    # Private mode returns the full row, exactly knowledge.get_fact. Normal mode returns the same row
+    # Private mode returns the full row, exactly fact_queries.get_fact. Normal mode returns the same row
     # minus NORMAL_HIDDEN_FIELDS (the columns normal_db.py also leaves out).
     for fid in (1, 4, 9, 10):
-        full = knowledge.get_fact(db, fid)
+        full = fact_queries.get_fact(db, fid)
         assert modes_store.get_fact(S("private"), db, fid) == full
         trimmed = {k: v for k, v in full.items() if k not in modes.NORMAL_HIDDEN_FIELDS}
         assert modes_store.get_fact(S("normal"), db, fid) == trimmed
@@ -265,20 +266,20 @@ def _all_statuses(fn, db, *a, **kw):
 
 def test_compat_list_search_subjects_row_shapes(db):
     got = {r["id"]: r for r in modes_store.list_facts(S("normal"), db)}
-    ref = {r["id"]: r for r in knowledge.list_facts(db)}
+    ref = {r["id"]: r for r in fact_queries.list_facts(db)}
     for fid, row in got.items():
         assert row == ref[fid]
     s_got = {r["id"]: r for r in modes_store.search_facts(S("normal"), db, "banana")}
-    s_ref = {r["id"]: r for r in knowledge.search_facts(db, "banana")}
+    s_ref = {r["id"]: r for r in fact_queries.search_facts(db, "banana")}
     for fid, row in s_got.items():
         assert row == s_ref[fid]
     assert set(s_got) == {1, 4, 9, 10, 11}
     priv = {r["id"]: r for r in modes_store.list_facts(S("private"), db, limit=1000)}
-    assert priv == _all_statuses(knowledge.list_facts, db, limit=1000)
+    assert priv == _all_statuses(fact_queries.list_facts, db, limit=1000)
     priv_s = {r["id"]: r for r in modes_store.search_facts(S("private"), db, "banana")}
-    assert priv_s == _all_statuses(knowledge.search_facts, db, "banana")
-    # Subjects: same rows; private mode counts every status, knowledge.list_subjects only active ones.
-    p_sub, k_sub = modes_store.list_subjects(S("private"), db), knowledge.list_subjects(db)
+    assert priv_s == _all_statuses(fact_queries.search_facts, db, "banana")
+    # Subjects: same rows; private mode counts every status, fact_queries.list_subjects only active ones.
+    p_sub, k_sub = modes_store.list_subjects(S("private"), db), fact_queries.list_subjects(db)
     names = lambda rows: [{k: v for k, v in r.items() if k in ("name", "domain", "parent")} for r in rows]
     assert names(p_sub) == names(k_sub)
     assert all(p["n_facts"] >= k["n_facts"] for p, k in zip(p_sub, k_sub))
@@ -570,32 +571,47 @@ def _py_files():
 # Modules allowed to read facts directly: the query layers and the build pipeline (which creates
 # them). Anything else that wants fact rows must go through modes.py.
 FACT_READERS_ALLOWED = {
-    "modes.py", "modes_store.py", "knowledge.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
+    "modes.py", "modes_store.py", "knowledge.py", "cli_common.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # CLI-only audit over the full local db (like claims_store); never serves tool results
     "fixity_store.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     "entity_queries_store.py",
     "leak_scan_store.py",
-    # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
-    "entities_store.py", "link_entities.py",
+    # SQLite adapter that reads the full db rows the normal db is built from and writes the normal db; build-time only
+    "normal_db_store.py",
+    # builds the entity link table: the build's EntityRepository adapter reads each fact's text (it replaced the
+    # SQL that sat in entities_store.link_facts); the build pipeline writes it, never serves it
+    "entity_repository_store.py", "link_entities.py",
+    # the SQLite adapters of the build-time revision, privacy-floor and entity-link passes (they moved out of revisions_store,
+    # privacy_store and entities_store); the build pipeline drives them, they never serve
     # links facts to the measurements they cite at build time (the `measurements` client source)
     "link_fact_measurements.py",
+    # links facts to the measurements they cite at build time (the `measurements` client source; the fact-id
+    # lookup of the link step lives in this adapter)
+    "measurements_store.py",
     # CLI-only audit over the full local db (like claims_store): which cited sources were retracted or replaced
     "source_status_store.py",
     # names the fact_revisions.jsonl input file in a list of manifest files; reads no fact table
     "build_info_store.py",
     # build/ingest pipeline: writes the tables, never serves tool results
-    "facts.py", "seed_claims.py", "seed_general_facts.py", "apply_fact_revisions.py",
+    # (the two fact steps hold no SQL: their rows are fact_ingest_store's)
+    "fact_ingest_store.py", "seed_claims.py", "apply_fact_revisions.py",
     "add_fact.py", "backfill_source_keys.py", "build.py",
     # build-time checker: scans the full db for private markers, never serves tool results
     "leak_test.py",
     # names the whitelisted tables, reads none: the normal tier's column and table whitelist
     "normal_rules.py",
+    # names the revision log file in the data dir; reads no fact table
+    "locations.py",
+    # names the revision record's fields; no SQL
+    "fact_entry.py",
     # the CLI's read-only query adapter (search, facts, show, subjects): the full db, not a tool surface
     "fact_queries.py",
     # names the tables the build report counts, reads none
     "build_rules.py",
+    # Client bootstrap declares table names and report order only; it reads no fact rows.
+    "bootstrap.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

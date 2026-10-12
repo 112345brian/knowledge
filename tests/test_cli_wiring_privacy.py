@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test_cli_wiring import GIT_ENV, Env, ok  # noqa: E402
+from locations import canonical_path  # noqa: E402
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def put_rules(env, **rules):
 
 
 def entries_last(env):
-    with open(os.path.join(env.data_dir, "general_facts.json")) as f:
+    with open(os.path.join(env.data_dir, "general_facts.json"), encoding="utf-8") as f:
         return json.load(f)[-1]
 
 
@@ -125,7 +126,7 @@ def test_rules_empty_text_and_json(env):
     out = ok(env.cli("privacy", "rules"))
     assert "no rules file" in out and "subject tags: (none)" in out and "keywords: (none)" in out
     d = json.loads(ok(env.cli("privacy", "rules", "--json")))
-    assert d == {"path": env.rules_file(), "exists": False, "version": 1, "subject_tags": {}, "keywords": []}
+    assert d == {"path": canonical_path(env.rules_file()), "exists": False, "version": 1, "subject_tags": {}, "keywords": []}
 
 
 def test_rules_lists_loaded_rules(env):

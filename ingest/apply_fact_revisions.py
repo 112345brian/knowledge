@@ -13,34 +13,15 @@ could otherwise lower a visibility that 04/11 had raised (or miss a name a rewor
 contains), so the current rules are re-applied here, raise-only. History is never more visible than
 the fact itself: every revision snapshot of a private fact is raised to private too.
 """
-import os
-import sqlite3
-import sys
-
-import privacy
-import privacy_store
-import revisions
-import revisions_store
-from paths import PRIVATE_DATA_DIR as DATA_DIR
+import revision_apply_service
 
 
-def run(con):
-    path = os.path.join(DATA_DIR, revisions.REVISIONS_FILENAME)
-    applied = revisions_store.apply_revisions(con, path)
-    rules = privacy_store.load_rules(os.path.join(DATA_DIR, privacy.RULES_FILENAME))
-    floor = privacy_store.apply_rules_to_db(con, rules)
-    con.execute("""UPDATE fact_revisions SET visibility = 'private'
-                   WHERE visibility != 'private'
-                     AND fact_id IN (SELECT id FROM facts WHERE visibility = 'private')""")
-    con.commit()
-    if floor["raised"]:
-        print(f"  privacy rules raised {len(floor['raised'])} fact(s) to private after revisions")
-    total = con.execute("SELECT COUNT(*) FROM fact_revisions").fetchone()[0]
-    print(f"[apply_fact_revisions] applied {applied} revisions ({total} rows in fact_revisions incl. implicit revision 1)")
-
-
-if __name__ == "__main__":
-    con = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.db"))
-    con.execute("PRAGMA foreign_keys = ON;")
-    run(con)
-    con.close()
+def run(con, ctx):
+    deps = revision_apply_service.RevisionApplyDeps(
+        revision_repository=ctx.stores.revision_repository(con), privacy_repository=ctx.stores.privacy_repository(con),
+        unit_of_work=ctx.stores.unit_of_work(con))
+    done = revision_apply_service.apply_fact_revisions(
+        deps, ctx.locations.revisions_log(), ctx.locations.privacy_rules())
+    if done.raised:
+        print(f"  privacy rules raised {len(done.raised)} fact(s) to private after revisions")
+    print(f"[apply_fact_revisions] applied {done.applied} revisions ({done.total_revisions} rows in fact_revisions incl. implicit revision 1)")

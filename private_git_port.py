@@ -1,9 +1,13 @@
 """Application boundary for Git operations on the private data repository.
 
 The concrete subprocess implementation lives in ``private_git.py``. Composition roots inject
-that adapter through ``Ports.git``; use cases and adapters depend on this protocol instead.
+that adapter as each service's `git` dependency; services and adapters depend on this protocol instead.
 """
 from typing import Any, Optional, Protocol
+
+
+class PrivateGitError(Exception):
+    """A git precondition or commit failed. The message is safe to show the user as is."""
 
 
 class PrivateGit(Protocol):

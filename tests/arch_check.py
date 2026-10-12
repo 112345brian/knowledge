@@ -106,18 +106,57 @@ def _rewrite_internal_imports(source, names, pkg=SHADOW_PKG):
     return b"\n".join(lines).decode()
 
 
+CORE_PKG = "kncore"
+CLIENT_DIR = "client"
+
+
+def client_stems(src_dir):
+    """The module stems that live in client/ (the optional client sources: music, measurements, claims ...)."""
+    folder = os.path.join(src_dir, CLIENT_DIR)
+    if not os.path.isdir(folder):
+        return set()
+    return {f[:-3] for f in os.listdir(folder) if f.endswith(".py") and f != "__init__.py" and f[:-3].isidentifier()}
+
+
+def _core_view(text, core):
+    """The shadow text of a CORE module for the second package: its imports of core modules become `kncore.<name>`
+    and its imports of client modules stay `kn.<name>`, so the contract "kncore never imports kn" is exactly "the core
+    never imports the client" (see pyproject.toml, the boundary contract)."""
+    def one(m):
+        return f"{m.group(1)}{m.group(2)} {CORE_PKG}.{m.group(3)}"
+    text = re.sub(r"(?m)^(\s*)(from|import) kn\.(%s)\b" % "|".join(sorted(core)), one, text)
+
+    def names(m):
+        parts = [n.strip() for n in m.group(2).split(",")]
+        if all(p.split(" as ")[0] in core for p in parts):
+            return f"{m.group(1)}from {CORE_PKG} import {m.group(2)}"
+        return m.group(0)
+    return re.sub(r"(?m)^(\s*)from kn import ([A-Za-z_][\w, ]*)$", names, text)
+
+
 def make_shadow(src_dir, dest_dir):
-    """Create dest_dir/kn/ from the importable top-level modules of src_dir. Returns the names."""
+    """Create dest_dir/kn/ from the importable top-level modules of src_dir (every module, client included), and
+    dest_dir/kncore/: the same modules minus client/, with core-to-core imports pointing inside kncore. Returns the
+    names."""
     names = importable_stems(src_dir)
     pkg = os.path.join(dest_dir, SHADOW_PKG)
+    core_pkg = os.path.join(dest_dir, CORE_PKG)
     os.makedirs(pkg, exist_ok=True)
+    os.makedirs(core_pkg, exist_ok=True)
     open(os.path.join(pkg, "__init__.py"), "w").close()
+    open(os.path.join(core_pkg, "__init__.py"), "w").close()
+    clients = client_stems(src_dir)
+    core = set(names) - clients
     sources = _source_files(src_dir)
     for n in names:
         with open(sources[n], encoding="utf-8") as f:
             src = f.read()
+        text = _rewrite_internal_imports(src, set(names))
         with open(os.path.join(pkg, n + ".py"), "w", encoding="utf-8") as f:
-            f.write(_rewrite_internal_imports(src, set(names)))
+            f.write(text)
+        if n in core:
+            with open(os.path.join(core_pkg, n + ".py"), "w", encoding="utf-8") as f:
+                f.write(_core_view(text, core))
     return names
 
 

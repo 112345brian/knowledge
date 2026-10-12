@@ -1,30 +1,20 @@
 """Composition root for entity command use cases."""
+import entities_service
 import entities_store
 import entity_migration_store
 import entity_queries_store
-import entities_service
+import entity_repository_store
 import private_git
-from ports import Ports, bind
+from wiring import bind_all
 
-ENTITY_TYPES = entities_store.ENTITY_TYPES
-EntitiesError = entities_store.EntitiesError
-PORTS = Ports(git=private_git, entity_files=entities_store, entity_migration=entity_migration_store,
-              entity_queries=entity_queries_store)
+API = {"read_file": "load_entities", "find": "find", "link_counts": "link_counts", "add": "add", "alias": "alias",
+       "tag": "tag", "untag": "untag", "migrate_keywords": "migrate_keywords"}
 
 
-read_file = bind(entities_service.load_entities, PORTS)
-find = bind(entities_service.find, PORTS)
-link_counts = bind(entities_service.link_counts, PORTS)
-add = bind(entities_service.add, PORTS)
-alias = bind(entities_service.alias, PORTS)
-
-
-def tag(ref, allow_dirty=False, dry_run=False):
-    return entities_service.set_private(PORTS, ref, True, allow_dirty, dry_run)
-
-
-def untag(ref, allow_dirty=False, dry_run=False):
-    return entities_service.set_private(PORTS, ref, False, allow_dirty, dry_run)
-
-
-migrate_keywords = bind(entities_service.migrate_keywords, PORTS)
+def compose(locations):
+    """The entity API wired to the real adapters for these `locations`."""
+    deps = entities_service.EntitiesDeps(git=private_git, entity_files=entities_store,
+                                         entity_reader=entity_repository_store,
+                                         entity_migration=entity_migration_store,
+                                         entity_queries=entity_queries_store, locations=locations)
+    return bind_all(entities_service, deps, API)

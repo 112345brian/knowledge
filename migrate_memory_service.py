@@ -1,7 +1,7 @@
 """Import Claude Code memory files as private, pending facts (issue #29).
 
 Library only: nothing here prints or exits (the Typer command lives in cli_migrate.py). This module is
-the use case (through the ports in `ports`, no adapter imported); `migrate_memory` is the facade that
+the use case (through the port protocols (`*_port`), no adapter imported); `migrate_memory` is the facade that
 binds it to the real adapters and keeps the public API.
 
 Source: `<root>/*/memory/*.md`, root defaulting to ~/.claude/projects. Index files named
@@ -40,45 +40,61 @@ stored in the entry's notes. A run is serialized against other migrate runs with
 the system temp dir (keyed by the data file). It cannot be held across append_fact's own lock,
 so a concurrent add_fact still just appends its own random-keyed entry.
 """
+from dataclasses import dataclass
 import contextlib
 
 import revisions
 from migrate_memory_rules import FileResult, MigrationReport, plan_file
+from add_fact_port import AddFact
+from clock_port import Clock
+from memory_files_port import MemoryFiles
+from private_git_port import PrivateGit
+from locations import Locations
+
+
+@dataclass(frozen=True)
+class MigrateMemoryDeps:
+    """Everything this service reaches the world through; the composition root supplies each one."""
+    git: PrivateGit
+    clock: Clock
+    memory: MemoryFiles
+    add_fact: AddFact
+    locations: Locations
 
 DEFAULT_ROOT = "~/.claude/projects"
 
 
-def migrate(ports, root=None, data_path=None, db_path=None, dry_run=False, allow_dirty=False, today=None):
+def migrate(deps, root=None, data_path=None, db_path=None, dry_run=False, allow_dirty=False, today=None):
     """Plan and (unless dry_run) perform the import. Returns a MigrationReport; never prints or
     exits. Writes at most `data_path` and one commit of exactly that file."""
     root = DEFAULT_ROOT if root is None else root
-    data_path = ports.defaults.data_path if data_path is None else data_path
-    db_path = ports.defaults.db_path if db_path is None else db_path
-    report = MigrationReport(root=ports.memory.absolute_root(root), dry_run=dry_run)
-    if not ports.memory.root_exists(report.root):
+    data_path = deps.locations.data_path if data_path is None else data_path
+    db_path = deps.locations.db_path if db_path is None else db_path
+    report = MigrationReport(root=deps.memory.absolute_root(root), dry_run=dry_run)
+    if not deps.memory.root_exists(report.root):
         report.refused = f"memory root {report.root} is not a directory"
         return report
-    found, report.index_files, links = ports.memory.discover(root)
+    found, report.index_files, links = deps.memory.discover(root)
     for project, name, why in links:
         report.files.append(FileResult(project, name, None, "skipped-symlink", why))
 
-    lock = contextlib.nullcontext() if dry_run else ports.memory.run_lock(data_path)
+    lock = contextlib.nullcontext() if dry_run else deps.memory.run_lock(data_path)
     with lock:
         try:
-            existing = ports.memory.existing_entries(ports.memory.data_dir_of(data_path))
+            existing = deps.memory.existing_entries(deps.memory.data_dir_of(data_path))
         except (revisions.RevisionError, OSError) as e:
             report.refused = f"cannot read the existing facts: {e}"
             return report
         todo = []   # (FileResult, NewFact)
-        seen_keys = {}
-        today = today or ports.clock.now().date()
+        seen_keys: dict[str, str] = {}
+        today = today or deps.clock.now().date()
         for project, name, path in found:
-            mf = ports.memory.read_memory_file(path, project, name)
+            mf = deps.memory.read_memory_file(path, project, name)
             res, fact, truncated = plan_file(mf, project, name, existing, seen_keys, today)
             report.files.append(res)
             if fact is None:
                 continue
-            errors, _ = ports.add_fact.validate_fact(fact, db_path)
+            errors, _ = deps.add_fact.validate_fact(fact, db_path)
             if errors:
                 res.detail = "; ".join(errors)
                 continue
@@ -91,12 +107,12 @@ def migrate(ports, root=None, data_path=None, db_path=None, dry_run=False, allow
 
         repo = None
         try:
-            repo = ports.git.find_repo(ports.memory.data_dir_of(data_path))
+            repo = deps.git.find_repo(deps.memory.data_dir_of(data_path))
             if repo is None:
                 report.not_in_git = True
             elif not allow_dirty:
-                ports.git.ensure_clean_tree(repo)
-        except ports.git.PrivateGitError as e:
+                deps.git.ensure_clean_tree(repo)
+        except deps.git.PrivateGitError as e:
             report.refused = str(e)
             for res, _ in todo:
                 res.action, res.detail = "problem", "not written: run refused"
@@ -105,7 +121,7 @@ def migrate(ports, root=None, data_path=None, db_path=None, dry_run=False, allow
         written = 0
         try:
             for res, fact in todo:
-                result = ports.add_fact.append_fact(fact, data_path=data_path, db_path=db_path)
+                result = deps.add_fact.append_fact(fact, data_path=data_path, db_path=db_path)
                 if not result.ok:
                     res.action, res.detail = "problem", "; ".join(result.errors)
                     continue
@@ -115,8 +131,8 @@ def migrate(ports, root=None, data_path=None, db_path=None, dry_run=False, allow
             if written and repo is not None:
                 message = f"migrate-memory: {written} pending fact{'s' if written != 1 else ''}"
                 try:
-                    report.commit = ports.git.commit_private_change([data_path], message, repo)
-                    report.detached = ports.git.is_detached(repo)
-                except ports.git.PrivateGitError as e:
+                    report.commit = deps.git.commit_private_change([data_path], message, repo)
+                    report.detached = deps.git.is_detached(repo)
+                except deps.git.PrivateGitError as e:
                     report.commit_error = str(e)
     return report

@@ -1,6 +1,7 @@
 """#48: persistent identifiers for sources. Normalization and checksums, loading from frontmatter and
 manual_sources.json, duplicate detection (reported, never merged), `source ids`, `--identifier`, and the
 normal-only DB. Temp dirs only; no network."""
+import contextlib
 import importlib.util
 import json
 import os
@@ -13,6 +14,9 @@ import pytest
 import identifiers as ids
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import fact_queries
+from appctx import locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -135,9 +139,9 @@ def write_vault(tmp_path, notes):
 
 def run02(ingest, tmp_path, notes):
     mod = load("literature_sources.py")
-    mod.SRC_DIR = write_vault(tmp_path, notes)
+    src = write_vault(tmp_path, notes)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs(notes_vault=os.path.dirname(src)))
     return con
 
 
@@ -202,11 +206,14 @@ def test_duplicates_are_reported_with_both_citekeys_and_not_merged(ingest, tmp_p
 
 def test_the_same_identifier_twice_on_one_source_is_not_a_conflict(ingest, tmp_path, capsys):
     con = run02(ingest, tmp_path, {"a2020": {"doi": "10.1210/x1234", "pmid": "123"}})
-    from ingest import shared
-    cur = con.cursor()
-    sid = con.execute("SELECT id FROM sources").fetchone()[0]
-    assert shared.add_source_identifiers(cur, sid, "a2020", [("doi", "10.1210/x1234")]) == []
-    assert "duplicate" not in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_identifiers").fetchone()[0] == 2
+    from source_record import SourceRecord
+    from source_repository_store import SqliteSourceRepository
+    repo = SqliteSourceRepository(con)
+    record = SourceRecord(citekey="b2020", name="B", source_type="primary",
+                          identifiers=(("doi", "10.1210/y1"), ("doi", "10.1210/y1")))
+    import source_ingest_service
+    source_ingest_service.add_sources(repo, [record], report=print)     # the same pair twice on one source: no second row, no conflict
+    assert "duplicate" not in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_identifiers").fetchone()[0] == 3
 
 
 def test_manual_sources_take_identifiers_as_fields_or_a_mapping(ingest):
@@ -215,7 +222,7 @@ def test_manual_sources_take_identifiers_as_fields_or_a_mapping(ingest):
                    {"citekey": "m2", "name": "M2", "source_type": "primary", "identifiers": {"isbn": "0-306-40615-2", "other": ["reg-77", "reg-78"]}},
                    {"citekey": "m3", "name": "M3", "source_type": "primary"}], f)
     con = ingest.db()
-    load("seed_sources.py").run(con)
+    load("seed_sources.py").run(con, locs())
     assert ("m1", "doi", "10.5555/abc123") in table(con) and ("m2", "isbn", "9780306406157") in table(con)
     assert con.execute("SELECT COUNT(*) FROM source_identifiers WHERE source_id = (SELECT id FROM sources WHERE citekey = 'm3')").fetchone()[0] == 0
 
@@ -255,12 +262,12 @@ def test_identifier_filter_matches_any_spelling_in_both_layers():
     import modes_store
     con = _qdb()
     for ref in ("10.1210/JC.2007-1692", "https://doi.org/10.1210/jc.2007-1692", "doi:10.1210/jc.2007-1692", "19135656", "PMID 19135656"):
-        assert [r["id"] for r in knowledge.list_facts(con, identifier=ref)] == [1, 3], ref
-    assert [r["id"] for r in knowledge.list_facts(con, identifier="0-306-40615-2")] == [2]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", identifier="9780306406157")] == [2]
-    assert knowledge.list_facts(con, identifier="10.9999/nobody") == []
+        assert [r["id"] for r in fact_queries.list_facts(con, identifier=ref)] == [1, 3], ref
+    assert [r["id"] for r in fact_queries.list_facts(con, identifier="0-306-40615-2")] == [2]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", identifier="9780306406157")] == [2]
+    assert fact_queries.list_facts(con, identifier="10.9999/nobody") == []
     with pytest.raises(ValueError):
-        knowledge.list_facts(con, identifier="  ")
+        fact_queries.list_facts(con, identifier="  ")
     normal, private = modes.Session(mode=modes.Mode.normal), modes.Session(mode=modes.Mode.private)
     assert [r["id"] for r in modes_store.list_facts(normal, con, identifier="19135656")] == [1]
     assert [r["id"] for r in modes_store.list_facts(private, con, identifier="19135656")] == [1, 3]
@@ -297,14 +304,14 @@ def test_normal_db_carries_identifiers_of_included_sources_only():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.executemany("INSERT INTO source_identifiers VALUES (?, ?, ?)", [(1, "doi", "10.1210/pub"), (2, "doi", "10.1210/onlyprivate"), (1, "other", "pmcid:PMC1234567")])
         c.execute("INSERT INTO source_identifier_conflicts VALUES (2, 'doi', '10.1210/pub', 1)")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("pmc1234567",)))
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("pmc1234567",)))
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert [tuple(r) for r in con.execute("SELECT * FROM source_identifiers")] == [(1, "doi", "10.1210/pub")]       # source 2 not included; the keyword drops the 'other'
         assert "source_identifier_conflicts" not in {r[0] for r in con.execute("SELECT name FROM sqlite_master")}

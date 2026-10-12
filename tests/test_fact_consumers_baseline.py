@@ -8,6 +8,8 @@ import os
 
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 from test_add_fact import REPO
+import fact_queries
+from appctx import locs
 
 ITEMS = [
     F(subject="alpha", statement="Example value changed from 0.6 to 1.1.", trust_level="high",
@@ -47,7 +49,7 @@ def test_claims_seeding_matches_facts_by_statement_prefix(ingest):
     spec = importlib.util.spec_from_file_location("seed_claims", os.path.join(REPO, "client", "seed_claims.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.run(con, claims=[dict(statement="X", notes="n", fact_match_prefixes=["Example value changed"])])
+    mod.run(con, locs(), claims=[dict(statement="X", notes="n", fact_match_prefixes=["Example value changed"])])
     assert [tuple(r) for r in con.execute("SELECT fact_id FROM claim_facts WHERE claim_id = 2")] == [(1,)]
 
 
@@ -56,9 +58,9 @@ def test_knowledge_py_reads(ingest):
     spec = importlib.util.spec_from_file_location("knowledge_mod", os.path.join(REPO, "knowledge.py"))
     k = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(k)
-    assert [r["id"] for r in k.search_facts(con, "zebra")] == [2]
-    assert [r["id"] for r in k.list_facts(con)] == [1, 2]
-    assert [r["id"] for r in k.list_facts(con, status="active", trust="high")] == [1]
+    assert [r["id"] for r in fact_queries.search_facts(con, "zebra")] == [2]
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2]
+    assert [r["id"] for r in fact_queries.list_facts(con, status="active", trust="high")] == [1]
 
 
 def test_status_check_still_rejects_garbage(ingest):

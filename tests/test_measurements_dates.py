@@ -10,6 +10,8 @@ import pytest
 from schema_helper import full_schema
 
 from test_add_fact import Env, REPO
+from appctx import locs
+import local_datafiles
 
 SNAPSHOT = "2026-09-11"
 
@@ -67,14 +69,14 @@ def m03(tmp_path, monkeypatch):
     spec.loader.exec_module(mod)
     vault = str(tmp_path / "bodybuilding.db")
     make_vault(vault)
-    mod.VAULT_DB = vault
+    vault_dir = str(tmp_path)        # the step reads <vault>/bodybuilding.db
 
     class Ctx:
         env = e
         module = mod
 
         @staticmethod
-        def build():
+        def build(written=None):
             con = sqlite3.connect(":memory:")
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON;")
@@ -86,7 +88,7 @@ def m03(tmp_path, monkeypatch):
                 json.dump({"version": 1, "manual_sources": {"dexa-2026": "source-a", "dexa-2025": "source-b",
                           "labcorp": "source-c", "tape": "source-d", "strength": "source-e", "unlocated": "source-f"},
                           "scans": [["2025-01-01", "dexa-2025"], ["2026-01-01", "dexa-2026"]]}, f)
-            mod.run(con)
+            mod.run(con, locs(notes_vault=vault_dir, notes_vault_written=written))
             return con
 
         @staticmethod
@@ -106,6 +108,14 @@ def test_rows_and_vault_sources_carry_the_snapshot_date_from_the_data(m03):
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}
     assert {r["retrieved_date"] for r in con.execute("SELECT retrieved_date FROM sources WHERE citekey LIKE 'vault-db-%'")} == {SNAPSHOT}
     assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%as of 2026-09-11%'").fetchone()[0] > 0
+
+
+def test_vault_sources_record_the_vault_as_local_paths_writes_it(m03):
+    """The vault is read from its expanded path; the database stores `~/...`, not one machine's home."""
+    m03.write_snapshot('{"synced_at": "2026-09-11"}')
+    con = m03.build(written="~/vault")
+    paths = [r[0] for r in con.execute("SELECT origin_path FROM sources WHERE citekey LIKE 'vault-db-%'")]
+    assert paths and all(p.startswith("~/vault/source.db#") for p in paths)
 
 
 def test_the_date_is_whatever_the_data_says_not_a_constant(m03):
@@ -140,6 +150,6 @@ def test_a_missing_or_bad_snapshot_file_fails_the_build_and_names_the_file(m03, 
 
 def test_the_snapshot_backfill_output_is_what_the_measurements_step_reads(m03, tmp_path):
     from client import backfill_snapshot_date
-    backfill_snapshot_date.write_snapshot(m03.env.data_dir, apply=True)
+    backfill_snapshot_date.write_snapshot(local_datafiles, m03.env.data_dir, apply=True)
     con = m03.build()
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}

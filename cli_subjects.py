@@ -14,8 +14,7 @@ import sys
 
 import typer
 
-import fact_queries
-import subjects as subject_usecases
+from fact_reads_port import DatabaseNotFound
 
 app = typer.Typer(help="The subject hierarchy: relation types, descriptions, aliases, deprecation. "
                        "Edits go to subjects.json in knowledge-private (rebuild to apply).",
@@ -31,21 +30,22 @@ def _fail(msg, code=1):
     raise typer.Exit(code)
 
 
-def _known():
+def _known(c):
     """{subject name: domain} from the built db, or {} when there is none."""
-    return subject_usecases.known()
+    return c.subjects.known()
 
 
-def _rows(db):
+def _rows(c, db):
     """Query subject rows using an already-open connection (also used by fixture tests)."""
-    return subject_usecases.rows(db)
+    return c.subjects.rows(db)
 
 
 @app.command("list", help="List subjects with parent, relation type, deprecation, aliases and fact counts (from the built db).")
-def cmd_list(as_json: bool = JSON_OPT):
+def cmd_list(ctx: typer.Context, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        rows = subject_usecases.rows()
-    except fact_queries.DatabaseNotFound as e:
+        rows = c.subjects.rows()
+    except DatabaseNotFound as e:
         _fail(e)
     if as_json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
@@ -62,10 +62,11 @@ def cmd_list(as_json: bool = JSON_OPT):
 
 
 @app.command("show", help="One subject in full: description, relation, aliases, children, deprecation. NAME may be an alias.")
-def cmd_show(name: str, as_json: bool = JSON_OPT):
+def cmd_show(ctx: typer.Context, name: str, as_json: bool = JSON_OPT):
+    c = ctx.obj
     try:
-        r = subject_usecases.detail(name)
-    except fact_queries.DatabaseNotFound as e:
+        r = c.subjects.detail(name)
+    except DatabaseNotFound as e:
         _fail(e)
     if r is None:
         _fail(f"unknown subject {name!r}")
@@ -111,22 +112,25 @@ def _report(res, as_json):
 
 
 @app.command("alias", help="Give a subject another name. New facts filed under the alias are stored under the subject.")
-def cmd_alias(name: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    known = _known()
-    res = subject_usecases.alias(name, alias, known, allow_dirty, dry_run)
+def cmd_alias(ctx: typer.Context, name: str, alias: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
+    c = ctx.obj
+    known = _known(c)
+    res = c.subjects.alias(name, alias, known, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("describe", help="Set a subject's scope note (blank text clears it).")
-def cmd_describe(name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    known = _known()
-    res = subject_usecases.describe(name, text, known, allow_dirty, dry_run)
+def cmd_describe(ctx: typer.Context, name: str, text: str, allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
+    c = ctx.obj
+    known = _known(c)
+    res = c.subjects.describe(name, text, known, allow_dirty, dry_run)
     _report(res, as_json)
 
 
 @app.command("deprecate", help="Refuse a subject for NEW facts (existing facts keep it); --replaced-by names the one to use instead.")
-def cmd_deprecate(name: str, replaced_by: str = typer.Option(None, "--replaced-by", help="The subject to use instead."),
+def cmd_deprecate(ctx: typer.Context, name: str, replaced_by: str = typer.Option(None, "--replaced-by", help="The subject to use instead."),
                   allow_dirty: bool = ALLOW_DIRTY_OPT, dry_run: bool = DRY_RUN_OPT, as_json: bool = JSON_OPT):
-    known = _known()
-    res = subject_usecases.deprecate(name, replaced_by, known, allow_dirty, dry_run)
+    c = ctx.obj
+    known = _known(c)
+    res = c.subjects.deprecate(name, replaced_by, known, allow_dirty, dry_run)
     _report(res, as_json)

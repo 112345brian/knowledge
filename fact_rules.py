@@ -15,7 +15,7 @@ FRESHNESS_VALUES = ("recheck", "no-decay", "unreviewed")  # keep in sync with th
 # #39: what kind of assertion a fact is. Self-reported guidance (the schema only enforces the vocabulary,
 # it cannot judge whether a fact really is a decision or an observation). 'unclassified' is the honest
 # marker for a fact nobody classified (every legacy fact, and the default for a new one).
-# Keep in sync with the CHECKs on the kind column of the facts and revision tables in schema.sql and normal_db.py.
+# Keep in sync with the CHECKs on the kind column of the facts and revision tables in schema.sql and normal_db_store.py.
 KIND_VALUES = ("observation", "measurement", "decision", "preference", "plan", "definition",
                "inference", "rule", "lesson", "unclassified")
 VIA_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")

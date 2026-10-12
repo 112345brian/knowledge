@@ -140,6 +140,19 @@ def split_authors(author_string):
     return [name for name in (a.strip() for a in author_string.split(";")) if name]
 
 
+def byline(author_string):
+    """[(position, name)] of a '; '-joined byline: blank names are dropped but keep their position, so the
+    stored author_order of "A;;B" is 0 and 2."""
+    if not author_string:
+        return ()
+    return tuple((i, name) for i, name in enumerate(a.strip() for a in author_string.split(";")) if name)
+
+
 def format_origin_path(origin_path, vault, health):
     """Substitute the {VAULT} and {HEALTH} placeholders of a manual source's origin_path."""
-    return origin_path.format(VAULT=vault, HEALTH=health) if origin_path else origin_path
+    if not origin_path:
+        return origin_path
+    for placeholder, value, setting in (("{VAULT}", vault, "NOTES_VAULT"), ("{HEALTH}", health, "HEALTH_DIR")):
+        if placeholder in origin_path and not value:
+            raise ValueError(f"origin_path {origin_path!r} uses {placeholder}, but {setting} is not set in local_paths.py")
+    return origin_path.format(VAULT=vault, HEALTH=health)

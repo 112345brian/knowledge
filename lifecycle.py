@@ -51,16 +51,17 @@ Library code never prints or exits. Callers must check `.ok` (tests/test_lifecyc
 import lifecycle_service
 import lifecycle_store
 import private_git
-import privacy  # noqa: F401  (kept importable as lifecycle.privacy)
 import review
-import revisions  # noqa: F401  (kept importable as lifecycle.revisions)
 import revisions_store
-from lifecycle_rules import CHANGED_OUTCOMES, LifecycleResult, OUTCOMES, ReviseResult  # noqa: F401  (the public API)
-from ports import Ports, bind
+from wiring import bind_all
 
-PORTS = Ports(git=private_git, revisions=revisions_store, reviews=review, lifecycle_reads=lifecycle_store)
+API = ("supersede", "retract", "set_visibility", "edit_fact")
 
-supersede = bind(lifecycle_service.supersede, PORTS)
-retract = bind(lifecycle_service.retract, PORTS)
-set_visibility = bind(lifecycle_service.set_visibility, PORTS)
-edit_fact = bind(lifecycle_service.edit_fact, PORTS)
+
+def compose(locations, clock, review_api=None):
+    """The lifecycle API wired to the real adapters for these `locations`. It reads review state through the
+    review API (pass the one already composed, or one is built)."""
+    review_api = review.compose(locations, clock) if review_api is None else review_api
+    deps = lifecycle_service.LifecycleDeps(git=private_git, revisions=revisions_store, reviews=review_api,
+                                           lifecycle_reads=lifecycle_store, clock=clock, locations=locations)
+    return bind_all(lifecycle_service, deps, API)

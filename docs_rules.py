@@ -1,0 +1,344 @@
+"""Generated documentation, the rules: which doc regions are rendered from code, and how (domain: no file, no import of the code it describes).
+
+Everything here is a pure function of text and plain values: the contents of `tach.toml` and `pyproject.toml`, the
+source text of each module, and a description of the CLI commands. `docs_service` reads and writes the files through
+a port; `cli_docs` turns the Typer app into the `CommandDoc` values.
+
+A generated region is fenced by `<!-- generated:NAME:start -->` and `<!-- generated:NAME:end -->` (the same
+`name:start` / `name:end` convention as the `instruction-block` markers in docs/register-facts-protocol.md). NAME
+is the generator, one of the keys of `TARGETS`; the region begins with a do-not-edit line.
+"""
+import ast
+import re
+import tomllib
+from dataclasses import dataclass
+from typing import Dict, List, Mapping, Sequence, Tuple
+
+GENERATOR = "knowledge.py docs build"
+
+# file -> the regions (generators) it holds. A region belongs to exactly one file.
+TARGETS: Dict[str, Tuple[str, ...]] = {
+    "README.md": ("cli-commands", "requirements"),
+    "docs/architecture.md": ("module-map",),
+    "docs/cli.md": ("cli-reference",),
+}
+
+# Roles the tach layers cannot say. Everything else is a function of the layer (see `role`). A name here must be a
+# module in the `composition` layer (tests/test_docs.py checks), so the declaration cannot go stale quietly.
+COMPOSITION_HELPERS = frozenset({"wiring"})
+
+# The onion's rings, named for the architecture doc. Pipeline and composition are refined in `role`.
+LAYER_ROLES = {
+    "serving": "driving adapter",
+    "cli": "driving adapter",
+    "composition": "composition root",
+    "infrastructure": "infrastructure",
+    "application": "application service",
+    "domain_services": "domain service",
+    "model": "model",
+}
+PIPELINE_ETL = "ETL adapter (driving, batch)"
+PIPELINE_RULES = "pipeline rules"
+COMPOSITION_HELPER = "composition helper"
+
+MAX_SUMMARY = 140
+
+
+class DocsError(Exception):
+    """Something the generator cannot render or place: damaged markers, an unclassified module, a missing summary."""
+
+
+# --------------------------------------------------------------------- the inputs
+
+
+@dataclass(frozen=True)
+class ArgumentDoc:
+    name: str
+    required: bool = True
+    many: bool = False
+
+
+@dataclass(frozen=True)
+class OptionDoc:
+    names: Tuple[str, ...]
+    value: str = ""        # placeholder for the value; empty for a flag
+    required: bool = False
+    help: str = ""
+
+
+@dataclass(frozen=True)
+class CommandDoc:
+    path: Tuple[str, ...]
+    help: str = ""
+    arguments: Tuple[ArgumentDoc, ...] = ()
+    options: Tuple[OptionDoc, ...] = ()
+
+
+@dataclass(frozen=True)
+class Inputs:
+    tach_text: str
+    pyproject_text: str
+    module_sources: Mapping[str, str]     # bare module name -> source text
+    commands: Sequence[CommandDoc]
+    client_modules: Sequence[str] = ()
+
+
+@dataclass(frozen=True)
+class ModuleDoc:
+    name: str
+    layer: str
+    role: str
+    summary: str
+
+
+# --------------------------------------------------------------------- markers
+
+
+_MARKER = re.compile(r"^<!-- generated:([a-z0-9-]+):(start|end) -->[ \t]*$", re.M)
+
+
+def start_marker(name: str) -> str:
+    return f"<!-- generated:{name}:start -->"
+
+
+def end_marker(name: str) -> str:
+    return f"<!-- generated:{name}:end -->"
+
+
+def region_names(text: str) -> List[str]:
+    """Names of the generated regions that have a marker in `text`, sorted, each once."""
+    return sorted({m.group(1) for m in _MARKER.finditer(text)})
+
+
+def _span(text: str, name: str) -> Tuple[int, int]:
+    """(offset after the start marker line, offset of the end marker): the region's body."""
+    starts = [m for m in _MARKER.finditer(text) if m.group(1) == name and m.group(2) == "start"]
+    ends = [m for m in _MARKER.finditer(text) if m.group(1) == name and m.group(2) == "end"]
+    if not starts and not ends:
+        raise DocsError(f"no markers for generated region {name!r}: add {start_marker(name)} and {end_marker(name)}")
+    if len(starts) > 1 or len(ends) > 1:
+        raise DocsError(f"generated region {name!r} is marked twice")
+    if not starts:
+        raise DocsError(f"generated region {name!r} has an end marker but no start marker")
+    if not ends:
+        raise DocsError(f"generated region {name!r} has a start marker but no end marker")
+    if ends[0].start() < starts[0].end():
+        raise DocsError(f"generated region {name!r}: the end marker comes before the start marker")
+    return starts[0].end(), ends[0].start()
+
+
+def extract_region(text: str, name: str) -> str:
+    """The body between the markers, without the surrounding blank lines."""
+    a, b = _span(text, name)
+    return text[a:b].strip("\n")
+
+
+def framed(name: str, body: str) -> str:
+    """What sits between the markers: a do-not-edit line, then the rendered body."""
+    note = (f"<!-- Generated by `{GENERATOR}` (generator: {name}). Do not edit by hand: "
+            f"change the code it is rendered from, then rebuild. -->")
+    return f"{note}\n\n{body.strip(chr(10))}"
+
+
+def replace_region(text: str, name: str, body: str) -> str:
+    """`text` with the region's contents replaced by the framed `body`; everything outside is untouched."""
+    a, b = _span(text, name)
+    return text[:a] + "\n" + framed(name, body) + "\n" + text[b:]
+
+
+def region_is_current(text: str, name: str, body: str) -> bool:
+    return extract_region(text, name) == framed(name, body).strip("\n")
+
+
+# --------------------------------------------------------------------- modules
+
+
+def module_summary(name: str, source: str) -> str:
+    """A concise first-sentence summary of the module docstring."""
+    try:
+        doc = ast.get_docstring(ast.parse(source), clean=True)
+    except SyntaxError as e:
+        raise DocsError(f"{name}: does not parse ({e.msg})") from e
+    first = " ".join((doc or "").split()).strip()
+    if not first:
+        raise DocsError(f"{name}: no module docstring; add a short module description")
+    sentence = re.search(r"[.!?](?=\s|$)", first)
+    summary = first[:sentence.end()] if sentence else first
+    if len(summary) > MAX_SUMMARY:
+        summary = summary[:MAX_SUMMARY - 1].rsplit(" ", 1)[0].rstrip(".,:; ") + "…"
+    return summary
+
+
+def _layers(tach: Mapping) -> List[str]:
+    layers = tach.get("layers")
+    if not layers:
+        raise DocsError("tach.toml declares no layers")
+    return list(layers)
+
+
+def role(name: str, layer: str) -> str:
+    """The module's role in the architecture doc: its tach layer, refined for the two layers that hold more than
+    one kind of module (pipeline: rules vs adapters; composition: roots vs the wiring helper)."""
+    if layer == "pipeline":
+        return PIPELINE_RULES if name.endswith("_rules") else PIPELINE_ETL
+    if layer == "composition" and name in COMPOSITION_HELPERS:
+        return COMPOSITION_HELPER
+    if layer not in LAYER_ROLES:
+        raise DocsError(f"{name}: tach layer {layer!r} has no role (add it to docs_rules.LAYER_ROLES)")
+    return LAYER_ROLES[layer]
+
+
+def _bare(path: str) -> str:
+    return path.rsplit(".", 1)[-1]
+
+
+def module_docs(inputs: Inputs) -> List[ModuleDoc]:
+    """One entry per module, sorted by ring (tach's `layers`, outermost first) and then name."""
+    tach = tomllib.loads(inputs.tach_text)
+    order = {layer: i for i, layer in enumerate(_layers(tach))}
+    layer_of = {_bare(m["path"]): m["layer"] for m in tach.get("modules", [])}
+    client = set(inputs.client_modules)
+    unclassified = sorted(set(inputs.module_sources) - set(layer_of) - client)
+    if unclassified:
+        raise DocsError(f"module(s) not classified in tach.toml: {', '.join(unclassified)}")
+    missing = sorted(set(layer_of) - set(inputs.module_sources))
+    if missing:
+        raise DocsError(f"tach.toml lists module(s) with no source file: {', '.join(missing)}")
+    docs = []
+    for name in inputs.module_sources:
+        if name in client:
+            layer, module_role = "client", client_role(name)
+            module_order = len(order)
+        else:
+            layer = layer_of[name]
+            if layer not in order:
+                raise DocsError(f"{name}: layer {layer!r} is not one of tach.toml's layers")
+            module_role, module_order = role(name, layer), order[layer]
+        docs.append(ModuleDoc(name, layer, module_role, module_summary(name, inputs.module_sources[name])))
+    return sorted(docs, key=lambda d: (len(order) if d.layer == "client" else order[d.layer], d.name))
+
+
+def client_role(name: str) -> str:
+    """Client modules are not registered in tach; their conventional suffix states their ring."""
+    if name.endswith("_rules"):
+        return PIPELINE_RULES
+    if name.endswith(("_port", "_records")) or name == "artist_directory":
+        return "domain service"
+    if name.endswith("_service"):
+        return "application service"
+    if name.endswith("_store"):
+        return "infrastructure"
+    if name in {"bootstrap", "music_ingest"} or name.endswith("_ingest"):
+        return "composition root"
+    return PIPELINE_ETL
+
+
+# --------------------------------------------------------------------- rendering
+
+
+_CODE_SPAN = re.compile(r"(`[^`]*`)")
+
+
+def _md(text: str) -> str:
+    """One line of prose made safe for Markdown: characters that would start emphasis or markup are escaped outside
+    code spans (a code span shows its text as written)."""
+    parts = _CODE_SPAN.split(" ".join(text.split()))
+    return "".join(p if i % 2 else re.sub(r"([\\*<>])", r"\\\1", p) for i, p in enumerate(parts))
+
+
+def _cell(text: str) -> str:
+    return _md(text).replace("|", r"\|")
+
+
+def _render_module_map(inputs: Inputs) -> str:
+    lines = ["| Module | Layer | Role | What it is |", "| --- | --- | --- | --- |"]
+    for d in module_docs(inputs):
+        lines.append(f"| `{d.name}` | {d.layer} | {d.role} | {_cell(d.summary)} |")
+    return "\n".join(lines)
+
+
+def _bound(spec: str) -> str:
+    """`>=3.11` -> `3.11 or later`; anything else is shown as written."""
+    m = re.fullmatch(r">=\s*(\d+(?:\.\d+)*)", spec.strip())
+    return f"{m.group(1)} or later" if m else f"`{spec.strip()}`"
+
+
+def _render_requirements(inputs: Inputs) -> str:
+    cfg = tomllib.loads(inputs.pyproject_text)
+    project = cfg.get("project", {})
+    lines = []
+    if project.get("requires-python"):
+        lines.append(f"- Python {_bound(project['requires-python'])}")
+    runtime = sorted(project.get("dependencies", []))
+    if runtime:
+        lines.append("- Runtime packages: " + ", ".join(f"`{d}`" for d in runtime))
+    for group, deps in sorted(cfg.get("dependency-groups", {}).items()):
+        lines.append(f"- Development packages (`{group}` group, installed by `uv sync`): "
+                     + ", ".join(f"`{d}`" for d in sorted(deps)))
+    return "\n".join(lines)
+
+
+def summarize(help_text: str) -> str:
+    """The first sentence of a command's help, on one line."""
+    text = " ".join((help_text or "").split())
+    if not text:
+        return ""
+    m = re.search(r"[.!?](?=\s|$)", text)
+    return text[: m.end()] if m else text
+
+
+def _synopsis(c: CommandDoc) -> str:
+    parts = list(c.path)
+    for a in c.arguments:
+        token = a.name + ("..." if a.many else "")
+        parts.append(token if a.required else f"[{token}]")
+    return " ".join(parts)
+
+
+def _sorted_commands(commands: Sequence[CommandDoc]) -> List[CommandDoc]:
+    return sorted(commands, key=lambda c: c.path)
+
+
+def _render_cli_commands(inputs: Inputs) -> str:
+    lines = ["| Command | What it does |", "| --- | --- |"]
+    for c in _sorted_commands(inputs.commands):
+        lines.append(f"| `{_cell(_synopsis(c))}` | {_cell(summarize(c.help))} |")
+    return "\n".join(lines)
+
+
+def _option_label(o: OptionDoc) -> str:
+    label = " / ".join(o.names)
+    return f"{label} {o.value}" if o.value else label
+
+
+def _render_cli_reference(inputs: Inputs) -> str:
+    blocks = []
+    for c in _sorted_commands(inputs.commands):
+        lines = [f"### `{_synopsis(c)}`", ""]
+        if c.help.strip():
+            lines += [_md(c.help), ""]
+        if c.options:
+            for o in sorted(c.options, key=lambda o: o.names):
+                text = f"- `{_option_label(o)}`"
+                if o.required:
+                    text += " (required)"
+                if o.help.strip():
+                    text += f": {_md(o.help)}"
+                lines.append(text)
+        else:
+            lines.append("No options.")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+GENERATORS = {
+    "module-map": _render_module_map,
+    "requirements": _render_requirements,
+    "cli-commands": _render_cli_commands,
+    "cli-reference": _render_cli_reference,
+}
+
+
+def render(inputs: Inputs) -> Dict[str, str]:
+    """{region name: body} for every generator. Deterministic: sorted, no timestamps, no paths."""
+    return {name: GENERATORS[name](inputs) for name in sorted(GENERATORS)}

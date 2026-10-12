@@ -10,7 +10,7 @@ never invented and nothing here raises for a bad path. Caveat: ANY edit to a not
 frontmatter edit, changes its hash and raises an audit row. Hashing only the note body is the follow-up
 if that proves noisy.
 
-Paths are stored as written (they may begin with `~`); every read goes through expanduser.
+Paths are stored as written (they may begin with `~`); every read expands `~` (under $KNOWLEDGE_HOME when set, else the OS home).
 """
 import hashlib
 import mimetypes
@@ -18,9 +18,10 @@ import os
 import re
 from datetime import datetime, timezone
 
+import locations
+
 HASH_BUFFER = 1 << 20  # read files in 1 MiB chunks, never whole
-FILE_STATES = ("present", "missing")  # keep in sync with the CHECKs in schema.sql
-SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+from fixity_rules import FILE_STATES, FINGERPRINT_COLUMNS, SHA256_RE, valid_sha256  # noqa: F401  (defined with the rules)
 REASONS = ("changed", "missing", "moved")
 
 # The stdlib table varies by platform/version; the vault is markdown, so pin the types we rely on.
@@ -28,12 +29,9 @@ _MIME_OVERRIDES = {".md": "text/markdown", ".markdown": "text/markdown", ".json"
                    ".csv": "text/csv", ".txt": "text/plain", ".pdf": "application/pdf"}
 
 
-def valid_sha256(value):
-    return isinstance(value, str) and bool(SHA256_RE.match(value))
-
-
 def _expand(path):
-    return os.path.expanduser(path)
+    home = os.environ.get(locations.HOME_ENV_VAR)     # the same rule as paths.expand
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
 
 
 def sha256_of(path):
@@ -69,7 +67,6 @@ def fingerprint(path):
             "mime_type": guess_mime(path), "file_state": "present"}
 
 
-FINGERPRINT_COLUMNS = ("content_sha256", "size_bytes", "file_mtime", "mime_type", "file_state")
 
 
 def _index_roots(search_roots, wanted_exts, wanted_hashes, known=None):

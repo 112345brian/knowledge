@@ -18,9 +18,7 @@ PrivateGitError. Git commands run via argv lists (no shell) with a fixed English
 import os
 import subprocess
 
-
-class PrivateGitError(Exception):
-    """A git precondition or commit failed. The message is safe to show the user as is."""
+from private_git_port import PrivateGitError  # noqa: F401  (raised here; callers import it from private_git_port)
 
 
 def _git(repo_dir, *args):

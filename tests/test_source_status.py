@@ -4,6 +4,7 @@ Pins what 01/02 do with legacy sources first (counts, columns, status 'active' w
 fields from frontmatter and manual_sources.json, relation validation (unknown citekey, self, cycles), the
 audit in every status, the CLI, and the normal-only DB. Temp dirs only.
 """
+import contextlib
 import importlib.util
 import json
 import os
@@ -17,6 +18,8 @@ import source_status as ss
 import source_status_store as ss_store
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+from appctx import locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -61,9 +64,10 @@ def new_db():
 
 def run02(ingest, tmp_path, notes, con=None):
     mod = load("literature_sources.py")
-    mod.SRC_DIR = write_vault(tmp_path, notes)
+    src = write_vault(tmp_path, notes)
+    mod.vault = os.path.dirname(src)     # what the later steps need to find the same notes
     con = con or ingest.db()
-    mod.run(con)
+    mod.run(con, locs(notes_vault=mod.vault))
     return con, mod
 
 
@@ -105,7 +109,7 @@ def test_01_manual_sources_without_status_fields_are_active(ingest):
         json.dump([{"citekey": "m1", "name": "Manual one", "source_type": "primary", "published_date": "2026-01-01"}], f)
     mod = load("seed_sources.py")
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs())
     r = con.execute("SELECT * FROM sources").fetchone()
     assert (r["status"], r["status_date"]) == ("active", None)
 
@@ -121,8 +125,10 @@ def test_02_reads_status_fields_and_relations_from_frontmatter(ingest, tmp_path)
     r = {x["citekey"]: x for x in con.execute("SELECT * FROM sources")}
     assert (r["old2015"]["status"], r["old2015"]["status_date"], r["old2015"]["status_note"], r["old2015"]["original_published_date"]) == \
         ("retracted", "2019-07", "https://example.org/notice", "2014-11-02")
-    rows = mod.parse_all()
-    assert [x["relations"] for x in rows if x["citekey"] == "new2020"] == [[("new2020", "replaces", "old2015")]]
+    ctx = locs(notes_vault=mod.vault)
+    from ingest import source_readers
+    rows = source_readers.VaultNotes(ctx.inputs, ctx.locations).records()
+    assert [x.relations for x in rows if x.citekey == "new2020"] == [(("new2020", "replaces", "old2015"),)]
 
 
 @pytest.mark.parametrize("fm, msg", [
@@ -141,14 +147,14 @@ def test_01_reads_status_fields_from_manual_sources_json(ingest):
         json.dump([{"citekey": "m1", "name": "M", "source_type": "primary", "status": "expression-of-concern",
                     "status_date": "2024", "status_note": "see journal", "edition": "1st", "original_published_date": "1999"}], f)
     con = ingest.db()
-    load("seed_sources.py").run(con)
+    load("seed_sources.py").run(con, locs())
     r = con.execute("SELECT * FROM sources").fetchone()
     assert (r["status"], r["status_date"], r["status_note"], r["edition"], r["original_published_date"]) == \
         ("expression-of-concern", "2024", "see journal", "1st", "1999")
     with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
         json.dump([{"citekey": "m2", "name": "M", "source_type": "primary", "status": "banned"}], f)
     with pytest.raises(Exception, match="m2") as e:
-        load("seed_sources.py").run(ingest.db())
+        load("seed_sources.py").run(ingest.db(), locs())
     assert type(e.value).__name__ == "SourceStatusError"
 
 
@@ -228,16 +234,9 @@ def run14(ingest, tmp_path, notes, manual=None):
     if manual is not None:
         with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
             json.dump(manual, f)
-        load("seed_sources.py").run(con)
+        load("seed_sources.py").run(con, locs())
     mod14 = load("link_source_relations.py")
-    real = mod14._load
-
-    def patched(filename):
-        m = real(filename)
-        if filename.startswith("literature_sources"):
-            m.SRC_DIR = mod02.SRC_DIR
-        return m
-    mod14._load = patched
+    mod14.vault = mod02.vault      # the notes written by run02
     if manual is None:
         with open(os.path.join(ingest.env.data_dir, "manual_sources.json"), "w") as f:
             json.dump([], f)
@@ -249,7 +248,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
                        {"old2015": {}, "mid2018": {"replaces": ["old2015"]}, "pre2014": {"is-version-of": "[old2015]"}},
                        manual=[{"citekey": "textbook-3e", "name": "3rd ed", "source_type": "secondary", "edition": "3rd",
                                 "replaces": ["mid2018"]}])
-    mod14.run(con)
+    mod14.run(con, locs(notes_vault=mod14.vault))
     rels = {(a, r, b) for a, r, b in con.execute(
         "SELECT s.citekey, r.relation, t.citekey FROM source_relations r JOIN sources s ON s.id = r.source_id JOIN sources t ON t.id = r.related_source_id")}
     assert rels == {("mid2018", "replaces", "old2015"), ("pre2014", "is-version-of", "old2015"), ("textbook-3e", "replaces", "mid2018")}
@@ -258,7 +257,7 @@ def test_step14_loads_relations_from_notes_and_manual_sources(ingest, tmp_path, 
 
 def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
     con, mod14 = run14(ingest, tmp_path, {"a2020": {}})
-    mod14.run(con)
+    mod14.run(con, locs(notes_vault=mod14.vault))
     assert "0 relations" in capsys.readouterr().out and con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 
 
@@ -270,7 +269,7 @@ def test_step14_with_no_relations_is_fine(ingest, tmp_path, capsys):
 def test_step14_refuses_bad_relations_naming_the_sources(ingest, tmp_path, notes, msg):
     con, mod14 = run14(ingest, tmp_path, notes)
     with pytest.raises(Exception, match=msg) as e:
-        mod14.run(con)
+        mod14.run(con, locs(notes_vault=mod14.vault))
     assert type(e.value).__name__ == "SourceStatusError"
     assert con.execute("SELECT COUNT(*) FROM source_relations").fetchone()[0] == 0
 
@@ -417,30 +416,30 @@ def test_normal_db_carries_status_and_edition_but_not_the_note_date_or_relations
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         cols = {r[1] for r in con.execute("PRAGMA table_info(sources)")}
         assert {"status", "edition"} <= cols and not ({"status_note", "status_date", "original_published_date", "origin_path"} & cols)
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE citekey = 'pub2020'").fetchone()) == ("corrected", "2nd edition")
         assert "source_relations" not in {r[0] for r in con.execute("SELECT name FROM sqlite_master")}
         assert leak_test.MARKERS["source status note"].encode() not in open(path, "rb").read()
-        assert not leak_test.scan_against_full(path, full)
+        assert not leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 def test_normal_db_drops_an_edition_that_trips_a_keyword():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE sources SET edition = 'Zorbak family edition' WHERE id = 1")
         c.commit()
         c.close()
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules(keywords=("zorbak",)))
-        con = sqlite3.connect(path)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE id = 1").fetchone()) == ("corrected", None)
 
 
@@ -448,11 +447,33 @@ def test_leak_test_flags_a_status_note_planted_in_the_normal_db():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         con.execute("UPDATE sources SET edition = ? WHERE id = 1", (leak_test.MARKERS["source status note"],))
         con.commit()
         con.close()
-        assert leak_test.scan_against_full(path, full)
+        assert leak_test.scan_against_full(local_buildfiles, path, full)
+
+
+def test_the_status_enum_is_the_vocabulary_the_schema_and_the_audit_use():
+    assert ss.STATUS_VALUES == ("active", "corrected", "expression-of-concern", "retracted", "superseded")
+    assert ss.SourceStatus("retracted") == "retracted" and ss.DEFAULT_STATUS == "active"
+    assert {s.value for s in ss.SourceStatus if s.flags_dependents} == set(ss.REASONS)
+
+
+def test_source_state_is_a_validated_typed_value():
+    s = ss.SourceState.from_raw({"status": "retracted", "status_date": "2019-07", "edition": " 3rd "}, "src")
+    assert s.status is ss.SourceStatus.RETRACTED and s.flags_dependents and s.edition == "3rd"
+    assert s.columns() == {"status": "retracted", "status_date": "2019-07", "status_note": None, "edition": "3rd",
+                           "original_published_date": None}
+    legacy = ss.SourceState.from_raw({}, "src")
+    assert legacy.status is ss.SourceStatus.ACTIVE and legacy.status_date is None and not legacy.flags_dependents
+    with pytest.raises(ss.SourceStatusError, match="src: status 'bogus'"):
+        ss.SourceState.from_raw({"status": "bogus"}, "src")
+
+
+def test_relations_are_typed_edges_that_still_equal_plain_triples():
+    (r,) = ss.check_relations([("a", "replaces", "b")], {"a", "b"})
+    assert isinstance(r, ss.Relation) and r == ("a", "replaces", "b") and (r.source, r.relation, r.related) == ("a", "replaces", "b")

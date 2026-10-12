@@ -28,47 +28,14 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+import locations
 import validtime
+from acquisition_rules import COLUMNS, VIA_VALUES, AcquisitionError, normalize_data  # noqa: F401  (defined with the rules)
 
-VIA_VALUES = ("download", "manual", "export", "unknown")  # keep in sync with the CHECKs in schema.sql
 WHERE_FROMS = "com.apple.metadata:kMDItemWhereFroms"
 QUARANTINE = "com.apple.quarantine"
 ATTR_NOTE_PREFIX = "from macOS file attributes"
-COLUMNS = ("acquired_at", "acquired_via", "where_from", "acquired_note")
 _TIMEOUT = 5
-
-
-class AcquisitionError(Exception):
-    """A value in the data is invalid. The message names the source."""
-
-
-def _text(value, where, field):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise AcquisitionError(f"{where}: {field} must be text, not {type(value).__name__}")
-    return value.strip() or None
-
-
-def _valid_when(value):
-    if validtime.is_valid_boundary(value):
-        return True
-    try:
-        datetime.fromisoformat(value)
-        return True
-    except ValueError:
-        return False
-
-
-def normalize_data(raw, where):
-    """The data-supplied acquisition fields {acquired_at, acquired_via, where_from, acquired_note}: blank -> None,
-    validated. Raises AcquisitionError naming `where`."""
-    out = {k: _text(raw.get(k), where, k) for k in COLUMNS}
-    if out["acquired_at"] is not None and not _valid_when(out["acquired_at"]):
-        raise AcquisitionError(f"{where}: acquired_at {out['acquired_at']!r} must be an ISO date (YYYY, YYYY-MM, YYYY-MM-DD) or timestamp")
-    if out["acquired_via"] is not None and out["acquired_via"] not in VIA_VALUES:
-        raise AcquisitionError(f"{where}: acquired_via {out['acquired_via']!r} must be one of {list(VIA_VALUES)}")
-    return out
 
 
 # ------------------------------------------------------------------ reading the file attributes (read-only)
@@ -115,6 +82,11 @@ def _parse_quarantine(output):
     return ts.replace(microsecond=0).isoformat()
 
 
+def _expand_home(path):
+    home = os.environ.get(locations.HOME_ENV_VAR)     # the same rule as paths.expand
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
+
+
 def read_attributes(path, run=None, platform_ok=None):
     """{'where_from': url, 'acquired_at': iso} for whatever the file's macOS attributes provide; {} elsewhere.
     `run` (args -> stdout or None) and `platform_ok` exist so tests can simulate the attributes on any platform."""
@@ -124,7 +96,7 @@ def read_attributes(path, run=None, platform_ok=None):
         platform_ok = available()
     if not platform_ok:
         return {}
-    path = os.path.expanduser(path)
+    path = _expand_home(path)
     run = run or _default_run
     names = run(["xattr", path])
     if not names:

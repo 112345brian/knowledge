@@ -16,37 +16,55 @@ Usage:
 """
 import argparse
 import json
-import os
 import sys
 
-import locks
-import revisions_store
 from client.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
+from locations import join_path
 
 # What the old `TODAY` constant in the measurements step stood for.
 MEASUREMENTS_LEGACY_DATE = "2026-09-11"
 
 
-def find_problems(data_dir):
+def find_problems(files, inputs, data_dir):
     """[(where, what)]: the snapshot file is there but unusable."""
     problems = []
-    if os.path.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
+    if files.exists(join_path(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
-            read_snapshot_date(data_dir)
+            read_snapshot_date(inputs, data_dir)
         except RuntimeError as e:
             problems.append((MEASUREMENTS_SNAPSHOT_FILE, str(e)))
     return problems
 
 
-def write_snapshot(data_dir, apply):
+def write_snapshot(files, data_dir, apply):
     """Create measurements_snapshot.json if absent. Returns 1 if it was (or would be) written."""
-    path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
-    with locks.file_lock(locks.lock_path(path)):
-        if os.path.exists(path):
+    path = join_path(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
+    with files.locked(path):
+        if files.exists(path):
             return 0
         if apply:
-            revisions_store.atomic_write_text(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
+            files.write_text_atomic(path, json.dumps({"synced_at": MEASUREMENTS_LEGACY_DATE}, indent=2) + "\n")
     return 1
+
+
+def run(files, inputs, data_dir, apply=False, stdout=None, stderr=None):
+    """The whole tool over `files` (a DataFiles), `inputs` (an Inputs) and `data_dir`: returns the exit code."""
+    stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
+    problems = find_problems(files, inputs, data_dir)
+    if problems:
+        print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=stderr)
+        return 1
+    try:
+        n = write_snapshot(files, data_dir, apply)
+    except OSError as e:
+        print(f"error: {e}", file=stderr)
+        return 1
+    print(f"  {MEASUREMENTS_SNAPSHOT_FILE}: " + (("written" if apply else "would be written") if n else "already present, left alone"),
+          file=stdout)
+    if n and not apply:
+        print("dry run: nothing written. Re-run with --apply.", file=stdout)
+    return 0
 
 
 def main(argv=None):
@@ -57,20 +75,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.apply and args.dry_run:
         p.error("--apply and --dry-run are mutually exclusive")
-    data_dir = args.data_dir or revisions_store.default_data_dir()
-    problems = find_problems(data_dir)
-    if problems:
-        print("error: " + "; ".join(f"{w}: {m}" for w, m in problems), file=sys.stderr)
-        return 1
-    try:
-        n = write_snapshot(data_dir, args.apply)
-    except OSError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    print(f"  {MEASUREMENTS_SNAPSHOT_FILE}: " + (("written" if args.apply else "would be written") if n else "already present, left alone"))
-    if n and not args.apply:
-        print("dry run: nothing written. Re-run with --apply.")
-    return 0
+    from container import Container
+    app = Container()
+    data_dir = args.data_dir or app.locations.private_data_dir
+    return run(app.datafiles, app.inputs, data_dir, apply=args.apply)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Issue #30: append-only fact revisions. Everything runs on temp dirs and in-memory databases;
 nothing here reads the real knowledge-private data."""
+import client_bootstrap
 import ast
 import importlib.util
 import json
@@ -10,8 +11,12 @@ import sys
 
 import pytest
 
-import clock
 from test_add_fact import Env, REPO
+import fact_rules
+from locations import canonical_path   # paths.load hands the build canonical (forward-slash) paths
+import new_fact
+from appctx import app, fixed_clock, locs, system_clock
+import local_datafiles
 
 T1 = "2026-10-01T08:00:00+00:00"
 T2 = "2026-10-02T09:00:00+00:00"
@@ -75,17 +80,15 @@ def world(tmp_path, monkeypatch):
             con.executescript(open(os.path.join(REPO, "schema.sql")).read())
             for m in (cls.mod04, cls.mod11, cls.mod12):
                 m.DATA_DIR = e.data_dir
-            cls.mod04.run(con)
-            cls.mod11.run(con)
-            cls.mod12.run(con)
+            cls.mod04.run(con, locs())
+            cls.mod11.run(con, locs())
+            cls.mod12.run(con, locs())
             return con
 
         @classmethod
         def append(cls, key, changes, reason="because", via="cli", session_id=None, at=None):
-            if at is None:
-                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
-            with clock.frozen(at):
-                return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir)
+            clk = system_clock() if at is None else fixed_clock(at)
+            return cls.rs.append_revision(key, changes, reason, via, session_id, data_dir=e.data_dir, clock=clk)
 
         @classmethod
         def log_lines(cls):
@@ -113,7 +116,7 @@ def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(wor
     assert keys == world.rv.derive_keys(items, "f.json")
     assert keys[2] == "mine"
     assert keys[1] == keys[0] + "-2"
-    assert len(set(keys)) == 5 and all(world.af.SOURCE_KEY_RE.match(k) for k in keys)
+    assert len(set(keys)) == 5 and all(fact_rules.SOURCE_KEY_RE.match(k) for k in keys)
     assert keys[0] != world.rv.derive_keys(items, "g.json")[0]  # the file name is part of the identity
     # a partly keyed list derives the same keys for the unkeyed entries
     partial = [dict(items[0], source_key="x"), items[1]]
@@ -121,14 +124,14 @@ def test_derive_keys_is_deterministic_keeps_explicit_and_suffixes_duplicates(wor
 
 
 def test_every_new_fact_gets_a_unique_valid_source_key(world):
-    keys = {world.af.build_entry(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay"))["source_key"] for _ in range(50)}
-    assert len(keys) == 50 and all(world.af.SOURCE_KEY_RE.match(k) for k in keys)
+    keys = {app().add_fact.build_entry(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay"))["source_key"] for _ in range(50)}
+    assert len(keys) == 50 and all(fact_rules.SOURCE_KEY_RE.match(k) for k in keys)
 
 
 def test_a_supplied_source_key_is_used_and_a_bad_one_is_refused(world):
-    f = world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="my-key")
-    assert world.af.build_entry(f)["source_key"] == "my-key"
-    errors, _ = world.af.validate_fact(world.af.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="Bad Key!"))
+    f = new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="my-key")
+    assert app().add_fact.build_entry(f)["source_key"] == "my-key"
+    errors, _ = app().add_fact.validate_fact(new_fact.NewFact("S.", "x", "low", no_decay=True, recheck_rationale="no decay", source_key="Bad Key!"))
     assert any("source_key" in e for e in errors)
 
 
@@ -150,7 +153,7 @@ def test_legacy_entries_without_a_key_get_a_derived_key_and_their_backfilled_dat
     legacy = {"subject": "alpha", "statement": "Old fact.", "trust_level": "high"}
     world.seed(pilot=[dict(legacy)], general=[dict(legacy, freshness="no-decay", recheck_rationale="no decay")])  # #7: only the pilot entry is legacy
     from ingest import backfill_dates
-    backfill_dates.backfill_dates(world.env.data_dir, apply=True)  # #35: the date lives in the data now
+    backfill_dates.backfill_dates(local_datafiles, world.env.data_dir, apply=True)  # #35: the date lives in the data now
     con = world.build()
     rows = con.execute("SELECT f.source_key, r.changed_at, r.changed_via FROM facts f JOIN fact_revisions r ON r.fact_id = f.id ORDER BY f.id").fetchall()
     assert [r["source_key"][:7] for r in rows] == ["legacy-", "legacy-"]
@@ -270,8 +273,8 @@ def test_a_revision_line_is_a_full_snapshot_with_fixed_key_order(world):
 
 def test_append_uses_the_clock_helper(world):
     world.seed(general=[entry("k1")])
-    with clock.frozen("2026-10-05T01:02:03+00:00"):
-        r = world.rs.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir)
+    r = world.rs.append_revision("k1", {"notes": "x"}, "r", "cli", data_dir=world.env.data_dir,
+                                 clock=fixed_clock("2026-10-05T01:02:03+00:00"))
     assert r.revision["changed_at"] == "2026-10-05T01:02:03+00:00"
 
 
@@ -296,7 +299,7 @@ def test_append_uses_the_clock_helper(world):
 ])
 def test_bad_appends_are_refused_with_a_message_and_write_nothing(world, changes, reason, via, session, needle):
     world.seed(general=[entry("k1"), entry("k2", statement="Other.")])
-    r = world.rs.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir)
+    r = world.rs.append_revision("k1", changes, reason, via, session, data_dir=world.env.data_dir, clock=system_clock())
     assert not r.ok and any(needle in e for e in r.errors), r.errors
     assert not os.path.exists(world.log)
 
@@ -386,8 +389,9 @@ def test_a_log_without_a_trailing_newline_gets_one_before_the_next_line(world):
 def test_concurrent_appends_from_several_processes_lose_nothing(world):
     world.seed(general=[entry("k1")])
     n = 8
-    script = ("import sys, revisions_store; "
-              "r = revisions_store.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1]); "
+    script = ("import sys, clock, revisions_store; "
+              "r = revisions_store.append_revision('k1', {'notes': sys.argv[2]}, 'r', 'cli', data_dir=sys.argv[1], "
+              "clock=clock.from_environment()); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "KNOWLEDGE_FROZEN_NOW": T3, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, world.env.data_dir, f"note-{i}"], env=env, cwd=REPO,
@@ -464,7 +468,7 @@ def test_invalid_logs_fail_the_build_naming_the_line(world, lines, pattern):
     write_log(world, *lines)
     with pytest.raises(world.rv.RevisionError, match=pattern):
         world.build()
-    assert str(world.log) in str(pytest.raises(world.rv.RevisionError, world.build).value)
+    assert canonical_path(str(world.log)) in str(pytest.raises(world.rv.RevisionError, world.build).value)
 
 
 def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(world):
@@ -472,7 +476,7 @@ def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(wo
     world.seed(general=[entry("k1")])
     write_log(world, rec(revision=5))
     import build_rules
-    steps = build_rules.steps_for(build_rules.CLIENT_SOURCES)
+    steps = client_bootstrap.registry().steps_for(client_bootstrap.registry().names)
     assert "ingest/apply_fact_revisions.py" in steps
     assert steps.index("ingest/apply_fact_revisions.py") > steps.index("ingest/seed_general_facts.py")
     with pytest.raises(world.rv.RevisionError):  # build.build wraps a step exception in BuildError(stage=step name)
@@ -624,11 +628,11 @@ def test_extension_hook_can_add_more_keys_for_issue_35(world, tmp_path):
     open(os.path.join(d, "pilot_facts.json"), "w").write(json.dumps([{"subject": "a", "statement": "One.", "trust_level": "low", "date_added": "keep"},
                                                                        {"subject": "a", "statement": "Two.", "trust_level": "low"}], indent=2) + "\n")
     adder = lambda entry, filename, index: {"date_added": "2026-09-11", "extra": index}
-    assert bk.backfill(d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 2
+    assert bk.backfill(local_datafiles, d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 2
     one, two = json.load(open(os.path.join(d, "pilot_facts.json")))
     assert one["date_added"] == "keep" and one["extra"] == 0 and "source_key" in one
     assert two["date_added"] == "2026-09-11" and two["extra"] == 1
-    assert bk.backfill(d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 0
+    assert bk.backfill(local_datafiles, d, extra_adders=[adder], apply=True)["pilot_facts.json"] == 0
 
 
 def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):
@@ -636,8 +640,8 @@ def test_backfill_cannot_lose_a_concurrent_add_fact_append(world, tmp_path):
     os.makedirs(d)
     legacy = [{"subject": "g", "statement": f"Legacy {i}.", "trust_level": "low", "freshness": "no-decay", "recheck_rationale": "no decay"} for i in range(3)]
     open(os.path.join(d, "general_facts.json"), "w").write(json.dumps(legacy, indent=2) + "\n")
-    script = ("import sys, add_fact; "
-              "r = add_fact.append_fact(add_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
+    script = ("import sys, container, new_fact; "
+              "r = container.Container().add_fact.append_fact(new_fact.NewFact(sys.argv[2], 'g', 'low', no_decay=True, recheck_rationale='r'), data_path=sys.argv[1] + '/general_facts.json'); "
               "sys.exit(0 if r.ok else 1)")
     env = {**world.env.env, "PYTHONPATH": REPO}
     procs = [subprocess.Popen([sys.executable, "-c", script, d, f"New {i}."], env=env, cwd=REPO) for i in range(6)]

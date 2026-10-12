@@ -30,24 +30,19 @@ Batch semantics (decided, tested):
     A batch with nothing to do neither checks the tree nor commits.
 Library code never prints or exits.
 """
-import privacy  # noqa: F401  (tests and callers use review.privacy.PrivacyRulesError)
 import private_git
 import privacy_store
 import review_service
 import review_store
-import revisions  # noqa: F401  (review.revisions.RevisionError)
 import revisions_store
-from ports import Ports, bind
-from review_rules import ItemResult, OUTCOMES, ReviewResult, status_word, visibility_basis  # noqa: F401  (the public API)
-from review_service import TRUST_LEVELS  # noqa: F401
+from wiring import bind_all
 
-PORTS = Ports(git=private_git, revisions=revisions_store, rules=privacy_store, reads=review_store)
+API = ("list_pending", "current_states", "default_data_dir", "rules_with_db_context", "pending_view", "resolve_ref",
+       "approve", "reject")
 
-list_pending = bind(review_service.list_pending, PORTS)
-current_states = bind(review_service.current_states, PORTS)
-default_data_dir = bind(review_service.default_data_dir, PORTS)
-rules_with_db_context = bind(review_service.rules_with_db_context, PORTS)
-pending_view = bind(review_service.pending_view, PORTS)
-resolve_ref = bind(review_service.resolve_ref, PORTS)
-approve = bind(review_service.approve, PORTS)
-reject = bind(review_service.reject, PORTS)
+
+def compose(locations, clock):
+    """The review API wired to the real adapters for these `locations`."""
+    deps = review_service.ReviewDeps(git=private_git, revisions=revisions_store, rules=privacy_store,
+                                     reads=review_store, clock=clock, locations=locations)
+    return bind_all(review_service, deps, API)

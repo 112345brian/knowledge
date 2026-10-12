@@ -1,6 +1,7 @@
 """Optional client sources: the pipeline plan, the schema fragments and the core schema standing alone.
 `concerts`, `ratings`, `scrobbles`, `measurements` and `claims` are data a given client may not have; the core knows
 nothing about them."""
+import client_bootstrap
 import os
 import sqlite3
 
@@ -21,34 +22,34 @@ def tables(con):
 
 
 def test_the_known_sources_and_their_fragments_are_pinned():
-    assert build_rules.CLIENT_SOURCES == ("concerts", "ratings", "scrobbles", "measurements", "claims")
-    for path, needed_by in build_rules.SCHEMA_FRAGMENTS:
+    assert client_bootstrap.registry().names == ("concerts", "ratings", "scrobbles", "measurements", "claims")
+    for path in client_bootstrap.registry().schema_fragments():
         assert os.path.isfile(os.path.join(REPO, path)), path
-        assert set(needed_by) <= set(build_rules.CLIENT_SOURCES)
-    assert set(build_rules.REQUIRED_PATHS) <= set(build_rules.CLIENT_SOURCES)
+    needing = {i.setting for n in client_bootstrap.registry().names for i in client_bootstrap.registry().source(n).inputs if i.required}
+    assert needing == {"CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"}
 
 
 def test_steps_with_no_client_source_are_the_core_steps_in_order():
-    steps = build_rules.steps_for(())
-    assert steps == [p for p, source in build_rules.PIPELINE if source is None]
+    steps = client_bootstrap.registry().steps_for(())
+    assert steps == list(build_rules.CORE_PIPELINE)
     assert not any(s.startswith("client/") for s in steps)
 
 
 def test_enabling_a_source_adds_exactly_its_steps_without_reordering():
-    everything = build_rules.steps_for(build_rules.CLIENT_SOURCES)
-    assert everything == [p for p, _ in build_rules.PIPELINE]
-    for source in build_rules.CLIENT_SOURCES:
-        got = build_rules.steps_for((source,))
-        mine = set(got) - set(build_rules.steps_for(()))
+    everything = client_bootstrap.registry().steps_for(client_bootstrap.registry().names)
+    assert [p for p in everything if not p.startswith("client/")] == list(build_rules.CORE_PIPELINE)
+    for source in client_bootstrap.registry().names:
+        got = client_bootstrap.registry().steps_for((source,))
+        mine = set(got) - set(client_bootstrap.registry().steps_for(()))
         assert mine, source
         assert got == [p for p in everything if p in set(got)]            # same relative order as the full pipeline
-    assert "client/seed_artist_members.py" in build_rules.steps_for(("scrobbles",))   # any music source brings it
-    assert "client/seed_artist_members.py" not in build_rules.steps_for(("measurements", "claims"))
-    assert "client/concerts.py" not in build_rules.steps_for(("scrobbles", "ratings"))
+    assert "client/seed_artist_members.py" in client_bootstrap.registry().steps_for(("scrobbles",))   # any music source brings it
+    assert "client/seed_artist_members.py" not in client_bootstrap.registry().steps_for(("measurements", "claims"))
+    assert "client/concerts.py" not in client_bootstrap.registry().steps_for(("scrobbles", "ratings"))
 
 
 def test_every_pipeline_step_exists_and_is_listed_once():
-    paths = [p for p, _ in build_rules.PIPELINE]
+    paths = client_bootstrap.registry().all_steps()
     assert len(paths) == len(set(paths))
     for p in paths:
         assert os.path.isfile(os.path.join(REPO, p)), p
@@ -56,17 +57,17 @@ def test_every_pipeline_step_exists_and_is_listed_once():
 
 def test_unknown_and_repeated_sources_are_refused_naming_them():
     with pytest.raises(ValueError, match="unknown client source.*'concert'"):
-        build_rules.check_client_sources(("concerts", "concert"))
+        client_bootstrap.registry().check(("concerts", "concert"))
     with pytest.raises(ValueError, match="twice"):
-        build_rules.check_client_sources(("concerts", "concerts"))
-    assert build_rules.check_client_sources([]) == ()
+        client_bootstrap.registry().check(("concerts", "concerts"))
+    assert client_bootstrap.registry().check([]) == ()
 
 
 def test_schema_files_are_the_core_then_each_enabled_fragment():
-    assert build_rules.schema_files(()) == ["schema.sql"]
-    assert build_rules.schema_files(("claims",)) == ["schema.sql"]                  # claims needs no tables of its own
-    assert build_rules.schema_files(("measurements", "scrobbles")) == ["schema.sql", "client/music.sql", "client/measurements.sql"]
-    assert build_rules.schema_files(("concerts", "ratings", "scrobbles")) == ["schema.sql", "client/music.sql"]   # shared, applied once
+    assert client_bootstrap.registry().schema_files(()) == ["schema.sql"]
+    assert client_bootstrap.registry().schema_files(("claims",)) == ["schema.sql"]                  # claims needs no tables of its own
+    assert client_bootstrap.registry().schema_files(("measurements", "scrobbles")) == ["schema.sql", "client/music.sql", "client/measurements.sql"]
+    assert client_bootstrap.registry().schema_files(("concerts", "ratings", "scrobbles")) == ["schema.sql", "client/music.sql"]   # shared, applied once
 
 
 def test_the_core_schema_stands_alone_without_any_client_table():
@@ -79,12 +80,12 @@ def test_the_core_schema_stands_alone_without_any_client_table():
 
 
 def test_each_fragment_applies_on_the_core_alone_and_together_they_are_the_old_schema():
-    for path, needed_by in build_rules.SCHEMA_FRAGMENTS:
+    for path in client_bootstrap.registry().schema_fragments():
         con = core_con()
         con.executescript(open(os.path.join(REPO, path)).read())
         assert tables(con) > tables(core_con()), path
     added = set()
-    for path, _ in build_rules.SCHEMA_FRAGMENTS:
+    for path in client_bootstrap.registry().schema_fragments():
         con = core_con()
         con.executescript(open(os.path.join(REPO, path)).read())
         added |= tables(con) - tables(core_con())
@@ -94,9 +95,9 @@ def test_each_fragment_applies_on_the_core_alone_and_together_they_are_the_old_s
 
 
 def test_the_report_counts_only_tables_the_build_made():
-    assert build_rules.report_tables(["facts", "sources"]) == ["sources", "facts"]       # in report order, nothing missing
-    assert "artists" not in build_rules.report_tables(tables(core_con()))
-    assert "artists" in build_rules.report_tables(tables(sqlite3.connect(":memory:")) | {"artists"})
+    assert client_bootstrap.registry().report_tables(["facts", "sources"], build_rules.CORE_REPORT_TABLES) == ["sources", "facts"]       # in report order, nothing missing
+    assert "artists" not in client_bootstrap.registry().report_tables(tables(core_con()), build_rules.CORE_REPORT_TABLES)
+    assert "artists" in client_bootstrap.registry().report_tables(tables(sqlite3.connect(":memory:")) | {"artists"}, build_rules.CORE_REPORT_TABLES)
 
 
 def test_no_core_object_refers_to_a_client_table():
@@ -163,22 +164,22 @@ def test_the_measurements_source_links_facts_to_measurements(tmp_path):
 
 
 def test_a_build_with_every_source_has_the_rows_each_one_adds(tmp_path):
-    _, names, filled = built(tmp_path, build_rules.CLIENT_SOURCES)
+    _, names, filled = built(tmp_path, client_bootstrap.registry().names)
     assert (MUSIC_TABLES | MEASUREMENT_TABLES) <= names
     assert {"albums", "concert_attendances", "scrobbles", "measurements", "claims"} <= filled
 
 
 def test_an_enabled_source_without_its_input_path_is_named():
-    assert build_rules.missing_paths(("concerts", "scrobbles", "claims"), ["CONCERTS_CSV"]) == [("scrobbles", "SCROBBLES_JSON")]
-    assert build_rules.missing_paths(("measurements", "claims"), []) == []              # these read no extra path
-    assert build_rules.missing_paths((), []) == []
+    assert client_bootstrap.registry().missing_inputs(("concerts", "scrobbles", "claims"), ["CONCERTS_CSV"]) == [("scrobbles", "SCROBBLES_JSON")]
+    assert client_bootstrap.registry().missing_inputs(("measurements", "claims"), []) == []              # these read no extra path
+    assert client_bootstrap.registry().missing_inputs((), []) == []
     with pytest.raises(ValueError, match="unknown client source"):
-        build_rules.missing_paths(("nope",), [])
+        client_bootstrap.registry().missing_inputs(("nope",), [])
 
 
 def test_the_build_names_the_sources_it_includes_and_flags_a_guess():
     import build
-    assert "none (core only" in build.client_sources_note(())
-    assert build.client_sources_note(("concerts", "claims")) == "[build] client sources: concerts, claims"
-    guessed = build.client_sources_note(("concerts", "claims"), implicit=True)
+    assert "none (core only" in client_bootstrap.registry().note(())
+    assert client_bootstrap.registry().note(("concerts", "claims")) == "[build] client sources: concerts, claims"
+    guessed = client_bootstrap.registry().note(("concerts", "claims"), implicit=True)
     assert "assumed" in guessed and "CLIENT_SOURCES = ('concerts', 'claims')" in guessed

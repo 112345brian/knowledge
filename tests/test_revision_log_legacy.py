@@ -140,10 +140,12 @@ def test_search_follows_a_revised_applies_to(world):
 
 def test_every_mutable_field_is_written_back_to_the_facts_table(world):
     """The guard that would have caught this: each field a revision can change has a facts column that the apply
-    step sets. A new entry in MUTABLE_FIELDS with no write-back fails here."""
-    import inspect
+    step sets. The domain says which fields a revision carries onto the fact (STATE_FIELDS) and the SQLite adapter
+    writes exactly those columns; a new entry in MUTABLE_FIELDS with no write-back fails here."""
+    import revision_apply_rules
     import revisions_store
-    src = inspect.getsource(revisions_store.apply_revisions)
     columns = {"superseded_by": "superseded_by_fact_id"}
-    for field in world.rv.MUTABLE_FIELDS:
-        assert f"{columns.get(field, field)} = ?" in src, f"apply_revisions does not write {field} back to facts"
+    wanted = {columns.get(f, f) for f in world.rv.MUTABLE_FIELDS}
+    assert set(revision_apply_rules.STATE_FIELDS) == wanted
+    for column in wanted:
+        assert f"{column} = ?" in revisions_store._WRITE_BACK_SQL, f"the adapter does not write {column} back to facts"

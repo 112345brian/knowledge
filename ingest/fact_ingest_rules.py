@@ -74,7 +74,7 @@ def parse_hints(data, source="fact hints"):
 
 def resolve_origin_path(notes_text, vault, hints=NO_HINTS):
     """Extract the vault .md file a batch-extracted fact's `notes` references."""
-    if not notes_text:
+    if not notes_text or not vault:
         return None
     m = re.search(r"(" + re.escape(vault) + r"/[^,]+?\.md)", notes_text)
     if m:
@@ -91,9 +91,9 @@ def resolve_origin_path(notes_text, vault, hints=NO_HINTS):
     return None
 
 
-def classify_is_personal(statement, notes, is_original_claim, measured_link, hints=NO_HINTS):
+def classify_is_personal(statement, notes, is_original_claim, client_signal, hints=NO_HINTS):
     text = f"{statement or ''} {notes or ''}"
-    if measured_link:
+    if client_signal:
         return 1
     if PRONOUN_RE.search(text):
         return 1

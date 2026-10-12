@@ -16,51 +16,51 @@ import os
 import sqlite3
 import stat
 import uuid
+from typing import Mapping, Sequence, Tuple
 
-import clock
-import revisions
+import build_records as r
 import locks
+import revision_apply_rules
+import revision_apply_service
+import revisions
 from revisions import ENTRY_FILES, REVISIONS_FILENAME, REVISION_KEYS, RevisionError, RevisionResult
+from locations import join_path
 
-
-def default_data_dir():
-    from paths import PRIVATE_DATA_DIR
-    return PRIVATE_DATA_DIR
-
-
-def default_revisions_path():
-    return os.path.join(default_data_dir(), REVISIONS_FILENAME)
+_INSERT_REVISION_SQL = (
+    "INSERT INTO fact_revisions (fact_id, " + ", ".join(REVISION_KEYS) + ") VALUES (?, "
+    + ", ".join("?" for _ in REVISION_KEYS) + ")"
+)
+# The facts row a revision sets: the rules' STATE_FIELDS, one `col = ?` each, in that order.
+_WRITE_BACK_SQL = ("UPDATE facts SET " + ", ".join(f"{c} = ?" for c in revision_apply_rules.STATE_FIELDS)
+                   + " WHERE id = ?")
+_FIRST_COLUMNS = ("changed_at", "freshness", *revisions.LEGACY_INHERITED)
+_FIRST_REVISIONS_SQL = ("SELECT source_key, " + ", ".join(_FIRST_COLUMNS) + " FROM fact_revisions WHERE revision = 1")
 
 
 def read_array(path):
     try:
-        with open(path) as f:
+        with locks.open_retrying(path, encoding="utf-8") as f:
             items = json.load(f)
     except json.JSONDecodeError as e:
         raise RevisionError(f"{path} is not valid JSON ({e})") from e
     return revisions.check_array(items, path)
 
 
-def load_entries(data_dir=None):
+def load_entries(data_dir):
     """Every fact entry in the data files, in file order, as dicts
     {file, index, key, entry, legacy_date}. Missing files are skipped. A duplicate key fails."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
     files = []
     for name, legacy_date in ENTRY_FILES:
-        path = os.path.join(data_dir, name)
+        path = join_path(data_dir, name)
         if os.path.exists(path):
             files.append((name, legacy_date, read_array(path)))
     return revisions.collect_entries(files)
 
 
-INSERT_REVISION_SQL = (
-    "INSERT INTO fact_revisions (fact_id, " + ", ".join(REVISION_KEYS) + ") VALUES (?, "
-    + ", ".join("?" for _ in REVISION_KEYS) + ")"
-)
-
-
 def insert_revision_row(cur, fact_id, rev):
-    cur.execute(INSERT_REVISION_SQL, (fact_id, *[rev[k] for k in REVISION_KEYS]))
+    """One revision snapshot into `fact_revisions`; `cur` is a connection or a cursor (the fact ingest passes
+    its connection). The foundation's `RevisionRepository.insert` is this."""
+    SqliteRevisionRepository(cur).insert(fact_id, rev)
 
 
 def entry_base(entries):
@@ -79,7 +79,7 @@ def read_log(path, base=None):
     revisions.parse_log); callers that hold the entries or the db pass it."""
     if not os.path.exists(path):
         return []
-    with open(path, encoding="utf-8") as f:
+    with locks.open_retrying(path, encoding="utf-8") as f:
         return revisions.parse_log(f, path, base)
 
 
@@ -96,14 +96,14 @@ def atomic_write_text(path, text):
             os.fsync(f.fileno())
         if os.path.exists(path):
             os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(tmp, path)
+        locks.replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
 
 
-def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None):
+def append_revision(source_key, changes, reason, via, session_id=None, data_dir=None, revisions_path=None, expect=None, *, clock):
     """Append one revision to a fact: locked, validated, atomic. Never raises for bad input and
     never touches the original entry files; returns RevisionResult(ok, errors, revision).
 
@@ -115,8 +115,9 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     lock as the write: if the fact's current state differs, nothing is written and the result is
     not ok with error "precondition failed: ...". review.approve uses it so a fact that was
     retracted by another process between the check and the write is never silently re-activated."""
-    data_dir = default_data_dir() if data_dir is None else data_dir
-    revisions_path = os.path.join(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
+    if data_dir is None:
+        raise ValueError("append_revision needs the data dir the entry files and the revision log live in")
+    revisions_path = join_path(data_dir, REVISIONS_FILENAME) if revisions_path is None else revisions_path
     changes, bad = revisions.normalize_changes(changes)
     if bad:
         return RevisionResult(False, [bad])
@@ -133,7 +134,7 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
                 return result
             existing = ""
             if os.path.exists(revisions_path):
-                with open(revisions_path, encoding="utf-8", newline="") as f:
+                with locks.open_retrying(revisions_path, encoding="utf-8", newline="") as f:
                     existing = f.read()
             if existing and not existing.endswith("\n"):
                 existing += "\n"
@@ -145,35 +146,53 @@ def append_revision(source_key, changes, reason, via, session_id=None, data_dir=
     return result
 
 
+class SqliteRevisionRepository:
+    """`build_repositories_port.RevisionRepository` over a build connection. It stores and reads what it is told
+    and decides nothing: which revisions are valid and what a fact takes from its latest is
+    `revision_apply_service` / `revision_apply_rules`. It does not commit (the unit of work does)."""
+
+    def __init__(self, con):
+        self._con = con
+
+    def insert(self, fact_id: r.FactId, revision: Mapping[str, object]) -> None:
+        self._con.execute(_INSERT_REVISION_SQL, (fact_id, *[revision[k] for k in REVISION_KEYS]))
+
+    def fact_ids_by_source_key(self) -> Mapping[str, r.FactId]:
+        return {key: r.FactId(fact_id) for fact_id, key in
+                self._con.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
+
+    def first_revisions(self) -> Mapping[str, r.FirstRevision]:
+        out = {}
+        for key, changed_at, freshness, *inherited in self._con.execute(_FIRST_REVISIONS_SQL):
+            out[key] = r.FirstRevision(changed_at, freshness, dict(zip(revisions.LEGACY_INHERITED, inherited)))
+        return out
+
+    def read_log(self, path: str, base: Mapping[str, Mapping[str, object]]) -> Sequence[Tuple[int, Mapping[str, object]]]:
+        return read_log(path, base)
+
+    def write_back(self, write: r.RevisionWriteBack) -> None:
+        values = [write.superseded_by_fact_id if c == "superseded_by_fact_id" else write.record[c]
+                  for c in revision_apply_rules.STATE_FIELDS]
+        self._con.execute(_WRITE_BACK_SQL, (*values, write.fact_id))
+
+    def count(self) -> int:
+        return self._con.execute("SELECT COUNT(*) FROM fact_revisions").fetchone()[0]
+
+
+class _ConnectionCommit:
+    def __init__(self, con):
+        self._con = con
+
+    def commit(self) -> None:
+        self._con.commit()
+
+
 def apply_revisions(con, revisions_path):
-    """Used by apply_fact_revisions.py. Validates the log against the facts and revision-1
-    rows already in `con`, inserts revisions >= 2 and writes each touched fact's latest
-    revision into `facts`. Raises RevisionError (naming path:line) on any violation.
-    Returns the number of revisions applied."""
-    cur = con.cursor()
-    fact_ids = {k: i for i, k in cur.execute("SELECT id, source_key FROM facts WHERE source_key IS NOT NULL")}
-    first = {k: v for k, v in cur.execute("SELECT source_key, changed_at FROM fact_revisions WHERE revision = 1")}
-    first_fresh = {k: v for k, v in cur.execute("SELECT source_key, freshness FROM fact_revisions WHERE revision = 1")}
-    base = {k: dict(zip(revisions.LEGACY_INHERITED, vals)) for k, *vals in cur.execute(
-        "SELECT source_key, " + ", ".join(revisions.LEGACY_INHERITED) + " FROM fact_revisions WHERE revision = 1")}
-    records = read_log(revisions_path, base)
-    revisions.validate_sequence(revisions_path, records, first, set(fact_ids), first_fresh)
-    latest = {}
-    for _, rec in records:
-        insert_revision_row(cur, fact_ids[rec["source_key"]], rec)
-        latest[rec["source_key"]] = rec
-    for key, rec in latest.items():
-        sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
-        cur.execute(
-            """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
-                                superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, freshness = ?, notes = ?,
-                                kind = ?, valid_from = ?, valid_to = ?, applies_to = ?
-               WHERE id = ?""",
-            (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
-             rec["recheck_by"], rec["recheck_rationale"], rec["freshness"], rec["notes"],
-             rec["kind"], rec["valid_from"], rec["valid_to"], rec["applies_to"], fact_ids[key]))
-    con.commit()
-    return len(records)
+    """Validates the log against the facts and revision-1 rows already in `con`, inserts revisions >= 2 and
+    writes each touched fact's latest revision into `facts` (the use case is
+    revision_apply_service.apply_revision_log; this binds it to SQLite and the log file). Raises
+    RevisionError (naming path:line) on any violation. Commits. Returns the number of revisions applied."""
+    return revision_apply_service.apply_revision_log(SqliteRevisionRepository(con), _ConnectionCommit(con), revisions_path)
 
 
 @contextlib.contextmanager

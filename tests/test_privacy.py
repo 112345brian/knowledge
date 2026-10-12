@@ -15,6 +15,8 @@ from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
 import privacy
 import privacy_store
 from privacy import Rules, resolve_visibility as rv
+import new_fact
+from appctx import app
 
 SYNTHETIC_NAMES = ["Zorblax", "Quenby", "Wumpfel"]
 
@@ -295,7 +297,7 @@ def _add(ingest, fact, **kw):
     import add_fact
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     kw.setdefault("db_path", os.path.join(ingest.env.root, "none.db"))
-    return add_fact.append_fact(fact, data_path=path, **kw)
+    return app().add_fact.append_fact(fact, data_path=path, **kw)
 
 
 def _db_with(ingest, *subjects):
@@ -312,7 +314,7 @@ def _db_with(ingest, *subjects):
 def test_add_fact_stores_the_resolved_visibility_and_explains_it(ingest):
     write_rules(ingest, subject_tags={"family": "private"}, keywords=["quenby"])
     import add_fact
-    N = add_fact.NewFact
+    N = new_fact.NewFact
     a = _add(ingest, N(statement="Plain.", subject="family", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     b = _add(ingest, N(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     c = _add(ingest, N(statement="Neutral.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
@@ -324,7 +326,7 @@ def test_add_fact_stores_the_resolved_visibility_and_explains_it(ingest):
 def test_add_fact_unknown_subject_is_private_when_a_db_exists(ingest):
     db = _db_with(ingest, ("known", None))
     import add_fact
-    N = add_fact.NewFact
+    N = new_fact.NewFact
     a = _add(ingest, N(statement="x", subject="known", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     b = _add(ingest, N(statement="y", subject="brand-new", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     c = _add(ingest, N(statement="z", subject="brand-new", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
@@ -337,7 +339,7 @@ def test_add_fact_uses_the_db_tree_for_tag_inheritance(ingest):
     write_rules(ingest, subject_tags={"family": "private"})
     db = _db_with(ingest, ("family", None), ("cousins", "family"))
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="cousins", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="cousins", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"), db_path=db)
     assert r.entry["visibility"] == "private"
 
 
@@ -345,14 +347,14 @@ def test_add_fact_with_a_corrupt_rules_file_refuses_and_writes_nothing(ingest):
     with open(os.path.join(ingest.env.data_dir, "privacy_rules.json"), "w") as f:
         f.write("{oops")
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     assert not r.ok and "privacy_rules.json" in r.errors[0]
     assert not os.path.exists(os.path.join(ingest.env.data_dir, "general_facts.json"))
 
 
 def test_add_fact_without_rules_keeps_todays_behavior(ingest):
     import add_fact
-    r = _add(ingest, add_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    r = _add(ingest, new_fact.NewFact(statement="x", subject="s", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     assert r.ok and r.entry["visibility"] == "normal" and r.privacy.visibility == "normal"
 
 
@@ -366,7 +368,7 @@ def test_add_fact_cli_applies_the_rules(ingest):
 def test_add_then_remove_rule_then_rebuild_keeps_the_fact_private(ingest):
     write_rules(ingest, keywords=["quenby"])
     import add_fact
-    _add(ingest, add_fact.NewFact(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
+    _add(ingest, new_fact.NewFact(statement="Saw Quenby.", subject="work", trust_level="low", no_decay=True, recheck_rationale="no decay", visibility="normal"))
     write_rules(ingest, keywords=[])
     path = os.path.join(ingest.env.data_dir, "general_facts.json")
     assert vis(ingest.run11(json.load(open(path)))) == {"Saw Quenby.": "private"}
@@ -410,12 +412,27 @@ def test_every_module_that_writes_facts_goes_through_the_privacy_rules():
     fact entry must reference `privacy`."""
     offenders = []
     for name in sorted(os.listdir(REPO)):
-        if not name.endswith(".py") or name in ("privacy.py", "ports.py", "add_fact_port.py"):  # protocols declare, but do not implement, fact entry creation
+        if not name.endswith(".py") or name in ("privacy.py", "add_fact_port.py"):  # protocols declare, but do not implement, fact entry creation
             continue
         src = open(os.path.join(REPO, "ingest" if os.path.exists(os.path.join(REPO, "ingest", name)) else "", name)).read()
+        if name in WRITES_FACTS_FOR:   # the repository adapter only inserts; its caller sequences the privacy floor
+            continue
         if ("INSERT INTO facts" in src or "def build_entry" in src) and "privacy." not in src:
             offenders.append(name)
     assert offenders == []
+
+
+# adapters that INSERT INTO facts on behalf of a use case -> the use case that must apply the privacy rules after
+WRITES_FACTS_FOR = {"fact_ingest_store.py": "fact_ingest_service.py"}
+
+
+def test_the_fact_ingest_applies_the_privacy_rules_after_its_last_insert():
+    """04 and 11 re-apply the current rules to every fact after the inserts (raise-only). The adapter that inserts
+    holds no rules; the service that drives it must load them first and apply them after the insert loop."""
+    for adapter, service in WRITES_FACTS_FOR.items():
+        assert "INSERT INTO facts" in open(os.path.join(REPO, adapter)).read()
+        src = open(os.path.join(REPO, service)).read()
+        assert 0 <= src.index("load_privacy_rules") < src.index("facts.add(") < src.rindex("apply_privacy_rules"), service
 
 
 def test_add_fact_passes_the_resolved_value_to_build_entry():

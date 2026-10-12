@@ -10,6 +10,14 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_private_checkout(monkeypatch):
+    """The suite never reads a developer's real private checkout. A test that needs configuration builds its own
+    (a temp private dir plus monkeypatch.setenv, or explicit Locations); anything else gets the synthetic
+    locations in tests/appctx.py."""
+    monkeypatch.delenv("KNOWLEDGE_PRIVATE_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _restore_sys_modules():
     """Fixtures here pop and re-import repo modules (paths, privacy, revisions, ...) to get fresh copies.
     Put sys.modules back after every test so a test module's top-level `import privacy` and the code

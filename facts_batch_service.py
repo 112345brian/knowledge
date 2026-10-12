@@ -1,4 +1,4 @@
-"""Batch add_facts (the use case, through the ports in `ports`; `facts_batch` is the facade that binds it to the real adapters): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
+"""Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the library behind `knowledge.py add-facts`, the MCP `add_facts` tool (#2) and
 the `register facts` review protocol (#32, docs/register-facts-protocol.md).
 
     result = facts_batch.add_facts([{"statement": "...", "subject": "coffee"}, ...])
@@ -43,7 +43,8 @@ Decisions (each is tested):
 Callers must read the result: tests/test_facts_batch.py scans the repo and fails on a discarded
 `add_facts(...)` call.
 """
-import os
+from dataclasses import dataclass
+from typing import List, Optional
 
 import facts_batch_rules
 import modes
@@ -51,6 +52,20 @@ import privacy
 from facts_batch_rules import (BatchResult, DEFAULT_CAPTURED_VIA, DEFAULT_TRUST, ITEM_KEYS, ItemResult,  # noqa: F401  (re-exported by the facade)
                                MAX_BATCH)
 from new_fact import DataFileError
+from new_fact import NewFact
+from add_fact_port import AddFact
+from facts_file_port import FactsFile
+from private_git_port import PrivateGit
+from locations import FACTS_FILENAME, Locations
+
+
+@dataclass(frozen=True)
+class FactsBatchDeps:
+    """Everything this service reaches the world through; the composition root supplies each one."""
+    git: PrivateGit
+    facts_file: FactsFile
+    add_fact: AddFact
+    locations: Locations
 
 _norm = facts_batch_rules.norm
 _parse_item = facts_batch_rules.parse_item
@@ -63,7 +78,7 @@ def _default_requested(session):
     return "normal"
 
 
-def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session_id=None, data_dir=None,
+def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, session_id=None, data_dir=None,
               dry_run=False, commit=True, allow_dirty=False, session=None, db_path=None):
     """Validate and append a batch of facts. Returns a BatchResult; never prints or exits.
 
@@ -75,8 +90,8 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
     Session) turns on the mode gate. `dry_run` validates and resolves but writes and commits nothing.
     """
     result = BatchResult(dry_run=bool(dry_run))
-    data_path = ports.defaults.data_path if data_dir is None else os.path.join(data_dir, os.path.basename(ports.defaults.data_path))
-    db_path = ports.defaults.db_path if db_path is None else db_path
+    data_path = deps.locations.data_path if data_dir is None else deps.locations.in_data_dir(FACTS_FILENAME, data_dir)
+    db_path = deps.locations.db_path if db_path is None else db_path
 
     if not isinstance(items, list):
         result.errors.append(f"items must be a list, got {type(items).__name__}")
@@ -92,7 +107,7 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
         return result
 
     requested_default = _default_requested(session)
-    facts = []  # NewFact | None, parallel to items
+    facts: List[Optional[NewFact]] = []  # parallel to items until the batch validation gate
     for index, raw in enumerate(items):
         fields, errors = _parse_item(raw)
         item = ItemResult(index=index, outcome="invalid")
@@ -103,9 +118,9 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
         fact = None
         if not errors:
             fact = facts_batch_rules.build_fact(fields, requested_default, captured_via, session_id, status)
-            errors, notes = ports.add_fact.validate_fact(fact, db_path)
+            errors, notes = deps.add_fact.validate_fact(fact, db_path)
             if not errors:
-                subject_notes, subject_error = ports.add_fact.canonicalize_subject(fact, data_path)
+                subject_notes, subject_error = deps.add_fact.canonicalize_subject(fact, data_path)
                 notes = notes + subject_notes
                 if subject_error:
                     errors = [subject_error]
@@ -122,11 +137,14 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
                 i.errors = ["not saved: another item in this batch is invalid (the batch is all-or-nothing)"]
         return result
 
+    valid_facts = [fact for fact in facts if fact is not None]
+    assert len(valid_facts) == len(facts), "validated batch lost a fact"
+
     # Privacy: resolved for every item before anything is written.
     resolutions = []
-    for item, fact in zip(result.items, facts):
+    for item, fact in zip(result.items, valid_facts):
         try:
-            resolution = ports.add_fact.resolve_privacy(fact, data_path, db_path)
+            resolution = deps.add_fact.resolve_privacy(fact, data_path, db_path)
         except (privacy.PrivacyRulesError, DataFileError) as e:
             result.errors.append(str(e))
             for i in result.items:
@@ -139,7 +157,7 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
         item.rule = resolution.explain()
 
     todo = []  # (item, fact, resolution) cleared by the mode gate
-    for item, fact, resolution in zip(result.items, facts, resolutions):
+    for item, fact, resolution in zip(result.items, valid_facts, resolutions):
         if session is not None:
             try:
                 stored = modes.check_write(session, resolution)
@@ -154,7 +172,7 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
     if dry_run:
         # Show what a real call would do, duplicates included (read-only look at the file).
         try:
-            existing = facts_batch_rules.existing_keys(ports.facts_file.read_array(data_path))
+            existing = facts_batch_rules.existing_keys(deps.facts_file.read_array(data_path))
         except DataFileError as e:
             result.errors.append(str(e))
             for item, _, _ in todo:
@@ -172,21 +190,21 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
     repo = None
     if commit:
         try:
-            repo = ports.git.find_repo(os.path.dirname(data_path))
+            repo = deps.git.find_repo(deps.facts_file.data_dir_of(data_path))
             if repo is None:
-                result.notes.append(f"{os.path.dirname(data_path)} is not inside a git repository; the change will not be committed.")
+                result.notes.append(f"{deps.facts_file.data_dir_of(data_path)} is not inside a git repository; the change will not be committed.")
             elif not allow_dirty:
-                ports.git.ensure_clean_tree(repo)
-        except ports.git.PrivateGitError as e:
+                deps.git.ensure_clean_tree(repo)
+        except deps.git.PrivateGitError as e:
             result.errors.append(str(e))
             for item, _, _ in todo:
                 item.outcome, item.errors = "not_saved", []
             return result
 
-    entries = [ports.add_fact.build_entry(fact, visibility=resolution.visibility) for _, fact, resolution in todo]
+    entries = [deps.add_fact.build_entry(fact, visibility=resolution.visibility) for _, fact, resolution in todo]
 
     try:
-        total, rejected = ports.facts_file.append_records(data_path, entries, reject=facts_batch_rules.duplicate_reason)
+        total, rejected = deps.facts_file.append_records(data_path, entries, reject=facts_batch_rules.duplicate_reason)
     except DataFileError as e:
         result.errors.append(str(e))
         for item, _, _ in todo:
@@ -210,8 +228,8 @@ def add_facts(ports, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, 
         subjects = sorted({i.subject for i in saved})
         message = f"add-facts: {len(saved)} fact(s) ({', '.join(subjects[:3])}{', ...' if len(subjects) > 3 else ''})"
         try:
-            result.commit = ports.git.commit_private_change([data_path], message, repo)
-            result.detached = ports.git.is_detached(repo)
-        except ports.git.PrivateGitError as e:
+            result.commit = deps.git.commit_private_change([data_path], message, repo)
+            result.detached = deps.git.is_detached(repo)
+        except deps.git.PrivateGitError as e:
             result.commit_error = f"the facts ARE in {data_path} but are NOT committed: {e}"
     return result

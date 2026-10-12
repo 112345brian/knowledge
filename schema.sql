@@ -15,7 +15,7 @@ PRAGMA foreign_keys = ON;
 
 -- Schema version (#47): bump this whenever a table, column, constraint, view or trigger below changes.
 -- The build records it in build_info; tests/test_build_info.py fails when the schema changed without a bump.
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 -- Which inputs and code produced this db (#47); written by the build, see build_info.py. input_key is a stable
 -- name, never a path.
@@ -28,7 +28,10 @@ CREATE TABLE build_info (
     private_commit  TEXT,
     private_dirty   INTEGER CHECK (private_dirty IS NULL OR private_dirty IN (0,1)),
     python_version  TEXT,
-    sqlite_version  TEXT
+    sqlite_version  TEXT,
+    -- sys.platform of the build host (win32, darwin, linux). Every stored path is in canonical form (forward
+    -- slashes, `~/` kept as written); this column is how a reader knows a canonical `C:/...` came from Windows.
+    platform        TEXT
 );
 CREATE TABLE build_inputs (
     build_id    INTEGER NOT NULL REFERENCES build_info(id) ON DELETE CASCADE,

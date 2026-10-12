@@ -11,6 +11,7 @@ import tempfile
 import revisions
 import revisions_store
 from migrate_memory_rules import MAX_FILE_BYTES, MemoryFile, parse_memory_bytes
+from locations import join_path
 
 
 def absolute_root(root):
@@ -99,7 +100,7 @@ def existing_entries(data_dir):
     """{source_key: notes or ''} across every entry file. Raises revisions.RevisionError."""
     out = {}
     for name, _ in revisions.ENTRY_FILES:
-        path = os.path.join(data_dir, name)
+        path = join_path(data_dir, name)
         if not os.path.exists(path):
             continue
         for item in revisions_store.read_array(path):

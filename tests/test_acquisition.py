@@ -18,6 +18,8 @@ import pytest
 import acquisition_store as aq
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+from appctx import locs
+import local_buildfiles
 
 DARWIN = aq.available()
 needs_xattr = pytest.mark.skipif(not DARWIN, reason="needs macOS and the xattr command")
@@ -148,7 +150,7 @@ def test_it_only_ever_runs_read_only_xattr_argv_shapes(tmp_path):
 
 
 def test_tilde_paths_are_expanded(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
     calls = []
     aq.read_attributes("~/v/n.pdf", run=fake_run({}, calls), platform_ok=True)
     assert calls[0] == ["xattr", str(tmp_path / "v" / "n.pdf")]
@@ -234,9 +236,8 @@ def run02(ingest, tmp_path, monkeypatch, notes, attrs=None):
     spec = __import__("importlib.util").util.spec_from_file_location("m02", os.path.join(REPO, "ingest", "literature_sources.py"))
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.SRC_DIR = str(d)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs(notes_vault=str(d.parent)))
     return con
 
 
@@ -274,7 +275,7 @@ def test_01_manual_sources_take_data_first(ingest, monkeypatch):
     mod = __import__("importlib.util").util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     con = ingest.db()
-    mod.run(con)
+    mod.run(con, locs())
     rows = {r["citekey"]: r for r in con.execute("SELECT * FROM sources")}
     assert (rows["m1"]["where_from"], rows["m1"]["acquired_via"], rows["m1"]["acquired_at"]) == ("https://data.example", "export", WHEN)
     assert rows["m1"]["acquired_note"] == "from macOS file attributes: acquired_at"
@@ -315,17 +316,17 @@ def test_the_normal_db_has_none_of_the_custodial_columns_and_the_leak_test_has_a
     import normal_db
     import privacy
     with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
-        path, _ = normal_db.build_normal_atomic(full, d, privacy.Rules())
+        full = leak_test.build_fixture(local_buildfiles, d)
+        path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
         con = sqlite3.connect(path)
         cols = {r[1] for r in con.execute("PRAGMA table_info(sources)")}
         assert not ({"acquired_at", "acquired_via", "where_from", "acquired_note"} & cols)
         assert leak_test.MARKERS["where_from URL"].encode() not in open(path, "rb").read()
-        assert not leak_test.scan_against_full(path, full)
+        assert not leak_test.scan_against_full(local_buildfiles, path, full)
         con.execute("UPDATE sources SET edition = ? WHERE id = 1", (leak_test.MARKERS["where_from URL"],))
         con.commit()
         con.close()
-        assert leak_test.scan_against_full(path, full)
+        assert leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 # ------------------------------------------------------------------ no work when the data is complete

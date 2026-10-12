@@ -15,22 +15,18 @@ import revisions_store
 import source_status_store
 import validtime
 from new_fact import DataFileError
-from paths import BODYBUILDING_VAULT, KNOWLEDGE_DB_DIR, PRIVATE_DATA_DIR
-
-DB_PATH = os.path.join(os.path.expanduser(KNOWLEDGE_DB_DIR), "knowledge.db")
-FACTS_FILE = os.path.join(PRIVATE_DATA_DIR, "general_facts.json")
+from fact_reads_port import DatabaseNotFound  # noqa: F401  (raised by connect; defined with the port)
 
 
-class DatabaseNotFound(FileNotFoundError):
-    """knowledge.db doesn't exist yet (it is built, never hand-created)."""
 
 
-def connect(db_path=None):
+
+def connect(db_path):
     """Open the knowledge db READ-ONLY. Raises DatabaseNotFound if it is missing.
 
     Everything in this module only reads; writes go through build.py, which
     makes its own connection."""
-    path = os.path.abspath(db_path or DB_PATH)
+    path = os.path.abspath(db_path)
     if not os.path.exists(path):
         raise DatabaseNotFound(f"{path} doesn't exist -- run `python3 knowledge.py build` first")
     con = sqlite3.connect(pathlib.Path(path).as_uri() + "?mode=ro", uri=True)
@@ -38,16 +34,16 @@ def connect(db_path=None):
     return con
 
 
-def existing_db_path():
-    """The db path for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
-    return DB_PATH if os.path.exists(DB_PATH) else None
+def existing_db_path(db_path):
+    """`db_path` for resolving numeric fact ids, or None when there is no db (source_keys still work)."""
+    return db_path if os.path.exists(db_path) else None
 
 
-def subject_context():
+def subject_context(db_path, data_path):
     """({subject: parent}, known subjects) from the live db plus the subjects already in general_facts.json
     (the same notion of "known" as add-fact), or None when there is no usable db (nothing to compare against)."""
     try:
-        con = connect()
+        con = connect(db_path)
     except DatabaseNotFound:
         return None
     try:
@@ -59,7 +55,7 @@ def subject_context():
     parents = {n: p for n, p in rows}
     known = set(parents)
     try:
-        known |= add_fact_store.file_subjects(FACTS_FILE)
+        known |= add_fact_store.file_subjects(data_path)
     except DataFileError:
         pass  # a corrupt facts file is add-fact's problem to report, not a reason to fail a check
     return parents, known
@@ -192,9 +188,22 @@ def fact_as_of(con, fact_id, as_of):
 QueryError = sqlite3.OperationalError  # raised for FTS syntax errors and for a db built with an older schema
 
 
-def audit_sources(con):
+def source_ids(con, citekey):
+    """{'citekey', 'name', 'identifiers': [{scheme, value}], 'conflicts': [{scheme, value, owner}]} or None for an unknown citekey."""
+    row = con.execute("SELECT id, citekey, name FROM sources WHERE citekey = ?", (citekey,)).fetchone()
+    if row is None:
+        return None
+    ids = [{"scheme": s, "value": v} for s, v in con.execute(
+        "SELECT scheme, value FROM source_identifiers WHERE source_id = ? ORDER BY scheme, value", (row[0],))]
+    conflicts = [{"scheme": s, "value": v, "owner": o} for s, v, o in con.execute(
+        "SELECT c.scheme, c.value, o.citekey FROM source_identifier_conflicts c JOIN sources o ON o.id = c.owner_source_id "
+        "WHERE c.source_id = ? ORDER BY c.scheme, c.value", (row[0],))]
+    return {"citekey": row[1], "name": row[2], "identifiers": ids, "conflicts": conflicts}
+
+
+def audit_sources(con, vault):
     """(changed source files, facts with no baseline hash) since extraction (#38), searched under the vault."""
-    return fixity_store.audit_sources(con, search_roots=[BODYBUILDING_VAULT]), fixity_store.unbaselined_facts(con)
+    return fixity_store.audit_sources(con, search_roots=[vault] if vault else []), fixity_store.unbaselined_facts(con)
 
 
 def audit_source_status(con):

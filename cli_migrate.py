@@ -11,7 +11,7 @@ import sys
 
 import typer
 
-import migrate_memory
+from migrate_memory_service import DEFAULT_ROOT
 
 
 def _text(report, verbose):
@@ -42,8 +42,8 @@ def register(app):
     @app.command("migrate-memory",
                  help="Import Claude Code memory (~/.claude/projects/*/memory/*.md) as private pending facts. "
                       "feedback files are skipped; a second run adds nothing. Use --dry-run first.")
-    def cmd_migrate_memory(
-        memory_root: str = typer.Option(migrate_memory.DEFAULT_ROOT, "--memory-root",
+    def cmd_migrate_memory(ctx: typer.Context, 
+        memory_root: str = typer.Option(DEFAULT_ROOT, "--memory-root",
                                         help="Folder holding <project>/memory/*.md (default ~/.claude/projects)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written; write nothing."),
         as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON instead of text."),
@@ -51,7 +51,8 @@ def register(app):
                                          "(e.g. after a killed run); the commit still contains only the facts file."),
         verbose: bool = typer.Option(False, "--verbose", help="Also list files already migrated."),
     ):
-        report = migrate_memory.migrate(root=memory_root, dry_run=dry_run, allow_dirty=allow_dirty)
+        c = ctx.obj
+        report = c.migrate_memory.migrate(root=memory_root, dry_run=dry_run, allow_dirty=allow_dirty)
         if as_json:
             print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
         else:

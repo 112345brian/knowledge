@@ -1,53 +1,83 @@
-"""Loads path values from a private data checkout instead of hardcoding
-machine-specific paths here. The private values and fact/source data live
-outside this repository.
+"""Reads where this person's data lives from the private data checkout, once, at an entry point.
 
-Every script that needs a path imports it from here, never inline.
+`load()` returns a `Locations` (see locations.py) and keeps nothing: no cache, no module-level names, no
+override. Whoever starts the program (the Typer app's `Container`, `build.py`, a tool's `main()`, a test)
+calls it and hands the result down. The private values and fact/source data live outside this repository.
 
-If the private data checkout isn't available, this import fails with a
-clear ModuleNotFoundError.
+If the private data checkout isn't available, `load()` fails with a clear ModuleNotFoundError.
 
 Set KNOWLEDGE_PRIVATE_DIR to point at the checkout from anywhere else, e.g. a
 `.claude/worktrees/*` git worktree where the sibling path doesn't exist. When
 it is set it wins, and a bad value is an error, never a silent fallback.
 """
+import importlib.util
 import os
-import sys
+import tokenize
+
+import locations
+from locations import Locations
 
 _ENV_VAR = "KNOWLEDGE_PRIVATE_DIR"
 _SIBLING_DIR = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "knowledge-private")
 )
-_override = os.environ.get(_ENV_VAR)
-_PRIVATE_DIR = os.path.abspath(os.path.expanduser(_override)) if _override else _SIBLING_DIR
 
-if not os.path.isfile(os.path.join(_PRIVATE_DIR, "local_paths.py")):
-    _source = f"{_ENV_VAR}={_override!r}" if _override else "the sibling default"
-    raise ModuleNotFoundError(
-        f"local_paths.py not found in {_PRIVATE_DIR} (from {_source}). Set {_ENV_VAR} to "
-        f"your knowledge-private checkout, or check it out at {_SIBLING_DIR}.",
-        name="local_paths",
+
+def expand(path):
+    """`path` with `~` resolved: under $KNOWLEDGE_HOME when that is set (a machine whose data lives outside the OS
+    user's home, e.g. `~/MEGA` on another drive), else the OS user's home. Only the expanded form is affected."""
+    home = os.environ.get(locations.HOME_ENV_VAR)
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
+
+
+def load():
+    """Read the private checkout's local_paths.py and return the `Locations` it describes."""
+    override = os.environ.get(_ENV_VAR)
+    private_dir = os.path.abspath(expand(override)) if override else _SIBLING_DIR
+    if not os.path.isfile(os.path.join(private_dir, "local_paths.py")):
+        source = f"{_ENV_VAR}={override!r}" if override else "the sibling default"
+        raise ModuleNotFoundError(
+            f"local_paths.py not found in {private_dir} (from {source}). Set {_ENV_VAR} to "
+            f"your knowledge-private checkout, or check it out at {_SIBLING_DIR}.",
+            name="local_paths",
+        )
+    # Executed from its file each time: two checkouts in one process (tests, tools) never share a cached module.
+    local_paths = os.path.join(private_dir, "local_paths.py")
+    spec = importlib.util.spec_from_file_location("local_paths", local_paths)
+    if spec is None:
+        raise ImportError(f"could not load {local_paths}")
+    local = importlib.util.module_from_spec(spec)
+    # Importlib's source loader writes __pycache__ beside the file. This is private user data:
+    # merely reading its settings must not dirty the companion Git checkout.
+    with tokenize.open(local_paths) as source_file:
+        exec(compile(source_file.read(), local_paths, "exec"), local.__dict__)
+    declared = getattr(local, "CLIENT_SOURCES", None)
+    sources = tuple(declared or ())
+
+    def path(name):
+        value = getattr(local, name, None)
+        return locations.canonical_path(expand(value)) if value else None
+
+    def written(*names):
+        """The first of `names` that is set, exactly as local_paths.py wrote it."""
+        return next((getattr(local, n) for n in names if getattr(local, n, None)), None)
+
+    # The settings the base itself reads; every other upper-case string is a client source's input, kept by name for
+    # whichever registered source declares it (see client_registry).
+    core = {"KNOWLEDGE_DB_DIR", "PRIVATE_DATA_DIR", "NOTES_VAULT", "BODYBUILDING_VAULT", "HEALTH_DIR", "CLIENT_SOURCES"}
+    client_names = [n for n in vars(local) if n.isupper() and n not in core and isinstance(getattr(local, n), str)
+                    and getattr(local, n)]
+
+    # Every path is canonical (forward slashes) from here down, so whatever the build stores is the same on every
+    # OS; Windows opens such paths as they are. `*_written` keeps local_paths.py's own text.
+    return Locations(
+        knowledge_db_dir=locations.canonical_path(expand(local.KNOWLEDGE_DB_DIR)),
+        private_data_dir=locations.canonical_path(local.PRIVATE_DATA_DIR),
+        private_dir=locations.canonical_path(private_dir),
+        # NOTES_VAULT is the generic name; BODYBUILDING_VAULT is the older one and still works.
+        notes_vault=path("NOTES_VAULT") or path("BODYBUILDING_VAULT"), health_dir=path("HEALTH_DIR"),
+        client_sources=sources, client_sources_declared=declared is not None,
+        notes_vault_written=written("NOTES_VAULT", "BODYBUILDING_VAULT"), health_dir_written=written("HEALTH_DIR"),
+        client_inputs={n: path(n) for n in client_names},
+        client_inputs_written={n: written(n) for n in client_names},
     )
-if _PRIVATE_DIR not in sys.path:
-    sys.path.insert(0, _PRIVATE_DIR)
-
-import local_paths as _local  # noqa: E402
-from local_paths import (  # noqa: E402
-    KNOWLEDGE_DB_DIR,
-    BODYBUILDING_VAULT,
-    HEALTH_DIR,
-    PRIVATE_DATA_DIR,
-)
-
-# Optional client sources (see build_rules.CLIENT_SOURCES): which of them this checkout builds, and the input
-# files they read. A checkout that does not use a source defines neither its name nor its paths, and the build
-# never looks for them.
-_declared = getattr(_local, "CLIENT_SOURCES", None)
-# A local_paths.py written before CLIENT_SOURCES existed has no such name but does define the music inputs: it
-# built everything then, so it keeps doing so (build.py says it is guessing). A config that names the sources, or
-# defines no music inputs, is taken at its word.
-CLIENT_SOURCES_IMPLICIT = _declared is None and bool(getattr(_local, "CONCERTS_CSV", None))
-CLIENT_SOURCES = ("concerts", "ratings", "scrobbles", "measurements", "claims") if CLIENT_SOURCES_IMPLICIT else tuple(_declared or ())
-CONCERTS_CSV = getattr(_local, "CONCERTS_CSV", None)
-RYM_EXPORT_CSV = getattr(_local, "RYM_EXPORT_CSV", None)
-SCROBBLES_JSON = getattr(_local, "SCROBBLES_JSON", None)

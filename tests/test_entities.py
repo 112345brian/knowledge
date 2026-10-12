@@ -4,6 +4,7 @@ Covers the shared matcher (textmatch), the file rules, deterministic linking, th
 ('entity', raise-only), the build step and its invariant, the CLI with its git flow and the keyword
 migration, the --entity filters in both query layers, and the normal-only DB. Temp dirs only.
 """
+import contextlib
 import importlib.util
 import json
 import os
@@ -18,6 +19,10 @@ import entities_store
 import textmatch
 from test_add_fact import REPO
 from test_fact_ingest import F, ingest  # noqa: F401  (fixture)
+import new_fact
+import fact_queries
+from appctx import app, locs
+import local_buildfiles
 
 
 @pytest.fixture(autouse=True)
@@ -269,8 +274,8 @@ def test_add_fact_stores_private_when_it_mentions_a_private_entity(tmp_path):
     import add_fact
     d = tmp_path / "data"
     write_entities(str(d), ent("zed", "Zed Name", aliases=["Zeddy"], private=True))
-    fact = add_fact.NewFact(statement="Lunch with zeddy.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r", visibility="normal")
-    res = add_fact.resolve_privacy(fact, str(d / "general_facts.json"), str(tmp_path / "none.db"))
+    fact = new_fact.NewFact(statement="Lunch with zeddy.", subject="x", trust_level="low", no_decay=True, recheck_rationale="r", visibility="normal")
+    res = app().add_fact.resolve_privacy(fact, str(d / "general_facts.json"), str(tmp_path / "none.db"))
     assert res.visibility == "private" and "Zed Name" in res.explain()
 
 
@@ -295,7 +300,7 @@ def test_step13_links_facts_and_writes_the_tables(ingest, capsys):
                         F(statement="Call my brother.", visibility="normal")])
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert "4 entities (1 private), 4 fact links" in capsys.readouterr().out
     links = {(r[0], r[1]) for r in con.execute("SELECT f.statement, e.entity_key FROM fact_entities fe JOIN facts f ON f.id = fe.fact_id JOIN entities e ON e.id = fe.entity_id")}
     assert links == {("Lunch with Zeddy at Acme.", "zed"), ("Lunch with Zeddy at Acme.", "acme"), ("Plain.", "acme"), ("Call my brother.", "bro")}
@@ -309,7 +314,7 @@ def test_step13_without_a_file_does_nothing(ingest, capsys):
     con = ingest.run04([F()])
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert "no entities.json" in capsys.readouterr().out
     assert con.execute("SELECT COUNT(*) FROM entities").fetchone()[0] == 0
 
@@ -320,11 +325,11 @@ def test_step13_fails_the_build_on_a_name_collision_and_on_a_bad_file(ingest):
     con = ingest.run04([F()])                       # no entities.json yet
     write_entities(ingest.env.data_dir, ent("a", "Same", aliases=["x"]), ent("b", "Other", aliases=["X"]))
     with pytest.raises(Exception, match="claimed twice") as e:
-        mod13.run(con)
+        mod13.run(con, locs())
     assert type(e.value).__name__ == "EntitiesError"
     open(os.path.join(ingest.env.data_dir, "entities.json"), "w").write("{")
     with pytest.raises(Exception, match="not valid JSON"):
-        mod13.run(con)
+        mod13.run(con, locs())
     # and the privacy pass in 04/11 refuses to run at all on a broken entity file (fail closed)
     with pytest.raises(Exception, match="not valid JSON") as e:
         ingest.run04([F()])
@@ -338,7 +343,7 @@ def test_a_rebuild_privatizes_old_facts_end_to_end(ingest):
     assert con.execute("SELECT visibility FROM facts").fetchone()[0] == "private"
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
-    mod13.run(con)
+    mod13.run(con, locs())
     assert con.execute("SELECT COUNT(*) FROM fact_entities").fetchone()[0] == 1
 
 
@@ -350,7 +355,7 @@ def test_step13_refuses_to_build_if_a_fact_mentioning_a_private_entity_is_not_pr
     mod13 = load13()
     mod13.DATA_DIR = ingest.env.data_dir
     with pytest.raises(ValueError, match="not stored private"):
-        mod13.run(con)
+        mod13.run(con, locs())
 
 
 # ------------------------------------------------------------------ queries
@@ -374,15 +379,15 @@ def test_knowledge_entity_filter_by_name_alias_and_id():
     import knowledge
     con = _linked_db()
     for ref in ("Acme Labs", "acme", "ACME", "  acme   labs ", "acme"):
-        assert [r["id"] for r in knowledge.list_facts(con, entity=ref)] == [1, 4], ref
-    assert [r["id"] for r in knowledge.list_facts(con, entity="zed")] == [3, 4]
-    assert [r["id"] for r in knowledge.search_facts(con, "banana", entity="Acme")] in ([1, 4], [4, 1])
-    assert knowledge.list_facts(con, entity="nobody") == []
-    assert [r["id"] for r in knowledge.list_facts(con)] == [1, 2, 3, 4]
+        assert [r["id"] for r in fact_queries.list_facts(con, entity=ref)] == [1, 4], ref
+    assert [r["id"] for r in fact_queries.list_facts(con, entity="zed")] == [3, 4]
+    assert [r["id"] for r in fact_queries.search_facts(con, "banana", entity="Acme")] in ([1, 4], [4, 1])
+    assert fact_queries.list_facts(con, entity="nobody") == []
+    assert [r["id"] for r in fact_queries.list_facts(con)] == [1, 2, 3, 4]
     for bad in ("", "   ", "!!!"):
         with pytest.raises(ValueError):
-            knowledge.list_facts(con, entity=bad)
-    assert knowledge.list_facts(con, entity="x' OR '1'='1") == []
+            fact_queries.list_facts(con, entity=bad)
+    assert fact_queries.list_facts(con, entity="x' OR '1'='1") == []
 
 
 def test_modes_entity_filter_respects_mode():
@@ -562,14 +567,30 @@ def test_migrate_dry_run_writes_nothing_and_no_keywords_is_no_change(tmp_path):
 def build_normal(full, d, rules=None):
     import normal_db
     import privacy
-    path, _ = normal_db.build_normal_atomic(full, d, rules or privacy.Rules())
-    return sqlite3.connect(path), path
+    path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, rules or privacy.Rules())
+    con = sqlite3.connect(path)
+    _OPEN.append(con)
+    return con, path
+
+
+_OPEN = []
+
+
+@contextlib.contextmanager
+def scratch_dir():
+    """A temp dir whose normal-db connections (opened by build_normal) are closed first: Windows cannot delete an open file."""
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            yield d
+        finally:
+            while _OPEN:
+                _OPEN.pop().close()
 
 
 def test_normal_db_excludes_private_entities_and_includes_public_ones():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with scratch_dir() as d:
+        full = leak_test.build_fixture(local_buildfiles, d)
         con, path = build_normal(full, d)
         assert [tuple(r) for r in con.execute("SELECT entity_key, canonical_name, type, external_id, notes FROM entities")] == \
             [("acme-labs", "Acme Labs", "organization", "wikidata:Q1", "A public lab")]
@@ -579,25 +600,25 @@ def test_normal_db_excludes_private_entities_and_includes_public_ones():
         for key in ("private entity name", "private entity alias", "private entity notes"):
             assert leak_test.MARKERS[key].encode() not in raw, key
         assert b"quillon-fernsby" not in raw
-        assert not leak_test.scan_against_full(path, full)        # the leak test itself finds nothing, rows or raw bytes
+        assert not leak_test.scan_against_full(local_buildfiles, path, full)        # the leak test itself finds nothing, rows or raw bytes
 
 
 def test_leak_test_flags_an_injected_private_entity_marker():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with scratch_dir() as d:
+        full = leak_test.build_fixture(local_buildfiles, d)
         con, path = build_normal(full, d)
         con.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, ?, 'planted')", (leak_test.MARKERS["private entity alias"],))
         con.commit()
         con.close()
-        assert leak_test.scan_against_full(path, full)
+        assert leak_test.scan_against_full(local_buildfiles, path, full)
 
 
 def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_entity():
     import leak_test
     import privacy
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with scratch_dir() as d:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE entities SET notes = 'Zorbak relatives lab' WHERE id = 2")
         c.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, 'zorbak labs', 'zorbak labs')")
@@ -606,8 +627,8 @@ def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_enti
         con, _ = build_normal(full, d, privacy.Rules(keywords=("zorbak",)))
         assert con.execute("SELECT notes FROM entities WHERE id = 2").fetchone()[0] is None
         assert sorted(r[0] for r in con.execute("SELECT alias FROM entity_aliases")) == ["Acme"]
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with scratch_dir() as d:
+        full = leak_test.build_fixture(local_buildfiles, d)
         con, _ = build_normal(full, d, privacy.Rules(keywords=("acme",)))               # the NAME trips the rule: entity left out
         assert con.execute("SELECT COUNT(*) FROM entities").fetchone()[0] == 0
         assert con.execute("SELECT COUNT(*) FROM fact_entities").fetchone()[0] == 0
@@ -615,8 +636,8 @@ def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_enti
 
 def test_normal_db_never_copies_a_private_entity_even_if_linked_to_an_included_fact():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
-        full = leak_test.build_fixture(d)
+    with scratch_dir() as d:
+        full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (1, 1)")        # normal fact 1 "linked" to the private entity
         c.commit()
