@@ -46,7 +46,7 @@ def vault_file_id(con, path):
     return r.VaultFileId(con.execute("INSERT INTO vault_files (path) VALUES (?)", (path,)).lastrowid)
 
 
-@pytest.mark.parametrize("name,adapter", [("facts", store.SqliteFactRepository), ("fact_revisions", store.SqliteFactRevisions),
+@pytest.mark.parametrize("name,adapter", [("facts", store.SqliteFactRepository), ("revision_writer", store.SqliteFactRevisions),
                                           ("unit_of_work", store.SqliteUnitOfWork)])
 def test_each_adapter_has_the_shape_of_its_port(name, adapter):
     assert wiring.conformance_problems(name, adapter(sqlite3.connect(":memory:"))) == []

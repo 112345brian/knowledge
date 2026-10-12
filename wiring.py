@@ -78,7 +78,7 @@ PORT_PROTOCOLS = {
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
     "entity_files": EntityFiles, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
-    "facts": FactRepository, "fact_revisions": FactRevisionWriter, "sources": SourceRepository,
+    "facts": FactRepository, "revision_writer": FactRevisionWriter, "sources": SourceRepository,
     "unit_of_work": UnitOfWork, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
     "datafiles": DataFiles, "music_export": MusicExportReads,
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,

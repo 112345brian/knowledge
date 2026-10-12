@@ -6,6 +6,7 @@ order of the writes are `fact_ingest_service`'s. Each `add` allocates its row wh
 dump compares the ids). The one rule the foundation's `NewFact` fixes is that an ingested fact was last reviewed the
 day it was added.
 """
+import re
 import sqlite3
 from typing import Any, Mapping, Optional
 
@@ -13,12 +14,16 @@ import build_records as r
 import revisions_store
 from build_repositories_port import FactTally
 
-_FACT_COLUMNS = ("subject_id", "statement", "is_original_claim", "is_personal", "trust_level", "trust_rationale",
-                 "provided_by", "date_added", "last_reviewed_at", "notes", "recheck_by", "recheck_rationale",
-                 "origin_file_id", "visibility", "captured_via", "session_id", "captured_at", "source_quote", "status",
-                 "source_key", "freshness", "extracted_from_sha256", "kind", "valid_from", "valid_to", "applies_to")
-_INSERT_FACT = (f"INSERT INTO facts ({', '.join(_FACT_COLUMNS)}) "
-                f"VALUES ({', '.join(':' + c for c in _FACT_COLUMNS)})")
+# One named parameter per column; `NewFact` has a field for each except `last_reviewed_at` (a test pins the two).
+_INSERT_FACT = """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
+        provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
+        captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
+        extracted_from_sha256, kind, valid_from, valid_to, applies_to)
+    VALUES (:subject_id, :statement, :is_original_claim, :is_personal, :trust_level, :trust_rationale,
+        :provided_by, :date_added, :last_reviewed_at, :notes, :recheck_by, :recheck_rationale, :origin_file_id, :visibility,
+        :captured_via, :session_id, :captured_at, :source_quote, :status, :source_key, :freshness,
+        :extracted_from_sha256, :kind, :valid_from, :valid_to, :applies_to)"""
+_FACT_PARAMS = tuple(re.findall(r":(\w+)", _INSERT_FACT))
 _TALLY_COLUMNS = ("freshness", "trust_level", "is_personal")   # the facts columns `tally` may group by (a whitelist, not SQL)
 
 
@@ -34,7 +39,7 @@ class SqliteFactRepository:
         return r.FactId(row[0]) if row else None
 
     def add(self, fact: r.NewFact) -> r.FactId:
-        row = {c: getattr(fact, c, None) for c in _FACT_COLUMNS}
+        row = {c: getattr(fact, c, None) for c in _FACT_PARAMS}
         row["last_reviewed_at"] = fact.date_added
         return r.FactId(self._con.execute(_INSERT_FACT, row).lastrowid)
 

@@ -130,7 +130,7 @@ def world(files, sources=None, existing_keys=(), raised=(), vault=VAULT, names=N
     privacy = FakePrivacy(repo, raised)
     repo.identity = FakeIdentity(repo.log, names, aliases)
     st = repo.state
-    deps = svc.FactIngestDeps(facts=FakeFacts(st), fact_revisions=FakeRevisions(st), sources=FakeSources(st),
+    deps = svc.FactIngestDeps(facts=FakeFacts(st), revision_writer=FakeRevisions(st), sources=FakeSources(st),
                               unit_of_work=FakeUnitOfWork(st), identity=repo.identity, inputs=inputs,
                               privacy_floor=privacy, locations=locations)
     return deps, repo, inputs, privacy

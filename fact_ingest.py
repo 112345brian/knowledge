@@ -37,7 +37,7 @@ def compose(ctx, con):
     """The fact-ingest API for the step context `ctx`, over the build connection `con`."""
     stores = ctx.stores
     identity = BuildIdentity(stores.subject_repository(con), stores.source_repository(con), ctx.inputs)
-    deps = FactIngestDeps(facts=stores.fact_repository(con), fact_revisions=stores.fact_revisions(con),
+    deps = FactIngestDeps(facts=stores.fact_repository(con), revision_writer=stores.revision_writer(con),
                           sources=stores.source_repository(con), unit_of_work=stores.unit_of_work(con),
                           identity=identity, inputs=ctx.inputs, privacy_floor=stores, locations=ctx.locations)
     return bind_all(fact_ingest_service, deps, API)

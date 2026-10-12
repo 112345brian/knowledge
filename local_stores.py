@@ -52,7 +52,7 @@ def source_repository(con):
     return source_repository_store.SqliteSourceRepository(con)
 def fact_repository(con):
     return fact_ingest_store.SqliteFactRepository(con)
-def fact_revisions(con):
+def revision_writer(con):
     return fact_ingest_store.SqliteFactRevisions(con)
 def unit_of_work(con):
     return fact_ingest_store.SqliteUnitOfWork(con)

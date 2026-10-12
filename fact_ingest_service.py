@@ -32,7 +32,7 @@ HINTS_FILENAME = "fact_hints.json"
 class FactIngestDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
     facts: FactRepository
-    fact_revisions: FactRevisionWriter
+    revision_writer: FactRevisionWriter
     sources: SourceRepository
     unit_of_work: UnitOfWork
     identity: Identity
@@ -109,7 +109,7 @@ def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest
         origin_file_id = deps.identity.vault_file_id(plan.origin_path)
 
         fact_id = deps.facts.add(new_fact(plan.row, subject_id, origin_file_id))
-        deps.fact_revisions.insert(fact_id, plan.revision)
+        deps.revision_writer.insert(fact_id, plan.revision)
 
         source_id = None
         if plan.citekey:
