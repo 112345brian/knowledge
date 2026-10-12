@@ -1,5 +1,5 @@
 """SQLite adapters of the fact ingest: the part of `build_repositories_port.FactRepository` the ingest uses (not
-`link_measurements`: that is client logic) and `UnitOfWork`, and the revision
+source-specific links) and `UnitOfWork`, and the revision
 write of `fact_ingest_port.FactRevisionWriter`, over the build's connection.
 
 They store what they are told and decide nothing: which entries load, the row's values, the duplicate check and the

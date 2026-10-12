@@ -105,6 +105,61 @@ def test_nothing_in_ingest_imports_the_client_package():
             assert not any(m == "client" or m.startswith("client.") for m in mods), f"ingest/{name}.py imports {mods}"
 
 
+CLIENT_LAYERS = ("pipeline", "composition", "infrastructure", "application", "domain_services", "model")
+
+
+def _client_layer(stem):
+    if stem == "bootstrap" or stem.endswith("_ingest"):
+        return "composition"
+    if stem.endswith("_store"):
+        return "infrastructure"
+    if stem.endswith("_service"):
+        return "application"
+    if stem.endswith(("_port", "_records", "_rules")) or stem == "artist_directory":
+        return "domain_services"
+    return "pipeline"
+
+
+def _client_ring_violations(source, source_layer, known_layers):
+    import ast
+    tree = ast.parse(source)
+    source_rank = CLIENT_LAYERS.index(source_layer)
+    problems = []
+    for node in ast.walk(tree):
+        imported = []
+        if isinstance(node, ast.Import):
+            imported = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            imported = ([f"client.{a.name}" for a in node.names] if node.module == "client" else [node.module])
+        for name in imported:
+            root = name.split(".")[0]
+            target = "pipeline" if root == "ingest" else known_layers.get(root)
+            if root == "client" and len(name.split(".")) > 1:
+                target = _client_layer(name.split(".")[1])
+            if target is not None and CLIENT_LAYERS.index(target) < source_rank:
+                problems.append(f"imports outward to {name} ({target})")
+            elif root == "sqlite3" and source_rank > CLIENT_LAYERS.index("infrastructure"):
+                problems.append(f"imports sqlite3 from {source_layer}")
+    return problems
+
+
+def test_client_ring_rules_are_derived_without_a_client_config():
+    tach = _tach_modules(_read(TACH_TOML))
+    known = {name.split(".", 1)[-1]: row["layer"] for name, row in tach.items()}
+    problems = []
+    for stem in sorted(ac.client_stems(REPO)):
+        path = os.path.join(REPO, "client", stem + ".py")
+        problems.extend(f"client/{stem}.py: {problem}" for problem in
+                        _client_ring_violations(_read(path), _client_layer(stem), known))
+    assert problems == [], "client ring violations:\n" + "\n".join(problems)
+
+
+def test_client_ring_rules_flag_outward_imports_without_registration():
+    assert _client_ring_violations("import sqlite3", "application", {})
+    assert _client_ring_violations("from client import foo_store", "application", {})
+    assert _client_ring_violations("import json", "application", {}) == []
+
+
 def test_every_module_is_classified_in_both_configs():
     """A new top-level module must pick a layer in tach.toml AND appear in the import-linter
     contracts (tach's root_module=forbid catches the first; this catches the second)."""

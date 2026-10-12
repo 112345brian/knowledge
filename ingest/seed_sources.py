@@ -1,9 +1,7 @@
 """Hand-authored/manual sources: the original pilot sources plus small
-manual instruments (tape measurements, the strength-checkpoint script, and
-the one deliberately-unlocatable CRP/ESR carry-forward) that don't come from
+manual instruments and deliberately-unlocatable carry-forwards that don't come from
 parsing sources/*.md frontmatter (that's literature_sources.py) or
-from a vault's raw tables (that's the measurements client source, which
-creates its own vault-db-* sources for the tables it reads).
+from optional source-specific inputs.
 
 The actual citations (dates, file names, descriptions -- personal content)
 live in knowledge-private/data/manual_sources.json, not here: this script is

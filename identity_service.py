@@ -1,9 +1,8 @@
-"""The identity operations every build step shares: which source and which subject a name means. (Which artist a
-name means is music-source logic: `client.artist_identity_service`.)
+"""The identity operations every build step shares: which source and which subject a name means.
 
 Application ring: orchestrates the repositories (`build_repositories_port`) with the pure rules
 (`identity_rules`); imports no adapter. Each class here is the ONE definition of its operation: a step that
-finds-or-creates a subject, claims a citekey or resolves an artist does it through these, never with its own
+finds-or-creates a subject or claims a citekey through these, never with its own
 SELECT/INSERT. They are constructed per step run, so their caches never survive a step (today's `State`/dict
 caches are per run too).
 
@@ -114,7 +113,7 @@ class SubjectIdentity:
 
     @property
     def touched(self) -> int:
-        """How many distinct names this run has resolved (the measurements summary reports it)."""
+        """How many distinct names this run has resolved."""
         return len(self._cache)
 
     def resolve(self, name: str, *, domain: Optional[str] = None, via_aliases: bool = False) -> r.SubjectId:

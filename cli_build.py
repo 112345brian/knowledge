@@ -1,4 +1,4 @@
-"""`knowledge.py build` and the client tools: the commands that run a script (through `ctx.obj.scripts`)."""
+"""`knowledge.py build` and registered client tools: commands that run a script (through `ctx.obj.scripts`)."""
 
 import sys
 

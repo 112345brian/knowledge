@@ -110,6 +110,45 @@ import-linter contract and `tests/test_client_boundary.py` fail the build if the
 
 The built database and its normal-view copy are generated. Never edit either by hand.
 
+### Adding a client source
+
+A client source lives under `client/`. Register it in `client/bootstrap.py`; the base loads that file by path and
+calls `register(registry)`. Adding its code needs no edit to base code or repository configuration. Add its name
+to `CLIENT_SOURCES` in the private `local_paths.py` to enable it. The source's `Input` declarations read settings
+from `Locations.client_inputs` by setting name.
+
+For example, add a step and schema for a small feed:
+
+```python
+# client/bootstrap.py
+from client_registry import ClientSource, Input, Step
+
+def register(registry):
+    registry.add(ClientSource(
+        "my_feed",
+        steps=(Step("client/my_feed.py", after="ingest/facts.py"),),
+        schema=("client/my_feed.sql",),
+        inputs=(Input("MY_FEED_JSON", "my-feed-json", required=True),),
+        report_tables=("my_feed_rows",),
+    ))
+```
+
+```python
+# client/my_feed.py
+def run(con, ctx):
+    path = ctx.locations.client_input("MY_FEED_JSON")
+    # Read and load the feed using the client's adapters.
+```
+
+Then add `MY_FEED_JSON = "/path/to/my-feed.json"` and `CLIENT_SOURCES = ("my_feed",)` to the private
+`local_paths.py`. A required setting omitted from that file makes the build stop with a configuration error.
+
+`ClientSource` can also declare ordered steps with `Step(after=..., order=...)`, shared schema fragments, `Tool`
+commands, synthetic `leak_rows`, private `data_files`, report tables, and fact metadata that contributes to the
+personal-topic heuristic. `enable_when_defined` supports old private configs that predate `CLIENT_SOURCES`.
+The base guarantees that adding a source does not require editing files outside `client/`. The architecture test
+derives ring rules from module suffixes; `client/` is not governed by `tach.toml`.
+
 Procedures for registering facts are in [docs/register-facts-protocol.md](docs/register-facts-protocol.md).
 
 ## Project layout

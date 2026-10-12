@@ -1,7 +1,5 @@
 """The plain values a build step and the build repositories exchange: the core's (sources, subjects, facts,
-revisions, privacy, entities). The optional client sources' records (music, measurements, claims) are owned by
-`client/`: `client.music_records`, `client.measurements_records`, `client.claims_port`. Nothing here may name
-them: the core never imports `client`.
+revisions, privacy and entities. Optional client sources own their records under `client/`; the core never imports them.
 
 Domain service ring: frozen dataclasses and identifier types, no I/O, no database handle. A repository
 (`build_repositories_port`) accepts and returns only these (and the model's own values: `subject_rules.Subject`,

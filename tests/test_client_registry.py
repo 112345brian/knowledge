@@ -39,6 +39,7 @@ def test_the_shipped_sources_are_unchanged_by_a_client_addition():
     extended.add(own_source())
     for name in plain.names:
         assert extended.steps_for((name,)) == plain.steps_for((name,))
+    assert "measurement_metric_link" in plain.personal_fact_keys()
 
 
 def test_bad_registrations_are_refused():
@@ -52,6 +53,41 @@ def test_bad_registrations_are_refused():
         registry.add(ClientSource("a"))
     with pytest.raises(ValueError, match="differently"):
         registry.add(ClientSource("b", steps=(Step("client/s.py", after="ingest/facts.py", order=9),)))
+
+    registry = ClientRegistry(build_rules.CORE_PIPELINE)
+    registry.add(ClientSource("a", inputs=(Input("A", "shared"),), tools=()))
+    with pytest.raises(ValueError, match="input keys"):
+        registry.add(ClientSource("b", inputs=(Input("B", "shared"),)))
+
+    registry = ClientRegistry(build_rules.CORE_PIPELINE)
+    registry.add(ClientSource("a", report_tables=("rows",), report_after={"rows": "facts"}))
+    with pytest.raises(ValueError, match="report table"):
+        registry.add(ClientSource("b", report_tables=("rows",)))
+
+
+def test_enabled_steps_cannot_disappear_behind_disabled_sources_or_cycle():
+    registry = ClientRegistry(build_rules.CORE_PIPELINE)
+    registry.add(ClientSource("first", steps=(Step("client/first.py", after="ingest/facts.py"),)))
+    registry.add(ClientSource("second", steps=(Step("client/second.py", after="client/first.py"),)))
+    with pytest.raises(ValueError, match="disabled or unknown"):
+        registry.steps_for(("second",))
+
+    cyclic = ClientRegistry(build_rules.CORE_PIPELINE)
+    cyclic.add(ClientSource("loop", steps=(Step("client/a.py", after="client/b.py"),
+                                             Step("client/b.py", after="client/a.py"))))
+    with pytest.raises(ValueError, match="cycle|not reachable"):
+        cyclic.steps_for(("loop",))
+
+
+def test_client_report_tables_can_keep_the_existing_interleaved_order():
+    registry = client_bootstrap.registry()
+    tables = registry.report_tables(
+        ["sources", "publishers", "metrics", "measurements", "facts", "fact_revisions", "fact_measurements",
+         "exercises", "muscle_volume_weekly", "artists", "artist_members", "scrobbles"],
+        build_rules.CORE_REPORT_TABLES)
+    assert tables == ["sources", "publishers", "metrics", "measurements", "facts", "fact_revisions",
+                      "fact_measurements", "exercises", "muscle_volume_weekly", "artists", "artist_members",
+                      "scrobbles"]
 
 
 def test_without_a_client_directory_the_build_is_core_only(tmp_path):
@@ -74,7 +110,8 @@ def test_the_bootstrap_is_loaded_by_path_once_the_client_directory_has_one(tmp_p
 def test_no_base_module_names_a_shipped_client_source():
     """The base asks the registry; the names below live only in client/ (and in the tests and docs)."""
     names = ("concerts_csv", "rym_export_csv", "scrobbles_json", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON",
-             "MUSIC_SOURCES", "bodybuilding.db")
+             "MUSIC_SOURCES", "bodybuilding.db", "measurement_metric_link", "concerts.py", "measurements.py",
+             "link_fact_measurements.py", "music.sql", "measurements.sql", "clean-concerts")
     offenders = []
     for folder in ("", "ingest"):
         for name in sorted(os.listdir(os.path.join(REPO, folder) if folder else REPO)):

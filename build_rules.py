@@ -86,8 +86,8 @@ def _backup_order(name):
 
 def backups_to_prune(names, keep=KEEP_BACKUPS):
     """Of the backup file names `names`, the ones to delete so only the `keep` most recent remain --
-    scrobbles pushed a routine backup from a few hundred KB to 20-45MB, so leaving these unpruned turns every
-    rebuild into unbounded disk growth."""
+    a large optional input can make a routine backup much bigger, so leaving these unpruned turns every rebuild
+    into unbounded disk growth."""
     backups = sorted((f for f in names if f.startswith(BACKUP_PREFIX)), key=_backup_order, reverse=True)
     return backups[keep:]
 

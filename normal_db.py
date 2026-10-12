@@ -46,10 +46,7 @@ entities        only NON-private entities that an included fact mentions (key, n
 build_info      the latest row's built_at and schema_version only (#47); commits, dirty flags, versions and build_inputs
                    (input keys) are never copied.
 source_identifiers   identifiers of included sources (#48); source_identifier_conflicts is never copied.
-Never copied: claims (and their fact links), vault_files, metrics, measurements, fact_measurements,
-exercises, training_sets, foods, food/meal logs, muscles, import_sources, artists, venues,
-festivals, concert_attendances, artist_members, albums, tracks, scrobbles, and the views/triggers
-that sit on them.
+Other full-database tables are omitted unless explicitly whitelisted by `normal_rules.TABLES`.
 """
 import sys
 

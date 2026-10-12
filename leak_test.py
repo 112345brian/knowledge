@@ -58,7 +58,7 @@ MARKERS = {
     "where_from URL": "https://private.example/ws-download-9921/secret-topic.pdf",
     "code commit": "9d1c0ffee5badc0de1234567890abcdef1234567",
     "private commit": "7a3b0ffee5badc0de1234567890abcdef7654321",
-    "build input key": "input:scrobbles-json-zq7",
+    "build input key": "input:sample-client-file-zq7",
     "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",

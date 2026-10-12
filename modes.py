@@ -22,7 +22,7 @@ Rules the code enforces:
   * Counts only count visible facts. A subject with no visible fact is absent in normal mode.
   * Revision snapshots are filtered one by one: a revision stored private never comes back in
     normal mode, and a fact whose CURRENT visibility is private shows no history at all.
-  * Claims, measurements and every other non-fact table are not exposed here.
+  * Non-fact tables are not exposed here.
   * Writes: `check_write` / `prepare_write` take the privacy.Resolution (#31), never a bare
     visibility string. The caller stores `resolution.visibility`; what the model asked for is only
     an input to the resolver. In private mode an unspecified request is 'private', never 'normal'.

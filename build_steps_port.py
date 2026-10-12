@@ -29,8 +29,8 @@ class Diagnostics(Protocol):
 class StepResult:
     """What a step did. `lines` are the output lines in print order and contain exactly one summary line that
     starts with `[<step>] ` (the `[step] ...` line every step prints today); `counts` are the named tallies the
-    lines are built from, so a lane can assert numbers without parsing text. `skipped` is True for the branches
-    that return before doing the step's work (no subjects.json, scrobbles file not found, no entities.json)."""
+    lines are built from, so a lane can assert numbers without parsing text. `skipped` is True for a branch that
+    returns before doing the step's work."""
     step: str
     lines: Tuple[str, ...]
     counts: Mapping[str, int]

@@ -127,8 +127,8 @@ def compose_registry(files=None, code_dir_path=None, only=None, clients=None):
 def compose_sessions(locations, files=None, code_dir_path=None, inputs=None, stores=None, clients=None):
     """The session factory for these `locations`."""
     files, here = files or local_buildfiles, code_dir_path or code_dir()
-    return Sessions(files, here, StepContext(locations, inputs or local_inputs, stores or local_stores),
-                    clients or compose_clients(files, here))
+    clients = clients or compose_clients(files, here)
+    return Sessions(files, here, StepContext(locations, inputs or local_inputs, stores or local_stores, clients), clients)
 
 
 def compose(locations, clock, outputs, files=None, code_dir_path=None, registry=None, provenance=None, sessions=None,

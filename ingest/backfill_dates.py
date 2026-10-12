@@ -6,8 +6,7 @@ Until now the build filled a missing `date_added` from a constant in code
 and a missing date can become a build error. It inserts `"date_added": "<date>"` as the first key
 of every entry in pilot_facts.json, facts_batch1-4.json and general_facts.json that has none,
 using the date the constant stood for (revisions.ENTRY_FILES: 2026-09-11, or 2026-09-26 for
-general_facts.json), so no stored date changes. (The `measurements` client source has its own one-time
-backfill for its snapshot date: `python3 -m client.backfill_snapshot_date`.)
+general_facts.json), so no stored date changes. Optional source-specific backfills are registered with that source.
 
 It reuses backfill_source_keys.py's machinery, so the safety properties are the same:
   * dry run is the default; nothing is written without --apply

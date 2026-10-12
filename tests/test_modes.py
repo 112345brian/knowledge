@@ -610,6 +610,8 @@ FACT_READERS_ALLOWED = {
     "fact_queries.py",
     # names the tables the build report counts, reads none
     "build_rules.py",
+    # Client bootstrap declares table names and report order only; it reads no fact rows.
+    "bootstrap.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

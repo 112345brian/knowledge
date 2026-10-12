@@ -1,8 +1,7 @@
 """Ports a build step uses to read and write the database being built: one repository per aggregate.
 
 The core's aggregates only: sources, subjects, facts, revisions, privacy and entities, plus the unit of work. The
-optional client sources (music, measurements, claims) own their repositories and records under `client/`
-(`client.music_port`, `client.measurements_port`, `client.claims_port`); this module may not name them, and
+optional client sources own their repositories and records under `client/`; this module does not import them, and
 `BuildSession` carries none of them (a client source composes its own repository over the build connection).
 
 Domain service ring: protocols and one value (`BuildSession`), no I/O. A method is one decision-free persistence

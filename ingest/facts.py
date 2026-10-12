@@ -1,6 +1,5 @@
 """Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by
-background agents reading the vault's notes) into `facts`, `fact_sources`, `fact_subjects`. (The `measurements` client source then links facts to
-measurements: client/link_fact_measurements.py.)
+background agents reading the vault's notes) into `facts`, `fact_sources`, `fact_subjects`.
 
 Classifies is_personal with a multi-signal heuristic (the generic pronoun rule plus the author's fact_hints.json,
 see fact_ingest_rules.Hints) -- a best-effort first pass, not hand-verified per fact.
@@ -28,5 +27,9 @@ def load_items(ctx):
 
 
 def run(con, ctx):
-    for line in render(fact_ingest.compose(ctx, con).ingest_fact_files(con, warn=print)):
+    clients = getattr(ctx, "clients", None)
+    keys = getattr(clients, "personal_fact_keys", None) if clients is not None else None
+    personal_fact_keys = keys() if keys is not None else ()
+    for line in render(fact_ingest.compose(ctx, con).ingest_fact_files(
+            con, warn=print, personal_fact_keys=personal_fact_keys)):
         print(line)
