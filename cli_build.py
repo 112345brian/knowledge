@@ -1,8 +1,10 @@
-"""`knowledge.py build | clean-concerts`: the commands that run a script (through `ctx.obj.scripts`)."""
+"""`knowledge.py build` and the client tools: the commands that run a script (through `ctx.obj.scripts`)."""
 
 import sys
 
 import typer
+
+import client_bootstrap
 
 app = typer.Typer(pretty_exceptions_enable=False, rich_markup_mode=None)
 
@@ -18,12 +20,18 @@ def cmd_build(ctx: typer.Context, check: bool = typer.Option(False, "--check", h
     raise typer.Exit(code)
 
 
-@app.command("clean-concerts", help="Clean concerts.csv in place (dedupes rows).")
-def cmd_clean_concerts(ctx: typer.Context):
-    c = ctx.obj
-    try:
-        code = c.scripts.clean_concerts()
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        raise typer.Exit(1)
-    raise typer.Exit(code)
+def _register_tool(tool):
+    @app.command(tool.command, help=tool.help or f"Run {tool.module}.")
+    def run(ctx: typer.Context):
+        c = ctx.obj
+        try:
+            code = c.scripts.run_tool(tool.module)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            raise typer.Exit(1)
+        raise typer.Exit(code)
+
+
+# The tools the client's bootstrap registers become commands; nothing here names one.
+for _tool in client_bootstrap.registry().tools():
+    _register_tool(_tool)

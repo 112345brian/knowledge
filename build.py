@@ -25,25 +25,29 @@ import privacy_store
 from build_port import NormalBuild
 from build_rules import BuildError, NormalBuildError
 
-client_sources_note = build_rules.client_sources_note
-
 
 class NormalOutputs:
     """What follows a build, over the normal-db builder: `build_port.BuildOutputs`. Privacy rules come from the
     private data dir unless given (a bad rules file raises: fail closed)."""
 
-    def __init__(self, files, locations, rules=None):
-        self._files, self._locations, self._rules = files, locations, rules
+    def __init__(self, files, locations, rules=None, clients=None):
+        self._files, self._locations, self._rules, self._clients = files, locations, rules, clients
 
     def report(self, path):
         con = self._files.open_database(path)
         try:
             existing = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
             lines = [f"  {table}: {con.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]}"
-                     for table in build_rules.report_tables(existing)]
+                     for table in self._report_tables(existing)]
         finally:
             con.close()
         return lines + [f"  file size: {self._files.size(path) / 1_000_000:.1f} MB"]
+
+    def _report_tables(self, existing):
+        """The core report tables, then the registered client sources' (`client_bootstrap`)."""
+        import client_bootstrap
+        clients = self._clients or client_bootstrap.registry(self._files)
+        return clients.report_tables(existing, build_rules.CORE_REPORT_TABLES)
 
     def build_normal(self, full_path, directory):
         rules = self._rules if self._rules is not None else privacy_store.load_rules(self._locations.privacy_rules())

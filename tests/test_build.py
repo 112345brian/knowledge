@@ -3,6 +3,7 @@ issue #17 (build to a temp file, swap atomically, a failed rebuild never loses
 data). Everything runs against a temp dir with a tiny schema and fake steps, so
 the real knowledge.db and the real ingest scripts are never touched.
 """
+import client_bootstrap
 import os
 import sqlite3
 import sys
@@ -198,7 +199,7 @@ def test_the_build_command_runs_build_py_through_the_script_runner_port():
     deps = scripts_service.ScriptsDeps(runner=runner, clock=clock.SystemClock(), locations=_checkout_locations())
     assert scripts_service.build(deps) == 7
     assert scripts_service.build(deps, check=True) == 7
-    assert scripts_service.clean_concerts(deps) == 7
+    assert scripts_service.run_tool(deps, "client.clean_concerts_csv") == 7
     env = {"KNOWLEDGE_PRIVATE_DIR": "/checkout/A"}
     assert runner.calls == [("script", "build.py", [], env), ("script", "build.py", ["--check"], env),
                             ("module", "client.clean_concerts_csv", [], env)]
@@ -530,7 +531,7 @@ def test_a_real_schema_build_records_provenance_rows_in_step_order(tmp_path):
     (data / "general_facts.json").write_text("[]")
     locations = Locations(knowledge_db_dir=str(tmp_path / "db"), private_data_dir=str(data))
     fixed = clock.FixedClock("2026-10-03T08:00:00+00:00")
-    provenance = build_info_store.BuildProvenance(locations, str(code), private_git)
+    provenance = build_info_store.BuildProvenance(locations, str(code), private_git, client_bootstrap.registry())
     app = building.compose(locations, fixed, NoOutputs(), files=local_buildfiles, code_dir_path=str(code),
                            registry=building.Registry(local_buildfiles, str(code), only=["s1.py", "s2.py"]),
                            provenance=provenance)

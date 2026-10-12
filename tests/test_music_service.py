@@ -16,8 +16,8 @@ from client import music_service as svc
 
 CSV_HEADER = "Concert,Start Date,End Date,Location,Notes\n"
 DATA = "/data"
-LOCS = Locations(knowledge_db_dir="/db", private_data_dir=DATA, concerts_csv="/in/concerts.csv",
-                 rym_export_csv="/in/rym.csv", scrobbles_json="/in/scrobbles.json")
+LOCS = Locations(knowledge_db_dir="/db", private_data_dir=DATA, client_inputs={"CONCERTS_CSV": "/in/concerts.csv",
+                                "RYM_EXPORT_CSV": "/in/rym.csv", "SCROBBLES_JSON": "/in/scrobbles.json"})
 RULES_PATH = f"{DATA}/artist_rules.json"
 
 
@@ -103,7 +103,7 @@ def test_concerts_festival_opener_billing_and_counts():
                 + "Some Band,2022-01-01,,Dive Bar,Music Festival promo\n"    # festival in notes, none resolvable
                 + ",2022-01-01,,Nowhere,\n"                                  # no name -> skipped
                 + "No Date,,,Nowhere,\n")                                    # no start date -> skipped
-    state, deps = world(files={LOCS.concerts_csv: csv_text},
+    state, deps = world(files={LOCS.client_inputs["CONCERTS_CSV"]: csv_text},
                         rules={"aliases": {}, "members": {}, "festivals": ["Bonnaroo"]})
     result = svc.import_concerts(deps)
     assert result.step == "concerts" and not result.skipped
@@ -125,7 +125,7 @@ def test_concerts_festival_opener_billing_and_counts():
 
 
 def test_the_calls_are_made_in_the_order_ids_depend_on():
-    state, deps = world(files={LOCS.concerts_csv: CSV_HEADER + "Boygenius,2023-05-01,,Hall,opened for Big Thief\n"})
+    state, deps = world(files={LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Boygenius,2023-05-01,,Hall,opened for Big Thief\n"})
     svc.import_concerts(deps)
     assert [op[0] for op in state.operations] == [
         "music.delete_attendances", "music.add_artist", "music.add_artist", "music.add_attendance", "commit"]
@@ -133,32 +133,32 @@ def test_the_calls_are_made_in_the_order_ids_depend_on():
 
 
 def test_a_rerun_replaces_only_this_sources_attendances():
-    state, deps = world("Old", files={LOCS.concerts_csv: CSV_HEADER + "Act,2020-01-01,,Hall,\n"})
+    state, deps = world("Old", files={LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Act,2020-01-01,,Hall,\n"})
     other = deps.music.import_source("/elsewhere.csv")
     deps.music.add_attendance(r.NewAttendance(r.ArtistId(1), "2000-01-01", None, None, None, "headliner", None, None,
                                               other))
     svc.import_concerts(deps)
     svc.import_concerts(deps)
-    mine = state.import_sources[LOCS.concerts_csv]
+    mine = state.import_sources[LOCS.client_inputs["CONCERTS_CSV"]]
     assert [a.import_source_id for a in state.attendances].count(mine) == 1     # not doubled
     assert [a.import_source_id for a in state.attendances].count(other) == 1    # untouched
     assert names(state) == ["Old", "Act"]                                       # not re-created
 
 
 def test_concert_names_resolve_through_canonical_artist_identity():
-    state, deps = world("Jpegmafia", files={LOCS.concerts_csv: CSV_HEADER + "JPEGMAFIA,2020-01-01,,Hall,\n"})
+    state, deps = world("Jpegmafia", files={LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "JPEGMAFIA,2020-01-01,,Hall,\n"})
     svc.import_concerts(deps)
     assert state.attendances[0].artist_id == 1 and names(state) == ["Jpegmafia"]
 
 
 def test_quoted_field_may_span_lines():
-    state, deps = world(files={LOCS.concerts_csv: CSV_HEADER + 'Act,2020-01-01,,Hall,"line one\nline two"\n'})
+    state, deps = world(files={LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + 'Act,2020-01-01,,Hall,"line one\nline two"\n'})
     svc.import_concerts(deps)
     assert state.attendances[0].notes == "line one\nline two"
 
 
 def test_a_bad_rules_file_fails_the_step_before_any_write_commits():
-    state, deps = world(files={LOCS.concerts_csv: CSV_HEADER, RULES_PATH: json.dumps({"version": 9})})
+    state, deps = world(files={LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER, RULES_PATH: json.dumps({"version": 9})})
     with pytest.raises(RuntimeError):
         svc.import_concerts(deps)
     assert state.commits == 0 and state.attendances == [] and state.artists == {}
@@ -170,7 +170,7 @@ def test_ratings_prefer_localized_names_unescape_and_share_artists():
                 + rym_row("Bj&ouml;rk", "", "Homogenic &amp; More", 1997, 9, "A1")
                 + ",,Sigur,Rós,Ágætis,1999,8,A2\n"
                 + rym_row("", "", "No Artist", rym="A3"))
-    state, deps = world("Björk", files={LOCS.rym_export_csv: csv_text})
+    state, deps = world("Björk", files={LOCS.client_inputs["RYM_EXPORT_CSV"]: csv_text})
     result = svc.import_ratings(deps)
     assert result.counts == {"albums": 2, "artists": 2}
     assert result.lines == ("[music_ratings] inserted 2 albums", "  artists: 2")
@@ -181,7 +181,7 @@ def test_ratings_prefer_localized_names_unescape_and_share_artists():
 
 
 def test_ratings_rerun_replaces_this_exports_albums():
-    state, deps = world(files={LOCS.rym_export_csv: RYM_HEADER + rym_row("A", "B", "T")})
+    state, deps = world(files={LOCS.client_inputs["RYM_EXPORT_CSV"]: RYM_HEADER + rym_row("A", "B", "T")})
     svc.import_ratings(deps)
     svc.import_ratings(deps)
     assert len(state.albums) == 1
@@ -203,7 +203,7 @@ def test_absent_scrobble_dump_skips_without_touching_anything():
 def test_scrobbles_counts_dedupe_and_new_artists_and_tracks():
     pages = [page(("Artist A", "Song", "Alb", 1000), ("artist a", "Song", "Alb", 2000), ("Artist B", "Other", "", 3000)),
              [{"artist": {"#text": "Artist A"}, "name": "Now Playing", "album": {"#text": ""}}]]   # no date: dropped
-    state, deps = world("ARTIST A", files={LOCS.scrobbles_json: json.dumps(pages)})
+    state, deps = world("ARTIST A", files={LOCS.client_inputs["SCROBBLES_JSON"]: json.dumps(pages)})
     state.tracks[7] = (1, "Song", "Alb")
     result = svc.import_scrobbles(deps)
     assert result.counts == {"parsed": 3, "new_artists": 1, "new_tracks": 1, "scrobbles": 3, "tracks": 2, "artists": 2}
@@ -215,7 +215,7 @@ def test_scrobbles_counts_dedupe_and_new_artists_and_tracks():
 
 
 def test_scrobbles_rerun_replaces_this_dumps_plays_and_keeps_other_sources():
-    state, deps = world(files={LOCS.scrobbles_json: json.dumps([page(("A", "S", "", 1000))])})
+    state, deps = world(files={LOCS.client_inputs["SCROBBLES_JSON"]: json.dumps([page(("A", "S", "", 1000))])})
     other = deps.music.import_source("/other.json")
     deps.music.add_scrobbles([r.NewScrobble(r.TrackId(99), "2000-01-01T00:00:00Z", other)])
     svc.import_scrobbles(deps)

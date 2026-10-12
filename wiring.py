@@ -20,6 +20,7 @@ from add_fact_port import AddFact
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
 from build_repositories_port import PrivacyRepository, RevisionRepository, UnitOfWork
+from client_registry import ClientSources
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFileReader, EntityFiles
@@ -85,7 +86,7 @@ PORT_PROTOCOLS = {
     "datafiles": DataFiles,
     "revision_repository": RevisionRepository, "privacy_repository": PrivacyRepository,
     "floor_rows": FloorRows, "entities": EntityRepository,
-    "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
+    "clients": ClientSources, "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
 }

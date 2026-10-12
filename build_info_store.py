@@ -32,21 +32,24 @@ KEY_PREFIX = "input:"
 # (stable key, how to find it). Data files live in the private data dir; the others come from the locations.
 DATA_FILES = ("manual_sources.json", "pilot_facts.json", "facts_batch1.json", "facts_batch2.json", "facts_batch3.json",
               "facts_batch4.json", "general_facts.json", "fact_revisions.jsonl", "privacy_rules.json", "entities.json",
-              "subjects.json", "measurements_snapshot.json", "fact_hints.json", "claims.json", "measurements_config.json",
-              "artist_rules.json")
+              "subjects.json", "fact_hints.json")
 NOTES_KEY = KEY_PREFIX + "vault-source-notes"
 
 
-def input_paths(locations):
-    """[(stable key, path)] for every file input the build can read, for these `locations`."""
+def input_paths(locations, clients=None):
+    """[(stable key, path)] for every file input the build can read, for these `locations`: the core's, and the
+    inputs and private data files the registered client sources declare (`clients`, a `ClientRegistry`)."""
     out = []
-    if locations.notes_vault:
-        out.append((KEY_PREFIX + "vault-db", join_path(locations.notes_vault, "bodybuilding.db")))
-    # The music inputs only exist for a checkout that has them configured (the others are None).
-    out += [(KEY_PREFIX + key, path) for key, path in (("concerts-csv", locations.concerts_csv),
-                                                         ("rym-export-csv", locations.rym_export_csv),
-                                                         ("scrobbles-json", locations.scrobbles_json)) if path]
-    out += [(KEY_PREFIX + "data/" + name, join_path(locations.private_data_dir, name)) for name in DATA_FILES]
+    data_files = list(DATA_FILES)
+    if clients is not None:
+        # A client input exists only for a checkout that has it configured (the others are None).
+        core_dirs = {"NOTES_VAULT": locations.notes_vault, "HEALTH_DIR": locations.health_dir}
+        for i in clients.inputs():
+            base = core_dirs[i.setting] if i.setting in core_dirs else locations.client_input(i.setting)
+            if base:
+                out.append((KEY_PREFIX + i.key, join_path(base, i.file) if i.file else base))
+        data_files += [f for f in clients.data_files() if f not in data_files]
+    out += [(KEY_PREFIX + "data/" + name, join_path(locations.private_data_dir, name)) for name in data_files]
     return out
 
 
@@ -65,10 +68,10 @@ def _notes_manifest(con):
             "file_mtime": max((r[3] for r in rows if r[3]), default=None)}
 
 
-def collect_inputs(con, locations):
+def collect_inputs(con, locations, clients=None):
     """[(key, {state, sha256, size_bytes, file_mtime})] sorted by key."""
     out = []
-    for key, path in input_paths(locations):
+    for key, path in input_paths(locations, clients):
         fp = fixity_store.fingerprint(path)
         out.append((key, {"state": fp["file_state"], "sha256": fp["content_sha256"],
                           "size_bytes": fp["size_bytes"], "file_mtime": fp["file_mtime"]}))
@@ -80,14 +83,14 @@ class BuildProvenance:
     """Adapter for `build_port.ProvenanceReader`: reads which inputs and code produced a freshly built db and writes
     that into its build_info / build_inputs tables. `code_dir` is the checkout the pipeline runs from."""
 
-    def __init__(self, locations, code_dir, git: PrivateGit):
-        self._locations, self._code_dir, self._git = locations, code_dir, git
+    def __init__(self, locations, code_dir, git: PrivateGit, clients=None):
+        self._locations, self._code_dir, self._git, self._clients = locations, code_dir, git, clients
 
     def read(self, con) -> Provenance:
         code = self._git.describe_repo(self._code_dir)
         private = self._git.describe_repo(self._locations.private_data_dir)
         inputs = tuple(InputState(key, d["state"], d["sha256"], d["size_bytes"], d["file_mtime"])
-                       for key, d in collect_inputs(con, self._locations))
+                       for key, d in collect_inputs(con, self._locations, self._clients))
         return Provenance(schema_version=con.execute("PRAGMA user_version").fetchone()[0],
                           code=RepoState(code["commit"], code["dirty"]),
                           private=RepoState(private["commit"], private["dirty"]),

@@ -2,7 +2,7 @@
 manual instruments (tape measurements, the strength-checkpoint script, and
 the one deliberately-unlocatable CRP/ESR carry-forward) that don't come from
 parsing sources/*.md frontmatter (that's literature_sources.py) or
-from bodybuilding.db raw tables (that's measurements.py, which
+from a vault's raw tables (that's the measurements client source, which
 creates its own vault-db-* sources for the tables it reads).
 
 The actual citations (dates, file names, descriptions -- personal content)

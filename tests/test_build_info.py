@@ -3,6 +3,7 @@
 The schema-version rule is enforced here: tests fail when schema.sql changes without a bump of
 `PRAGMA user_version`. Temp dirs and temp git repos only.
 """
+import client_bootstrap
 import hashlib
 import json
 import os
@@ -66,8 +67,8 @@ def fake_paths(tmp_path, present=("vault", "csv")):
     (root / "data").mkdir()
     ns = Locations(knowledge_db_dir=str(root / "db"), private_data_dir=str(root / "data"),
                    notes_vault=str(root / "vault"), health_dir=str(root / "health"),
-                   concerts_csv=str(root / "concerts.csv"), rym_export_csv=str(root / "rym.csv"),
-                   scrobbles_json=str(root / "scrobbles.json"))
+                   client_inputs={"CONCERTS_CSV": str(root / "concerts.csv"), "RYM_EXPORT_CSV": str(root / "rym.csv"),
+                                  "SCROBBLES_JSON": str(root / "scrobbles.json")})
     if "vault" in present:
         (root / "vault" / "bodybuilding.db").write_bytes(b"vault-db-bytes")
     if "csv" in present:
@@ -85,7 +86,7 @@ def new_db():
 
 def record(con, locations, code_dir, git, clock):
     """What build_service does with the provenance port: read the facts, stamp them with the clock, write them."""
-    reader = bi.BuildProvenance(locations, code_dir, git)
+    reader = bi.BuildProvenance(locations, code_dir, git, client_bootstrap.registry())
     built_at = clock.now_iso()
     return reader.write(con, reader.read(con), built_at, clock.now_iso())
 
@@ -137,7 +138,7 @@ def test_two_records_over_identical_inputs_give_identical_manifests(tmp_path):
     time.sleep(0.01)
     record(b, paths, str(tmp_path), private_git, system_clock())
     strip = lambda con: [tuple(r)[1:6] for r in con.execute("SELECT * FROM build_inputs ORDER BY input_key")]   # noqa: E731
-    assert strip(a) == strip(b) and len(strip(a)) == len(bi.DATA_FILES) + 5
+    assert strip(a) == strip(b) and len(strip(a)) == len(bi.DATA_FILES) + len(client_bootstrap.registry().data_files()) + 5
 
 
 def test_changing_an_input_changes_only_its_row(tmp_path):
@@ -313,7 +314,7 @@ def test_hashing_a_scrobbles_sized_input_is_fast(tmp_path, capsys):
 def test_the_provenance_reader_returns_typed_facts_and_writes_them_unchanged(tmp_path):
     from build_port import InputState, Provenance, RepoState
     con = new_db()
-    reader = bi.BuildProvenance(fake_paths(tmp_path), str(tmp_path), private_git)
+    reader = bi.BuildProvenance(fake_paths(tmp_path), str(tmp_path), private_git, client_bootstrap.registry())
     facts = reader.read(con)
     assert isinstance(facts, Provenance) and isinstance(facts.code, RepoState) and facts.schema_version == EXPECTED_SCHEMA_VERSION
     assert all(isinstance(i, InputState) for i in facts.inputs)

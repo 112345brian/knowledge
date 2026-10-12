@@ -9,6 +9,7 @@ Three things are pinned here so they cannot drift back:
 * A path recorded by the provenance reader (`build_inputs`) is a key, never a path, and the vault the reader
   looks in is the expanded one while what the source-notes manifest hashes is independent of the stored form.
 """
+import client_bootstrap
 import ast
 import hashlib
 import inspect
@@ -100,11 +101,11 @@ def _locations(tmp_path):
 
 def test_the_vault_input_is_read_from_the_expanded_directory_and_no_path_is_recorded(tmp_path):
     loc = _locations(tmp_path)
-    paths = dict(bi.input_paths(loc))
+    paths = dict(bi.input_paths(loc, client_bootstrap.registry()))
     assert paths["input:vault-db"] == os.path.join(loc.notes_vault, "bodybuilding.db")   # read where the file is
     assert "~" not in paths["input:vault-db"]
     con = new_db()
-    reader = bi.BuildProvenance(loc, str(tmp_path), private_git)
+    reader = bi.BuildProvenance(loc, str(tmp_path), private_git, client_bootstrap.registry())
     reader.write(con, reader.read(con), "2026-10-03T08:00:00+00:00", "2026-10-03T08:00:01+00:00")
     rows = list(con.execute("SELECT * FROM build_inputs"))
     assert {r["input_key"]: r["state"] for r in rows}["input:vault-db"] == "present"

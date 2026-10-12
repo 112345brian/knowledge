@@ -101,9 +101,9 @@ def test_the_core_build_contract_names_no_client_source():
 
 
 def test_the_composition_seam_is_the_registry_not_an_import():
-    """The base reaches a client step by the file path listed in build_rules; no base module imports it."""
-    import build_rules
-    client_steps = [path for path, source in build_rules.PIPELINE if source is not None and path.startswith("client/")]
+    """The base reaches a client step by the file path the client's bootstrap registers; no base module imports it."""
+    import client_bootstrap
+    client_steps = [path for path in client_bootstrap.registry().all_steps() if path.startswith("client/")]
     assert client_steps, "the registry lists the client steps"
     for path in client_steps:
         assert os.path.isfile(os.path.join(REPO, *path.split("/")))

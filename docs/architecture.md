@@ -108,7 +108,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `build_port` | domain service | ports of the rebuild: session factory, step registry, provenance reader, outputs (draft foundation contracts) |
 | `build_files_port` | domain service | port: the disk and process work of a database rebuild |
 | `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
-| `cli_build` | driving adapter | `build`, `clean-concerts` |
+| `cli_build` | driving adapter | `build`, and a command for each tool the client's bootstrap registers (e.g. `clean-concerts`) |
 | `cli_common` | driving adapter | helpers and options shared by the knowledge.py command modules |
 | `cli_facts` | driving adapter | `search`, `show`, `history`, `subjects`, `facts` |
 | `cli_privacy` | driving adapter | `privacy ...` commands |
@@ -133,7 +133,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `queries_service` | application service | read side: search, list, show, history, audits, build info |
 | `script_runner_port` | domain service | port for running the standalone scripts as processes |
 | `scripts` | composition root | binds scripts_service to script_runner; a child is started for the container's checkout and fixed clock only |
-| `scripts_service` | application service | build and clean-concerts as a script run |
+| `scripts_service` | application service | build, and any registered client tool, as a script run |
 | `seed_sources` | ETL adapter (driving, batch) | manual sources from `manual_sources.json` |
 | `literature_sources` | ETL adapter (driving, batch) | citation notes in the notes vault, parsed into sources |
 | `measurements` | ETL adapter (driving, batch) | numeric readings and lab results (measurements source) |
@@ -232,6 +232,9 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `memory_files_port` | domain service | interface for memory-file operations |
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
+| `client_registry` | domain service | what the build knows about client sources, as data the client registers: steps and where they run, schema, inputs, report tables (pure) |
+| `client_bootstrap` | composition root | loads `client/bootstrap.py` once the client directory is recognised and returns the registry; no client directory means core only |
+| `bootstrap` | domain service | the client's registration: which sources exist here and what each needs (`client/`); a client adds its own sources here without touching the base |
 | `music_ingest` | composition root | the music source's own: binds music_service to music_store for one build connection (`client/`) |
 | `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
 | `music_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; artist identity is `artist_identity_service.ArtistIdentity`, built per run (`client/`) |

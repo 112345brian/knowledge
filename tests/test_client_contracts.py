@@ -56,4 +56,4 @@ def test_every_client_record_is_a_frozen_dataclass(module):
 def test_the_cores_wiring_registry_names_no_client_port():
     """A client source passes its own ports to wiring (`ports=`); the core's registry may not list them."""
     for key, proto in wiring.PORT_PROTOCOLS.items():
-        assert not proto.__module__.startswith("client"), f"{key}: {proto.__module__}"
+        assert not proto.__module__.startswith("client."), f"{key}: {proto.__module__}"

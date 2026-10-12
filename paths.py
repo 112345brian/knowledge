@@ -45,11 +45,7 @@ def load():
     local = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(local)
     declared = getattr(local, "CLIENT_SOURCES", None)
-    # A local_paths.py written before CLIENT_SOURCES existed has no such name but does define the music inputs:
-    # it built everything then, so it keeps doing so (build.py says it is guessing). A config that names the
-    # sources, or defines no music inputs, is taken at its word.
-    implicit = declared is None and bool(getattr(local, "CONCERTS_CSV", None))
-    sources = ("concerts", "ratings", "scrobbles", "measurements", "claims") if implicit else tuple(declared or ())
+    sources = tuple(declared or ())
 
     def path(name):
         value = getattr(local, name, None)
@@ -59,6 +55,12 @@ def load():
         """The first of `names` that is set, exactly as local_paths.py wrote it."""
         return next((getattr(local, n) for n in names if getattr(local, n, None)), None)
 
+    # The settings the base itself reads; every other upper-case string is a client source's input, kept by name for
+    # whichever registered source declares it (see client_registry).
+    core = {"KNOWLEDGE_DB_DIR", "PRIVATE_DATA_DIR", "NOTES_VAULT", "BODYBUILDING_VAULT", "HEALTH_DIR", "CLIENT_SOURCES"}
+    client_names = [n for n in vars(local) if n.isupper() and n not in core and isinstance(getattr(local, n), str)
+                    and getattr(local, n)]
+
     # Every path is canonical (forward slashes) from here down, so whatever the build stores is the same on every
     # OS; Windows opens such paths as they are. `*_written` keeps local_paths.py's own text.
     return Locations(
@@ -67,9 +69,8 @@ def load():
         private_dir=locations.canonical_path(private_dir),
         # NOTES_VAULT is the generic name; BODYBUILDING_VAULT is the older one and still works.
         notes_vault=path("NOTES_VAULT") or path("BODYBUILDING_VAULT"), health_dir=path("HEALTH_DIR"),
-        client_sources=sources, client_sources_implicit=implicit,
+        client_sources=sources, client_sources_declared=declared is not None,
         notes_vault_written=written("NOTES_VAULT", "BODYBUILDING_VAULT"), health_dir_written=written("HEALTH_DIR"),
-        concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
-        concerts_csv_written=written("CONCERTS_CSV"), rym_export_csv_written=written("RYM_EXPORT_CSV"),
-        scrobbles_json_written=written("SCROBBLES_JSON"),
+        client_inputs={n: path(n) for n in client_names},
+        client_inputs_written={n: written(n) for n in client_names},
     )

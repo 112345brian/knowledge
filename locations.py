@@ -5,8 +5,8 @@ Model ring: imports nothing else in the repo and does no I/O. An entry point rea
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
 """
 import re
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Mapping, Optional, Tuple
 
 FACTS_FILENAME = "general_facts.json"
 REVISIONS_FILENAME = "fact_revisions.jsonl"
@@ -66,27 +66,24 @@ def join_path(directory, *names):
 @dataclass(frozen=True)
 class Locations:
     """`private_data_dir` is the knowledge-private data directory; `knowledge_db_dir` holds the built db and its
-    backups. The optional client sources (see build_rules.CLIENT_SOURCES) name which of them this checkout builds
-    and the input files they read; a checkout that does not use a source leaves its path None and the build never
-    looks for it."""
+    backups. `client_sources` names the optional client sources this checkout builds (what they are is the client
+    directory's registration, `client_registry`); `client_inputs` holds every other setting `local_paths.py`
+    defines, by its name (`MY_FEED_JSON`), which the registered sources read. A checkout that does not use a source
+    leaves its settings out and the build never looks for them."""
     knowledge_db_dir: str
     private_data_dir: str
     notes_vault: Optional[str] = None
     health_dir: Optional[str] = None
     private_dir: Optional[str] = None   # the checkout local_paths.py came from; None for locations built by hand
     client_sources: Tuple[str, ...] = ()
-    client_sources_implicit: bool = False
-    concerts_csv: Optional[str] = None
-    rym_export_csv: Optional[str] = None
-    scrobbles_json: Optional[str] = None
+    client_sources_declared: bool = True    # False: local_paths.py had no CLIENT_SOURCES (the registry may infer them)
+    client_inputs: Mapping[str, str] = field(default_factory=dict)
     # `notes_vault` and `health_dir` as local_paths.py wrote them (`~/...`). Reads use the expanded fields above;
     # what the build compares against fact notes and stores in the database is the written form, so a database
     # does not carry one machine's home directory. None for locations built by hand: the field above is used.
     notes_vault_written: Optional[str] = None
     health_dir_written: Optional[str] = None
-    concerts_csv_written: Optional[str] = None      # the input files as written, for the same reason
-    rym_export_csv_written: Optional[str] = None
-    scrobbles_json_written: Optional[str] = None
+    client_inputs_written: Mapping[str, str] = field(default_factory=dict)   # the client settings as written
 
     def need(self, field, setting, for_what):
         """The value of an optional path, or a ValueError naming the `local_paths.py` setting to define."""
@@ -94,6 +91,21 @@ class Locations:
         if value is None:
             raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
         return value
+
+    def client_input(self, setting):
+        """A client setting's path (expanded), or None when `local_paths.py` does not define it."""
+        return self.client_inputs.get(setting)
+
+    def need_input(self, setting, for_what):
+        """A client setting's path, or a ValueError naming the `local_paths.py` setting to define."""
+        value = self.client_inputs.get(setting)
+        if value is None:
+            raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
+        return value
+
+    def client_input_stored(self, setting):
+        """A client setting in the form the database stores (as written, forward slashes)."""
+        return canonical_path(self.client_inputs_written.get(setting) or self.client_inputs.get(setting))
 
     @property
     def notes_vault_stored(self):
@@ -104,18 +116,6 @@ class Locations:
     def health_dir_stored(self):
         """The health directory in the form the database stores."""
         return canonical_path(self.health_dir_written or self.health_dir)
-
-    @property
-    def concerts_csv_stored(self):
-        return canonical_path(self.concerts_csv_written or self.concerts_csv)
-
-    @property
-    def rym_export_csv_stored(self):
-        return canonical_path(self.rym_export_csv_written or self.rym_export_csv)
-
-    @property
-    def scrobbles_json_stored(self):
-        return canonical_path(self.scrobbles_json_written or self.scrobbles_json)
 
     @property
     def db_dir(self):

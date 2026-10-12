@@ -6,10 +6,9 @@ type check of parameter and return types.
 from build_composition import SessionOpener
 from build_repositories_port import (EntityRepository, FactRepository, PrivacyRepository, RevisionRepository,
                                      SourceRepository, SubjectRepository, UnitOfWork)
-from build_steps_port import Diagnostics, VaultOpener, VaultReader
+from build_steps_port import Diagnostics
 from fake_build_repositories import (CollectingDiagnostics, FakeEntities, FakeFacts, FakePrivacy, FakeRevisions,
-                                     FakeSessionOpener, FakeSources, FakeState, FakeSubjects, FakeUnitOfWork,
-                                     FakeVault)
+                                     FakeSessionOpener, FakeSources, FakeState, FakeSubjects, FakeUnitOfWork)
 
 _s = FakeState()
 sources: SourceRepository = FakeSources(_s)
@@ -21,5 +20,3 @@ entities: EntityRepository = FakeEntities(_s)
 unit_of_work: UnitOfWork = FakeUnitOfWork(_s)
 diagnostics: Diagnostics = CollectingDiagnostics()
 opener: SessionOpener = FakeSessionOpener()
-vault: VaultReader = FakeVault()
-vault_opener: VaultOpener = FakeVault()

@@ -31,6 +31,7 @@ import local_stores
 import sqlite3
 import add_fact_store
 import build
+import client_registry
 import build_info_store
 import building
 import local_buildfiles
@@ -102,7 +103,7 @@ leak_scan: LeakScan = leak_scan_store
 sql_runner: SqlRunner = sql_runner_store
 build_files: BuildFiles = local_buildfiles
 provenance: ProvenanceReader = build_info_store.BuildProvenance(None, "", private_git)
-build_session: BuildSession = building.Session(local_buildfiles, "", None, None)
-build_sessions: SessionFactory = building.Sessions(local_buildfiles, "", None)
+build_session: BuildSession = building.Session(local_buildfiles, "", None, None, client_registry.ClientRegistry(()))
+build_sessions: SessionFactory = building.Sessions(local_buildfiles, "", None, client_registry.ClientRegistry(()))
 build_steps: StepRegistry = building.Registry(local_buildfiles, "")
 build_outputs: BuildOutputs = build.NormalOutputs(local_buildfiles, None)

@@ -19,7 +19,7 @@ import build_records as r
 import build_repositories_port as ports
 import build_steps_port as steps
 import wiring
-from fake_build_repositories import (CollectingDiagnostics, FakeInputs, FakeSessionOpener, FakeState, FakeVault,
+from fake_build_repositories import (CollectingDiagnostics, FakeInputs, FakeSessionOpener, FakeState,
                                      fake_session)
 from locations import Locations
 
@@ -89,17 +89,6 @@ def test_the_fakes_satisfy_their_ports_by_name_and_signature(name, monkeypatch):
     the protocol allows (minimal, maximal, by name)."""
     monkeypatch.setitem(wiring.PORT_PROTOCOLS, f"build.{name}", ports.REPOSITORY_PORTS[name])
     assert wiring.conformance_problems(f"build.{name}", getattr(fake_session(), name)) == []
-
-
-@pytest.mark.parametrize("name, port", [("vault", steps.VaultReader), ("vault_opener", steps.VaultOpener)])
-def test_the_fake_vault_satisfies_the_vault_ports(name, port, monkeypatch):
-    monkeypatch.setitem(wiring.PORT_PROTOCOLS, f"build.{name}", port)
-    assert wiring.conformance_problems(f"build.{name}", FakeVault()) == []
-
-
-def test_the_vault_reader_exposes_no_sql_either():
-    for method, fn in _methods(steps.VaultReader).items():
-        assert not SQL_WORDS & set(inspect.signature(fn).parameters) and "sql" not in method.lower(), method
 
 
 def test_conformance_check_fails_for_a_fake_missing_a_method(monkeypatch):

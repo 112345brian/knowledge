@@ -1,5 +1,6 @@
 """Issue #30: append-only fact revisions. Everything runs on temp dirs and in-memory databases;
 nothing here reads the real knowledge-private data."""
+import client_bootstrap
 import ast
 import importlib.util
 import json
@@ -475,7 +476,7 @@ def test_step_12_is_registered_after_the_fact_loaders_and_raises_on_a_bad_log(wo
     world.seed(general=[entry("k1")])
     write_log(world, rec(revision=5))
     import build_rules
-    steps = build_rules.steps_for(build_rules.CLIENT_SOURCES)
+    steps = client_bootstrap.registry().steps_for(client_bootstrap.registry().names)
     assert "ingest/apply_fact_revisions.py" in steps
     assert steps.index("ingest/apply_fact_revisions.py") > steps.index("ingest/seed_general_facts.py")
     with pytest.raises(world.rv.RevisionError):  # build.build wraps a step exception in BuildError(stage=step name)

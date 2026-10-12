@@ -65,8 +65,8 @@ def import_concerts(deps: MusicIngestDeps) -> StepResult:
     """Replace this CSV's concert attendances with the file's rows (new artists, venues and festivals are added,
     never removed). A row without a name or start date is skipped."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    csv_path = locations.need("concerts_csv", "CONCERTS_CSV", "the concerts import")
-    source_id = music.import_source(locations.concerts_csv_stored)   # stored as written (`~/...`), read from the expanded path
+    csv_path = locations.need_input("CONCERTS_CSV", "the concerts import")
+    source_id = music.import_source(locations.client_input_stored("CONCERTS_CSV"))   # stored as written (`~/...`), read from the expanded path
     music.delete_attendances(source_id)
     rules = load_artist_rules(inputs, locations)
     artists = ArtistIdentity(music, rules)
@@ -108,8 +108,8 @@ def import_concerts(deps: MusicIngestDeps) -> StepResult:
 def import_ratings(deps: MusicIngestDeps) -> StepResult:
     """Replace this export's albums with the file's rows, on the artists shared with the concerts."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    csv_path = locations.need("rym_export_csv", "RYM_EXPORT_CSV", "the ratings import")
-    source_id = music.import_source(locations.rym_export_csv_stored)
+    csv_path = locations.need_input("RYM_EXPORT_CSV", "the ratings import")
+    source_id = music.import_source(locations.client_input_stored("RYM_EXPORT_CSV"))
     music.delete_albums(source_id)
     rules = load_artist_rules(inputs, locations)
     artists = ArtistIdentity(music, rules)
@@ -137,11 +137,11 @@ def import_scrobbles(deps: MusicIngestDeps) -> StepResult:
     track cache) and the plays are written in one batch. Group or collaborative credits stay one artist each;
     membership is curated separately (`seed_artist_members`)."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
-    path = locations.need("scrobbles_json", "SCROBBLES_JSON", "the scrobbles import")
+    path = locations.need_input("SCROBBLES_JSON", "the scrobbles import")
     if not inputs.exists(path):
         return StepResult("scrobbles", lines=(f"[scrobbles] {path} not found, skipping",), counts={}, skipped=True)
 
-    source_id = music.import_source(locations.scrobbles_json_stored)
+    source_id = music.import_source(locations.client_input_stored("SCROBBLES_JSON"))
     music.delete_scrobbles(source_id)
     scrobbles = list(music_ingest_rules.scrobbles_from_pages(inputs.read_json(path)))
 

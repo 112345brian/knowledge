@@ -124,6 +124,8 @@ class SpyFiles:
 
     def load_module(self, path):
         mod = self._real.load_module(path)
+        if not hasattr(mod, "run"):      # the client's bootstrap is loaded through the same files: not a step
+            return mod
         real_run = mod.run
         trace, spy = self._trace, self
 

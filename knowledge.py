@@ -31,7 +31,7 @@ command and tests/test_cli_parity.py fails when a registered command is
 missing or a future MCP tool / inbox action has no registry entry.
 
 `build`, `add-fact`, and `clean-concerts` are thin dispatches to the existing
-standalone scripts (build.py, client/clean_concerts_csv.py) -- those
+standalone scripts (build.py and the client tools the client's bootstrap registers) -- those
 still run fine on their own, without typer; this just gives one name to
 remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """

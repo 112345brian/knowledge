@@ -19,8 +19,8 @@ from schema_helper import full_schema
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = "/data"
-LOCS = Locations(knowledge_db_dir="/db", private_data_dir=DATA, concerts_csv="/in/concerts.csv",
-                 rym_export_csv="/in/rym.csv", scrobbles_json="/in/scrobbles.json")
+LOCS = Locations(knowledge_db_dir="/db", private_data_dir=DATA, client_inputs={"CONCERTS_CSV": "/in/concerts.csv",
+                 "RYM_EXPORT_CSV": "/in/rym.csv", "SCROBBLES_JSON": "/in/scrobbles.json"})
 RULES_PATH = f"{DATA}/artist_rules.json"
 CSV_HEADER = "Concert,Start Date,End Date,Location,Notes\n"
 RYM_HEADER = " First Name,Last Name,First Name localized, Last Name localized,Title,Release_Date,Rating,RYM Album\n"
@@ -61,7 +61,7 @@ def test_concerts_rows_and_ids_follow_first_seen_order(db):
                 + "Phoebe Bridgers,2019-06-14,,Bonnaroo,Festival set\n"
                 + "Boygenius,2023-05-01,,\"The Fillmore, San Francisco, CA\",opened for Big Thief; great\n"
                 + "phoebe bridgers,2024-01-01,,The Fillmore,\n")
-    result = compose(con, {LOCS.concerts_csv: csv_text}, {"aliases": {}, "members": {}, "festivals": ["Bonnaroo"]}) \
+    result = compose(con, {LOCS.client_inputs["CONCERTS_CSV"]: csv_text}, {"aliases": {}, "members": {}, "festivals": ["Bonnaroo"]}) \
         .import_concerts()
     assert table(con, "SELECT id, name FROM artists ORDER BY id") == [(1, "Phoebe Bridgers"), (2, "Boygenius"),
                                                                        (3, "Big Thief")]
@@ -81,7 +81,7 @@ def test_concerts_blank_or_nameless_rows_are_skipped_and_nul_names_survive(db):
     con, _ = db
     csv_text = (CSV_HEADER + "   ,2020-01-01,,Hall,\n" + "No Date,   ,,Hall,\n" + "A\x00B,2020-01-02,,Hall,\n"
                 + "a\x00b,2020-01-03,,Hall,\n")
-    result = compose(con, {LOCS.concerts_csv: csv_text}).import_concerts()
+    result = compose(con, {LOCS.client_inputs["CONCERTS_CSV"]: csv_text}).import_concerts()
     assert table(con, "SELECT name FROM artists") == [("A\x00B",)]
     assert result.counts["concert_attendances"] == 2
 
@@ -89,7 +89,7 @@ def test_concerts_blank_or_nameless_rows_are_skipped_and_nul_names_survive(db):
 def test_concert_names_use_aliases_and_html_unescape_to_one_artist(db):
     con, _ = db
     csv_text = CSV_HEADER + "Simon &amp; Garfunkel,2020-01-01,,Hall,\n" + "S&G,2020-01-02,,Hall,\n"
-    compose(con, {LOCS.concerts_csv: csv_text}, {"aliases": {"s&g": "Simon & Garfunkel"}, "members": {}}) \
+    compose(con, {LOCS.client_inputs["CONCERTS_CSV"]: csv_text}, {"aliases": {"s&g": "Simon & Garfunkel"}, "members": {}}) \
         .import_concerts()
     assert table(con, "SELECT name FROM artists") == [("Simon & Garfunkel",)]
     assert table(con, "SELECT DISTINCT artist_id FROM concert_attendances") == [(1,)]
@@ -97,7 +97,7 @@ def test_concert_names_use_aliases_and_html_unescape_to_one_artist(db):
 
 def test_concerts_rerun_replaces_only_its_own_source_and_commits(db):
     con, path = db
-    files = {LOCS.concerts_csv: CSV_HEADER + "Act,2020-01-01,,Hall,\n"}
+    files = {LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Act,2020-01-01,,Hall,\n"}
     steps = compose(con, files)
     steps.import_concerts()
     steps.import_concerts()
@@ -115,7 +115,7 @@ def test_concerts_rerun_replaces_only_its_own_source_and_commits(db):
 
 def test_a_bad_rules_file_fails_before_anything_is_written_or_committed(db):
     con, path = db
-    files = {LOCS.concerts_csv: CSV_HEADER + "Act,2020-01-01,,Hall,\n", RULES_PATH: json.dumps({"version": 9})}
+    files = {LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Act,2020-01-01,,Hall,\n", RULES_PATH: json.dumps({"version": 9})}
     with pytest.raises(RuntimeError, match="expected version 1"):
         compose(con, files).import_concerts()
     assert sqlite3.connect(path).execute("SELECT COUNT(*) FROM concert_attendances").fetchone() == (0,)
@@ -126,8 +126,8 @@ def test_a_bad_rules_file_fails_before_anything_is_written_or_committed(db):
 
 def test_ratings_share_the_artists_of_the_concerts(db):
     con, _ = db
-    steps = compose(con, {LOCS.concerts_csv: CSV_HEADER + "Björk,2020-01-01,,Hall,\n",
-                          LOCS.rym_export_csv: RYM_HEADER + "Bj&ouml;rk,,,,Homogenic &amp; More,1997,9,A1\n"
+    steps = compose(con, {LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Björk,2020-01-01,,Hall,\n",
+                          LOCS.client_inputs["RYM_EXPORT_CSV"]: RYM_HEADER + "Bj&ouml;rk,,,,Homogenic &amp; More,1997,9,A1\n"
                                                + ",,Sigur,Rós,Ágætis,1999,8,A2\n" + ",,,,No Artist,2000,5,A3\n"})
     steps.import_concerts()
     result = steps.import_ratings()
@@ -149,7 +149,7 @@ def test_scrobbles_tracks_artists_and_dedupe(db):
               {"artist": {"#text": "Artist A"}, "name": "Partial", "date": {"uts": "4000"}},          # no album key
               {"name": "No Artist", "date": {"uts": "5000"}},
               {"artist": {"#text": "Artist C"}, "name": "No Uts", "date": {}}]]
-    result = compose(con, {LOCS.scrobbles_json: json.dumps(pages)}).import_scrobbles()
+    result = compose(con, {LOCS.client_inputs["SCROBBLES_JSON"]: json.dumps(pages)}).import_scrobbles()
     assert table(con, "SELECT id, name FROM artists ORDER BY id") == [(1, "Artist A"), (2, "Artist B")]
     assert table(con, "SELECT id, artist_id, title, album FROM tracks ORDER BY id") == [
         (1, 1, "Song", "Alb"), (2, 2, "Other", ""), (3, 1, "Partial", "")]
@@ -169,9 +169,9 @@ def test_a_missing_dump_touches_nothing(db):
 def test_a_failure_on_the_second_run_leaves_the_first_runs_committed_rows_for_other_connections(db):
     con, path = db
     good = json.dumps([page(("A", "S", "", 1000))])
-    compose(con, {LOCS.scrobbles_json: good}).import_scrobbles()
+    compose(con, {LOCS.client_inputs["SCROBBLES_JSON"]: good}).import_scrobbles()
     with pytest.raises(json.JSONDecodeError):
-        compose(con, {LOCS.scrobbles_json: "{not json"}).import_scrobbles()
+        compose(con, {LOCS.client_inputs["SCROBBLES_JSON"]: "{not json"}).import_scrobbles()
     assert sqlite3.connect(path).execute("SELECT COUNT(*) FROM scrobbles").fetchone() == (1,)
     # the replacement had begun (the old rows were forgotten) in the failing run's own, uncommitted, transaction
     assert table(con, "SELECT COUNT(*) FROM scrobbles") == [(0,)]
@@ -192,7 +192,7 @@ def test_an_unconfigured_input_names_its_setting_and_writes_nothing(db):
 
 def test_members_create_missing_artists_and_count_only_new_links(db):
     con, _ = db
-    steps = compose(con, {LOCS.concerts_csv: CSV_HEADER + "Alice,2020-01-01,,Hall,\n"},
+    steps = compose(con, {LOCS.client_inputs["CONCERTS_CSV"]: CSV_HEADER + "Alice,2020-01-01,,Hall,\n"},
                     {"aliases": {"the duo": "Duo"}, "members": {"The Duo": ["Alice", "bob"], "Empty": []}})
     steps.import_concerts()
     first = steps.seed_artist_members()

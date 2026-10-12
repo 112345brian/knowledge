@@ -109,9 +109,9 @@ def test_load_reads_from_the_redirected_home_and_stores_the_written_form(monkeyp
     root = canonical_path(str(home))
     # reads use the redirected root, in canonical spelling ...
     assert loc.knowledge_db_dir == root + "/MEGA/db" and loc.notes_vault == root + "/MEGA/vault"
-    assert loc.concerts_csv == root + "/MEGA/c.csv" and loc.scrobbles_json == root + "/MEGA/s.json"
+    assert loc.client_input("CONCERTS_CSV") == root + "/MEGA/c.csv" and loc.client_input("SCROBBLES_JSON") == root + "/MEGA/s.json"
     # ... while what the database stores is the text local_paths.py wrote, so it carries no machine's root
     assert (loc.notes_vault_stored, loc.health_dir_stored) == ("~/MEGA/vault", "~/MEGA/health")
-    assert (loc.concerts_csv_stored, loc.rym_export_csv_stored, loc.scrobbles_json_stored) == \
+    assert tuple(loc.client_input_stored(n) for n in ("CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON")) == \
         ("~/MEGA/c.csv", "~/MEGA/r.csv", "~/MEGA/s.json")
     assert "\\" not in loc.notes_vault and "\\" not in loc.private_data_dir

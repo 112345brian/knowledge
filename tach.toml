@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "client_registry", "clock_port", "datafiles_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -563,12 +563,12 @@ depends_on = [
 path = "leak_test"      # ENTRY POINT (and script): the fixture self-test and the real-build check
 layer = "pipeline"
 depends_on = [
+    "client_bootstrap",
     "leak_rules",
     "normal_db",
     "normal_db_service",
     "sql_runner_store",
     "privacy",          # lazy
-    "build_rules",
     "local_buildfiles",
 ]
 
@@ -814,12 +814,12 @@ depends_on = []
 [[modules]]
 path = "build_service"       # APPLICATION SERVICE: the database rebuild (order, failure naming, atomic publication, backups, normal db)
 layer = "application"
-depends_on = ["build_files_port", "build_port", "build_rules", "clock_port", "locations"]
+depends_on = ["build_files_port", "build_port", "build_rules", "client_registry", "clock_port", "locations"]
 
 [[modules]]
 path = "building"            # COMPOSITION ROOT: binds build_service; owns the session factory and the step registry
 layer = "composition"
-depends_on = ["build_info_store", "build_port", "build_rules", "build_service", "local_buildfiles", "local_inputs", "local_stores", "pipeline_context", "private_git", "wiring"]
+depends_on = ["build_info_store", "build_port", "build_service", "client_bootstrap", "local_buildfiles", "local_inputs", "local_stores", "pipeline_context", "private_git", "wiring"]
 
 [[modules]]
 path = "build_files_port"    # DOMAIN SERVICE: the disk and process work of a database rebuild
@@ -1135,7 +1135,7 @@ depends_on = ["cli_common", "privacy", "private_git_port"]
 [[modules]]
 path = "cli_build"   # the knowledge.py commands, split by concern
 layer = "cli"
-depends_on = []
+depends_on = ["client_bootstrap"]
 
 [[modules]]
 path = "cli_sources"   # source ids (#48)
@@ -1200,6 +1200,7 @@ layer = "pipeline"
 depends_on = [
     "build_rules",
     "build_port",
+    "client_bootstrap",
     "container",
     "normal_db",
     "paths",
@@ -1418,3 +1419,18 @@ depends_on = ["build_repositories_port", "entity_link_rules", "entity_rules"]
 path = "revision_apply_service"  # USE CASE: apply the revision log, then the privacy floor, then raise history
 layer = "application"
 depends_on = ["build_repositories_port", "revision_apply_rules"]
+
+[[modules]]
+path = "client_registry"   # DOMAIN SERVICE: what the build knows about client sources, as data the client registers (pure)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "client_bootstrap"  # COMPOSITION ROOT: loads client/bootstrap.py once the client directory is recognised
+layer = "composition"
+depends_on = ["build_rules", "client_registry", "local_buildfiles"]
+
+[[modules]]
+path = "client.bootstrap"   # the client's registration: which sources exist here, where their steps run (data only)
+layer = "domain_services"
+depends_on = ["client_registry"]

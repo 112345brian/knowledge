@@ -20,7 +20,6 @@ ACTIONS = {
     "build": ("build",),
     "add_fact": ("add-fact",),
     "add_facts": ("add-facts",),
-    "clean_concerts": ("clean-concerts",),
     "search_facts": ("search",),
     "get_fact": ("show",),
     "list_subjects": ("subjects",),
@@ -61,6 +60,12 @@ ACTIONS = {
     "make_private": ("set-visibility",),   # inbox: raise-only use of set-visibility
     "approve_shown": ("approve",),          # inbox: approve exactly the facts shown
 }
+
+def client_actions(tools):
+    """The registry entries for the tools the client's bootstrap registers (`client_registry.Tool`): the command
+    names are the client's, so the static table above does not list them."""
+    return {f"client_tool_{t.command.replace('-', '_')}": (t.command,) for t in tools}
+
 
 # Optional future layers that must declare PARITY_ACTIONS.
 LAYER_MODULES = ("mcp_server", "inbox")

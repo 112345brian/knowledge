@@ -1,6 +1,7 @@
 """The rebuild use case against in-memory fakes: no file, no database, no clock. Order, failure naming,
 publication and the supported optional client-source combinations; the disk-level recovery tests are in
 tests/test_build.py."""
+import client_bootstrap
 import itertools
 import os
 import sys
@@ -104,7 +105,7 @@ class FakeSteps:
         self.calls, self.fail_step = calls, fail_step
 
     def order(self, sources):
-        return build_rules.steps_for(sources)
+        return client_bootstrap.registry().steps_for(sources)
 
     def run(self, step, session):
         self.calls.append(("step", step))
@@ -160,17 +161,19 @@ class FakeOutputs:
 def make(files=None, sources=(), fail=None, fail_step=None, provenance_fails=False, outputs_fail=False, **loc):
     calls = []
     files = files or FakeFiles()
-    locations = Locations(knowledge_db_dir="/db", private_data_dir="/data", client_sources=tuple(sources), **loc)
+    locations = Locations(knowledge_db_dir="/db", private_data_dir="/data", client_sources=tuple(sources),
+                          client_inputs=loc.pop("client_inputs", {}), **loc)
     deps = build_service.BuildDeps(files=files, clock=FakeClock(), locations=locations,
                                    sessions=FakeSessions(files, calls, fail), steps=FakeSteps(calls, fail_step),
-                                   provenance=FakeProvenance(calls, provenance_fails), outputs=FakeOutputs(calls, outputs_fail))
+                                   provenance=FakeProvenance(calls, provenance_fails), outputs=FakeOutputs(calls, outputs_fail),
+                                   clients=client_bootstrap.registry())
     return deps, files, calls
 
 
 def test_a_build_runs_schema_steps_provenance_then_finalizes_in_that_order():
     deps, files, calls = make()
     results = build_service.build_database(deps, "/db/x")
-    steps = build_rules.steps_for(())
+    steps = client_bootstrap.registry().steps_for(())
     assert calls == [("schema", ())] + [("step", s) for s in steps] + [
         ("provenance.read",), ("provenance.write", "facts", "2026-10-03T08:00:00+00:00"), ("commit",), ("optimize",), ("close",)]
     assert [r.step for r in results] == steps
@@ -200,7 +203,7 @@ def test_a_failing_step_stops_the_steps_after_it():
     with pytest.raises(BuildError):
         build_service.build_database(deps, "/db/x")
     ran = [c[1] for c in calls if c[0] == "step"]
-    assert ran == build_rules.steps_for(())[:build_rules.steps_for(()).index("ingest/facts.py") + 1]
+    assert ran == client_bootstrap.registry().steps_for(())[:client_bootstrap.registry().steps_for(()).index("ingest/facts.py") + 1]
 
 
 def test_a_failure_before_publication_leaves_the_live_database_and_the_temp_file_alone():
@@ -253,9 +256,9 @@ def test_check_normal_failure_is_not_published_and_discards_nothing():
 
 # ---- the supported optional client-source combinations ----------------------------------------------------
 
-ALL_COMBINATIONS = [c for r in range(len(build_rules.CLIENT_SOURCES) + 1)
-                    for c in itertools.combinations(build_rules.CLIENT_SOURCES, r)]
-INPUTS = dict(concerts_csv="/in/c.csv", rym_export_csv="/in/r.csv", scrobbles_json="/in/s.json")
+ALL_COMBINATIONS = [c for r in range(len(client_bootstrap.registry().names) + 1)
+                    for c in itertools.combinations(client_bootstrap.registry().names, r)]
+INPUTS = dict(client_inputs={"CONCERTS_CSV": "/in/c.csv", "RYM_EXPORT_CSV": "/in/r.csv", "SCROBBLES_JSON": "/in/s.json"})
 
 
 @pytest.mark.parametrize("sources", ALL_COMBINATIONS, ids=lambda c: "+".join(c) or "core")
@@ -265,13 +268,15 @@ def test_every_client_source_combination_builds_with_its_inputs_and_schema_fragm
     schema_call = next(c for c in calls if c[0] == "schema")
     assert schema_call == ("schema", sources)
     ran = [c[1] for c in calls if c[0] == "step"]
-    assert ran == build_rules.steps_for(sources)
+    assert ran == client_bootstrap.registry().steps_for(sources)
     # the core steps always run, in the pipeline's order; a client step runs only when its source is enabled
-    core = [p for p, source in build_rules.PIPELINE if source is None]
+    registry = client_bootstrap.registry()
+    core = list(build_rules.CORE_PIPELINE)
     assert [s for s in ran if s in core] == core
-    for path, source in build_rules.PIPELINE:
-        wanted = source is None or any(n in sources for n in ((source,) if isinstance(source, str) else source))
-        assert (path in ran) == wanted
+    for name in registry.names:
+        for step in registry.source(name).steps:
+            wanted = any(step.path in {s.path for s in registry.source(n).steps} for n in sources)
+            assert (step.path in ran) == wanted
 
 
 @pytest.mark.parametrize("source, missing", [("concerts", "CONCERTS_CSV"), ("ratings", "RYM_EXPORT_CSV"),
@@ -308,6 +313,9 @@ class _Loader:
 
     def join(self, d, n):
         return f"{d}/{n}"
+
+    def exists(self, path):
+        return False        # no client directory under the synthetic code dir
 
     def load_module(self, path):
         self.loaded.append(path)
@@ -346,7 +354,8 @@ def test_the_registry_refuses_an_unknown_step_and_a_second_handler():
 
 
 def test_the_registry_orders_steps_like_the_pipeline_unless_given_a_fixed_list():
-    assert building.Registry(_Loader(), "/c").order(("claims",)) == build_rules.steps_for(("claims",))
+    clients = client_bootstrap.registry()
+    assert building.Registry(_Loader(), "/c", clients=clients).order(("claims",)) == clients.steps_for(("claims",))
     assert building.Registry(_Loader(), "/c", only=["x.py"]).order(("claims",)) == ["x.py"]
 
 
