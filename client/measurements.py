@@ -29,7 +29,7 @@ def run(con, ctx):
         config = snapshot_date.read_config(ctx.inputs, ctx.locations.private_data_dir)
         deps = measurements_service.MeasurementsDeps(vault=vault, repository=measurements_store.SqliteMeasurementRepository(con))
         summary = measurements_service.load_measurements(
-            deps, snapshot_date=date, notes_vault=notes_vault, manual_sources=config["manual_sources"],
+            deps, snapshot_date=date, notes_vault=ctx.locations.notes_vault_stored, manual_sources=config["manual_sources"],
             scans=config["scans"])
     finally:
         vault.close()

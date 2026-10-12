@@ -76,7 +76,7 @@ def m03(tmp_path, monkeypatch):
         module = mod
 
         @staticmethod
-        def build():
+        def build(written=None):
             con = sqlite3.connect(":memory:")
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON;")
@@ -88,7 +88,7 @@ def m03(tmp_path, monkeypatch):
                 json.dump({"version": 1, "manual_sources": {"dexa-2026": "source-a", "dexa-2025": "source-b",
                           "labcorp": "source-c", "tape": "source-d", "strength": "source-e", "unlocated": "source-f"},
                           "scans": [["2025-01-01", "dexa-2025"], ["2026-01-01", "dexa-2026"]]}, f)
-            mod.run(con, locs(notes_vault=vault_dir))
+            mod.run(con, locs(notes_vault=vault_dir, notes_vault_written=written))
             return con
 
         @staticmethod
@@ -108,6 +108,14 @@ def test_rows_and_vault_sources_carry_the_snapshot_date_from_the_data(m03):
     assert {r[0] for r in con.execute("SELECT date_added FROM measurements")} == {SNAPSHOT}
     assert {r["retrieved_date"] for r in con.execute("SELECT retrieved_date FROM sources WHERE citekey LIKE 'vault-db-%'")} == {SNAPSHOT}
     assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%as of 2026-09-11%'").fetchone()[0] > 0
+
+
+def test_vault_sources_record_the_vault_as_local_paths_writes_it(m03):
+    """The vault is read from its expanded path; the database stores `~/...`, not one machine's home."""
+    m03.write_snapshot('{"synced_at": "2026-09-11"}')
+    con = m03.build(written="~/vault")
+    paths = [r[0] for r in con.execute("SELECT origin_path FROM sources WHERE citekey LIKE 'vault-db-%'")]
+    assert paths and all(p.startswith("~/vault/source.db#") for p in paths)
 
 
 def test_the_date_is_whatever_the_data_says_not_a_constant(m03):

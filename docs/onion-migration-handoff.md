@@ -74,9 +74,14 @@ integrated result, not a replacement for reviewing them.
    no longer matched the `~/...` text in their `notes`. `Locations` now carries `notes_vault_written` /
    `health_dir_written` (`*_stored` properties). The hermetic suite missed it because every fixture vault is
    absolute. Remaining differences from main are timestamps/commit and main's own Windows mojibake (`â€”`).
-   Not yet run: the real MEGA inputs (see the OS-agnostic paths task).
-   The private data also needs `ingest.backfill_dates --apply` and `client.backfill_snapshot_date --apply` before
-   any build passes, on main as well; the private clone itself has not been modified.
+   **Full-config build against the real MEGA inputs and `knowledge-private` @ 6b52a7d (Windows, scratch DB):**
+   exits 0; all 37 tables have the same row counts as the live `knowledge.db`, and the same content apart from the
+   build timestamps (`date_added`, `built_at`), `import_sources.path` (the input's expanded path on this machine)
+   and one source's macOS file attributes. `origin/main` on the same inputs fails on Windows (`client/scrobbles.py`
+   decodes with the locale codec). A second stored-path regression, in `client/measurements.py` (`vault-db-*`
+   `origin_path`), was found this way and fixed.
+   To repeat: copy the inputs under a scratch `USERPROFILE` so `~/MEGA/...` resolves there, point a copy of
+   `local_paths.py` at a scratch `KNOWLEDGE_DB_DIR`, build, and compare with the live DB opened `mode=ro&immutable=1`.
 6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated
    but may conflict on README and docs.
 
