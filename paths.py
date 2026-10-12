@@ -12,6 +12,7 @@ it is set it wins, and a bad value is an error, never a silent fallback.
 """
 import importlib.util
 import os
+import tokenize
 
 import locations
 from locations import Locations
@@ -41,9 +42,15 @@ def load():
             name="local_paths",
         )
     # Executed from its file each time: two checkouts in one process (tests, tools) never share a cached module.
-    spec = importlib.util.spec_from_file_location("local_paths", os.path.join(private_dir, "local_paths.py"))
+    local_paths = os.path.join(private_dir, "local_paths.py")
+    spec = importlib.util.spec_from_file_location("local_paths", local_paths)
+    if spec is None:
+        raise ImportError(f"could not load {local_paths}")
     local = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(local)
+    # Importlib's source loader writes __pycache__ beside the file. This is private user data:
+    # merely reading its settings must not dirty the companion Git checkout.
+    with tokenize.open(local_paths) as source_file:
+        exec(compile(source_file.read(), local_paths, "exec"), local.__dict__)
     declared = getattr(local, "CLIENT_SOURCES", None)
     sources = tuple(declared or ())
 

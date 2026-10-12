@@ -5,6 +5,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import tokenize
 import uuid
 
 
@@ -16,8 +17,13 @@ def read_text(path):
 def load_module(path):
     """Execute the Python file at `path` as a fresh module (a build step)."""
     spec = importlib.util.spec_from_file_location(os.path.basename(path), path)
+    if spec is None:
+        raise ImportError(f"could not load build step {path}")
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    # Build steps are loaded afresh; the source loader's timestamp/size .pyc cache can otherwise
+    # execute stale code when a step is rewritten more than once in the same second.
+    with tokenize.open(path) as source_file:
+        exec(compile(source_file.read(), path, "exec"), mod.__dict__)
     return mod
 
 

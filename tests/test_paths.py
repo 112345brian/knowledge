@@ -48,6 +48,17 @@ def test_sibling_is_used_when_env_var_unset(tmp_path):
     assert r.stdout.strip() == "sibling/PRIVATE_DATA_DIR"
 
 
+def test_loading_private_config_does_not_write_bytecode(tmp_path):
+    code = make_tree(tmp_path)
+    private = tmp_path / "knowledge-private"
+    write_local_paths(private, "private")
+
+    r = run_import(code)
+
+    assert r.returncode == 0, r.stderr
+    assert not (private / "__pycache__").exists()
+
+
 def test_env_var_works_without_a_sibling(tmp_path):
     code = make_tree(tmp_path)
     write_local_paths(tmp_path / "elsewhere", "envdir")
