@@ -182,17 +182,18 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `add_fact_port` | domain service | interface exposing single-fact operations to batch callers |
 | `entity_rules` | model | entity vocabulary, validation, matching and the pure edits (`add_entity`, `add_alias`, `set_private`, `find`); `entities_service` calls these directly |
 | `entities` | composition root | binds entity use cases to file, migration and query adapters |
-| `entity_files_port` | domain service | I/O only: read the entities file, save it atomically, the locked `edit_file` git flow |
+| `entity_files_port` | domain service | I/O only: save the entities file atomically, the locked `edit_file` git flow; `EntityFileReader` is the file half of the foundation's `EntityRepository` |
 | `entity_migration_port` | domain service | interface for keyword migration |
 | `entity_queries_port` | domain service | interface for entity and subject read queries |
 | `entities_service` | application service | entity command operations |
 | `entity_queries_store` | infrastructure | entity/subject CLI read queries |
-| `entities_store` | infrastructure | entities.json: validation, linking, edits |
+| `entities_store` | infrastructure | entities.json: validation, atomic save, edits |
 | `entity_link_rules` | domain service | which facts mention which entities; a private mention must be stored private (pure) |
-| `entity_link_service` | application service | link facts to entities; refuse a private mention that is not stored private |
-| `entity_link_table_port` | domain service | port: the entity and link rows entity linking writes |
-| `fact_tables_store` | infrastructure | SQLite adapters for the revision, privacy-floor and entity-link ports |
+| `entity_link_service` | application service | link facts to entities through the foundation's `EntityRepository`; refuse a private mention that is not stored private |
+| `fact_tables_store` | infrastructure | SQLite adapters for the revision and privacy-floor ports |
 | `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
+| `entity_migration_rules` | domain service | what a keyword migration changes and the proof nothing gets less private (pure) |
+| `entity_repository_store` | infrastructure | the build's `EntityRepository` in SQLite: entity and alias rows, fact links, entities.json as values |
 | `export_music_taste` | ETL adapter (driving, batch) | exports the music dataset as one JSON file (music sources) |
 | `fact_ingest_rules` | domain service | fact-file ingest rules: which entries load, is_personal, origin note, date_added |
 | `fact_ingest_decisions` | domain service | the decisions both fact steps share: screening, keys, the row, the implicit revision, the report (pure) |

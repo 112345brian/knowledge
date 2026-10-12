@@ -21,9 +21,9 @@ from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from datafiles_port import DataFiles
-from entity_files_port import EntityFiles
+from entity_files_port import EntityFileReader, EntityFiles
 from entity_migration_port import EntityMigration
-from entity_link_table_port import EntityLinkTable
+from build_repositories_port import EntityRepository
 from entity_queries_port import EntityQueries
 from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
 from fact_revision_table_port import FactRevisionTable, RevisionLogReader
@@ -75,12 +75,12 @@ PORT_PROTOCOLS = {
     "git": PrivateGit, "revisions": Revisions, "rules": Rules, "reads": ReviewReads, "reviews": Reviews,
     "lifecycle_reads": LifecycleReads, "facts_file": FactsFile, "clock": Clock, "ids": Ids,
     "memory": MemoryFiles, "add_fact": AddFact, "fact_reads": FactReads, "runner": ScriptRunner,
-    "entity_files": EntityFiles, "entity_migration": EntityMigration,
+    "entity_files": EntityFiles, "entity_reader": EntityFileReader, "entity_migration": EntityMigration,
     "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
     "facts": FactRepository, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
     "datafiles": DataFiles, "music_export": MusicExportReads,
     "revision_log": RevisionLogReader, "revision_table": FactRevisionTable, "privacy_table": FactPrivacyTable,
-    "rules_reader": PrivacyRulesReader, "link_table": EntityLinkTable,
+    "rules_reader": PrivacyRulesReader, "entities": EntityRepository,
     "music": MusicRepository,
     "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,

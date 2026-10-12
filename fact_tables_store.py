@@ -1,12 +1,11 @@
-"""SQLite adapters for the build-time passes over a built database: revisions, the privacy floor, entity links.
+"""SQLite adapters for the build-time passes over a built database: revisions and the privacy floor.
 
-Each class binds one connection and implements a port from `fact_revision_table_port`,
-`fact_privacy_table_port` or `entity_link_table_port`. They only read and write rows; which fields a revision
-sets, what a rule raises and which facts mention which entities are decided by the domain and the use cases.
+Each class binds one connection and implements a port from `fact_revision_table_port` or
+`fact_privacy_table_port`. They only read and write rows; which fields a revision sets and what a rule raises are
+decided by the domain and the use cases.
 Nothing here commits except `SqliteFactRevisionTable.commit`, which the revision use case calls.
 """
 import revisions
-from entity_link_table_port import FactMention
 from fact_privacy_table_port import FactText
 
 _INSERT_REVISION_SQL = (
@@ -88,32 +87,3 @@ class SqliteFactPrivacyTable:
 
     def raise_to_private(self, fact_id):
         self._con.execute("UPDATE facts SET visibility = 'private' WHERE id = ?", (fact_id,))
-
-
-class SqliteEntityLinkTable:
-    def __init__(self, con):
-        self._con = con
-
-    def add_entity(self, entity, name_norm):
-        cur = self._con.execute(
-            "INSERT INTO entities (entity_key, canonical_name, name_norm, type, private, external_id, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (entity["id"], entity["canonical_name"], name_norm, entity["type"], 1 if entity["private"] else 0,
-             entity["external_id"], entity["notes"]))
-        return cur.lastrowid
-
-    def add_alias(self, entity_row, alias, alias_norm):
-        self._con.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (?, ?, ?)",
-                          (entity_row, alias, alias_norm))
-
-    def fact_mentions(self):
-        rows = self._con.execute(
-            """SELECT f.id, f.visibility, f.statement, f.notes, f.trust_rationale, f.recheck_rationale, f.source_quote,
-                      f.applies_to,
-                      (SELECT group_concat(COALESCE(fs.locator, '') || ' ' || COALESCE(fs.quote, ''), char(10))
-                       FROM fact_sources fs WHERE fs.fact_id = f.id)
-               FROM facts f ORDER BY f.id""").fetchall()
-        return [FactMention(fact_id, tuple(texts), visibility) for fact_id, visibility, *texts in rows]
-
-    def link(self, fact_id, entity_row):
-        self._con.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (?, ?)", (fact_id, entity_row))

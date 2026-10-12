@@ -11,17 +11,19 @@ import pytest
 
 import entity_link_rules
 import entity_link_service
-import entity_link_table_port
+import entity_repository_store
 import fact_privacy_table_port
 import fact_revision_table_port
 import fact_state
 import fact_tables_store
+import build_records as r
+from build_repositories_port import EntityRepository
+from entity_rules import Entity
 import privacy
 import privacy_floor_service
 import revision_apply_rules
 import revision_apply_service
 import revisions
-from entity_link_table_port import FactMention
 from fact_privacy_table_port import FactText
 from test_add_fact import REPO
 
@@ -131,23 +133,31 @@ class FakePrivacyTable:
         self.w.facts[fact_id]["visibility"] = "private"
 
 
-class FakeLinkTable:
+class FakeEntities:
+    """An `EntityRepository` over the world: rows are numbered from 100, in call order."""
+
     def __init__(self, w):
         self.w = w
 
-    def add_entity(self, entity, name_norm):
+    def read_file(self, path):
+        return None
+
+    def add(self, entity):
         row = len(self.w.entity_rows) + 100
-        self.w.entity_rows[entity["id"]] = (row, name_norm)
-        return row
+        name_norm, *alias_norms = entity.terms
+        self.w.entity_rows[entity.id] = (row, name_norm)
+        self.w.aliases.extend((row, a, n) for a, n in zip(entity.aliases, alias_norms))
+        return r.EntityRowId(row)
 
-    def add_alias(self, entity_row, alias, alias_norm):
-        self.w.aliases.append((entity_row, alias, alias_norm))
+    def fact_texts(self):
+        return [r.FactText(r.FactId(i), (f["statement"], *f.get("extra", ()))) for i, f in self.w.facts.items()]
 
-    def fact_mentions(self):
-        return [FactMention(i, (f["statement"], *f.get("extra", ())), f["visibility"]) for i, f in self.w.facts.items()]
+    def link_fact(self, fact_id, entity_row_id):
+        self.w.links.append((fact_id, entity_row_id))
 
-    def link(self, fact_id, entity_row):
-        self.w.links.append((fact_id, entity_row))
+    def fact_visibility(self, fact_id):
+        f = self.w.facts.get(fact_id)
+        return None if f is None else f["visibility"]
 
 
 def revision_deps(w):
@@ -246,13 +256,12 @@ def test_floor_uses_the_private_entities_carried_by_the_rules():
 
 
 def ent(id, name, private=False, aliases=()):
-    return {"id": id, "canonical_name": name, "type": "person", "aliases": list(aliases), "private": private,
-            "external_id": None, "notes": None}
+    return Entity(id, name, "person", tuple(aliases), private)
 
 
 def test_link_writes_entities_and_aliases_before_any_link_and_normalizes_names():
     w = World(facts=[fact("a", statement="With Zeddy.", visibility="private"), fact("b", extra=("zed name",), visibility="private")])
-    out = entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeLinkTable(w)),
+    out = entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeEntities(w)),
                                             [ent("zed", "Zed  Name", private=True, aliases=["Zeddy"])])
     assert out.as_dict() == {"entities": 1, "links": 2, "unprotected": []}
     assert w.entity_rows["zed"][1] == "zed name" and w.aliases == [(100, "Zeddy", "zeddy")]
@@ -261,7 +270,7 @@ def test_link_writes_entities_and_aliases_before_any_link_and_normalizes_names()
 
 def test_a_private_mention_stored_normal_is_listed_by_link_facts_and_refused_by_link_entities():
     w = World(facts=[fact("a", statement="About Zed.", visibility="normal"), fact("b", statement="About Acme.")])
-    deps = entity_link_service.EntityLinkDeps(FakeLinkTable(w))
+    deps = entity_link_service.EntityLinkDeps(FakeEntities(w))
     es = [ent("zed", "Zed", private=True), ent("acme", "Acme")]
     assert entity_link_service.link_facts(deps, es).unprotected == [1]
     with pytest.raises(entity_link_rules.UnprotectedPrivateMention, match=r"facts \[1\] mention") as e:
@@ -272,15 +281,15 @@ def test_a_private_mention_stored_normal_is_listed_by_link_facts_and_refused_by_
 def test_the_refusal_names_at_most_ten_facts_and_a_public_mention_of_a_public_entity_is_fine():
     w = World(facts=[fact(f"k{i}", statement="Zed.", visibility="normal") for i in range(12)])
     with pytest.raises(entity_link_rules.UnprotectedPrivateMention) as e:
-        entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeLinkTable(w)), [ent("zed", "Zed", private=True)])
+        entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeEntities(w)), [ent("zed", "Zed", private=True)])
     assert e.value.fact_ids == list(range(1, 13)) and str(e.value).startswith("facts [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] mention")
     w = World(facts=[fact("a", statement="Acme.")])
-    assert entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeLinkTable(w)), [ent("acme", "Acme")]).links == 1
+    assert entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeEntities(w)), [ent("acme", "Acme")]).links == 1
 
 
 def test_blank_and_missing_text_never_matches():
     w = World(facts=[fact("a", statement="", extra=(None, "", "  "))])
-    out = entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeLinkTable(w)), [ent("x", "Xylo")])
+    out = entity_link_service.link_entities(entity_link_service.EntityLinkDeps(FakeEntities(w)), [ent("x", "Xylo")])
     assert out.links == 0
 
 
@@ -355,37 +364,41 @@ def test_sqlite_privacy_table_reads_parents_texts_and_writes_flags_and_raises():
     assert con.execute("SELECT visibility FROM facts WHERE id = 1").fetchone()[0] == "private"
 
 
-def test_sqlite_entity_link_table_writes_rows_and_reads_mentions_in_id_order():
+def test_sqlite_entity_repository_writes_rows_and_reads_texts_in_id_order():
     con = new_db()
     seed(con)
-    t = fact_tables_store.SqliteEntityLinkTable(con)
-    row = t.add_entity(ent("zed", "Zed", private=True), "zed")
-    t.add_alias(row, "Zeddy", "zeddy")
-    mentions = t.fact_mentions()
-    assert [m.fact_id for m in mentions] == [1, 2] and mentions[0].visibility == "normal"
-    assert mentions[0].texts[0] == "About Zed." and "a note" in mentions[0].texts
-    t.link(1, row)
-    assert con.execute("SELECT private, name_norm FROM entities").fetchone()[:] == (1, "zed")
+    t = entity_repository_store.SqliteEntityRepository(con)
+    row = t.add(Entity("zed", "Zed  Name", "person", ("Zeddy",), True))
+    texts = t.fact_texts()
+    assert [m.fact_id for m in texts] == [1, 2] and t.fact_visibility(r.FactId(1)) == "normal"
+    assert texts[0].texts[0] == "About Zed." and "a note" in texts[0].texts
+    assert t.fact_visibility(r.FactId(99)) is None
+    t.link_fact(r.FactId(1), row)
+    assert con.execute("SELECT private, name_norm FROM entities").fetchone()[:] == (1, "zed name")
+    assert con.execute("SELECT alias, alias_norm FROM entity_aliases").fetchall()[0][:] == ("Zeddy", "zeddy")
     assert con.execute("SELECT fact_id, entity_id FROM fact_entities").fetchall()[0][:] == (1, row)
     with pytest.raises(sqlite3.IntegrityError):          # the schema's trigger still guards alias/name collisions
-        t.add_alias(row, "Zed", "zed")
+        t.add(Entity("other", "Other", "person", ("zed name",)))
 
 
-def test_the_link_wrapper_keeps_its_dict_shape():
-    import entities_store
+def test_the_repository_adapter_decides_nothing_and_never_commits():
+    """A mention of a private entity in a normal fact is stored and reported by the service, not refused here."""
     con = new_db()
     seed(con)
-    assert entities_store.link_facts(con, [ent("zed", "Zed", private=True)]) == {"entities": 1, "links": 1, "unprotected": [1]}
+    deps = entity_link_service.EntityLinkDeps(entity_repository_store.SqliteEntityRepository(con))
+    out = entity_link_service.link_facts(deps, [ent("zed", "Zed", private=True)])
+    assert out.as_dict() == {"entities": 1, "links": 1, "unprotected": [1]} and con.in_transaction is True
 
 
 # ------------------------------------------------------------------ structural guards
 
 
 def _port_protocols():
-    for mod in (fact_revision_table_port, fact_privacy_table_port, entity_link_table_port):
+    for mod in (fact_revision_table_port, fact_privacy_table_port):
         for name, cls in vars(mod).items():
             if inspect.isclass(cls) and getattr(cls, "_is_protocol", False) and cls.__module__ == mod.__name__:
                 yield cls
+    yield EntityRepository          # the entity-link use case writes through the foundation's port
 
 
 def test_the_ports_have_semantic_methods_not_sql_ones():
@@ -402,7 +415,7 @@ def test_the_ports_have_semantic_methods_not_sql_ones():
 def test_every_fake_and_adapter_has_exactly_the_ports_methods():
     pairs = [(fact_revision_table_port.FactRevisionTable, FakeRevisionTable, fact_tables_store.SqliteFactRevisionTable),
              (fact_privacy_table_port.FactPrivacyTable, FakePrivacyTable, fact_tables_store.SqliteFactPrivacyTable),
-             (entity_link_table_port.EntityLinkTable, FakeLinkTable, fact_tables_store.SqliteEntityLinkTable)]
+             (EntityRepository, FakeEntities, entity_repository_store.SqliteEntityRepository)]
     for port, fake, real in pairs:
         wanted = {m for m in vars(port) if not m.startswith("_")}
         for impl in (fake, real):
@@ -417,8 +430,8 @@ def test_no_caller_discards_the_unprotected_mention_result():
     that calls it (or the store/step wrappers around it) must also look at `unprotected` or call
     `link_entities`, which refuses; a caller that ignores the list would let the build ship the leak."""
     wrappers = {"link_facts", "link_entities"}
-    homes = {"entity_link_service.py", "entities_store.py", "local_stores.py", "step_stores_port.py"}
-    offenders = []
+    homes = {"entity_link_service.py"}
+    offenders, inspected = [], []
     for root, dirs, files in os.walk(REPO):
         dirs[:] = [d for d in dirs if d not in {".venv", ".git", "tests", "node_modules", ".claude"}]
         for f in files:
@@ -429,7 +442,26 @@ def test_no_caller_discards_the_unprotected_mention_result():
                 calls = {n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", None)
                          for n in ast.walk(fn) if isinstance(n, ast.Call)}
                 if calls & wrappers:
+                    inspected.append(f"{f}:{fn.name}")
                     src = ast.unparse(fn)
                     if "link_entities(" not in src.replace("link_facts(", "") and "unprotected" not in src:
                         offenders.append(f"{os.path.relpath(os.path.join(root, f), REPO)}:{fn.name}")
     assert offenders == []
+    assert "link_entities.py:run" in inspected          # the scan sees the build step, so it cannot pass vacuously
+
+
+def test_only_the_entity_repository_adapter_writes_the_entity_tables():
+    """Entity rows, alias rows and fact links are written by `entity_repository_store` (the build's EntityRepository)
+    and by nothing else; `leak_test` seeds a throwaway database for the leak scan and is the one other writer."""
+    import re
+    allowed = {"entity_repository_store.py", "leak_test.py"}
+    writer = re.compile(r"\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+(entities|entity_aliases|fact_entities)\b", re.I)
+    offenders = []
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [d for d in dirs if d not in {".venv", ".git", "tests", "node_modules", ".claude"}]
+        for f in files:
+            if f.endswith(".py") and f not in allowed:
+                if writer.search(open(os.path.join(root, f), encoding="utf-8").read()):
+                    offenders.append(os.path.relpath(os.path.join(root, f), REPO))
+    assert offenders == []
+    assert writer.search(open(os.path.join(REPO, "entity_repository_store.py"), encoding="utf-8").read())

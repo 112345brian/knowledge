@@ -1,7 +1,7 @@
 """Entities as values: the vocabulary, the validation of an entities file, matching and the pure edits.
 
-Model ring: imports only `textmatch`, and does no I/O. `entities_store` (the file and database adapter) keeps the
-reading, the atomic write, the git flow and the linking SQL; everything about what an entity is, which names it
+Model ring: imports only `textmatch`, and does no I/O. `entities_store` (the file adapter) keeps the
+reading, the atomic write and the git flow (the entity rows are `entity_repository_store`); everything about what an entity is, which names it
 may claim and how an edit changes a list of them lives here, so the CLI and the privacy resolver share it without
 reaching through an adapter.
 """

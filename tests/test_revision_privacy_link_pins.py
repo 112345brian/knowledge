@@ -11,7 +11,9 @@ import sqlite3
 
 import pytest
 
-import entities_store
+import entity_link_service
+import entity_repository_store
+import entity_rules
 import privacy
 import privacy_store
 import revisions
@@ -203,6 +205,12 @@ def test_apply_rules_on_an_empty_database_and_a_cyclic_subject_chain():
 # ------------------------------------------------------------------ link_facts
 
 
+def link_facts(con, entities):
+    """The build's entity linking over `con`, as the dict the pins were written against."""
+    deps = entity_link_service.EntityLinkDeps(entity_repository_store.SqliteEntityRepository(con))
+    return entity_link_service.link_facts(deps, [entity_rules.Entity.from_dict(e) for e in entities]).as_dict()
+
+
 def entity(id, name, private=False, aliases=(), type="person", external_id=None, notes=None):
     return {"id": id, "canonical_name": name, "type": type, "aliases": list(aliases), "private": private,
             "external_id": external_id, "notes": notes}
@@ -217,7 +225,7 @@ def test_link_facts_result_rows_and_no_commit():
     es = [entity("zed", "Zed Name", private=True, aliases=["Zeddy"]),
           entity("acme", "Acme Labs", aliases=["Acme"], type="organization", external_id="wikidata:Q1", notes="a lab"),
           entity("bro", "brother")]
-    out = entities_store.link_facts(con, es)
+    out = link_facts(con, es)
     assert out == {"entities": 3, "links": 3, "unprotected": [1]}        # k1 mentions private Zed but is normal
     assert con.in_transaction is True
     assert {(r[0], r[1]) for r in con.execute(
@@ -230,15 +238,15 @@ def test_link_facts_result_rows_and_no_commit():
 
 def test_link_facts_with_no_entities_or_no_facts():
     con = new_db()
-    assert entities_store.link_facts(con, []) == {"entities": 0, "links": 0, "unprotected": []}
-    assert entities_store.link_facts(con, [entity("a", "Alpha")]) == {"entities": 1, "links": 0, "unprotected": []}
+    assert link_facts(con, []) == {"entities": 0, "links": 0, "unprotected": []}
+    assert link_facts(con, [entity("a", "Alpha")]) == {"entities": 1, "links": 0, "unprotected": []}
 
 
 def test_link_facts_reports_every_unprotected_fact_in_id_order():
     con = new_db()
     for i in range(3):
         add_fact(con, f"k{i}", statement="About Zed Name.", visibility="normal" if i != 1 else "private")
-    out = entities_store.link_facts(con, [entity("zed", "Zed Name", private=True)])
+    out = link_facts(con, [entity("zed", "Zed Name", private=True)])
     assert out["unprotected"] == [1, 3] and out["links"] == 3
 
 
@@ -339,7 +347,7 @@ def test_link_facts_allocates_entity_rows_in_entity_order_and_links_in_fact_then
     add_fact(con, "k2", statement="Only Alpha.", visibility="normal")
     con.commit()
     es = [entity("alpha", "Alpha", aliases=["Al"]), entity("beta", "Beta")]
-    assert entities_store.link_facts(con, es)["links"] == 3
+    assert link_facts(con, es)["links"] == 3
     assert _rows(con, "SELECT id, entity_key FROM entities ORDER BY id") == [(1, "alpha"), (2, "beta")]
     assert _rows(con, "SELECT entity_id, alias FROM entity_aliases ORDER BY rowid") == [(1, "Al")]
     assert _rows(con, "SELECT fact_id, entity_id FROM fact_entities ORDER BY rowid") == [(1, 1), (1, 2), (2, 1)]
@@ -349,9 +357,9 @@ def test_link_facts_second_attempt_over_the_same_entities_fails_and_leaves_the_f
     con = new_db()
     add_fact(con, "k1", statement="About Alpha.", visibility="normal")
     es = [entity("alpha", "Alpha")]
-    assert entities_store.link_facts(con, es)["links"] == 1
+    assert link_facts(con, es)["links"] == 1
     with pytest.raises(sqlite3.IntegrityError):
-        entities_store.link_facts(con, es)
+        link_facts(con, es)
     assert _rows(con, "SELECT entity_key FROM entities") == [("alpha",)]
     assert _rows(con, "SELECT fact_id, entity_id FROM fact_entities") == [(1, 1)]
     assert con.in_transaction is True
@@ -364,7 +372,7 @@ def test_link_facts_a_term_claimed_twice_fails_mid_way_without_a_rollback():
     add_fact(con, "k1", statement="About Alpha.", visibility="normal")
     es = [entity("alpha", "Alpha"), entity("beta", "Beta", aliases=["alpha"])]
     with pytest.raises(sqlite3.IntegrityError):
-        entities_store.link_facts(con, es)
+        link_facts(con, es)
     assert _rows(con, "SELECT entity_key FROM entities ORDER BY id") == [("alpha",), ("beta",)]
     assert _rows(con, "SELECT COUNT(*) FROM fact_entities") == [(0,)]
 
@@ -373,7 +381,7 @@ def test_link_facts_nul_blank_and_none_text_never_match_and_never_crash():
     con = new_db()
     add_fact(con, "k1", statement="Alpha\x00Beta", visibility="normal", notes="  ")
     add_fact(con, "k2", statement="x", visibility="normal", notes=None, quote=None, locator="p. 3")
-    out = entities_store.link_facts(con, [entity("alpha", "Alpha"), entity("beta", "Beta")])
+    out = link_facts(con, [entity("alpha", "Alpha"), entity("beta", "Beta")])
     assert out["entities"] == 2 and out["unprotected"] == []
     assert _rows(con, "SELECT fact_id, entity_id FROM fact_entities ORDER BY rowid") == [(1, 1), (1, 2)]
 
@@ -381,7 +389,7 @@ def test_link_facts_nul_blank_and_none_text_never_match_and_never_crash():
 def test_link_facts_text_scanned_is_statement_notes_citations_and_a_mention_in_a_quote_links():
     con = new_db()
     add_fact(con, "k1", statement="Plain.", notes="see Gamma", quote="said Delta", locator="p. 2", visibility="normal")
-    out = entities_store.link_facts(con, [entity("g", "Gamma"), entity("d", "Delta", private=True)])
+    out = link_facts(con, [entity("g", "Gamma"), entity("d", "Delta", private=True)])
     assert out == {"entities": 2, "links": 2, "unprotected": [1]}
 
 
