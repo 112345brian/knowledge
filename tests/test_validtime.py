@@ -4,6 +4,7 @@ The library (validtime), the schema CHECKs, the writers (add_fact, add_facts), i
 (correcting validity appends a revision; show --as-of), `--valid-at` on search/facts/show in both
 knowledge.py and modes.py, the normal-only DB, and the rule that a past valid_to is not retraction.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -319,7 +320,7 @@ def test_normal_db_includes_validity_with_the_same_checks():
     import normal_db
     import privacy
     import tempfile
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET valid_from = '2024-03', valid_to = '2024-05-31' WHERE id = 1")
@@ -327,7 +328,7 @@ def test_normal_db_includes_validity_with_the_same_checks():
         c.commit()
         c.close()
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 1").fetchone()) == ("2024-03", "2024-05-31")
         assert tuple(con.execute("SELECT valid_from, valid_to FROM facts WHERE id = 2").fetchone()) == (None, None)
         assert con.execute("SELECT valid_from FROM fact_revisions WHERE fact_id = 1 AND revision = 1").fetchone()[0] == "2024-03"

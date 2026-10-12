@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import os
 import tempfile
+import time
 
 
 def lock_path(path):
@@ -15,6 +16,43 @@ def lock_path(path):
     directory = os.path.join(tempfile.gettempdir(), "knowledge-locks")
     os.makedirs(directory, exist_ok=True)
     return os.path.join(directory, key + ".lock")
+
+
+# Windows refuses to replace a file another handle has open (a reader that took no lock), reporting it as
+# PermissionError; the other handle is a momentary read, so a short bounded retry is what makes the swap succeed.
+_REPLACE_RETRY_SECONDS = 5.0
+_OPEN_RETRY_SECONDS = 2.0
+
+
+def replace_file(source, target):
+    """`os.replace(source, target)`, retrying briefly while a concurrent reader holds `target` open (Windows only)."""
+    deadline = time.monotonic() + _REPLACE_RETRY_SECONDS
+    delay = 0.005
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if os.name != "nt" or time.monotonic() >= deadline:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.1)
+
+
+def open_retrying(path, mode="r", **kwargs):
+    """`open(path, mode, **kwargs)`, retrying briefly on PermissionError (Windows only). A reader that takes no
+    lock can open the file in the instant a writer's `replace_file` swaps it in, which Windows reports as
+    "permission denied"; the swap is momentary, so the same open succeeds a few milliseconds later."""
+    deadline = time.monotonic() + _OPEN_RETRY_SECONDS
+    delay = 0.005
+    while True:
+        try:
+            return open(path, mode, **kwargs)
+        except PermissionError:
+            if os.name != "nt" or time.monotonic() >= deadline:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.1)
 
 
 @contextlib.contextmanager

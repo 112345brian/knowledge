@@ -28,6 +28,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+import locations
 import validtime
 from acquisition_rules import COLUMNS, VIA_VALUES, AcquisitionError, normalize_data  # noqa: F401  (defined with the rules)
 
@@ -81,6 +82,11 @@ def _parse_quarantine(output):
     return ts.replace(microsecond=0).isoformat()
 
 
+def _expand_home(path):
+    home = os.environ.get(locations.HOME_ENV_VAR)     # the same rule as paths.expand
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
+
+
 def read_attributes(path, run=None, platform_ok=None):
     """{'where_from': url, 'acquired_at': iso} for whatever the file's macOS attributes provide; {} elsewhere.
     `run` (args -> stdout or None) and `platform_ok` exist so tests can simulate the attributes on any platform."""
@@ -90,7 +96,7 @@ def read_attributes(path, run=None, platform_ok=None):
         platform_ok = available()
     if not platform_ok:
         return {}
-    path = os.path.expanduser(path)
+    path = _expand_home(path)
     run = run or _default_run
     names = run(["xattr", path])
     if not names:

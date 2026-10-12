@@ -4,6 +4,7 @@
 The audit's new outcomes (a rebuttal row with a distinct reason and severity "info") are the kind a caller can
 silently ignore, so a scan test fails when a module that calls audit_claims never looks at `severity`.
 """
+import contextlib
 import importlib.util
 import json
 import os
@@ -284,5 +285,6 @@ def test_claims_stay_out_of_the_normal_db_entirely():
     with tempfile.TemporaryDirectory() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
-        names = {r[0] for r in sqlite3.connect(path).execute("SELECT name FROM sqlite_master")}
+        with contextlib.closing(sqlite3.connect(path)) as con:
+            names = {r[0] for r in con.execute("SELECT name FROM sqlite_master")}
         assert "claims" not in names and "claim_facts" not in names

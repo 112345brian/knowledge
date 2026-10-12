@@ -73,6 +73,7 @@ class Provenance:
     python_version: str
     sqlite_version: str
     inputs: Tuple[InputState, ...]
+    platform: Optional[str] = None   # the OS that wrote the db (sys.platform): stored paths are canonical, this says where from
 
 
 class ProvenanceReader(Protocol):

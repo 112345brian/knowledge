@@ -6,10 +6,11 @@ import os
 
 from client import measurement_rules
 from client.measurement_rules import MEASUREMENTS_SNAPSHOT_FILE  # noqa: F401  (the public API)
+from locations import join_path
 
 
 def read_snapshot_date(inputs, data_dir):
-    path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
+    path = join_path(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
     try:
         text = inputs.read_text(path)
     except FileNotFoundError:
@@ -19,7 +20,7 @@ def read_snapshot_date(inputs, data_dir):
 
 def read_config(inputs, data_dir):
     """The source identifiers and selected record dates of the measurements load, validated."""
-    path = os.path.join(data_dir, measurement_rules.MEASUREMENTS_CONFIG_FILE)
+    path = join_path(data_dir, measurement_rules.MEASUREMENTS_CONFIG_FILE)
     try:
         config = inputs.read_json(path)
     except (OSError, json.JSONDecodeError) as e:

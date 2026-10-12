@@ -153,7 +153,7 @@ def test_callers_of_the_validating_functions_do_not_discard_the_result():
             if not name.endswith(".py"):
                 continue
             path = os.path.join(root, name)
-            tree = ast.parse(open(path).read())
+            tree = ast.parse(open(path, encoding="utf-8").read())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                     f = node.value.func

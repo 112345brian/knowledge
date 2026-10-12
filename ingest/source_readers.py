@@ -34,7 +34,7 @@ class ManualSources:
 
     def _items(self):
         loc = self._locations
-        items = self._inputs.read_json(os.path.join(loc.private_data_dir, MANUAL_FILE))
+        items = self._inputs.read_json(loc.in_data_dir(MANUAL_FILE))
         for s in items:
             if s.get("origin_path"):
                 s["origin_path"] = source_ingest_rules.format_origin_path(s["origin_path"], loc.notes_vault_stored, loc.health_dir_stored)
@@ -79,7 +79,7 @@ class VaultNotes:
         if not vault:
             return []
         out = []
-        for fp in inputs.list_files(os.path.join(vault, "sources"), "*.md"):
+        for fp in inputs.list_files(self._locations.in_notes_vault("sources"), "*.md"):
             base = os.path.basename(fp)
             if base == "README.md":
                 continue

@@ -13,6 +13,7 @@ it is set it wins, and a bad value is an error, never a silent fallback.
 import importlib.util
 import os
 
+import locations
 from locations import Locations
 
 _ENV_VAR = "KNOWLEDGE_PRIVATE_DIR"
@@ -21,10 +22,17 @@ _SIBLING_DIR = os.path.abspath(
 )
 
 
+def expand(path):
+    """`path` with `~` resolved: under $KNOWLEDGE_HOME when that is set (a machine whose data lives outside the OS
+    user's home, e.g. `~/MEGA` on another drive), else the OS user's home. Only the expanded form is affected."""
+    home = os.environ.get(locations.HOME_ENV_VAR)
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
+
+
 def load():
     """Read the private checkout's local_paths.py and return the `Locations` it describes."""
     override = os.environ.get(_ENV_VAR)
-    private_dir = os.path.abspath(os.path.expanduser(override)) if override else _SIBLING_DIR
+    private_dir = os.path.abspath(expand(override)) if override else _SIBLING_DIR
     if not os.path.isfile(os.path.join(private_dir, "local_paths.py")):
         source = f"{_ENV_VAR}={override!r}" if override else "the sibling default"
         raise ModuleNotFoundError(
@@ -45,18 +53,23 @@ def load():
 
     def path(name):
         value = getattr(local, name, None)
-        return os.path.expanduser(value) if value else None
+        return locations.canonical_path(expand(value)) if value else None
 
     def written(*names):
         """The first of `names` that is set, exactly as local_paths.py wrote it."""
         return next((getattr(local, n) for n in names if getattr(local, n, None)), None)
 
+    # Every path is canonical (forward slashes) from here down, so whatever the build stores is the same on every
+    # OS; Windows opens such paths as they are. `*_written` keeps local_paths.py's own text.
     return Locations(
-        knowledge_db_dir=os.path.expanduser(local.KNOWLEDGE_DB_DIR), private_data_dir=local.PRIVATE_DATA_DIR,
-        private_dir=private_dir,
+        knowledge_db_dir=locations.canonical_path(expand(local.KNOWLEDGE_DB_DIR)),
+        private_data_dir=locations.canonical_path(local.PRIVATE_DATA_DIR),
+        private_dir=locations.canonical_path(private_dir),
         # NOTES_VAULT is the generic name; BODYBUILDING_VAULT is the older one and still works.
         notes_vault=path("NOTES_VAULT") or path("BODYBUILDING_VAULT"), health_dir=path("HEALTH_DIR"),
         client_sources=sources, client_sources_implicit=implicit,
         notes_vault_written=written("NOTES_VAULT", "BODYBUILDING_VAULT"), health_dir_written=written("HEALTH_DIR"),
         concerts_csv=path("CONCERTS_CSV"), rym_export_csv=path("RYM_EXPORT_CSV"), scrobbles_json=path("SCROBBLES_JSON"),
+        concerts_csv_written=written("CONCERTS_CSV"), rym_export_csv_written=written("RYM_EXPORT_CSV"),
+        scrobbles_json_written=written("SCROBBLES_JSON"),
     )

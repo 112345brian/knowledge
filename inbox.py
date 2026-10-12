@@ -276,12 +276,19 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "knowledge-inbox"
     sys_version = ""
     protocol_version = "HTTP/1.0"
+    _body_consumed = False
 
     def log_message(self, fmt, *args):  # no request logging: URLs and bodies stay out of terminals
         pass
 
     # -- plumbing
     def _send(self, status, body, ctype="text/html; charset=utf-8"):
+        try:
+            self._send_response(status, body, ctype)
+        except ConnectionError:
+            pass   # the client went away before reading the reply: nothing to answer, and no traceback to print
+
+    def _send_response(self, status, body, ctype):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(status)
         self.send_header("Content-Type", ctype)
@@ -295,6 +302,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(data)
+        if self.command == "POST" and not self._body_consumed:
+            self._discard_unread_body()
+
+    def _discard_unread_body(self):
+        """A refusal went out before the request body was read. Read and drop what the client is still sending,
+        bounded in bytes and in time: closing a socket that holds unread data resets the connection, and on
+        Windows that reset can destroy the response the client has not read yet."""
+        try:
+            left = min(int(self.headers.get("Content-Length", "0")), MAX_BODY)
+            self.connection.settimeout(0.25)
+            while left > 0:
+                chunk = self.rfile.read1(min(left, 65536))
+                if not chunk:
+                    break
+                left -= len(chunk)
+        except (ValueError, OSError):
+            pass
 
     def _text(self, status, message):
         self._send(status, f"{status} {message}\n", "text/plain; charset=utf-8")
@@ -356,6 +380,7 @@ class Handler(BaseHTTPRequestHandler):
             self._text(413, "request too large")
             return
         raw = self.rfile.read(length)
+        self._body_consumed = True
         try:
             pairs = urllib.parse.parse_qsl(raw.decode("utf-8"), keep_blank_values=True, strict_parsing=bool(raw))
         except (UnicodeDecodeError, ValueError):

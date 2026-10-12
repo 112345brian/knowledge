@@ -54,7 +54,7 @@ def import_concerts(deps: MusicIngestDeps) -> StepResult:
     never removed). A row without a name or start date is skipped."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
     csv_path = locations.need("concerts_csv", "CONCERTS_CSV", "the concerts import")
-    source_id = music.import_source(csv_path)
+    source_id = music.import_source(locations.concerts_csv_stored)   # stored as written (`~/...`), read from the expanded path
     music.forget_attendances(source_id)
     rules = load_artist_rules(inputs, locations)
     artists = ArtistDirectory(music, rules.aliases)
@@ -94,7 +94,7 @@ def import_ratings(deps: MusicIngestDeps) -> StepResult:
     """Replace this export's albums with the file's rows, on the artists shared with the concerts."""
     music, inputs, locations = deps.music, deps.inputs, deps.locations
     csv_path = locations.need("rym_export_csv", "RYM_EXPORT_CSV", "the ratings import")
-    source_id = music.import_source(csv_path)
+    source_id = music.import_source(locations.rym_export_csv_stored)
     music.forget_albums(source_id)
     rules = load_artist_rules(inputs, locations)
     artists = ArtistDirectory(music, rules.aliases)
@@ -125,7 +125,7 @@ def import_scrobbles(deps: MusicIngestDeps) -> StepResult:
     if not inputs.exists(path):
         return StepResult("scrobbles", lines=(f"[scrobbles] {path} not found, skipping",), counts={}, skipped=True)
 
-    source_id = music.import_source(path)
+    source_id = music.import_source(locations.scrobbles_json_stored)
     music.forget_scrobbles(source_id)
     scrobbles = list(music_ingest_rules.scrobbles_from_pages(inputs.read_json(path)))
 

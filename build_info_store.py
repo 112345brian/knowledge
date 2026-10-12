@@ -3,7 +3,7 @@
 A knowledge.db cannot otherwise say which inputs and code produced it. Every build records, inside the db it
 builds:
   build_info    one row: built_at, schema_version, code_commit/code_dirty (this repo), private_commit/
-                private_dirty (knowledge-private), python_version, sqlite_version
+                private_dirty (knowledge-private), python_version, sqlite_version, platform
   build_inputs  one row per input, by a STABLE KEY (never a path): state (present | missing), sha256,
                 size_bytes, file_mtime, read_at
 
@@ -20,11 +20,13 @@ Normal-only DB: built_at and schema_version only (normal_rules.py, normal_db_sto
 import hashlib
 import os
 import platform
+import sys
 import sqlite3
 
 import fixity_store
 from build_port import InputState, Provenance, RepoState
 from private_git_port import PrivateGit
+from locations import join_path
 
 KEY_PREFIX = "input:"
 # (stable key, how to find it). Data files live in the private data dir; the others come from the locations.
@@ -39,12 +41,12 @@ def input_paths(locations):
     """[(stable key, path)] for every file input the build can read, for these `locations`."""
     out = []
     if locations.notes_vault:
-        out.append((KEY_PREFIX + "vault-db", os.path.join(locations.notes_vault, "bodybuilding.db")))
+        out.append((KEY_PREFIX + "vault-db", join_path(locations.notes_vault, "bodybuilding.db")))
     # The music inputs only exist for a checkout that has them configured (the others are None).
     out += [(KEY_PREFIX + key, path) for key, path in (("concerts-csv", locations.concerts_csv),
                                                          ("rym-export-csv", locations.rym_export_csv),
                                                          ("scrobbles-json", locations.scrobbles_json)) if path]
-    out += [(KEY_PREFIX + "data/" + name, os.path.join(locations.private_data_dir, name)) for name in DATA_FILES]
+    out += [(KEY_PREFIX + "data/" + name, join_path(locations.private_data_dir, name)) for name in DATA_FILES]
     return out
 
 
@@ -89,15 +91,16 @@ class BuildProvenance:
         return Provenance(schema_version=con.execute("PRAGMA user_version").fetchone()[0],
                           code=RepoState(code["commit"], code["dirty"]),
                           private=RepoState(private["commit"], private["dirty"]),
-                          python_version=platform.python_version(), sqlite_version=sqlite3.sqlite_version, inputs=inputs)
+                          python_version=platform.python_version(), sqlite_version=sqlite3.sqlite_version, inputs=inputs,
+                          platform=sys.platform)
 
     def write(self, con, provenance: Provenance, built_at: str, read_at: str) -> int:
         """Insert the build_info row and the build_inputs manifest into `con`. Does not commit; returns the id."""
         cur = con.execute(
             "INSERT INTO build_info (built_at, schema_version, code_commit, code_dirty, private_commit, private_dirty, "
-            "python_version, sqlite_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "python_version, sqlite_version, platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (built_at, provenance.schema_version, provenance.code.commit, provenance.code.dirty,
-             provenance.private.commit, provenance.private.dirty, provenance.python_version, provenance.sqlite_version))
+             provenance.private.commit, provenance.private.dirty, provenance.python_version, provenance.sqlite_version, provenance.platform))
         info_id = cur.lastrowid
         for i in provenance.inputs:
             con.execute("INSERT INTO build_inputs (build_id, input_key, state, sha256, size_bytes, file_mtime, read_at) "

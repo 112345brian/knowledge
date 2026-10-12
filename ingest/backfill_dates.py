@@ -33,6 +33,7 @@ import sys
 from ingest import backfill_rules
 from ingest import backfill_source_keys
 import revisions
+from locations import join_path
 
 FILE_DATES = dict(revisions.ENTRY_FILES)
 
@@ -46,7 +47,7 @@ def find_problems(files, data_dir):
     """Entries/files that can't be backfilled safely. [(where, what)]"""
     problems = []
     for name, _ in revisions.ENTRY_FILES:
-        path = os.path.join(data_dir, name)
+        path = join_path(data_dir, name)
         if not files.exists(path):
             continue
         problems.extend(backfill_rules.date_problems(name, files.read_array(path)))

@@ -7,6 +7,8 @@ import sqlite3
 
 import acquisition_store
 import fixity_store
+import locations
+import locks
 
 
 def exists(path):
@@ -14,18 +16,18 @@ def exists(path):
 
 
 def read_text(path, encoding="utf-8"):
-    with open(path, encoding=encoding) as f:
+    with locks.open_retrying(path, encoding=encoding) as f:
         return f.read()
 
 
 def read_json(path):
-    with open(path, encoding="utf-8") as f:
+    with locks.open_retrying(path, encoding="utf-8") as f:
         return json.load(f)
 
 
 def list_files(directory, pattern):
     """Paths in `directory` matching the glob `pattern`, sorted."""
-    return sorted(_glob.glob(os.path.join(directory, pattern)))
+    return sorted(locations.canonical_path(p) for p in _glob.glob(os.path.join(directory, pattern)))
 
 
 def open_database(path):

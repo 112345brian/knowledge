@@ -6,6 +6,7 @@ adapter. `add_fact` is the facade that binds it to the real adapters, keeps the 
 from dataclasses import dataclass
 from typing import Optional
 
+import locations
 import new_fact
 import privacy
 from new_fact import AddResult, DataFileError
@@ -45,7 +46,7 @@ def build_entry(deps, fact, visibility=None):
     """The JSON entry seed_general_facts.py expects (see new_fact.build_entry). `visibility` is the
     resolved value from privacy.resolve_visibility (append_fact passes it); left None it falls back
     to the caller's request."""
-    origin = fact.origin_path.strip() if fact.origin_path and fact.origin_path.strip() else None
+    origin = locations.canonical_path(fact.origin_path.strip()) if fact.origin_path and fact.origin_path.strip() else None
     return new_fact.build_entry(fact, visibility, deps.ids.new_source_key(), deps.clock.now_iso(),
                                 origin_sha256=deps.facts_file.file_sha256(origin) if origin else None)
 

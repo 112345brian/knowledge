@@ -19,12 +19,13 @@ import private_edit_store
 import privacy
 from private_git_port import PrivateGit
 import privacy_store
+from locations import join_path
 
 
 def migrate_keywords(allow_dirty=False, dry_run=False, keep_keywords=False, *, git: PrivateGit, data_dir):
     """Convert every keyword in the rules file to a private entity (type 'other'). `keep_keywords` leaves the
     keyword list in place (only adds entities). Returns a private_edit_store.EditResult; never prints or exits."""
-    rules_file = os.path.join(data_dir, privacy.RULES_FILENAME)
+    rules_file = join_path(data_dir, privacy.RULES_FILENAME)
     entities_file = entities_store.data_path(data_dir)
 
     def compute():

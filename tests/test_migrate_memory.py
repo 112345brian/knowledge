@@ -94,7 +94,7 @@ class W:
     def entries(self):
         if not os.path.exists(self.facts):
             return []
-        with open(self.facts) as f:
+        with open(self.facts, encoding="utf-8") as f:
             return json.load(f)
 
     def head(self):

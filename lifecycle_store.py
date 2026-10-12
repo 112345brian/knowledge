@@ -8,6 +8,7 @@ import sqlite3
 import privacy
 import privacy_store
 import revisions_store
+from locations import join_path
 
 DB_ERRORS = (sqlite3.Error,)
 
@@ -18,7 +19,7 @@ def floor_inputs(data_dir, db):
         return ("lowering to normal needs the built db (for the subject tree the privacy rules apply to); "
                 "build it, or pass db=")
     try:
-        rules = privacy_store.load_rules(os.path.join(data_dir, privacy.RULES_FILENAME))
+        rules = privacy_store.load_rules(join_path(data_dir, privacy.RULES_FILENAME))
         with revisions_store.connection(db) as con:
             rows = con.execute("SELECT s.name, p.name FROM subjects s LEFT JOIN subjects p ON p.id = s.parent_id").fetchall()
     except privacy.PrivacyRulesError as e:

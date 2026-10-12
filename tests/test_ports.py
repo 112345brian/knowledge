@@ -350,7 +350,7 @@ def test_library_and_composition_modules_import_without_a_private_repo():
     composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
     import subprocess
     import glob
-    steps = sorted(os.path.splitext(p)[0].replace("/", ".") for p in
+    steps = sorted(os.path.splitext(p)[0].replace(os.sep, ".").replace("/", ".") for p in
                    glob.glob("ingest/*.py") + glob.glob("client/*.py") if not p.endswith("__init__.py"))
     code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
             "fact_queries, knowledge, cli_add_fact, build, queries, " + ", ".join(steps) + "; print('ok')")

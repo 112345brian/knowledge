@@ -177,4 +177,4 @@ def test_no_other_module_reads_claim_facts():
     for path in glob.glob(os.path.join(REPO, "*.py")):
         name = os.path.basename(path)
         if name not in allowed:
-            assert "claim_facts" not in open(path).read(), name
+            assert "claim_facts" not in open(path, encoding="utf-8").read(), name

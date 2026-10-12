@@ -7,6 +7,7 @@ carry the first two, and freshness is DERIVED by the writers, never passed in. T
 schema, every writer (add_fact, facts_batch, migrate_memory, the ingest scripts, revisions) and the
 normal-db copy. Fixtures only; nothing reads the real private data.
 """
+import contextlib
 import ast
 import json
 import os
@@ -431,12 +432,12 @@ def test_normal_db_copies_freshness_with_the_same_checks():
     import normal_db
     import tempfile
     import privacy
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, tmp)
         out = os.path.join(tmp, "out")
         os.makedirs(out)
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, out, privacy.Rules())
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert "freshness" in {r[1] for r in con.execute("PRAGMA table_info(facts)")}
         assert {r[0] for r in con.execute("SELECT freshness FROM facts")} == {"unreviewed"}
         with pytest.raises(sqlite3.IntegrityError):
@@ -457,7 +458,7 @@ def test_every_production_NewFact_call_names_its_freshness_inputs():
     """A caller that builds a NewFact with neither recheck_by nor no_decay is a validation error at runtime; catch it here."""
     offenders = []
     for name, path in _py_sources():
-        for node in ast.walk(ast.parse(open(path).read())):
+        for node in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
             if isinstance(node, ast.Call):
                 f = node.func
                 called = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
@@ -471,7 +472,7 @@ def test_every_production_facts_insert_names_the_freshness_column():
     for name, path in _py_sources():
         if name == "normal_db.py":  # builds its column list in a variable; test_normal_db_copies_freshness covers it
             continue
-        text = open(path).read()
+        text = open(path, encoding="utf-8").read()
         for node in ast.walk(ast.parse(text)):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and "INSERT INTO facts (" in node.value:
                 if "freshness" not in node.value:
