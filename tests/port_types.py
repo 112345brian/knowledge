@@ -86,7 +86,7 @@ def _sqlite_tables(con: sqlite3.Connection) -> None:
     unit_of_work: UnitOfWork = local_stores.unit_of_work(con)
     entities: EntityRepository = entity_repository_store.SqliteEntityRepository(con)
     entity_file_reader: EntityFileReader = entities
-from build_repositories_port import MeasurementRepository  # noqa: E402
+from client.measurements_port import MeasurementRepository  # noqa: E402
 from client.measurements_service import FactLinks  # noqa: E402
 from client.vault_reader_port import VaultReader  # noqa: E402
 from client import measurements_store, vault_reader_store  # noqa: E402
