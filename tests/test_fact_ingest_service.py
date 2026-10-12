@@ -10,9 +10,11 @@ import os
 
 import pytest
 
+import build_records as r
 import fact_ingest_decisions as decisions
 import fact_ingest_service as svc
 from appctx import synthetic_locations
+from fake_build_repositories import FakeFacts, FakeRevisions, FakeSources, FakeState, FakeUnitOfWork
 from revisions import RevisionError
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,43 +22,42 @@ DATA = synthetic_locations().private_data_dir
 VAULT = "/vault"
 
 
-class FakeRepo:
+class Repo:
+    """The build's in-memory repositories (tests/fake_build_repositories), seen the way these tests read them: the
+    facts written in order, the revisions, the source links, the commits and one ordered log."""
     def __init__(self, sources=None, existing_keys=()):
-        self.log = []
-        self.sources = dict(sources or {})
-        self.keys = set(existing_keys)
-        self.facts = []            # FactRow, in insert order
-        self.revisions = []
-        self.links = []
-        self.committed = 0
+        self.state = FakeState()
+        for citekey, source_id in (sources or {}).items():
+            self.state.sources[source_id] = r.NewSource(citekey, citekey, "primary")
+        for key in sorted(existing_keys):
+            self.state.facts[max(self.state.facts, default=0) + 1] = r.NewFact(
+                r.SubjectId(1), "Already there.", 0, 1, "low", None, "2026-01-01", "normal", "active", key, "no-decay", "fact")
+        self._preexisting = len(self.state.facts)
 
-    def source_ids_by_citekey(self, con):
-        return dict(self.sources)
+    @property
+    def log(self):
+        return self.state.operations
 
-    def fact_exists(self, con, source_key):
-        return source_key in self.keys
+    @property
+    def facts(self):
+        return list(self.state.facts.values())[self._preexisting:]
 
-    def insert_fact(self, con, row):
-        self.log.append(("fact", row.source_key))
-        self.facts.append(row)
-        self.keys.add(row.source_key)
-        return len(self.facts)
+    @property
+    def revisions(self):
+        return self.state.revisions
 
-    def insert_revision(self, con, fact_id, revision):
-        self.revisions.append((fact_id, revision))
+    @property
+    def links(self):
+        return [(l.fact_id, l.source_id, l.locator, l.quote) for l in self.state.fact_sources]
 
-    def link_source(self, con, fact_id, source_id, locator, quote):
-        self.links.append((fact_id, source_id, locator, quote))
+    @property
+    def committed(self):
+        return self.state.commits
 
-    def facts_by(self, con, column):
-        out = {}
-        for f in self.facts:
-            out[getattr(f, column)] = out.get(getattr(f, column), 0) + 1
-        return out
-
-    def commit(self, con):
-        self.log.append(("commit",))
-        self.committed += 1
+    @property
+    def writes(self):
+        kinds = {"facts.add": "fact", "revisions.insert": "revision", "facts.link_source": "link"}
+        return [(kinds[op[0]], op[1] if op[0] == "facts.add" else int(op[1])) for op in self.log if op[0] in kinds]
 
 
 class FakeIdentity:
@@ -123,12 +124,15 @@ def fingerprinted(repo):
 
 
 def world(files, sources=None, existing_keys=(), raised=(), vault=VAULT, names=None, aliases=None, vault_written=None):
-    repo = FakeRepo(sources, existing_keys)
+    repo = Repo(sources, existing_keys)
     locations = dataclasses.replace(synthetic_locations(), notes_vault=vault, notes_vault_written=vault_written)
     inputs = FakeInputs(files)
     privacy = FakePrivacy(repo, raised)
     repo.identity = FakeIdentity(repo.log, names, aliases)
-    deps = svc.FactIngestDeps(facts=repo, identity=repo.identity, inputs=inputs, privacy_floor=privacy, locations=locations)
+    st = repo.state
+    deps = svc.FactIngestDeps(facts=FakeFacts(st), revision_writer=FakeRevisions(st), sources=FakeSources(st),
+                              unit_of_work=FakeUnitOfWork(st), identity=repo.identity, inputs=inputs,
+                              privacy_floor=privacy, locations=locations)
     return deps, repo, inputs, privacy
 
 
@@ -160,7 +164,7 @@ def test_accepted_and_skipped_entries_come_back_as_domain_records():
     assert [s.warning is None for s in report.skipped] == [False, True]
     assert report.skipped[0].warning.startswith("  WARNING -- skipping fact with invalid visibility 'public'")
     assert [f.statement for f in repo.facts] == ["Kept.", "Kept too."]
-    assert [r["source_key"] for _, r in repo.revisions] == ["a", "d"] and all(r["revision"] == 1 for _, r in repo.revisions)
+    assert [rev["source_key"] for _, rev in repo.revisions] == ["a", "d"] and all(rev["revision"] == 1 for _, rev in repo.revisions)
 
 
 def test_the_privacy_floor_is_loaded_first_applied_after_the_last_insert_and_then_committed():
@@ -169,7 +173,7 @@ def test_the_privacy_floor_is_loaded_first_applied_after_the_last_insert_and_the
     report = svc.ingest_general_facts(deps, None)
     kinds = [e[0] for e in repo.log]
     assert kinds[0] == "rules-loaded"
-    assert kinds[-3:] == ["fact", "privacy-applied", "commit"]
+    assert kinds[-3:] == ["revisions.insert", "privacy-applied", "commit"]
     assert privacy.loaded == [deps.locations.privacy_rules()] and report.privacy_raised == 1
 
 
@@ -289,7 +293,7 @@ def test_the_implicit_revision_carries_the_entry_provenance():
         (1, "k-1", 1, "mcp", "s-1", "decision")
     assert (rev["valid_from"], rev["applies_to"], rev["changed_at"]) == ("2026", "adults", "2026-01-02")
     row = repo.facts[0]
-    assert (row.kind, row.valid_from, row.applies_to, row.last_reviewed_at) == ("decision", "2026", "adults", "2026-01-02")
+    assert (row.kind, row.valid_from, row.applies_to, row.date_added) == ("decision", "2026", "adults", "2026-01-02")
 
 
 # ------------------------------------------------------------------ sources and keys
@@ -349,6 +353,41 @@ def test_the_general_report_has_no_breakdowns():
     assert decisions.render(svc.ingest_general_facts(deps, None)) == ["[seed_general_facts] inserted 1, skipped 0 (bad shape)"]
 
 
+# ------------------------------------------------------------------ edge inputs
+
+def test_no_entries_still_loads_the_rules_applies_them_and_commits_once():
+    deps, repo, _, _ = world({"general_facts.json": []})
+    report = svc.ingest_general_facts(deps, None)
+    assert [e[0] for e in repo.log] == ["rules-loaded", "privacy-applied", "commit"]
+    assert report.ingested == [] and report.skipped == [] and report.breakdowns == {}
+
+
+def test_a_blank_statement_is_a_silent_skip_and_a_nul_statement_is_stored_as_given():
+    deps, repo, _, _ = world({"general_facts.json": [entry(source_key="a", statement="   "),
+                                                      entry(source_key="b", statement="x\x00y")]})
+    report = svc.ingest_general_facts(deps, None)
+    assert [s.warning for s in report.skipped] == [None]
+    assert [f.statement for f in repo.facts] == ["x\x00y"]
+
+
+def test_a_failure_on_the_second_entry_leaves_the_first_written_and_nothing_committed():
+    deps, repo, _, privacy = world({"general_facts.json": [entry(source_key="a", source_citekey="known"),
+                                                            entry(source_key="b", statement="B.", date_added=None)]},
+                                   sources={"known": 7})
+    with pytest.raises(ValueError, match="date_added"):
+        svc.ingest_general_facts(deps, None)
+    assert [f.source_key for f in repo.facts] == ["a"] and repo.links == [(1, 7, None, None)]
+    assert repo.committed == 0 and privacy.applied == []
+
+
+def test_each_entry_writes_its_fact_then_its_revision_then_its_source_link_in_entry_order():
+    deps, repo, _, _ = world({"general_facts.json": [
+        entry(source_key="a", source_citekey="known"), entry(source_key="b", statement="B.", source_citekey="known")]},
+        sources={"known": 7})
+    svc.ingest_general_facts(deps, None)
+    assert repo.writes == [("fact", "a"), ("revision", 1), ("link", 1), ("fact", "b"), ("revision", 2), ("link", 2)]
+
+
 # ------------------------------------------------------------------ one implementation, results read
 
 def _parse(name):
@@ -390,3 +429,13 @@ def test_no_caller_discards_an_ingest_report():
                     if called in ("ingest_fact_files", "ingest_general_facts", "ingest_entries"):
                         offenders.append(f"{folder}/{name}:{node.lineno}")
     assert offenders == [], offenders
+
+
+def test_the_lane_declares_no_fact_repository_of_its_own_and_asks_for_nothing_measurement_related():
+    """The foundation's FactRepository is the one contract; the ingest declares only the part it calls, and that
+    part has no measurement linking (client logic)."""
+    import build_repositories_port
+    import fact_ingest_port
+    assert not hasattr(fact_ingest_port, "FactRepository")
+    members = {m for m in vars(fact_ingest_port.FactStore) if not m.startswith("_")}
+    assert members <= set(vars(build_repositories_port.FactRepository)) and "link_measurements" not in members
