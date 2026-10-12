@@ -28,6 +28,7 @@ class FakeRepo:
         self.facts = []            # FactRow, in insert order
         self.revisions = []
         self.links = []
+        self.writes = []           # (kind, key or fact id), in call order
         self.committed = 0
 
     def source_ids_by_citekey(self, con):
@@ -38,15 +39,18 @@ class FakeRepo:
 
     def insert_fact(self, con, row):
         self.log.append(("fact", row.source_key))
+        self.writes.append(("fact", row.source_key))
         self.facts.append(row)
         self.keys.add(row.source_key)
         return len(self.facts)
 
     def insert_revision(self, con, fact_id, revision):
         self.revisions.append((fact_id, revision))
+        self.writes.append(("revision", fact_id))
 
     def link_source(self, con, fact_id, source_id, locator, quote):
         self.links.append((fact_id, source_id, locator, quote))
+        self.writes.append(("link", fact_id))
 
     def facts_by(self, con, column):
         out = {}
@@ -347,6 +351,41 @@ def test_a_skip_warning_is_emitted_before_a_later_entry_fails_the_build():
 def test_the_general_report_has_no_breakdowns():
     deps, _, _, _ = world({"general_facts.json": [entry()]})
     assert decisions.render(svc.ingest_general_facts(deps, None)) == ["[seed_general_facts] inserted 1, skipped 0 (bad shape)"]
+
+
+# ------------------------------------------------------------------ edge inputs
+
+def test_no_entries_still_loads_the_rules_applies_them_and_commits_once():
+    deps, repo, _, _ = world({"general_facts.json": []})
+    report = svc.ingest_general_facts(deps, None)
+    assert [e[0] for e in repo.log] == ["rules-loaded", "privacy-applied", "commit"]
+    assert report.ingested == [] and report.skipped == [] and report.breakdowns == {}
+
+
+def test_a_blank_statement_is_a_silent_skip_and_a_nul_statement_is_stored_as_given():
+    deps, repo, _, _ = world({"general_facts.json": [entry(source_key="a", statement="   "),
+                                                      entry(source_key="b", statement="x\x00y")]})
+    report = svc.ingest_general_facts(deps, None)
+    assert [s.warning for s in report.skipped] == [None]
+    assert [f.statement for f in repo.facts] == ["x\x00y"]
+
+
+def test_a_failure_on_the_second_entry_leaves_the_first_written_and_nothing_committed():
+    deps, repo, _, privacy = world({"general_facts.json": [entry(source_key="a", source_citekey="known"),
+                                                            entry(source_key="b", statement="B.", date_added=None)]},
+                                   sources={"known": 7})
+    with pytest.raises(ValueError, match="date_added"):
+        svc.ingest_general_facts(deps, None)
+    assert [f.source_key for f in repo.facts] == ["a"] and repo.links == [(1, 7, None, None)]
+    assert repo.committed == 0 and privacy.applied == []
+
+
+def test_each_entry_writes_its_fact_then_its_revision_then_its_source_link_in_entry_order():
+    deps, repo, _, _ = world({"general_facts.json": [
+        entry(source_key="a", source_citekey="known"), entry(source_key="b", statement="B.", source_citekey="known")]},
+        sources={"known": 7})
+    svc.ingest_general_facts(deps, None)
+    assert repo.writes == [("fact", "a"), ("revision", 1), ("link", 1), ("fact", "b"), ("revision", 2), ("link", 2)]
 
 
 # ------------------------------------------------------------------ one implementation, results read
