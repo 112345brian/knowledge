@@ -9,6 +9,6 @@ from ingest import facts
 
 
 def run(con, ctx):
-    deps = measurements_service.FactLinksDeps(links=measurements_store.SqliteFactMeasurementLinks(con))
+    deps = measurements_service.FactLinksDeps(facts=measurements_store.SqliteFactMeasurementLinks(con), unit_of_work=con)
     linked = measurements_service.link_fact_measurements(deps, facts.load_items(ctx))
     print(f"[link_fact_measurements] {linked} fact <-> measurement links")

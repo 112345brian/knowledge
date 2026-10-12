@@ -222,7 +222,6 @@ source_modules = [
     "kn.artist_directory",
     "kn.identity_service",
     "kn.vault_reader_port",
-    "kn.measurements_port",
     "kn.vault_reader_store",
     "kn.measurements_store",
 ]
@@ -434,7 +433,6 @@ source_modules = [
     "kn.artist_directory",
     "kn.identity_service",
     "kn.vault_reader_port",
-    "kn.measurements_port",
     "kn.vault_reader_store",
     "kn.measurements_store",
 ]
@@ -786,7 +784,6 @@ forbidden_modules = [
     "kn.subject_hierarchy_service",
     "kn.subject_repository_store",
     "kn.vault_reader_port",
-    "kn.measurements_port",
     "kn.vault_reader_store",
     "kn.measurements_store",
     "kn.measurements_service",
@@ -887,7 +884,6 @@ source_modules = [
     "kn.identity_rules",
     "kn.artist_directory",
     "kn.vault_reader_port",
-    "kn.measurements_port",
 ]
 forbidden_modules = [
     # infrastructure the domain must not touch

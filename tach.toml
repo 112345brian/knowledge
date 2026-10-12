@@ -403,16 +403,12 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
-path = "client.measurements_port"  # PORT: the measurement writes and the fact <-> measurement links
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
 path = "client.measurements_service"  # USE CASE of the measurements source: load the vault's readings, link facts; ports + rules only
 layer = "pipeline"
 depends_on = [
+    "build_records",
+    "build_repositories_port",
     "client.measurement_rules",
-    "client.measurements_port",
     "client.vault_reader_port",
 ]
 
@@ -424,10 +420,10 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.measurements_store"  # ADAPTER: SQLite measurement repository and fact-link queries
+path = "client.measurements_store"  # ADAPTER: SQLite MeasurementRepository and the fact-link members of FactRepository
 layer = "infrastructure"
 depends_on = [
-    "client.measurements_port",
+    "build_records",
 ]
 
 [[modules]]
