@@ -43,7 +43,10 @@
 # The import-linter contracts (pyproject.toml) and the regex scan tests cover part of that.
 
 source_roots = ["."]
-exclude = ["tests", "docs", ".venv", "**/__pycache__"]
+# client/ is the client's own directory: tach does not govern it (nothing there is listed, so adding a module needs
+# no entry here). The one rule that points at it, "the base never imports a client source", is enforced by the
+# import-linter contract and tests/test_client_boundary.py, which do not need the client modules listed either.
+exclude = ["tests", "docs", ".venv", "**/__pycache__", "client"]
 layers = ["serving", "cli", "pipeline", "composition", "infrastructure", "application", "domain_services", "model"]
 root_module = "forbid"
 # Without this, tach lets a higher layer import ANY lower layer without declaring it, which would
@@ -357,11 +360,6 @@ layer = "model"
 depends_on = []
 
 [[modules]]
-path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization and reading the artist rules file (pure)
-layer = "domain_services"
-depends_on = ["client.music_records"]
-
-[[modules]]
 path = "ingest.fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
 layer = "domain_services"
 depends_on = [
@@ -389,53 +387,6 @@ path = "ingest.source_ingest_rules"  # DOMAIN: citation-note parsing to a source
 layer = "pipeline"
 depends_on = [
     "source_status",
-]
-
-[[modules]]
-path = "client.music_ingest_rules"   # DOMAIN SERVICE: concerts/RYM/Last.fm row parsing, concerts CSV cleanup (pure)
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
-path = "client.measurement_rules"  # DOMAIN: vault-db rows to measurements, metric metadata, snapshot-date validation (pure)
-layer = "pipeline"
-depends_on = []
-
-[[modules]]
-path = "client.vault_reader_port"  # PORT: the vault's own database as typed records, in table order
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
-path = "client.measurements_port"  # PORT: the measurement writes (record-shaped; the fact link is the service's own port)
-layer = "domain_services"
-depends_on = ["client.measurements_records"]
-
-[[modules]]
-path = "client.measurements_service"  # USE CASE of the measurements source: load the vault's readings, link facts; ports + rules only
-layer = "pipeline"
-depends_on = [
-    "build_records",
-    "build_repositories_port",
-    "client.measurement_rules",
-    "client.measurements_port",
-    "client.measurements_records",
-    "client.vault_reader_port",
-]
-
-[[modules]]
-path = "client.vault_reader_store"  # ADAPTER: SQLite reader of the vault's database
-layer = "infrastructure"
-depends_on = [
-    "client.vault_reader_port",
-]
-
-[[modules]]
-path = "client.measurements_store"  # ADAPTER: SQLite MeasurementRepository and the fact-link queries
-layer = "infrastructure"
-depends_on = [
-    "build_records",
-    "client.measurements_records",
 ]
 
 [[modules]]
@@ -797,18 +748,8 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
-path = "client.music_export_port"   # DOMAIN SERVICE: the typed records the music-taste export reads (no cursors)
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
 path = "build_port"          # DOMAIN SERVICE: the build session, step registry, provenance and outputs ports (draft foundation contracts)
 layer = "domain_services"
-depends_on = []
-
-[[modules]]
-path = "client.music_export_store"  # INFRASTRUCTURE: the SQL behind the music-taste export (implements music_export_port)
-layer = "infrastructure"
 depends_on = []
 
 [[modules]]
@@ -865,51 +806,6 @@ depends_on = ["add_fact", "building", "entities", "facts_batch", "lifecycle", "m
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
 layer = "composition"
 depends_on = ["script_runner", "scripts_service", "wiring"]
-
-[[modules]]
-path = "client.music_port"   # DOMAIN SERVICE: the ports for the music tables the client music steps write
-layer = "domain_services"
-depends_on = ["client.music_records"]
-
-[[modules]]
-path = "client.music_records"   # DOMAIN SERVICE: the music source's records and ids (frozen values)
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
-path = "client.measurements_records"   # DOMAIN SERVICE: the measurements source's records (frozen values; core ids only)
-layer = "domain_services"
-depends_on = ["build_records"]
-
-[[modules]]
-path = "client.claims_port"   # DOMAIN SERVICE: the claims source's record-shaped repository port and records
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
-path = "client.artist_directory"    # DOMAIN SERVICE: the artists of one import run, keyed the one way artist names compare
-layer = "domain_services"
-depends_on = ["client.artist_rules", "client.music_port", "client.music_records"]
-
-[[modules]]
-path = "client.artist_identity_service"   # APPLICATION SERVICE: the artist directory plus configured group memberships
-layer = "application"
-depends_on = ["client.artist_directory", "client.music_port", "client.music_records"]
-
-[[modules]]
-path = "client.music_service"    # APPLICATION SERVICE: concerts, ratings, scrobbles and artist members, through ports only
-layer = "application"
-depends_on = ["build_repositories_port", "build_steps_port", "client.artist_identity_service", "client.artist_rules", "client.music_ingest_rules", "client.music_port", "client.music_records", "inputs_port", "locations"]
-
-[[modules]]
-path = "client.music_store"      # INFRASTRUCTURE: the music tables of the build database (implements music_port.MusicRepository)
-layer = "infrastructure"
-depends_on = ["client.music_records"]
-
-[[modules]]
-path = "client.music_ingest"     # COMPOSITION ROOT (the music source's own): binds music_service to music_store for one build connection
-layer = "composition"
-depends_on = ["client.music_port", "client.music_service", "client.music_store", "wiring"]
 
 [[modules]]
 path = "pipeline_context"   # what a build step is given besides its connection: Locations and Inputs (a value, no I/O)
@@ -1187,14 +1083,6 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.snapshot_date"
-layer = "pipeline"
-depends_on = [
-    "client.measurement_rules",
-    "locations",
-]
-
-[[modules]]
 path = "build"
 layer = "pipeline"
 depends_on = [
@@ -1231,22 +1119,6 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.clean_concerts_csv"
-layer = "pipeline"
-depends_on = [
-    "client.music_ingest_rules",
-    "container",
-]
-
-[[modules]]
-path = "client.export_music_taste"
-layer = "pipeline"
-depends_on = [
-    "client.music_export_store",
-    "container",
-]
-
-[[modules]]
 path = "ingest.source_readers"   # composed readers: manual_sources.json and the vault notes as SourceRecords
 layer = "pipeline"
 depends_on = [
@@ -1274,18 +1146,6 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.measurements"
-layer = "pipeline"
-depends_on = [
-    "client.measurement_rules",
-    "client.measurements_service",
-    "client.measurements_store",
-    "client.snapshot_date",
-    "client.vault_reader_store",
-    "locations",
-]
-
-[[modules]]
 path = "ingest.facts"
 layer = "pipeline"
 depends_on = [
@@ -1294,46 +1154,10 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.seed_claims"
-layer = "pipeline"
-depends_on = [
-    "claims_rules",
-    "locations",
-]
-
-[[modules]]
 path = "ingest.seed_subject_hierarchy"
 layer = "pipeline"
 depends_on = [
     "subject_hierarchy_service",
-]
-
-[[modules]]
-path = "client.concerts"
-layer = "pipeline"
-depends_on = [
-    "client.music_ingest",
-]
-
-[[modules]]
-path = "client.music_ratings"
-layer = "pipeline"
-depends_on = [
-    "client.music_ingest",
-]
-
-[[modules]]
-path = "client.scrobbles"
-layer = "pipeline"
-depends_on = [
-    "client.music_ingest",
-]
-
-[[modules]]
-path = "client.seed_artist_members"
-layer = "pipeline"
-depends_on = [
-    "client.music_ingest",
 ]
 
 [[modules]]
@@ -1378,24 +1202,6 @@ depends_on = [
 ]
 
 [[modules]]
-path = "client.backfill_snapshot_date"
-layer = "pipeline"
-depends_on = [
-    "client.snapshot_date",
-    "container",
-    "locations",
-]
-
-[[modules]]
-path = "client.link_fact_measurements"
-layer = "pipeline"
-depends_on = [
-    "client.measurements_service",
-    "client.measurements_store",
-    "ingest.facts",
-]
-
-[[modules]]
 path = "revision_apply_rules"  # DOMAIN SERVICE: what applying the revision log writes onto a fact (pure)
 layer = "domain_services"
 depends_on = ["build_records", "revisions", "fact_entry"]
@@ -1430,7 +1236,3 @@ path = "client_bootstrap"  # COMPOSITION ROOT: loads client/bootstrap.py once th
 layer = "composition"
 depends_on = ["build_rules", "client_registry", "local_buildfiles"]
 
-[[modules]]
-path = "client.bootstrap"   # the client's registration: which sources exist here, where their steps run (data only)
-layer = "domain_services"
-depends_on = ["client_registry"]
