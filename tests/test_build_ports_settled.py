@@ -41,6 +41,8 @@ STEP_STORES_USERS = {
     "source_repository": ("fact_ingest.py", "ingest/link_source_relations.py", "ingest/literature_sources.py",
                           "ingest/seed_sources.py"),
     "fact_repository": ("fact_ingest.py",),
+    "revision_writer": ("fact_ingest.py",),
+    "unit_of_work": ("fact_ingest.py",),
     "read_log": ("revision_apply_service.py",),                 # via ingest/apply_fact_revisions.py(revision_log=stores)
     "load_rules": ("revision_apply_service.py",),               # same (rules_reader=stores)
     "fact_revision_table": ("ingest/apply_fact_revisions.py",),
