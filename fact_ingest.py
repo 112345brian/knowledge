@@ -4,7 +4,7 @@
     report = api.ingest_fact_files(con, warn=print)
     for line in fact_ingest_decisions.render(report): print(line)
 
-The repositories are the ones the step's `stores` hands out, the inputs and privacy rules are the ones the step already
+The repositories (`build_repositories_port`) are the ones the step's `stores` hands out, the inputs and privacy rules are the ones the step already
 has, so the step imports no infrastructure module. Which subject a name means and which vault file a path is are not
 decided here: `BuildIdentity` asks `subject_hierarchy_service` and `source_ingest_service`, the build's one definition.
 """
@@ -37,8 +37,9 @@ def compose(ctx, con):
     """The fact-ingest API for the step context `ctx`, over the build connection `con`."""
     stores = ctx.stores
     identity = BuildIdentity(stores.subject_repository(con), stores.source_repository(con), ctx.inputs)
-    deps = FactIngestDeps(facts=stores.fact_repository(), identity=identity, inputs=ctx.inputs, privacy_floor=stores,
-                          locations=ctx.locations)
+    deps = FactIngestDeps(facts=stores.fact_repository(con), revision_writer=stores.revision_writer(con),
+                          sources=stores.source_repository(con), unit_of_work=stores.unit_of_work(con),
+                          identity=identity, inputs=ctx.inputs, privacy_floor=stores, locations=ctx.locations)
     return bind_all(fact_ingest_service, deps, API)
 
 

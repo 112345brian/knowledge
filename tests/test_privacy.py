@@ -432,7 +432,7 @@ def test_the_fact_ingest_applies_the_privacy_rules_after_its_last_insert():
     for adapter, service in WRITES_FACTS_FOR.items():
         assert "INSERT INTO facts" in open(os.path.join(REPO, adapter)).read()
         src = open(os.path.join(REPO, service)).read()
-        assert 0 <= src.index("load_privacy_rules") < src.index("insert_fact(") < src.rindex("apply_privacy_rules"), service
+        assert 0 <= src.index("load_privacy_rules") < src.index("facts.add(") < src.rindex("apply_privacy_rules"), service
 
 
 def test_add_fact_passes_the_resolved_value_to_build_entry():

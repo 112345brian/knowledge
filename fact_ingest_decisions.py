@@ -1,19 +1,18 @@
 """The decisions of the fact ingest (pilot/batch files and general_facts.json), domain: no file, no db.
 
 Both fact steps used to repeat these inline; they are one implementation here, and `fact_ingest_service` runs it
-against the fact repository port. What lives here:
+against the build's fact repository. What lives here:
 
     EntryRef / entry_refs     an entry of a data file with its source key and where it came from
     screen                    Skipped (a warning or silent) or Screened: subject, statement, trust, visibility, status, key
     plan_fact                 everything a loadable entry says about its row: personal flag, origin path, freshness,
                               kind, validity, applies_to, date_added, the implicit revision 1 -- or the build error
-    FactRow                   the `facts` columns an insert writes (the ids are filled in by the service)
+    FactRow                   the `facts` values an insert writes (the ids are added by the service)
     IngestReport/render       what a step returns and the lines it prints
 
 The two steps differ only in an `IngestProfile` (how subjects are found, whether the origin note and the personal
 flag are derived or taken from the entry, whether the report carries the breakdown counts).
 """
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -104,15 +103,15 @@ def duplicate_key_error(screened: Screened) -> ValueError:
 
 @dataclass(frozen=True)
 class FactRow:
-    """The columns of one `facts` insert. `subject_id` and `origin_file_id` are resolved by the service (they need
-    the repository); everything else is decided here."""
+    """The values of one `facts` insert, without the two ids the service resolves through the identity operations
+    (the subject, the origin vault file); `fact_ingest_service` adds them and hands the repository a
+    `build_records.NewFact`. An ingested fact is `provided_by` 'user' and last reviewed the day it was added."""
     statement: str
     is_original_claim: int
     is_personal: int
     trust_level: str
     trust_rationale: Optional[str]
     date_added: str
-    last_reviewed_at: str
     notes: Optional[str]
     recheck_by: Optional[str]
     recheck_rationale: Optional[str]
@@ -129,9 +128,6 @@ class FactRow:
     valid_from: Optional[str]
     valid_to: Optional[str]
     applies_to: Optional[str]
-    provided_by: str = "user"
-    subject_id: Optional[int] = None
-    origin_file_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -174,7 +170,7 @@ def plan_fact(screened: Screened, profile: IngestProfile, hints: Hints = NO_HINT
     valid_from, valid_to = revisions.entry_validity(item)
     row = FactRow(
         statement=statement, is_original_claim=is_original, is_personal=is_personal, trust_level=screened.trust,
-        trust_rationale=item.get("trust_rationale"), date_added=date_added, last_reviewed_at=date_added,
+        trust_rationale=item.get("trust_rationale"), date_added=date_added,
         notes=eff.get("notes"), recheck_by=item.get("recheck_by"), recheck_rationale=item.get("recheck_rationale"),
         visibility=screened.visibility, captured_via=item.get("captured_via"), session_id=item.get("session_id"),
         captured_at=item.get("captured_at"), source_quote=item.get("source_quote"), status=screened.status,
@@ -185,10 +181,6 @@ def plan_fact(screened: Screened, profile: IngestProfile, hints: Hints = NO_HINT
     return FactPlan(screened, screened.subject, domain, origin_path, row,
                     revisions.implicit_revision(screened.key, item, date_added, entry.file),
                     item.get("source_citekey") or None, item.get("source_locator"), item.get("source_quote"))
-
-
-def with_ids(row: FactRow, subject_id, origin_file_id) -> FactRow:
-    return dataclasses.replace(row, subject_id=subject_id, origin_file_id=origin_file_id)
 
 
 @dataclass(frozen=True)
