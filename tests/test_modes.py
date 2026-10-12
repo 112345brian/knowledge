@@ -585,7 +585,6 @@ FACT_READERS_ALLOWED = {
     "entity_repository_store.py", "link_entities.py",
     # the SQLite adapters of the build-time revision, privacy-floor and entity-link passes (they moved out of revisions_store,
     # privacy_store and entities_store); the build pipeline drives them, they never serve
-    "fact_tables_store.py",
     # links facts to the measurements they cite at build time (the `measurements` client source)
     "link_fact_measurements.py",
     # links facts to the measurements they cite at build time (the `measurements` client source; the fact-id

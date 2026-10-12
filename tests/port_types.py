@@ -25,10 +25,8 @@ from revisions_port import Revisions
 from sql_runner_port import SqlRunner
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
-from build_repositories_port import SubjectRepository
-from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
-from fact_revision_table_port import FactRevisionTable, RevisionLogReader
-import fact_tables_store
+from build_repositories_port import PrivacyRepository, RevisionRepository, SubjectRepository, UnitOfWork
+from privacy_floor_service import FloorRows
 import local_stores
 import sqlite3
 import add_fact_store
@@ -80,13 +78,13 @@ facts: FactStore = fact_ingest_store.SqliteFactRepository(sqlite3.connect(":memo
 revision_writer: FactRevisionWriter = fact_ingest_store.SqliteFactRevisions(sqlite3.connect(":memory:"))
 unit_of_work: UnitOfWork = fact_ingest_store.SqliteUnitOfWork(sqlite3.connect(":memory:"))
 privacy_floor: PrivacyFloor = local_stores
-revision_log: RevisionLogReader = local_stores
-rules_reader: PrivacyRulesReader = local_stores
+revision_repository: RevisionRepository = revisions_store.SqliteRevisionRepository(sqlite3.connect(":memory:"))
+privacy_repository: PrivacyRepository = privacy_store.SqlitePrivacyRepository(sqlite3.connect(":memory:"))
+floor_rows: FloorRows = privacy_store._FloorRows(sqlite3.connect(":memory:"))
 
 
 def _sqlite_tables(con: sqlite3.Connection) -> None:
-    revision_table: FactRevisionTable = fact_tables_store.SqliteFactRevisionTable(con)
-    privacy_table: FactPrivacyTable = fact_tables_store.SqliteFactPrivacyTable(con)
+    unit_of_work: UnitOfWork = local_stores.unit_of_work(con)
     entities: EntityRepository = entity_repository_store.SqliteEntityRepository(con)
     entity_file_reader: EntityFileReader = entities
 from client.measurements_port import FactMeasurementLinks, MeasurementRepository  # noqa: E402

@@ -2,7 +2,6 @@
 import claims_store
 import entity_repository_store
 import fact_ingest_store
-import fact_tables_store
 import privacy_store
 import revisions_store
 import source_repository_store
@@ -39,11 +38,7 @@ def revision_writer(con):
     return fact_ingest_store.SqliteFactRevisions(con)
 def unit_of_work(con):
     return fact_ingest_store.SqliteUnitOfWork(con)
-def read_log(path, base=None):
-    return revisions_store.read_log(path, base)
-def load_rules(path):
-    return privacy_store.load_rules(path)
-def fact_revision_table(con):
-    return fact_tables_store.SqliteFactRevisionTable(con)
-def fact_privacy_table(con):
-    return fact_tables_store.SqliteFactPrivacyTable(con)
+def revision_repository(con):
+    return revisions_store.SqliteRevisionRepository(con)
+def privacy_repository(con):
+    return privacy_store.SqlitePrivacyRepository(con)
