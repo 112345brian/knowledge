@@ -155,8 +155,8 @@ def cmd_show(ctx: typer.Context, fact_id: int, as_json: bool = JSON_OPT,
         print(f"Applies to: {f['applies_to']}")
     if f["source_key"]:
         print(f"Source key: {f['source_key']}")
-    if f["captured_via"] or f["session_id"] or f["captured_at"]:
-        parts = [f"{label}={f[col]}" for label, col in (("via", "captured_via"), ("session", "session_id"), ("at", "captured_at")) if f[col]]
+    if f["captured_via"] or f["session_id"] or f["captured_at"] or f["actor_type"] or f["approval_status"] != "unknown":
+        parts = [f"{label}={f[col]}" for label, col in (("via", "captured_via"), ("actor", "actor_type"), ("session", "session_id"), ("at", "captured_at"), ("approval", "approval_status")) if f[col]]
         print("Captured: " + "  ".join(parts))
     if f["source_quote"]:
         print(f"Source quote: {f['source_quote']}")

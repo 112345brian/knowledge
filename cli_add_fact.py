@@ -66,6 +66,7 @@ def register(app):
         source_quote: Optional[str] = typer.Option(None, "--source-quote", help="The words that justified the fact (with --captured-via, no --source-citekey is needed)."),
         captured_via: Optional[str] = typer.Option(None, "--captured-via", help="Where the fact came from: cli, mcp, migrate-memory, ... With 'mcp', --session-id and --source-quote are required."),
         session_id: Optional[str] = typer.Option(None, "--session-id", help="The conversation/session the fact was captured in."),
+        actor_type: Optional[str] = typer.Option(None, "--actor-type", help="Who captured it: human, agent, system, or import."),
         allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Skip the clean-tree check on knowledge-private (deliberate batch edits only); the commit still contains only the facts file."),
     ):
         c = ctx.obj
@@ -75,7 +76,7 @@ def register(app):
             valid_from=valid_from, valid_to=valid_to, applies_to=applies_to, trust_rationale=trust_rationale, notes=notes,
             recheck_by=recheck_by, recheck_rationale=recheck_rationale, source_citekey=source_citekey,
             source_locator=source_locator, source_quote=source_quote, origin_path=origin_path,
-            captured_via=captured_via, session_id=session_id,
+            captured_via=captured_via, session_id=session_id, actor_type=actor_type,
         )
         result = c.add_fact.record_fact(fact, allow_dirty=allow_dirty)
         if result.repo is None and result.refused is None:

@@ -18,6 +18,8 @@ from timestamps import has_offset
 # A new fact starts 'pending' (awaiting review, #6) unless the caller already reviewed it
 # ('active', e.g. `register facts`, #32). superseded/retracted only arise through revisions.
 VALID_NEW_STATUS = ("pending", "active")
+ACTOR_TYPES = ("human", "agent", "system", "import", "unknown")
+APPROVAL_STATUSES = ("unknown", "pending", "approved", "rejected")
 SUBJECT_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -57,6 +59,8 @@ class NewFact:
     captured_via: Optional[str] = None
     session_id: Optional[str] = None
     captured_at: Optional[str] = None
+    actor_type: Optional[str] = None
+    approval_status: Optional[str] = None
     # Stable identity (#30). Normally left None: build_entry assigns a fresh one.
     source_key: Optional[str] = None
     # Review state (#6). Ad hoc facts start 'pending' and become active via review.approve; a caller
@@ -126,6 +130,10 @@ def check_fact(fact):
                 errors.append(f"{name} is required when captured_via is 'mcp'")
     if fact.captured_at is not None and not has_offset(fact.captured_at):
         errors.append(f"captured_at {fact.captured_at!r} must be an ISO-8601 timestamp with a UTC offset (e.g. 2026-10-03T08:00:00+00:00)")
+    if fact.actor_type is not None and fact.actor_type not in ACTOR_TYPES:
+        errors.append(f"actor_type {fact.actor_type!r} must be one of {list(ACTOR_TYPES)}")
+    if fact.approval_status is not None and fact.approval_status not in APPROVAL_STATUSES:
+        errors.append(f"approval_status {fact.approval_status!r} must be one of {list(APPROVAL_STATUSES)}")
     # A quote needs a citekey to hang off, unless the fact carries provenance: then the quote is
     # the user's own words and lives on the fact itself.
     if fact.source_locator and not fact.source_citekey:
@@ -176,4 +184,8 @@ def build_entry(fact, visibility, source_key, now_iso, origin_sha256=None):
         if fact.session_id:
             entry["session_id"] = fact.session_id
         entry["captured_at"] = fact.captured_at or now_iso
+    if fact.actor_type:
+        entry["actor_type"] = fact.actor_type
+    if fact.approval_status:
+        entry["approval_status"] = fact.approval_status
     return entry

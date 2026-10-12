@@ -271,6 +271,10 @@ CREATE TABLE facts (
     session_id              TEXT,
     captured_at             TEXT,
     source_quote            TEXT,
+    -- Capture actor and review state are separate from transport and lifecycle fields.
+    -- NULL/unknown preserves honest uncertainty for legacy rows.
+    actor_type              TEXT CHECK (actor_type IS NULL OR actor_type IN ('human','agent','system','import','unknown')),
+    approval_status         TEXT NOT NULL DEFAULT 'unknown' CHECK (approval_status IN ('unknown','pending','approved','rejected')),
     -- Stable identity across rebuilds (#30); fact_revisions and fact_revisions.jsonl point at it.
     -- Nullable only so hand-built test rows work; the ingest scripts always set it.
     source_key              TEXT UNIQUE,

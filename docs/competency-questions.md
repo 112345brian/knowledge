@@ -16,7 +16,7 @@ question, or `- **CQ-NN** (group) question? Cannot answer yet: needs ... See: #i
 
 - **CQ-01** (provenance) Which facts cite this source, and where in it (locator, quote)? Answer: `fact_sources` joined to `facts`; `knowledge.py show ID` lists a fact's sources. Test: test_cq_01_facts_citing_a_source
 - **CQ-02** (trust) How far should I trust this fact, and why? Answer: `knowledge.py show ID` (trust level, trust_rationale). Test: test_cq_02_trust_and_its_reason
-- **CQ-03** (provenance) Where did this fact come from: who or what captured it, in which session, with which of the user's words? Answer: `facts.captured_via`, `session_id`, `captured_at`, `source_quote` (`show ID`). Test: test_cq_03_capture_provenance
+- **CQ-03** (provenance) Where did this fact come from: who or what captured it, in which session, with which of the user's words, and was it approved? Answer: `facts.actor_type`, `captured_via`, `session_id`, `captured_at`, `source_quote`, `approval_status` (`show ID`). Test: test_cq_03_capture_provenance
 - **CQ-04** (provenance) Has the file this fact was extracted from changed since? Answer: `knowledge.py audit-sources`. Test: test_cq_04_source_file_changed_since_extraction
 - **CQ-05** (trust) Which facts cite a source that was retracted, doubted or replaced, and by what? Answer: `knowledge.py audit-source-status`. Test: test_cq_05_facts_on_retracted_or_replaced_sources
 - **CQ-06** (provenance) What are this source's identifiers, and which other source claims the same one? Answer: `knowledge.py source ids CITEKEY`; `search --identifier`. Test: test_cq_06_source_identifiers_and_duplicates

@@ -117,6 +117,17 @@ def test_mcp_with_full_provenance_is_accepted_and_stamped(af, tmp_path):
     assert "source_citekey" not in e  # a quote needs no citekey once there is provenance
 
 
+def test_actor_and_approval_metadata_round_trip(af, ingest):
+    fact = nf(af, **dict(MCP, actor_type="agent", approval_status="pending"))
+    result = app(clock=fixed_clock(FROZEN)).add_fact.append_fact(fact, data_path=os.path.join(ingest.env.data_dir, "general_facts.json"), db_path=os.path.join(ingest.env.root, "n.db"))
+    assert result.ok
+    entry = json.loads(open(os.path.join(ingest.env.data_dir, "general_facts.json")).read())[0]
+    assert (entry["actor_type"], entry["approval_status"]) == ("agent", "pending")
+    con = ingest.run11([entry])
+    row = con.execute("SELECT actor_type, approval_status FROM facts").fetchone()
+    assert tuple(row) == ("agent", "pending")
+
+
 def test_captured_at_from_the_caller_is_kept_but_must_be_a_utc_offset_timestamp(af):
     ok, _ = app().add_fact.validate_fact(nf(af, **MCP, captured_at="2026-10-03T08:00:00+00:00"))
     assert ok == []

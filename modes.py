@@ -47,7 +47,7 @@ MAX_LIMIT = 1000
 # normal-only database (a keyword heuristic, free text, a vault path, conversation provenance). A
 # fact being "normal" says its statement may be shown, not that its notes or where it came from may.
 NORMAL_HIDDEN_FIELDS = ("is_personal", "notes", "origin_file_id", "origin_path", "provided_by",
-                        "captured_via", "session_id", "captured_at", "source_quote")
+                        "captured_via", "actor_type", "approval_status", "session_id", "captured_at", "source_quote")
 
 
 class Mode(str, enum.Enum):

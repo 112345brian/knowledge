@@ -96,7 +96,7 @@ def test_list_pending_is_oldest_first_and_carries_provenance(rw):
     rows = app().review.list_pending(con)
     assert [r["source_key"] for r in rows] == ["early", "late"]
     assert set(rows[0]) == {"id", "source_key", "subject", "statement", "visibility", "trust_level", "captured_via",
-                            "session_id", "captured_at", "source_quote", "date_added"}
+                            "actor_type", "approval_status", "session_id", "captured_at", "source_quote", "date_added"}
     assert rows[0]["captured_via"] == "mcp" and rows[0]["source_quote"] == "said so" and rows[0]["subject"] == "alpha"
     assert app().review.list_pending(con) == rows  # read-only and stable
 

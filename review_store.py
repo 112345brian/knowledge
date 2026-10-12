@@ -16,11 +16,11 @@ def db_exists(db_path):
 def list_pending(db):
     """Pending facts of a built db, oldest first (date_added, then id). `db` is a sqlite connection
     or a path (opened read-only). Each row: id, source_key, subject, statement, visibility,
-    trust_level, captured_via, session_id, captured_at, source_quote, date_added."""
+    trust_level, captured_via, actor_type, approval_status, session_id, captured_at, source_quote, date_added."""
     with revisions_store.connection(db) as con:
         cur = con.execute(
             """SELECT f.id, f.source_key, s.name AS subject, f.statement, f.visibility, f.trust_level,
-                      f.captured_via, f.session_id, f.captured_at, f.source_quote, f.date_added
+                      f.captured_via, f.actor_type, f.approval_status, f.session_id, f.captured_at, f.source_quote, f.date_added
                FROM facts f JOIN subjects s ON s.id = f.subject_id
                WHERE f.status = 'pending' ORDER BY f.date_added, f.id""")
         names = [d[0] for d in cur.description]

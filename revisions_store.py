@@ -155,11 +155,12 @@ def apply_revisions(con, revisions_path):
     for key, rec in latest.items():
         sup = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
         cur.execute(
-            """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, visibility = ?,
+            """UPDATE facts SET statement = ?, trust_level = ?, trust_rationale = ?, status = ?, approval_status = ?, visibility = ?,
                                 superseded_by_fact_id = ?, recheck_by = ?, recheck_rationale = ?, freshness = ?, notes = ?,
                                 kind = ?, valid_from = ?, valid_to = ?, applies_to = ?
                WHERE id = ?""",
-            (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"], rec["visibility"], sup,
+            (rec["statement"], rec["trust_level"], rec["trust_rationale"], rec["status"],
+             {"pending": "pending", "active": "approved", "retracted": "rejected", "superseded": "approved"}[rec["status"]], rec["visibility"], sup,
              rec["recheck_by"], rec["recheck_rationale"], rec["freshness"], rec["notes"],
              rec["kind"], rec["valid_from"], rec["valid_to"], rec["applies_to"], fact_ids[key]))
     con.commit()

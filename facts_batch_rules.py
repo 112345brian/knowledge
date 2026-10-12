@@ -107,7 +107,8 @@ def build_fact(fields, requested_default, captured_via, session_id, status):
         recheck_by=fields.get("recheck_by"), recheck_rationale=fields.get("recheck_rationale"),
         source_citekey=fields.get("source_citekey"), source_locator=fields.get("source_locator"),
         source_quote=fields.get("source_quote"),
-        captured_via=captured_via, session_id=session_id, status=status)
+        captured_via=captured_via, session_id=session_id, actor_type="agent", status=status,
+        approval_status="approved" if status == "active" else "pending")
 
 
 def existing_keys(entries):

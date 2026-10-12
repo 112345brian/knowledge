@@ -88,12 +88,13 @@ def run(con, ctx):
         cur.execute(
             """INSERT INTO facts (subject_id, statement, is_original_claim, is_personal, trust_level, trust_rationale,
                                    provided_by, date_added, last_reviewed_at, notes, recheck_by, recheck_rationale, origin_file_id, visibility,
-                                   captured_via, session_id, captured_at, source_quote, status, source_key, freshness,
+                                   captured_via, session_id, captured_at, source_quote, actor_type, approval_status, status, source_key, freshness,
                                    extracted_from_sha256, kind, valid_from, valid_to, applies_to)
-               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (subject_id, stmt, is_original, is_personal, trust, item.get("trust_rationale"),
              date_added, date_added, eff.get("notes"), item.get("recheck_by"), item.get("recheck_rationale"), origin_file_id, visibility,
              item.get("captured_via"), item.get("session_id"), item.get("captured_at"), item.get("source_quote"),
+             item.get("actor_type"), item.get("approval_status") or ("pending" if status == "pending" else "approved" if item.get("captured_via") else "unknown"),
              status, key, eff["freshness"], baseline, revisions.entry_kind(item), *revisions.entry_validity(item), revisions.entry_applies_to(item))
         )
         fact_id = cur.lastrowid
