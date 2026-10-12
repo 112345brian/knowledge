@@ -6,7 +6,8 @@ in ``test_ports.py`` with mypy's structural type checks.
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, BuildSession, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
-from entity_files_port import EntityFiles
+from build_repositories_port import EntityRepository
+from entity_files_port import EntityFileReader, EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
 from build_repositories_port import UnitOfWork
@@ -25,7 +26,6 @@ from sql_runner_port import SqlRunner
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
 from subject_repository_port import SubjectRepository
-from entity_link_table_port import EntityLinkTable
 from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
 from fact_revision_table_port import FactRevisionTable, RevisionLogReader
 import fact_tables_store
@@ -41,6 +41,7 @@ import sqlite3
 import entities_store
 import entity_migration_store
 import entity_queries_store
+import entity_repository_store
 import fact_ingest_store
 import ids
 import leak_scan_store
@@ -70,6 +71,7 @@ ids_port: Ids = ids
 memory: MemoryFiles = migrate_memory_store
 entity_files: EntityFiles = entities_store
 entity_migration: EntityMigration = entity_migration_store
+entity_reader: EntityFileReader = entity_repository_store
 subject_files: SubjectFiles = subjects_store
 entity_queries: EntityQueries = entity_queries_store
 music_export: MusicExportReads = music_export_store.open_reads("")
@@ -85,7 +87,8 @@ rules_reader: PrivacyRulesReader = local_stores
 def _sqlite_tables(con: sqlite3.Connection) -> None:
     revision_table: FactRevisionTable = fact_tables_store.SqliteFactRevisionTable(con)
     privacy_table: FactPrivacyTable = fact_tables_store.SqliteFactPrivacyTable(con)
-    link_table: EntityLinkTable = fact_tables_store.SqliteEntityLinkTable(con)
+    entities: EntityRepository = entity_repository_store.SqliteEntityRepository(con)
+    entity_file_reader: EntityFileReader = entities
 from client.measurements_port import FactMeasurementLinks, MeasurementRepository  # noqa: E402
 from client.vault_reader_port import VaultReader  # noqa: E402
 from client import measurements_store, vault_reader_store  # noqa: E402

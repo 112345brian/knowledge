@@ -12,12 +12,13 @@ import entity_link_service
 
 
 def run(con, ctx):
-    found = ctx.stores.read_entities(ctx.locations.entities_file())
+    repository = ctx.stores.entity_repository(con)
+    found = repository.read_file(ctx.locations.entities_file())
     if found is None:
         print("[link_entities] no entities.json; no entities")
         return
-    deps = entity_link_service.EntityLinkDeps(ctx.stores.entity_link_table(con))
+    deps = entity_link_service.EntityLinkDeps(repository)
     result = entity_link_service.link_entities(deps, found)   # refuses a private mention that is not stored private
     con.commit()
-    private = sum(1 for e in found if e["private"])
+    private = sum(1 for e in found if e.private)
     print(f"[link_entities] {result.entities} entities ({private} private), {result.links} fact links")

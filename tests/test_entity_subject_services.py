@@ -49,6 +49,17 @@ class FakeFilePort:
         return EditResult(True, changed=changed, what=what, message=message, dry_run=dry_run, path=path)
 
 
+class FakeEntityReader:
+    """The file half of an EntityRepository over a FakeFilePort's content: entities as values."""
+
+    def __init__(self, files):
+        self.files = files
+
+    def read_file(self, path):
+        content = self.files.read_file(path)
+        return None if content is None else [entity_rules.Entity.from_dict(e) for e in content]
+
+
 class FakeMigration:
     def __init__(self):
         self.calls = []
@@ -71,7 +82,7 @@ class FakeQueries:
 
 def _entities(content=None):
     files, migration = FakeFilePort(entity_rules.EntitiesError, content), FakeMigration()
-    deps = entities_service.EntitiesDeps(git=FakeGit(), entity_files=files, entity_migration=migration,
+    deps = entities_service.EntitiesDeps(git=FakeGit(), entity_files=files, entity_reader=FakeEntityReader(files), entity_migration=migration,
                                          entity_queries=FakeQueries(), locations=LOC)
     return deps, files, migration
 
@@ -88,7 +99,8 @@ def test_the_ports_expose_only_io():
     import entity_files_port
     import subject_files_port
     members = lambda cls: {n for n in vars(cls) if not n.startswith("_")}  # noqa: E731
-    assert members(entity_files_port.EntityFiles) == {"read_file", "save", "edit_file"}
+    assert members(entity_files_port.EntityFiles) == {"save", "edit_file"}
+    assert members(entity_files_port.EntityFileReader) == {"read_file"}
     assert members(subject_files_port.SubjectFiles) == {"read_file", "save", "edit_file"}
 
 

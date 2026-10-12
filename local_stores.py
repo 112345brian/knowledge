@@ -1,6 +1,6 @@
 """Adapter for `step_stores_port.StepStores`: the privacy, entity, subject, revision, claims and source stores, by name."""
 import claims_store
-import entities_store
+import entity_repository_store
 import fact_ingest_store
 import fact_tables_store
 import privacy_store
@@ -18,12 +18,8 @@ def apply_privacy_rules(con, rules):
     return privacy_store.apply_rules_to_db(con, rules)
 
 
-def read_entities(path):
-    return entities_store.read_file(path)
-
-
-def link_entities(con, entities):
-    return entities_store.link_facts(con, entities)
+def entity_repository(con):
+    return entity_repository_store.SqliteEntityRepository(con)
 
 
 def read_subjects(path):
@@ -64,5 +60,3 @@ def fact_revision_table(con):
     return fact_tables_store.SqliteFactRevisionTable(con)
 def fact_privacy_table(con):
     return fact_tables_store.SqliteFactPrivacyTable(con)
-def entity_link_table(con):
-    return fact_tables_store.SqliteEntityLinkTable(con)

@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_link_table_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_privacy_table_port", "fact_revision_table_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port", "subject_repository_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -128,7 +128,7 @@ depends_on = []
 [[modules]]
 path = "entity_files_port"
 layer = "domain_services"
-depends_on = ["private_git_port"]
+depends_on = ["entity_rules", "private_git_port"]
 
 [[modules]]
 path = "entity_migration_port"
@@ -168,7 +168,7 @@ depends_on = [
 [[modules]]
 path = "entities"  # FACADE: binds entity use cases to their file, migration and query adapters
 layer = "composition"
-depends_on = ["entities_service", "entities_store", "entity_migration_store", "entity_queries_store", "private_git", "wiring"]
+depends_on = ["entities_service", "entities_store", "entity_migration_store", "entity_queries_store", "entity_repository_store", "private_git", "wiring"]
 
 [[modules]]
 path = "subjects"  # FACADE: binds subject use cases to their file and query adapters
@@ -837,7 +837,7 @@ depends_on = ["locks", "revisions_store"]
 [[modules]]
 path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject, revision, claims and source stores, by name
 layer = "infrastructure"
-depends_on = ["claims_store", "entities_store", "fact_tables_store", "fact_ingest_store", "privacy_store", "revisions_store", "source_repository_store", "subject_repository_store", "subjects_store"]
+depends_on = ["claims_store", "entity_repository_store", "fact_tables_store", "fact_ingest_store", "privacy_store", "revisions_store", "source_repository_store", "subject_repository_store", "subjects_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -962,8 +962,6 @@ depends_on = [
     "textmatch",
     "entity_rules",
     "locations",
-    "fact_tables_store",
-    "entity_link_service",
 ]
 
 [[modules]]
@@ -971,11 +969,22 @@ path = "entity_migration_store"   # ADAPTER #42 keywords -> private entities (to
 layer = "infrastructure"
 depends_on = [
     "entities_store",
+    "entity_migration_rules",
     "privacy",
     "private_edit_store",
     "private_git_port",
     "privacy_store",
 ]
+
+[[modules]]
+path = "entity_migration_rules"   # DOMAIN SERVICE #42 keywords -> private entities: what changes, and the proof nothing gets less private (pure)
+layer = "domain_services"
+depends_on = ["entity_rules", "privacy"]
+
+[[modules]]
+path = "entity_repository_store"   # INFRASTRUCTURE: the build's EntityRepository in SQLite (entity and alias rows, fact links, the entities file as values)
+layer = "infrastructure"
+depends_on = ["build_records", "entities_store", "entity_rules"]
 
 [[modules]]
 path = "subject_repository_store"   # ADAPTER the stored subjects of a build database: lookups, creation, placement, alias claims
@@ -1368,11 +1377,6 @@ layer = "domain_services"
 depends_on = []
 
 [[modules]]
-path = "entity_link_table_port"  # DOMAIN SERVICE: port: the entity and link rows entity linking writes
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
 path = "privacy_floor_service"  # USE CASE: apply the current privacy rules to a built database, raise-only
 layer = "application"
 depends_on = ["privacy", "fact_privacy_table_port"]
@@ -1380,7 +1384,7 @@ depends_on = ["privacy", "fact_privacy_table_port"]
 [[modules]]
 path = "entity_link_service"  # USE CASE: link facts to entities and refuse a private mention that is not private
 layer = "application"
-depends_on = ["entity_link_rules", "textmatch", "entity_link_table_port"]
+depends_on = ["build_repositories_port", "entity_link_rules", "entity_rules"]
 
 [[modules]]
 path = "revision_apply_service"  # USE CASE: apply the revision log, then the privacy floor, then raise history
@@ -1388,6 +1392,6 @@ layer = "application"
 depends_on = ["fact_state", "revision_apply_rules", "fact_privacy_table_port", "fact_revision_table_port", "privacy_floor_service"]
 
 [[modules]]
-path = "fact_tables_store"  # INFRASTRUCTURE: SQLite adapters for the revision, privacy-floor and entity-link ports
+path = "fact_tables_store"  # INFRASTRUCTURE: SQLite adapters for the revision and privacy-floor ports
 layer = "infrastructure"
-depends_on = ["revisions", "fact_privacy_table_port", "entity_link_table_port"]
+depends_on = ["revisions", "fact_privacy_table_port"]
