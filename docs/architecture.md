@@ -235,9 +235,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `modes_store` | infrastructure | mode-filtered fact queries |
 | `music_ingest` | composition root | binds music_ingest_service to music_store for one build connection |
 | `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
-| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity |
-| `music_repository_port` | domain service | port: the music tables the client music steps write |
-| `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
+| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; artist identity is `identity_service.ArtistIdentity`, built per run |
+| `music_store` | infrastructure | the music tables of the build database (implements `build_repositories_port.MusicRepository`) |
 | `new_fact` | domain service | NewFact + validation + build_entry |
 | `normal_db` | ETL adapter (driving, batch) | entry point: binds normal_db_service to the SQLite adapters and a BuildFiles (also a script) |
 | `normal_db_port` | domain service | ports: the full DB's rows in (`NormalSource`), the normal DB out (`NormalSink`), the leak scan's reads (`LeakScan`) |
@@ -254,8 +253,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
 | `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
 | `build_steps_port` | domain service | the bound-step shape (`run() -> StepResult`), diagnostics, the vault reader and the step environment |
-| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `identity_service` and `music_ingest_service` share) |
-| `identity_rules` | domain service | artist-name canonicalization, byline split, identifier-conflict warning (pure) |
+| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `identity_service.ArtistIdentity` extends) |
+| `identity_rules` | domain service | byline split, identifier-conflict warning (pure; the artist-name rules are `client.artist_rules`) |
 | `identity_service` | application service | the one definition of source, subject and artist identity for the build |
 | `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |
 | `privacy` | domain service | visibility rules + resolver |

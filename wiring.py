@@ -19,7 +19,7 @@ from typing import Any, Callable, Iterable, List, Mapping, Union
 from add_fact_port import AddFact
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
-from build_repositories_port import PrivacyRepository, RevisionRepository, UnitOfWork
+from build_repositories_port import MusicRepository, PrivacyRepository, RevisionRepository, UnitOfWork
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFileReader, EntityFiles
@@ -36,7 +36,6 @@ from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
 from music_export_port import MusicExportReads
-from music_repository_port import MusicRepository
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
 from privacy_floor_service import FloorRows

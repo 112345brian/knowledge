@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -353,9 +353,9 @@ layer = "model"
 depends_on = []
 
 [[modules]]
-path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization and the artist rules file's shape (pure)
+path = "client.artist_rules"    # DOMAIN SERVICE: artist name canonicalization and reading the artist rules file (pure)
 layer = "domain_services"
-depends_on = []
+depends_on = ["build_records"]
 
 [[modules]]
 path = "ingest.fact_ingest_rules"  # DOMAIN: which fact entries load, is_personal heuristic, origin note, date_added (pure)
@@ -717,14 +717,14 @@ layer = "domain_services"
 depends_on = ["build_repositories_port", "inputs_port", "locations"]
 
 [[modules]]
-path = "identity_rules"     # DOMAIN SERVICE: byline split, identifier warning, artist_rules.json record (pure)
+path = "identity_rules"     # DOMAIN SERVICE: byline split, identifier warning (pure)
 layer = "domain_services"
-depends_on = ["build_records"]
+depends_on = []
 
 [[modules]]
 path = "artist_directory"    # DOMAIN SERVICE: the artists of one import run, keyed the one way artist names compare
 layer = "domain_services"
-depends_on = ["client.artist_rules"]
+depends_on = ["build_records", "build_repositories_port", "client.artist_rules"]
 
 [[modules]]
 path = "identity_service"   # APPLICATION SERVICE: the one definition of source, subject and artist identity
@@ -862,19 +862,14 @@ layer = "composition"
 depends_on = ["script_runner", "scripts_service", "wiring"]
 
 [[modules]]
-path = "music_repository_port"   # DOMAIN SERVICE: the port for the music tables the client music steps write
-layer = "domain_services"
-depends_on = []
-
-[[modules]]
 path = "music_ingest_service"    # APPLICATION SERVICE: concerts, ratings, scrobbles and artist members, through ports only
 layer = "application"
-depends_on = ["artist_directory", "client.artist_rules", "client.music_ingest_rules", "inputs_port", "locations", "music_repository_port", "build_steps_port"]
+depends_on = ["build_records", "build_repositories_port", "build_steps_port", "client.artist_rules", "client.music_ingest_rules", "identity_service", "inputs_port", "locations"]
 
 [[modules]]
-path = "music_store"             # INFRASTRUCTURE: the music tables of the build database (implements music_repository_port)
+path = "music_store"             # INFRASTRUCTURE: the music tables of the build database (implements build_repositories_port.MusicRepository)
 layer = "infrastructure"
-depends_on = []
+depends_on = ["build_records"]
 
 [[modules]]
 path = "music_ingest"            # COMPOSITION ROOT: binds music_ingest_service to music_store for one build connection

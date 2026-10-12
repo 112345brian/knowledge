@@ -13,6 +13,7 @@ import pytest
 import build_records as r
 import identity_rules as rules
 import identity_service as ident
+from client.artist_rules import parse_artist_rules
 from fake_build_repositories import CollectingDiagnostics, FakeInputs, FakeState, fake_session
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -229,14 +230,17 @@ def test_seed_members_creates_missing_artists_and_counts_only_new_links():
     assert sorted(state.artists.values()) == ["Group", "Other", "Solo"]
 
 
-def test_artist_rules_from_mapping():
-    got = rules.artist_rules_from_mapping({"version": 1, "aliases": {"x": "Y"}, "members": {"G": ["a", "b"]}})
+def test_artist_rules_are_one_record_built_by_parse_artist_rules():
+    got = parse_artist_rules({"version": 1, "aliases": {"x": "Y"}, "members": {"G": ["a", "b"]}}, "rules.json")
+    assert isinstance(got, r.ArtistRules)
     assert got == r.ArtistRules({"x": "Y"}, {"G": ("a", "b")}, ())
+    assert r.ArtistRules() == r.ArtistRules({}, {}, ())          # the default is no rules
 
 
 # ------------------------------------------------------------------------- one definition each (ratchet)
 
-IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "get_or_create_artist", "load_artist_cache",
+IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "parse_artist_rules", "artist_rules_from_mapping",
+                           "get_or_create_artist", "load_artist_cache",
                            "get_or_create_subject", "get_source_id", "link_authors", "get_or_create_author",
                            "add_source_identifiers", "get_or_create_vault_file", "get_or_create_publisher"}
 # Legacy definitions that still exist because their step has not moved yet. A lane deletes its entries.
@@ -259,10 +263,32 @@ def _definitions():
 
 def test_identity_functions_have_one_definition_and_no_new_copies_appear():
     defs = _definitions()
-    owners = {"canonical_artist_name": "client/artist_rules.py", "artist_key": "client/artist_rules.py"}
+    owners = {"canonical_artist_name": "client/artist_rules.py", "artist_key": "client/artist_rules.py",
+              "parse_artist_rules": "client/artist_rules.py"}
     for fn, owner in owners.items():
         assert {p for p, n in defs if n == fn} == {owner}, f"{fn} must be defined only in {owner}"
     new = {d for d in defs if d not in LEGACY_DEFINITIONS and d[1] not in owners}
     gone = LEGACY_DEFINITIONS - defs
     assert not new, f"a new copy of an identity operation: {sorted(new)}; use identity_service"
     assert not gone, f"migrated: remove from LEGACY_DEFINITIONS: {sorted(gone)}"
+
+
+def test_artist_rules_has_one_definition_and_only_two_places_build_it():
+    """`build_records.ArtistRules` is the only record; a second one (the client dataclass had its own) would let
+    the aliases the directory reads and the members the identity seeds come from two shapes."""
+    defined, built = set(), set()
+    for sub in ("", "ingest", "client"):
+        folder = os.path.join(REPO, sub)
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".py"):
+                continue
+            path = f"{sub}/{name}" if sub else name
+            for node in ast.walk(ast.parse(open(os.path.join(folder, name), encoding="utf-8").read())):
+                if isinstance(node, ast.ClassDef) and node.name == "ArtistRules":
+                    defined.add(path)
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "ArtistRules" and getattr(node.func.value, "id", "") == "r"):
+                    built.add(path)
+    assert defined == {"build_records.py"}
+    # the parser builds the file's rules; the service builds the "no rules" default; nobody else
+    assert built == {"client/artist_rules.py", "music_ingest_service.py"}

@@ -137,7 +137,6 @@ class ArtistIdentity(ArtistDirectory):
     """The artist directory plus the configured group memberships."""
     def __init__(self, music: MusicRepository, rules: r.ArtistRules):
         super().__init__(music, rules.aliases)
-        self._music = music
         self._rules = rules
 
     def seed_members(self) -> int:
@@ -145,8 +144,8 @@ class ArtistIdentity(ArtistDirectory):
         members already exist from their own credits."""
         inserted = 0
         for group_name, member_names in self._rules.members.items():
-            group_id = r.ArtistId(self.resolve(group_name))
+            group_id = self.resolve(group_name)
             for member_name in member_names:
-                if self._music.add_artist_member(group_id, r.ArtistId(self.resolve(member_name))):
+                if self._music.add_artist_member(group_id, self.resolve(member_name)):
                     inserted += 1
         return inserted

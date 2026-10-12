@@ -9,7 +9,7 @@ characterization tests (tests/test_build_characterization.py) compare against ro
 is `None`, which the adapter stores as NULL exactly as the step's own INSERT does today (the nullable columns of
 `sources` and `facts` have no non-NULL default, so an omitted column and an explicit None are the same row).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, NewType, Optional, Tuple
 
 SourceId = NewType("SourceId", int)
@@ -316,7 +316,8 @@ class MusicTotals:
 
 @dataclass(frozen=True)
 class ArtistRules:
-    """artist_rules.json: aliases (lowercased source name -> canonical name), group memberships, known festivals."""
-    aliases: Mapping[str, str]
-    members: Mapping[str, Tuple[str, ...]]
+    """artist_rules.json: aliases (lowercased source name -> canonical name), group memberships, known festivals.
+    The one definition: `client.artist_rules.parse_artist_rules` builds it; the default is no rules."""
+    aliases: Mapping[str, str] = field(default_factory=dict)
+    members: Mapping[str, Tuple[str, ...]] = field(default_factory=dict)
     festivals: Tuple[str, ...] = ()
