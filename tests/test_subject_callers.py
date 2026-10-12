@@ -158,5 +158,5 @@ def test_only_the_subjects_adapter_writes_the_subject_tables():
     assert set(offenders) <= KNOWN_OTHER_WRITERS, sorted(set(offenders) - KNOWN_OTHER_WRITERS)
 
 
-KNOWN_OTHER_WRITERS = {"fact_tables_store.py",    # privacy aggregate: tags subjects `private`
+KNOWN_OTHER_WRITERS = {"privacy_store.py",         # privacy aggregate: tags subjects `private`
                        "leak_test.py"}            # builds its own fixture database

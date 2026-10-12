@@ -33,8 +33,7 @@ from test_build_info import new_db  # noqa: E402
 STEP_STORES_USERS = {
     "load_privacy_rules": ("fact_ingest_service.py",),          # via fact_ingest.compose(privacy_floor=stores)
     "apply_privacy_rules": ("fact_ingest_service.py",),         # same
-    "read_entities": ("ingest/link_entities.py",),
-    "read_subjects": ("ingest/seed_subject_hierarchy.py",),
+    "entity_repository": ("ingest/link_entities.py",),
     "subject_repository": ("fact_ingest.py", "ingest/seed_subject_hierarchy.py"),
     "insert_claim": ("client/seed_claims.py",),
     "link_claim_premise": ("client/seed_claims.py",),
@@ -43,11 +42,8 @@ STEP_STORES_USERS = {
     "fact_repository": ("fact_ingest.py",),
     "revision_writer": ("fact_ingest.py",),
     "unit_of_work": ("fact_ingest.py",),
-    "read_log": ("revision_apply_service.py",),                 # via ingest/apply_fact_revisions.py(revision_log=stores)
-    "load_rules": ("revision_apply_service.py",),               # same (rules_reader=stores)
-    "fact_revision_table": ("ingest/apply_fact_revisions.py",),
-    "fact_privacy_table": ("ingest/apply_fact_revisions.py",),
-    "entity_link_table": ("ingest/link_entities.py",),
+    "revision_repository": ("ingest/apply_fact_revisions.py",),
+    "privacy_repository": ("ingest/apply_fact_revisions.py",),
 }
 
 

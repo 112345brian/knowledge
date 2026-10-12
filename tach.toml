@@ -68,7 +68,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "clock_port", "datafiles_port", "music_export_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "music_repository_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -834,7 +834,7 @@ depends_on = ["locks", "revisions_store"]
 [[modules]]
 path = "local_stores"        # INFRASTRUCTURE: the privacy, entity, subject, revision, claims and source stores, by name
 layer = "infrastructure"
-depends_on = ["claims_store", "entity_repository_store", "fact_ingest_store", "privacy_store", "revisions_store", "source_repository_store", "subject_repository_store", "subjects_store"]
+depends_on = ["claims_store", "entity_repository_store", "fact_ingest_store", "privacy_store", "revisions_store", "source_repository_store", "subject_repository_store"]
 
 [[modules]]
 path = "local_inputs"        # INFRASTRUCTURE: the real file system, the vault db, fingerprints
@@ -1377,5 +1377,3 @@ depends_on = ["build_repositories_port", "entity_link_rules", "entity_rules"]
 path = "revision_apply_service"  # USE CASE: apply the revision log, then the privacy floor, then raise history
 layer = "application"
 depends_on = ["build_repositories_port", "revision_apply_rules"]
-
-[[modules]]
