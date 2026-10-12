@@ -233,11 +233,15 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `memory_files_port` | domain service | interface for memory-file operations |
 | `modes` | domain service | mode policy, write gating |
 | `modes_store` | infrastructure | mode-filtered fact queries |
-| `music_ingest` | composition root | binds music_ingest_service to music_store for one build connection |
+| `music_ingest` | composition root | the music source's own: binds music_service to music_store for one build connection (`client/`) |
 | `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
-| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity |
-| `music_repository_port` | domain service | port: the music tables the client music steps write |
-| `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
+| `music_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity (`client/`) |
+| `music_port` | domain service | ports: the music tables the client music steps write (`MusicRepository`) and the record-shaped contract the foundation defined (`MusicRecordRepository`) (`client/`) |
+| `music_records` | domain service | the music source's records and ids, owned by the client (`client/`) |
+| `measurements_records` | domain service | the measurements source's records, owned by the client (`client/`) |
+| `claims_port` | domain service | the claims source's record-shaped repository port and records (`client/`); the generic claims audit stays in the base |
+| `artist_identity_service` | application service | the artist directory plus configured group memberships (`client/`) |
+| `music_store` | infrastructure | the music tables of the build database (implements music_port.MusicRepository) (`client/`) |
 | `new_fact` | domain service | NewFact + validation + build_entry |
 | `normal_db` | ETL adapter (driving, batch) | entry point: binds normal_db_service to the SQLite adapters and a BuildFiles (also a script) |
 | `normal_db_port` | domain service | ports: the full DB's rows in (`NormalSource`), the normal DB out (`NormalSink`), the leak scan's reads (`LeakScan`) |
@@ -254,9 +258,9 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
 | `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
 | `build_steps_port` | domain service | the bound-step shape (`run() -> StepResult`), diagnostics, the vault reader and the step environment |
-| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `identity_service` and `music_ingest_service` share) |
-| `identity_rules` | domain service | artist-name canonicalization, byline split, identifier-conflict warning (pure) |
-| `identity_service` | application service | the one definition of source, subject and artist identity for the build |
+| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `artist_identity_service` and `music_service` share; `client/`) |
+| `identity_rules` | domain service | byline split, identifier-conflict warning (pure); artist-name rules are `client/artist_rules` |
+| `identity_service` | application service | the one definition of source and subject identity for the build (artist identity is `client/artist_identity_service`) |
 | `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |
 | `privacy` | domain service | visibility rules + resolver |
 | `privacy_store` | infrastructure | rules file, db apply |
@@ -301,3 +305,26 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `validtime` | model | valid-time dates: parsing, ordering, containment |
 | `vault_reader_port` | domain service | interface for reading the vault's database as typed records |
 | `vault_reader_store` | infrastructure | SQLite reader of the vault's database |
+
+## Base / client boundary
+
+The repository is a general-purpose machine that clients extend. Everything outside `client/` is the **base**
+(the core, `ingest/` and the build); `client/` holds the **optional sources** a checkout enables with
+`CLIENT_SOURCES` in its private `local_paths.py` (music: concerts, ratings, scrobbles; measurements; claims
+seeding). Direction is one way:
+
+- the base never imports `client.*` (shadow name `kn.<client module>`). Enforced by the import-linter contract
+  "The base (core and ingest) never imports a client source", by `tests/test_client_boundary.py` (an AST scan of every
+  non-client module) and by tach's deny-by-default `depends_on` (no base module lists a `client.*` path);
+- a client module may import core types (ids, `UnitOfWork`, `Locations`, ports of the core), so a client source is
+  onion-architected inside `client/` with client-owned ports (`client/music_port.py`, `client/music_records.py`,
+  `client/music_service.py`, `client/music_store.py`, ...);
+- the only seam from the base to a client source is data: `build_rules` lists the step files of each client source
+  and the build loads them from the registry; a client source's own composition root (`client/music_ingest.py`)
+  hands its ports to `wiring.bind_all(..., ports=...)`, so `wiring.PORT_PROTOCOLS` names no client port;
+- the core's build contract (`build_repositories_port`, `build_records`) is the sources, subjects, facts,
+  revisions, privacy and entities aggregates and the unit of work. `BuildSession` carries nothing of a client.
+
+The claims *audit* (`claims_audit`, `claims_rules`, `claims_store`, the `audit-claims` CLI) stays in the base: the
+`claims` and `claim_facts` tables are in the core `schema.sql` and the audit runs with `CLIENT_SOURCES=()`. Only the
+seeding of claims from a private `claims.json` (`client/seed_claims.py`) is a client source.

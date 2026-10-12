@@ -20,7 +20,7 @@ from appctx import app
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
             "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service",
-            "privacy_floor_service", "entity_link_service", "revision_apply_service", "music_ingest_service", "normal_db_service", "build_service")
+            "privacy_floor_service", "entity_link_service", "revision_apply_service", "client.music_service", "normal_db_service", "build_service")
 
 
 def test_composing_every_root_verifies_its_adapters_against_their_ports():
@@ -137,7 +137,7 @@ def test_review_service_reports_a_failed_write_per_item():
 
 def _service_trees():
     for name in SERVICES + ("wiring",):
-        path = os.path.join(REPO, name + ".py")
+        path = os.path.join(REPO, *name.split(".")) + ".py"
         yield name, ast.parse(open(path, encoding="utf-8").read())
 
 
@@ -174,18 +174,20 @@ DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleD
                 "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
                 "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
                 "revision_apply_service": "RevisionApplyDeps",
-                "music_ingest_service": "MusicIngestDeps",
+                "client.music_service": "MusicIngestDeps",
                 "normal_db_service": "NormalDbDeps", "build_service": "BuildDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
     assert set(DEPS_CLASSES) == set(SERVICES)
+    from client import music_ingest
+    known_ports = {**wiring.PORT_PROTOCOLS, **music_ingest.ports()}   # a client source brings its own ports
     for module, cls_name in DEPS_CLASSES.items():
         cls = getattr(importlib.import_module(module), cls_name)
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
         for f in dataclasses.fields(cls):
             assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
-            assert f.name == "locations" or f.name in wiring.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
+            assert f.name == "locations" or f.name in known_ports, f"{cls_name}.{f.name} is not a known port"
 
 
 def test_a_service_uses_exactly_the_dependencies_it_declares():
@@ -193,7 +195,7 @@ def test_a_service_uses_exactly_the_dependencies_it_declares():
     a declared-but-unused port is a wiring lie, and an undeclared one fails only when that path runs."""
     for module, cls_name in DEPS_CLASSES.items():
         declared = {f.name for f in dataclasses.fields(getattr(importlib.import_module(module), cls_name))}
-        tree = ast.parse(open(os.path.join(REPO, module + ".py"), encoding="utf-8").read())
+        tree = ast.parse(open(os.path.join(REPO, *module.split(".")) + ".py", encoding="utf-8").read())
         used = {n.attr for n in ast.walk(tree)
                 if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "deps"}
         assert used <= declared, f"{module} uses undeclared dependencies: {sorted(used - declared)}"

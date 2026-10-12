@@ -93,8 +93,9 @@ so keep it local: do not put it behind a proxy, tunnel, or port forward.
 
 `build.py` applies `schema.sql` and runs the ordered steps in `build_rules.py`. The core pipeline
 builds without any optional source. A checkout enables optional sources (under `client/`) through
-its private `local_paths.py`; each may add schema fragments and ingest steps. Code in `ingest/` never
-imports from `client/`.
+its private `local_paths.py`; each may add schema fragments and ingest steps. No base module (the repo root
+or `ingest/`) imports from `client/`: a client source owns its ports, records and adapters, and an
+import-linter contract and `tests/test_client_boundary.py` fail the build if the direction is broken.
 
 The built database and its normal-view copy are generated. Never edit either by hand.
 

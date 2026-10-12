@@ -1,4 +1,4 @@
-"""SQLite adapter for `music_repository_port.MusicRepository`: the music tables of the build database it is
+"""SQLite adapter for `music_port.MusicRepository`: the music tables of the build database it is
 given. Every statement of SQL the client music steps used lives here; the services only see ids and rows."""
 import sqlite3
 from typing import Iterable, Optional, Sequence, Tuple

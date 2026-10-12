@@ -1,6 +1,6 @@
 """The music client steps as application services: the concerts CSV, the RYM ratings export, the Last.fm scrobble
 dump and the curated artist memberships. Each returns a `StepResult` and prints nothing; the step modules
-(`client/concerts.py` ...) are thin driving adapters that print it. `music_ingest` is the composition root that
+(`client/concerts.py` ...) are thin driving adapters that print it. `client.music_ingest` is the composition root that
 binds these functions to the SQLite adapter (`music_store`).
 
 Artist identity: an artist seen live, rated on RYM and scrobbled is one `artists` row. Every importer resolves a
@@ -17,13 +17,13 @@ import json
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from build_steps_port import StepResult
 from client import music_ingest_rules
-from artist_directory import ArtistDirectory
+from client.artist_directory import ArtistDirectory
 from client.artist_rules import ArtistRules, parse_artist_rules
+from client.music_port import MusicRepository
 from inputs_port import Inputs
 from locations import Locations
-from music_repository_port import MusicRepository
-from build_steps_port import StepResult
 
 ARTIST_RULES_FILENAME = "artist_rules.json"
 

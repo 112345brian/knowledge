@@ -1,4 +1,5 @@
-"""The identity operations every build step shares: which source, which subject, which artist a name means.
+"""The identity operations every build step shares: which source and which subject a name means. (Which artist a
+name means is music-source logic: `client.artist_identity_service`.)
 
 Application ring: orchestrates the repositories (`build_repositories_port`) with the pure rules
 (`identity_rules`); imports no adapter. Each class here is the ONE definition of its operation: a step that
@@ -14,18 +15,14 @@ Frozen semantics (tests/test_identity_service.py pins each against the legacy st
     Subject  exact name first; the alias table is consulted only when asked (`via_aliases`); only then is a subject
              created, with the given domain or the schema default (`domain=None`). The cache is keyed by the name
              as given and remembers the id the first lookup produced.
-    Artist   the key is `artist_key(canonical_artist_name(name, aliases))`; the cache is loaded once from the
-             table (the first row of a case-variant group wins) and a created artist is added to it; nothing
-             is ever evicted.
 """
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import acquisition_rules
-from artist_directory import ArtistDirectory
 import build_records as r
 import identity_rules
 import inputs_port
-from build_repositories_port import MusicRepository, SourceRepository, SubjectRepository
+from build_repositories_port import SourceRepository, SubjectRepository
 from build_steps_port import Diagnostics
 
 
@@ -132,21 +129,3 @@ class SubjectIdentity:
         self._cache[name] = subject_id
         return subject_id
 
-
-class ArtistIdentity(ArtistDirectory):
-    """The artist directory plus the configured group memberships."""
-    def __init__(self, music: MusicRepository, rules: r.ArtistRules):
-        super().__init__(music, rules.aliases)
-        self._music = music
-        self._rules = rules
-
-    def seed_members(self) -> int:
-        """Record the configured group memberships; returns how many rows were new. Run after the imports so the
-        members already exist from their own credits."""
-        inserted = 0
-        for group_name, member_names in self._rules.members.items():
-            group_id = r.ArtistId(self.resolve(group_name))
-            for member_name in member_names:
-                if self._music.add_artist_member(group_id, r.ArtistId(self.resolve(member_name))):
-                    inserted += 1
-        return inserted

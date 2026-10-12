@@ -61,9 +61,10 @@ def main(argv=None):
     parser.add_argument("-o", "--output", help="write to this file instead of stdout")
     args = parser.parse_args(argv)
 
+    from client import music_export_store
     from container import Container
     app = Container()
-    return run(app.music_export, app.datafiles, args.output)
+    return run(music_export_store.open_reads(app.locations.db_path), app.datafiles, args.output)
 
 
 if __name__ == "__main__":

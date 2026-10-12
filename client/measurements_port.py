@@ -8,6 +8,9 @@ repeated lookups belong to the service for the length of one run.
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
+import build_records as r
+from client import measurements_records as m
+
 
 @dataclass(frozen=True)
 class MeasurementRecord:
@@ -115,3 +118,29 @@ class FactMeasurementLinks(Protocol):
     def fact_id(self, source_key: str) -> Optional[int]: ...
     def link_metric(self, fact_id: int, metric_key: str) -> int: ...
     def commit(self) -> None: ...
+
+
+class MeasurementRecordRepository(Protocol):
+    """The record-shaped contract the foundation defined for the same tables (`measurements_records`). Kept as it
+    was; only the fakes use it. `MeasurementRepository` above is the one `measurements_store` implements."""
+    def find_metric(self, key: str) -> Optional[m.MetricId]: ...
+    def add_metric(self, metric: m.NewMetric) -> m.MetricId: ...
+    def add(self, measurement: m.NewMeasurement) -> None: ...
+    def exercise(self, name: str) -> int:
+        """Get-or-create."""
+    def food(self, name: str) -> int:
+        """Get-or-create."""
+    def muscle(self, name: str) -> int:
+        """Get-or-create."""
+    def add_training_set(self, training_set: m.NewTrainingSet) -> None: ...
+    def add_food_log_entry(self, entry: m.NewFoodLogEntry) -> None: ...
+    def add_meal_log_entry(self, entry: m.NewMealLogEntry) -> None: ...
+    def add_muscle_volume(self, volume: m.NewMuscleVolume) -> None: ...
+    def totals(self) -> m.MeasurementTotals: ...
+
+
+class FactMeasurementRecordLinks(Protocol):
+    """What `FactRepository.link_measurements` was in the core's contract: the fact <-> measurement link is a
+    measurements-source concern, so it lives with the measurements port and not on the core's fact repository."""
+    def link_measurements(self, fact_id: r.FactId, metric_key: str) -> int:
+        """One fact_measurements row per measurement of the metric; returns how many were linked."""

@@ -2,7 +2,7 @@
 
 Domain service ring: it asks a repository for the artists already stored and for a new one to be added, and decides
 nothing else. Artist identity is defined here and in `client.artist_rules` (the key and the canonical spelling) and
-nowhere else; `identity_service.ArtistIdentity` and `music_ingest_service` both use this class rather than keep a copy.
+nowhere else; `artist_identity_service.ArtistIdentity` and `music_service` both use this class rather than keep a copy.
 """
 from typing import Dict, Iterable, Mapping, Optional, Protocol, Tuple
 

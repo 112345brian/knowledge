@@ -7,7 +7,7 @@ import pytest
 from client.artist_rules import ArtistRules, parse_artist_rules
 from locations import Locations
 from music_fakes import FakeInputs, FakeMusicRepository
-import music_ingest_service as svc
+from client import music_service as svc
 
 CSV_HEADER = "Concert,Start Date,End Date,Location,Notes\n"
 DATA = "/data"

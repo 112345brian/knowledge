@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-import music_store
+from client import music_store
 from schema_helper import full_schema
 
 

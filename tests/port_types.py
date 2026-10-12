@@ -14,8 +14,8 @@ from facts_file_port import FactsFile
 from ids_port import Ids
 from lifecycle_reads_port import LifecycleReads
 from memory_files_port import MemoryFiles
-from music_export_port import MusicExportReads
-from music_repository_port import MusicRepository
+from client.music_export_port import MusicExportReads
+from client.music_port import MusicRepository
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
 from privacy_rules_port import Rules
@@ -46,8 +46,7 @@ import leak_scan_store
 import lifecycle_store
 import local_stores
 import migrate_memory_store
-import music_export_store
-import music_store
+from client import music_export_store, music_store
 import normal_db_store
 import privacy_store
 import private_git

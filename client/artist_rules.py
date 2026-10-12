@@ -1,12 +1,14 @@
 """Pure helpers for canonicalizing names from optional music sources, and the shape of artist_rules.json.
 
 The two name functions are music-source logic (RYM HTML-escapes names; the aliases come from artist_rules.json), so
-they are defined here, once. `artist_directory` is the stateful user; `identity_service` and `music_ingest_service`
-reach them through it.
+they are defined here, once. `artist_directory` is the stateful user; `artist_identity_service` and `music_service` reach
+them through it.
 """
 import html
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional
+
+from client import music_records
 
 
 def canonical_artist_name(name: str, aliases: Optional[Mapping[str, str]] = None) -> str:
@@ -39,3 +41,9 @@ def parse_artist_rules(data: Any, path: str) -> ArtistRules:
             or not isinstance(data.get("festivals", []), list)):
         raise RuntimeError(f"{path}: expected version 1 with aliases and members")
     return ArtistRules(aliases=data["aliases"], members=data["members"], festivals=data.get("festivals", []))
+
+
+def artist_rules_from_mapping(raw: Mapping) -> music_records.ArtistRules:
+    """`artist_rules.json`'s decoded, already validated content as the record (see music_shared.load_artist_rules)."""
+    return music_records.ArtistRules(dict(raw["aliases"]), {g: tuple(m) for g, m in raw["members"].items()},
+                                     tuple(raw.get("festivals", ())))
