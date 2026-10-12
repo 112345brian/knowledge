@@ -97,7 +97,7 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
             built_at = deps.clock.now_iso()
             provenance = deps.provenance.read(session.con)
             deps.provenance.write(session.con, provenance, built_at, deps.clock.now_iso())
-            session.commit()
+            session.unit_of_work.commit()
         except Exception as e:
             raise BuildError("build_info", e) from e
         try:

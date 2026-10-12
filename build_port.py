@@ -13,6 +13,8 @@ replaced by imports from it; nothing else in the lane changes shape.
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol, Sequence, Tuple
 
+from build_repositories_port import UnitOfWork
+
 
 @dataclass(frozen=True)
 class StepResult:
@@ -24,13 +26,16 @@ class StepResult:
 
 
 class BuildSession(Protocol):
-    """One build database being written. `con` is the open connection (a step's, and the provenance writer's,
-    handle); `context` is what a step gets besides it."""
+    """Pipeline session for one build database.
+
+    `con` remains the compatibility handle for unmigrated batch steps and provenance adapters. Application-level
+    commits go through `unit_of_work`, which is the only commit surface exposed by the build service.
+    """
     con: Any
     context: Any
+    unit_of_work: UnitOfWork
 
     def apply_schema(self, sources: Sequence[str]) -> None: ...
-    def commit(self) -> None: ...
     def optimize(self) -> None: ...
     def close(self) -> None: ...
 

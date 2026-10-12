@@ -71,7 +71,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "client_registry", "clock_port", "datafiles_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "client_registry", "clock_port", "datafiles_port", "docs_files_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -750,7 +750,7 @@ depends_on = []
 [[modules]]
 path = "build_port"          # DOMAIN SERVICE: the build session, step registry, provenance and outputs ports (draft foundation contracts)
 layer = "domain_services"
-depends_on = []
+depends_on = ["build_repositories_port"]
 
 [[modules]]
 path = "build_service"       # APPLICATION SERVICE: the database rebuild (order, failure naming, atomic publication, backups, normal db)
@@ -800,7 +800,37 @@ depends_on = ["script_runner_port", "clock_port", "locations"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "building", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles"]
+depends_on = ["add_fact", "building", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "docs"]
+
+[[modules]]
+path = "docs"                  # COMPOSITION ROOT: binds the generated-docs use case to repository files
+layer = "composition"
+depends_on = ["docs_service", "docs_store", "wiring"]
+
+[[modules]]
+path = "docs_service"          # APPLICATION SERVICE: checks and rebuilds generated documentation regions
+layer = "application"
+depends_on = ["docs_files_port", "docs_rules"]
+
+[[modules]]
+path = "docs_rules"            # DOMAIN SERVICE: pure documentation rendering and marker rules
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "docs_files_port"       # DOMAIN SERVICE: documentation file port
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "docs_store"            # INFRASTRUCTURE: repository documentation files
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "cli_docs"              # CLI: generated documentation commands
+layer = "cli"
+depends_on = ["docs_rules"]
 
 [[modules]]
 path = "scripts"              # COMPOSITION ROOT: binds scripts_service to script_runner
@@ -954,6 +984,7 @@ depends_on = [
     "cli_facts",
     "cli_privacy",
     "cli_review",
+    "cli_docs",
 ]
 
 [[modules]]
@@ -1219,7 +1250,7 @@ depends_on = ["build_records", "privacy"]
 [[modules]]
 path = "entity_link_service"  # USE CASE: link facts to entities and refuse a private mention that is not private
 layer = "application"
-depends_on = ["build_repositories_port", "entity_link_rules", "entity_rules"]
+depends_on = ["build_records", "build_repositories_port", "entity_link_rules", "entity_rules"]
 
 [[modules]]
 path = "revision_apply_service"  # USE CASE: apply the revision log, then the privacy floor, then raise history

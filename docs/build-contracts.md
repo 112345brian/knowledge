@@ -13,7 +13,7 @@ architecture.md, the pinned lists in `tests/test_architecture.py`) is a separate
 | What a step decides: skip an item, validate, normalize, which subject/source/artist a name means, what to print | application and domain rules | the step itself, `identity_service`, `identity_rules`, `*_ingest_rules`, `measurement_rules`, `revisions`, `privacy`, ... |
 | What persistence is asked to do, in the knowledge base's words | ports | `build_repositories_port` (build database), `build_steps_port.VaultReader` (vault database), `inputs_port.Inputs` (files) |
 | The values exchanged | plain frozen records | `build_records` (plus the model's `Subject`, `Entity`, `privacy.Rules`) |
-| SQL, files, fingerprints, the sqlite connection and its transaction | infrastructure (the adapters a lane adds) | `*_store`, `local_*`, a `SessionOpener` |
+| SQL, files, fingerprints and the sqlite connection | infrastructure (the adapters a lane adds) | `*_store`, `local_*`, a `SessionOpener` |
 | Which adapter backs which port; one session per build; step order and binding | composition root | `build_composition` |
 | The ingest order, schema, build_info, printing, `BuildError`, swapping the file | pipeline driver | `build.py`, `build_rules` |
 
@@ -39,6 +39,11 @@ none executes SQL, hands out a cursor or a row. `BuildSession` holds one of each
 | `MusicRepository` | `import_source`, `delete_*`, `artists`, `add_artist`, `venue`, `festival`, `add_attendance`, `add_album`, `tracks`, `add_track`, `add_scrobbles`, `add_artist_member`, `totals` | SQL in `concerts`, `music_ratings`, `scrobbles`, `music_shared` |
 | `UnitOfWork` | `commit()` | `con.commit()` |
 | `VaultReader` / `VaultOpener` (`build_steps_port`) | one method per vault table the measurements step reads | `inputs.open_database(...)` + `SELECT * FROM ...` |
+
+The pipeline's `build_port.BuildSession` still carries `con` and `context` while legacy batch steps run as
+`run(con, ctx)`; those are an explicit migration seam, not application-service ports. The pipeline service can
+commit only through `session.unit_of_work.commit()`. The repository `BuildSession` in
+`build_repositories_port` is the typed aggregate bundle and has no database handle.
 
 Adapter obligations (an adapter that breaks one fails the characterization or golden test):
 

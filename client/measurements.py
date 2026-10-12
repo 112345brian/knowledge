@@ -16,7 +16,6 @@ load timestamp (only the date each reading was taken), so the date_added of thes
 the vault-db sources, is the date the snapshot was taken. It is read from the data (measurements_snapshot.json,
 written once by backfill_snapshot_date.py); a missing or malformed file fails the build. #35.
 """
-import os
 
 from client import measurement_rules, measurements_service, measurements_store, snapshot_date, vault_reader_store
 from locations import join_path

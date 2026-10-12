@@ -4,6 +4,15 @@ Run with ``uv run mypy``. These assignments supplement the runtime name/signatur
 in ``test_ports.py`` with mypy's structural type checks.
 """
 from build_files_port import BuildFiles
+from add_fact_port import AddFact
+from client_registry import ClientSources
+from datafiles_port import DataFiles
+from fact_reads_port import FactReads
+from fact_ingest_port import Identity
+from inputs_port import Inputs
+from reviews_port import Reviews
+from script_runner_port import ScriptRunner
+from docs_files_port import DocsFiles
 from build_port import BuildOutputs, BuildSession, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from build_repositories_port import EntityRepository
@@ -30,9 +39,19 @@ from privacy_floor_service import FloorRows
 import local_stores
 import sqlite3
 import add_fact_store
+import add_fact
 import build
 import client_registry
 import build_info_store
+import docs_store
+import add_fact_store
+import client_bootstrap
+import fact_ingest
+import fact_reads_store
+import local_datafiles
+import local_inputs
+import review
+import script_runner
 import building
 import local_buildfiles
 import clock
@@ -107,3 +126,12 @@ build_session: BuildSession = building.Session(local_buildfiles, "", None, None,
 build_sessions: SessionFactory = building.Sessions(local_buildfiles, "", None, client_registry.ClientRegistry(()))
 build_steps: StepRegistry = building.Registry(local_buildfiles, "")
 build_outputs: BuildOutputs = build.NormalOutputs(local_buildfiles, None)
+docs_files: DocsFiles = docs_store.RepoDocs()
+add_fact_port: AddFact = add_fact.compose(None, None)
+client_sources: ClientSources = client_bootstrap.registry()
+datafiles: DataFiles = local_datafiles
+fact_reads: FactReads = fact_reads_store
+identity: Identity = fact_ingest.BuildIdentity(None, None, local_inputs)
+inputs: Inputs = local_inputs
+reviews: Reviews = review.compose(None, None)
+script_runner_port: ScriptRunner = script_runner

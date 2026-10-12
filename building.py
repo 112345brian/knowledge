@@ -32,15 +32,13 @@ class Session:
     def __init__(self, files, code_dir, con, context, clients):
         self._files, self._code_dir, self._clients = files, code_dir, clients
         self.con, self.context = con, context
+        self.unit_of_work = local_stores.unit_of_work(con)
 
     def apply_schema(self, sources):
         """schema.sql plus the fragment of each enabled client source, in order."""
         text = "\n".join(self._files.read_text(self._files.join(self._code_dir, name))
                          for name in self._clients.schema_files(sources))
         self.con.executescript(text)
-
-    def commit(self):
-        self.con.commit()
 
     def optimize(self):
         self.con.execute("VACUUM;")

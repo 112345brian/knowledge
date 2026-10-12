@@ -81,6 +81,13 @@ def test_the_session_holds_exactly_the_ports_and_is_frozen():
         session.facts = None    # type: ignore[misc]
 
 
+def test_pipeline_session_exposes_commit_only_through_unit_of_work():
+    import build_port
+    assert "commit" not in vars(build_port.BuildSession)
+    assert {name for name, fn in vars(ports.UnitOfWork).items() if callable(fn) and not name.startswith("_")} == {"commit"}
+    assert "unit_of_work" in build_port.BuildSession.__annotations__
+
+
 # --------------------------------------------------------------------------------------------- the fakes
 
 @pytest.mark.parametrize("name", sorted(ports.REPOSITORY_PORTS))

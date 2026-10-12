@@ -16,7 +16,6 @@ Usage:
 """
 import argparse
 import json
-import os
 import sys
 
 from client.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date

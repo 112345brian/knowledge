@@ -42,7 +42,7 @@ def apply_revision_log(revisions: RevisionRepository, unit_of_work: UnitOfWork, 
     records = revisions.read_log(path, revision_apply_rules.inherited_by_key(firsts))
     revision_apply_rules.validate(path, records, fact_ids, firsts)
     for _, rec in records:
-        revisions.insert(fact_ids[rec["source_key"]], rec)
+        revisions.insert(fact_ids[str(rec["source_key"])], rec)
     for key, rec in revision_apply_rules.latest_by_key(records).items():
         revisions.write_back(revision_apply_rules.write_back(fact_ids[key], rec, fact_ids))
     unit_of_work.commit()

@@ -23,6 +23,7 @@ from build_repositories_port import PrivacyRepository, RevisionRepository, UnitO
 from client_registry import ClientSources
 from clock_port import Clock
 from datafiles_port import DataFiles
+from docs_files_port import DocsFiles
 from entity_files_port import EntityFileReader, EntityFiles
 from entity_migration_port import EntityMigration
 from build_repositories_port import EntityRepository
@@ -89,6 +90,7 @@ PORT_PROTOCOLS = {
     "clients": ClientSources, "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
+    "docs_files": DocsFiles,
 }
 
 

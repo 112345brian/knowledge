@@ -69,7 +69,7 @@ def test_git_only_runs_inside_private_git():
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "source_record", "subject_rules"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"measurement_rules", "source_ingest_rules",
-                  "backfill_rules"}  # pure, but only the pipeline (or one person) uses them
+                  "backfill_rules", "artist_rules", "music_ingest_rules"}  # pure, but only the pipeline (or one client) uses them
 BUILD_TOOLING = {"normal_db", "leak_test"}  # the normal-db and leak-test entry points: pipeline adapters
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
@@ -708,16 +708,17 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
                       "measurements_service",
                       "music_service", "artist_identity_service",
                       "normal_db_service",
-                      "build_service"}   # the last is a client source's use case: it sits in the pipeline ring
+                      "build_service", "docs_service"}   # build_service is a client source's use case in the pipeline ring
 
 
 def _architecture_roles():
     roles = {}
     for line in _read(os.path.join(REPO, "docs", "architecture.md")).splitlines():
-        m = re.match(r"^\| `([A-Za-z0-9_]+)` \| ([^|]+?) \|", line)
-        if m:
-            assert m.group(1) not in roles, f"{m.group(1)} is listed twice in docs/architecture.md"
-            roles[m.group(1)] = m.group(2)
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and re.fullmatch(r"`[A-Za-z0-9_]+`", cells[0]):
+            name = cells[0][1:-1]
+            assert name not in roles, f"{name} is listed twice in docs/architecture.md"
+            roles[name] = cells[2]
     return roles
 
 
@@ -736,7 +737,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r in ("application service", "pipeline use case")} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "building", "music_ingest", "build_composition", "fact_ingest", "client_bootstrap"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "building", "music_ingest", "build_composition", "fact_ingest", "client_bootstrap", "bootstrap", "docs"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",

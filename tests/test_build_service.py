@@ -71,6 +71,7 @@ class FakeSession:
         self.files, self.path, self.calls, self.fail = files, path, calls, fail
         self.con = object()
         self.context = None
+        self.unit_of_work = self
 
     def apply_schema(self, sources):
         self.calls.append(("schema", tuple(sources)))

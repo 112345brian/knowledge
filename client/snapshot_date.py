@@ -2,7 +2,6 @@
 (the snapshot date, issue #35) and `measurements_config.json` from the private data dir. Validation and the error
 messages are the domain's (`measurement_rules`). A missing or malformed file fails the build loudly."""
 import json
-import os
 
 from client import measurement_rules
 from client.measurement_rules import MEASUREMENTS_SNAPSHOT_FILE  # noqa: F401  (the public API)

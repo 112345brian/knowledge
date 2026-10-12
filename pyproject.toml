@@ -30,7 +30,93 @@ addopts = "-n auto"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "tests"
-files = ["wiring.py", "private_git_port.py", "facts_file_port.py", "clock_port.py", "ids_port.py", "add_fact_port.py", "privacy_rules_port.py", "entities_service.py", "subjects_service.py", "subject_hierarchy_service.py", "entities.py", "subjects.py", "build_records.py", "build_repositories_port.py", "build_steps_port.py", "identity_rules.py", "identity_service.py", "build_composition.py", "build_port.py", "build_service.py", "tests/port_types.py", "tests/build_port_types.py", "client/artist_identity_service.py", "client/claims_port.py", "client/measurements_records.py", "client/music_port.py", "client/music_records.py", "client/music_service.py", "client/music_store.py", "tests/client_port_types.py"]
+files = [
+    "add_fact.py",
+    "add_fact_port.py",
+    "add_fact_service.py",
+    "build_composition.py",
+    "build_files_port.py",
+    "build_port.py",
+    "build_records.py",
+    "build_repositories_port.py",
+    "build_service.py",
+    "build_steps_port.py",
+    "building.py",
+    "cli_docs.py",
+    "client/artist_identity_service.py",
+    "client/claims_port.py",
+    "client/measurements_port.py",
+    "client/measurements_records.py",
+    "client/measurements_service.py",
+    "client/music_export_port.py",
+    "client/music_port.py",
+    "client/music_records.py",
+    "client/music_service.py",
+    "client/music_store.py",
+    "client/vault_reader_port.py",
+    "client_bootstrap.py",
+    "clock_port.py",
+    "container.py",
+    "datafiles_port.py",
+    "docs.py",
+    "docs_files_port.py",
+    "docs_rules.py",
+    "docs_service.py",
+    "docs_store.py",
+    "entities.py",
+    "entities_service.py",
+    "entity_files_port.py",
+    "entity_link_service.py",
+    "entity_migration_port.py",
+    "entity_queries_port.py",
+    "fact_ingest.py",
+    "fact_ingest_port.py",
+    "fact_ingest_service.py",
+    "fact_reads_port.py",
+    "facts_batch.py",
+    "facts_batch_service.py",
+    "facts_file_port.py",
+    "identity_rules.py",
+    "identity_service.py",
+    "ids_port.py",
+    "inputs_port.py",
+    "lifecycle.py",
+    "lifecycle_reads_port.py",
+    "lifecycle_service.py",
+    "memory_files_port.py",
+    "migrate_memory.py",
+    "migrate_memory_service.py",
+    "normal_db_port.py",
+    "normal_db_service.py",
+    "privacy_floor_service.py",
+    "privacy_rules_port.py",
+    "private_git_port.py",
+    "queries.py",
+    "queries_service.py",
+    "review.py",
+    "review_reads_port.py",
+    "review_service.py",
+    "reviews_port.py",
+    "revision_apply_service.py",
+    "revisions_port.py",
+    "rules_edit.py",
+    "rules_edit_service.py",
+    "script_runner_port.py",
+    "scripts.py",
+    "scripts_service.py",
+    "source_ingest_service.py",
+    "sources_port.py",
+    "sql_runner_port.py",
+    "step_stores_port.py",
+    "subject_files_port.py",
+    "subject_hierarchy_service.py",
+    "subjects.py",
+    "subjects_service.py",
+    "tests/build_port_types.py",
+    "tests/client_port_types.py",
+    "tests/port_types.py",
+    "wiring.py",
+]
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
@@ -79,6 +165,12 @@ name = "Libraries never import the CLI, serving or pipeline layers"
 # imported them, the library would no longer be reusable by the CLI, the inbox and the MCP server alike.
 type = "forbidden"
 source_modules = [
+    "kn.docs",
+    "kn.docs_service",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_store",
+
     "kn.build_files_port",
     "kn.build_port",
     "kn.local_buildfiles",
@@ -254,6 +346,7 @@ forbidden_modules = [
     "kn.cli_build",
     "kn.cli_sources",
     "kn.cli_subjects",
+    "kn.cli_docs",
     "kn.cli_parity",
     "kn.knowledge",
     # serving
@@ -296,6 +389,12 @@ name = "Libraries and the parity registry never import typer (or click)"
 # conditional-import edge case: knowledge.py's `import typer` is the intended single entry point.
 type = "forbidden"
 source_modules = [
+    "kn.docs",
+    "kn.docs_service",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_store",
+
     "kn.build_files_port",
     "kn.build_port",
     "kn.local_buildfiles",
@@ -472,6 +571,8 @@ name = "The CLI never imports the serving layers"
 # inline `# tach-ignore inbox` on that same single import line in cli_inbox.py.
 type = "forbidden"
 source_modules = [
+    "kn.cli_docs",
+
     "kn.cli_facts_batch",
     "kn.cli_inbox",
     "kn.cli_lifecycle",
@@ -818,6 +919,12 @@ forbidden_modules = [
     "kn.vault_reader_store",
     "kn.measurements_store",
     "kn.measurements_service",
+    "kn.docs",
+    "kn.docs_service",
+    "kn.docs_rules",
+    "kn.docs_files_port",
+    "kn.docs_store",
+    "kn.cli_docs",
 ]
 allow_indirect_imports = true
 
@@ -844,6 +951,8 @@ name = "Domain modules never touch the file system, the database, processes or a
 # imports the domain, and a domain module may import another domain module.
 type = "forbidden"
 source_modules = [
+    "kn.docs_rules",
+    "kn.docs_files_port",
     "kn.build_files_port",
     "kn.build_port",
     "kn.datafiles_port",
@@ -917,23 +1026,52 @@ source_modules = [
     "kn.identity_rules",
     "kn.artist_directory",
     "kn.music_records",
-    "kn.bootstrap",
     "kn.measurements_records",
     "kn.claims_port",
     "kn.vault_reader_port",
     "kn.measurements_port",
 ]
 forbidden_modules = [
-    # infrastructure the domain must not touch
-    "sqlite3", "os", "pathlib", "io", "shutil", "tempfile", "glob", "fcntl", "msvcrt",
-    "subprocess", "socket", "http", "urllib", "uuid",
-    # adapters and the modules that wrap infrastructure
-    "kn.privacy_store", "kn.modes_store", "kn.claims_store", "kn.revisions_store", "kn.review_store",
-    "kn.privacy_floor_service", "kn.entity_link_service", "kn.revision_apply_service",
-    "kn.add_fact_store", "kn.lifecycle_store", "kn.migrate_memory_store", "kn.add_fact", "kn.lifecycle",
-    "kn.review", "kn.facts_batch", "kn.fact_ingest", "kn.migrate_memory", "kn.normal_db", "kn.leak_test", "kn.private_git",
-    "kn.normal_db_service", "kn.normal_db_store", "kn.leak_scan_store", "kn.sql_runner_store",
-    "kn.paths", "kn.clock",
+    "sqlite3",
+    "os",
+    "pathlib",
+    "io",
+    "shutil",
+    "tempfile",
+    "glob",
+    "fcntl",
+    "msvcrt",
+    "subprocess",
+    "socket",
+    "http",
+    "urllib",
+    "uuid",
+    "kn.privacy_store",
+    "kn.modes_store",
+    "kn.claims_store",
+    "kn.revisions_store",
+    "kn.review_store",
+    "kn.privacy_floor_service",
+    "kn.entity_link_service",
+    "kn.revision_apply_service",
+    "kn.add_fact_store",
+    "kn.lifecycle_store",
+    "kn.migrate_memory_store",
+    "kn.add_fact",
+    "kn.lifecycle",
+    "kn.review",
+    "kn.facts_batch",
+    "kn.fact_ingest",
+    "kn.migrate_memory",
+    "kn.normal_db",
+    "kn.leak_test",
+    "kn.private_git",
+    "kn.normal_db_service",
+    "kn.normal_db_store",
+    "kn.leak_scan_store",
+    "kn.sql_runner_store",
+    "kn.paths",
+    "kn.clock",
     "kn.acquisition_store",
     "kn.build_info_store",
     "kn.entities_store",
@@ -955,6 +1093,10 @@ forbidden_modules = [
     "kn.subject_hierarchy_service",
     "kn.vault_reader_store",
     "kn.measurements_store",
+    "kn.bootstrap",
+    "kn.docs",
+    "kn.docs_service",
+    "kn.docs_store",
 ]
 allow_indirect_imports = true
 
@@ -968,6 +1110,8 @@ name = "Use cases import ports and domain, never an adapter, a facade or infrast
 # tests/test_architecture.py checks that no service touches anything else on `os`.
 type = "forbidden"
 source_modules = [
+    "kn.docs_service",
+
     "kn.build_service",
     "kn.scripts_service",
     "kn.music_service",
@@ -1035,6 +1179,8 @@ name = "The CLI and the inbox reach infrastructure only through use cases"
 # against tach.toml, so a new adapter cannot be forgotten.
 type = "forbidden"
 source_modules = [
+    "kn.cli_docs",
+
     "kn.cli_facts_batch",
     "kn.cli_inbox",
     "kn.cli_lifecycle",
@@ -1072,6 +1218,7 @@ forbidden_modules = [
     "kn.add_fact_store", "kn.lifecycle_store", "kn.review_store", "kn.migrate_memory_store", "kn.ids", "kn.locks",
     "kn.clock", "kn.paths", "kn.normal_db", "kn.leak_test", "kn.privacy_store", "kn.private_git", "kn.entities_store", "kn.entity_migration_store", "kn.entity_repository_store", "kn.fact_ingest_store", "kn.subjects_store", "kn.subject_repository_store", "kn.revisions_store",    "kn.acquisition_store",
     "kn.build_info_store",
+    "kn.docs_store",
     "kn.fixity_store",
     "kn.private_edit_store",
     "kn.source_status_store",

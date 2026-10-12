@@ -11,6 +11,7 @@ import add_fact
 import building
 import clock as clocks
 import entities
+import docs
 import facts_batch
 import lifecycle
 import local_datafiles
@@ -79,6 +80,10 @@ class Container:
     @cached_property
     def subjects(self):
         return subjects.compose(self.locations)
+
+    def docs_at(self, root=None):
+        """Generated documentation use case, rooted at this checkout or an explicit repository copy."""
+        return docs.compose(root)
 
     @cached_property
     def queries(self):

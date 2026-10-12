@@ -86,7 +86,7 @@ def migrate(deps, root=None, data_path=None, db_path=None, dry_run=False, allow_
             report.refused = f"cannot read the existing facts: {e}"
             return report
         todo = []   # (FileResult, NewFact)
-        seen_keys = {}
+        seen_keys: dict[str, str] = {}
         today = today or deps.clock.now().date()
         for project, name, path in found:
             mf = deps.memory.read_memory_file(path, project, name)

@@ -57,6 +57,8 @@ ACTIONS = {
     "privacy_remove_keyword": ("privacy", "remove-keyword"),
     "serve_inbox": ("inbox",),
     "edit_fact": ("edit",),
+    "docs_build": ("docs", "build"),
+    "docs_check": ("docs", "check"),
     "make_private": ("set-visibility",),   # inbox: raise-only use of set-visibility
     "approve_shown": ("approve",),          # inbox: approve exactly the facts shown
 }

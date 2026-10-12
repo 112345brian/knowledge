@@ -11,6 +11,7 @@ from typing import Dict, List, Sequence
 
 import entity_link_rules
 from build_repositories_port import EntityRepository
+from build_records import EntityRowId, FactId
 from entity_link_rules import UnprotectedPrivateMention
 from entity_rules import Entity
 
@@ -24,7 +25,7 @@ class EntityLinkDeps:
 class LinkResult:
     entities: int
     links: int
-    unprotected: List[int]
+    unprotected: List[FactId]
 
     def as_dict(self):
         return {"entities": self.entities, "links": self.links, "unprotected": list(self.unprotected)}
@@ -34,7 +35,7 @@ def link_facts(deps: EntityLinkDeps, entities: Sequence[Entity]) -> LinkResult:
     """Add `entities`, then a link per (fact, mentioned entity). `unprotected` lists the facts that mention a
     private entity but are not stored private; use `link_entities` to refuse on them."""
     repo = deps.entities
-    rows: Dict[str, int] = {e.id: repo.add(e) for e in entities}
+    rows: Dict[str, EntityRowId] = {e.id: repo.add(e) for e in entities}
     as_dicts = [e.to_dict() for e in entities]
     private_ids = entity_link_rules.private_entity_ids(as_dicts)
     links, unprotected = 0, []

@@ -44,6 +44,7 @@ Callers must read the result: tests/test_facts_batch.py scans the repo and fails
 `add_facts(...)` call.
 """
 from dataclasses import dataclass
+from typing import List, Optional
 
 import facts_batch_rules
 import modes
@@ -51,6 +52,7 @@ import privacy
 from facts_batch_rules import (BatchResult, DEFAULT_CAPTURED_VIA, DEFAULT_TRUST, ITEM_KEYS, ItemResult,  # noqa: F401  (re-exported by the facade)
                                MAX_BATCH)
 from new_fact import DataFileError
+from new_fact import NewFact
 from add_fact_port import AddFact
 from facts_file_port import FactsFile
 from private_git_port import PrivateGit
@@ -105,7 +107,7 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
         return result
 
     requested_default = _default_requested(session)
-    facts = []  # NewFact | None, parallel to items
+    facts: List[Optional[NewFact]] = []  # parallel to items until the batch validation gate
     for index, raw in enumerate(items):
         fields, errors = _parse_item(raw)
         item = ItemResult(index=index, outcome="invalid")
@@ -135,9 +137,12 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
                 i.errors = ["not saved: another item in this batch is invalid (the batch is all-or-nothing)"]
         return result
 
+    valid_facts = [fact for fact in facts if fact is not None]
+    assert len(valid_facts) == len(facts), "validated batch lost a fact"
+
     # Privacy: resolved for every item before anything is written.
     resolutions = []
-    for item, fact in zip(result.items, facts):
+    for item, fact in zip(result.items, valid_facts):
         try:
             resolution = deps.add_fact.resolve_privacy(fact, data_path, db_path)
         except (privacy.PrivacyRulesError, DataFileError) as e:
@@ -152,7 +157,7 @@ def add_facts(deps, items, status="active", captured_via=DEFAULT_CAPTURED_VIA, s
         item.rule = resolution.explain()
 
     todo = []  # (item, fact, resolution) cleared by the mode gate
-    for item, fact, resolution in zip(result.items, facts, resolutions):
+    for item, fact, resolution in zip(result.items, valid_facts, resolutions):
         if session is not None:
             try:
                 stored = modes.check_write(session, resolution)
