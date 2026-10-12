@@ -45,7 +45,7 @@ from reviews_port import Reviews
 from revisions_port import Revisions
 from script_runner_port import ScriptRunner
 from subject_files_port import SubjectFiles
-from subject_repository_port import SubjectRepository
+from build_repositories_port import SubjectRepository
 
 
 def bind(fn: Callable, deps: Any) -> Callable:

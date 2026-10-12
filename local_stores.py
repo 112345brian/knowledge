@@ -7,7 +7,6 @@ import privacy_store
 import revisions_store
 import source_repository_store
 import subject_repository_store
-import subjects_store
 
 
 def load_privacy_rules(path):
@@ -24,10 +23,6 @@ def read_entities(path):
 
 def link_entities(con, entities):
     return entities_store.link_facts(con, entities)
-
-
-def read_subjects(path):
-    return subjects_store.read_file(path)
 
 
 def subject_repository(con):

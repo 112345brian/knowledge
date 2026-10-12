@@ -13,11 +13,12 @@ import subject_hierarchy_service
 
 
 def run(con, ctx):
-    entries = ctx.stores.read_subjects(ctx.locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
+    subjects = ctx.stores.subject_repository(con)
+    entries = subjects.read_file(ctx.locations.subjects_file())  # raises SubjectsError on a bad file: the build fails loudly
     if entries is None:
         print("[seed_subject_hierarchy] no subjects.json: no subject hierarchy loaded")
         return
-    deps = subject_hierarchy_service.HierarchyDeps(subjects=ctx.stores.subject_repository(con))
+    deps = subject_hierarchy_service.HierarchyDeps(subjects=subjects)
     tally = subject_hierarchy_service.load_hierarchy(deps, entries)
     con.commit()
     print(f"[seed_subject_hierarchy] {tally.with_parent} subjects now have a parent (subjects.json)")

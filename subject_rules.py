@@ -274,14 +274,6 @@ def deprecate(entries, subject, replaced_by=None, known=(), domain=None):
 # ------------------------------------------------------------------ the hierarchy decisions (what the build step loads)
 
 
-class AliasRefused(ValueError):
-    """An alias claim the store (or `refuse_alias`) will not take. `reason` is the short cause."""
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.reason = reason
-
-
 @dataclass(frozen=True)
 class SubjectPlan:
     """What one subjects.json entry says to store: where the subject sits, what it means, and the claims on it.

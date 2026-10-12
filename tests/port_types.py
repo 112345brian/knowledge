@@ -23,7 +23,7 @@ from revisions_port import Revisions
 from sql_runner_port import SqlRunner
 from review_reads_port import ReviewReads
 from subject_files_port import SubjectFiles
-from subject_repository_port import SubjectRepository
+from build_repositories_port import SubjectRepository
 from entity_link_table_port import EntityLinkTable
 from fact_privacy_table_port import FactPrivacyTable, PrivacyRulesReader
 from fact_revision_table_port import FactRevisionTable, RevisionLogReader
