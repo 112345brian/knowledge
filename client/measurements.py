@@ -21,13 +21,29 @@ import os
 from client import measurement_rules, measurements_service, measurements_store, snapshot_date, vault_reader_store
 
 
+class _Subjects:
+    """The two `SubjectRepository` members the load calls, over the subjects lane's repository."""
+
+    def __init__(self, subjects):
+        self._subjects = subjects
+
+    def find_by_name(self, name):
+        return self._subjects.find_subject(name)
+
+    def add(self, name, domain=None):
+        return self._subjects.create_subject(name, domain)
+
+
 def run(con, ctx):
     date = snapshot_date.read_snapshot_date(ctx.inputs, ctx.locations.private_data_dir)  # raises, naming the file, if it is not in the data
     notes_vault = ctx.locations.need("notes_vault", "NOTES_VAULT", "the measurements source")
     vault = vault_reader_store.SqliteVaultReader(ctx.inputs.open_database(os.path.join(notes_vault, "bodybuilding.db")))
     try:
         config = snapshot_date.read_config(ctx.inputs, ctx.locations.private_data_dir)
-        deps = measurements_service.MeasurementsDeps(vault=vault, repository=measurements_store.SqliteMeasurementRepository(con))
+        deps = measurements_service.MeasurementsDeps(
+            vault=vault, measurements=measurements_store.SqliteMeasurementRepository(con),
+            sources=ctx.stores.source_repository(con), subjects=_Subjects(ctx.stores.subject_repository(con)),
+            unit_of_work=con)
         summary = measurements_service.load_measurements(
             deps, snapshot_date=date, notes_vault=ctx.locations.notes_vault_stored, manual_sources=config["manual_sources"],
             scans=config["scans"])

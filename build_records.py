@@ -187,7 +187,7 @@ class NewMetric:
     key: str
     label: str
     unit: Optional[str]
-    good_direction: Optional[str]
+    good_direction: Optional[int]       # metrics.good_direction is INTEGER: 1 up is favorable, -1 down, 0/NULL neutral
 
 
 @dataclass(frozen=True)

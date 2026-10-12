@@ -221,9 +221,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `lifecycle_store` | infrastructure | rules + subject tree for the floor |
 | `lifecycle_reads_port` | domain service | interface for inputs used by lifecycle decisions |
 | `measurement_rules` | pipeline rules | vault rows to measurements |
-| `measurements_port` | domain service | interfaces for the measurement writes and the fact <-> measurement links |
-| `measurements_service` | pipeline use case | load the vault's readings, link facts to measurements, through ports (measurements source) |
-| `measurements_store` | infrastructure | SQLite measurement repository and fact-link queries |
+| `measurements_service` | pipeline use case | load the vault's readings, link facts to measurements, through the build repositories and the vault reader port (measurements source) |
+| `measurements_store` | infrastructure | SQLite `MeasurementRepository` and the fact-link members of `FactRepository` |
 | `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
 | `locks` | infrastructure | inter-process file lock for the data-file writers |
 | `migrate_memory` | composition root | binds migrate_memory_service |
