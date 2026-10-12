@@ -11,12 +11,12 @@ import add_fact
 import building
 import clock as clocks
 import entities
+import docs
 import facts_batch
 import lifecycle
 import local_datafiles
 import local_inputs
 import migrate_memory
-import music_export_store
 import paths
 import queries
 import review
@@ -49,11 +49,6 @@ class Container:
         """The data files a maintenance tool reads and rewrites: locked, atomic, byte-exact (`datafiles_port`)."""
         return local_datafiles
 
-    @property
-    def music_export(self):
-        """A fresh `MusicExportReads` over the built database; the caller closes it."""
-        return music_export_store.open_reads(self.locations.db_path)
-
     @cached_property
     def review(self):
         return review.compose(self.locations, self.clock)
@@ -85,6 +80,10 @@ class Container:
     @cached_property
     def subjects(self):
         return subjects.compose(self.locations)
+
+    def docs_at(self, root=None):
+        """Generated documentation use case, rooted at this checkout or an explicit repository copy."""
+        return docs.compose(root)
 
     @cached_property
     def queries(self):

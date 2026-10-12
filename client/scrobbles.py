@@ -15,10 +15,10 @@ string. There's no safe general rule for splitting those credits, so each
 string becomes its own artist row. Membership facts are curated separately
 in artist_members (seed_artist_members), not derived here.
 
-The work is `music_ingest_service.import_scrobbles`; this step composes it for the build connection
+The work is `music_service.import_scrobbles`; this step composes it for the build connection
 and prints what it reports.
 """
-import music_ingest
+from client import music_ingest
 
 
 def run(con, ctx):

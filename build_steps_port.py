@@ -13,7 +13,7 @@ Output contract (tests/test_build_characterization.py pins today's text per step
       indented detail lines) is `StepResult.lines`, in order; the runner emits them after `run()` returns.
 """
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Mapping, Protocol, Sequence, Tuple
 
 import inputs_port
 from build_repositories_port import BuildSession
@@ -29,8 +29,8 @@ class Diagnostics(Protocol):
 class StepResult:
     """What a step did. `lines` are the output lines in print order and contain exactly one summary line that
     starts with `[<step>] ` (the `[step] ...` line every step prints today); `counts` are the named tallies the
-    lines are built from, so a lane can assert numbers without parsing text. `skipped` is True for the branches
-    that return before doing the step's work (no subjects.json, scrobbles file not found, no entities.json)."""
+    lines are built from, so a lane can assert numbers without parsing text. `skipped` is True for a branch that
+    returns before doing the step's work."""
     step: str
     lines: Tuple[str, ...]
     counts: Mapping[str, int]
@@ -55,48 +55,12 @@ class BuildStep(Protocol):
 
 
 class StepError(Exception):
-    """A step failed; `stage` is its path in build_rules.PIPELINE (`ingest/facts.py`), `cause` the exception.
+    """A step failed; `stage` is its path in the pipeline (`ingest/facts.py`), `cause` the exception.
     Same two attributes and message shape as `build.BuildError`, which the build driver maps this to."""
     def __init__(self, stage: str, cause: BaseException):
         super().__init__(f"{stage}: {cause}")
         self.stage = stage
         self.cause = cause
-
-
-Row = Mapping[str, Any]
-
-
-class VaultReader(Protocol):
-    """The notes vault's own database (`bodybuilding.db`), read-only, one method per table the measurements step
-    reads, each returning rows as mappings keyed by column name (the rule functions in measurement_rules index
-    rows by name). Replaces the raw connection `inputs.open_database` handed the step. Rows come back in table
-    order; the two `*_columns` methods return the column names a row-to-measurements rule fans out over."""
-    def dexa_scan(self, date: str) -> Optional[Row]: ...
-    def bloodwork(self) -> Iterable[Row]: ...
-    def body_measurements(self) -> Iterable[Row]: ...
-    def latest_strength_checkpoint(self) -> Optional[Row]:
-        """The row with the greatest date, or None for an empty table."""
-    def nutrition_daily(self) -> Iterable[Row]: ...
-    def scale_readings(self) -> Iterable[Row]: ...
-    def renpho_scale_readings(self) -> Iterable[Row]: ...
-    def muscle_volume_columns(self) -> Sequence[str]:
-        """muscle_volume_weekly's columns except `date`, in table order (present even when the table is empty)."""
-    def muscle_volume_weekly(self) -> Iterable[Row]: ...
-    def workout_sets(self) -> Iterable[Row]: ...
-    def jefit_exercise_sets(self) -> Iterable[Row]: ...
-    def mfp_measurements(self) -> Iterable[Row]: ...
-    def mfp_exercise_log(self) -> Iterable[Row]: ...
-    def mfp_nutrition_log(self) -> Iterable[Row]: ...
-    def nutrition_food_log(self) -> Iterable[Row]: ...
-    def micronutrient_columns(self) -> Sequence[str]:
-        """micronutrients' columns except `date` and `source_file`."""
-    def micronutrients(self) -> Iterable[Row]: ...
-    def close(self) -> None: ...
-
-
-class VaultOpener(Protocol):
-    def open(self, notes_vault: str) -> VaultReader:
-        """Open `<notes_vault>/bodybuilding.db`; raises if the file cannot be opened."""
 
 
 @dataclass(frozen=True)
@@ -107,7 +71,6 @@ class StepEnvironment:
     locations: Locations
     inputs: inputs_port.Inputs
     diagnostics: Diagnostics
-    vault: Optional[VaultOpener] = None
 
 
 StepFactory = Callable[[BuildSession, StepEnvironment], BuildStep]

@@ -112,19 +112,22 @@ def sources_of(tmp_path, extra_lines, names=NAMES):
         f.write(extra_lines)
     env = dict(os.environ)
     env.pop("KNOWLEDGE_PRIVATE_DIR", None)
-    r = subprocess.run([sys.executable, "-c", "import paths; l = paths.load(); print(l.client_sources, l.client_sources_implicit, l.concerts_csv)"],
+    r = subprocess.run([sys.executable, "-c", "import paths; l = paths.load(); print(l.client_sources, l.client_sources_declared, l.client_input('CONCERTS_CSV'))"],
                        cwd=code, env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     return r.stdout.strip()
 
 
 def test_client_sources_are_taken_as_written(tmp_path):
-    assert sources_of(tmp_path, "CLIENT_SOURCES = ('scrobbles', 'claims')\n") == "('scrobbles', 'claims') False concerts_csv"
+    assert sources_of(tmp_path, "CLIENT_SOURCES = ('scrobbles', 'claims')\n") == "('scrobbles', 'claims') True concerts_csv"
 
 
 def test_a_config_with_the_music_inputs_but_no_client_sources_is_assumed_to_want_everything(tmp_path):
-    out = sources_of(tmp_path, "")
-    assert out == "('concerts', 'ratings', 'scrobbles', 'measurements', 'claims') True concerts_csv"
+    """`paths` only reports that nothing was declared; which sources that implies is the client's registration."""
+    import client_bootstrap
+    assert sources_of(tmp_path, "") == "() False concerts_csv"
+    assert client_bootstrap.registry().implicit_sources(["CONCERTS_CSV"]) == (
+        "concerts", "ratings", "scrobbles", "measurements", "claims")
 
 
 def test_a_config_without_music_inputs_and_without_client_sources_builds_the_core_only(tmp_path):
@@ -133,11 +136,10 @@ def test_a_config_without_music_inputs_and_without_client_sources_builds_the_cor
 
 
 def test_an_explicitly_empty_list_means_the_core_only_even_with_music_inputs(tmp_path):
-    assert sources_of(tmp_path, "CLIENT_SOURCES = ()\n") == "() False concerts_csv"
+    assert sources_of(tmp_path, "CLIENT_SOURCES = ()\n") == "() True concerts_csv"
 
 
-def test_the_assumed_list_is_every_known_source():
-    import build_rules
-    text = open(os.path.join(REPO, "paths.py")).read()
-    assert '("concerts", "ratings", "scrobbles", "measurements", "claims")' in text
-    assert tuple(build_rules.CLIENT_SOURCES) == ("concerts", "ratings", "scrobbles", "measurements", "claims")
+def test_the_assumed_list_is_every_registered_source():
+    import client_bootstrap
+    registry = client_bootstrap.registry()
+    assert set(registry.implicit_sources(["CONCERTS_CSV"])) == set(registry.names)

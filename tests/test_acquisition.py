@@ -150,7 +150,7 @@ def test_it_only_ever_runs_read_only_xattr_argv_shapes(tmp_path):
 
 
 def test_tilde_paths_are_expanded(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KNOWLEDGE_HOME", str(tmp_path))
     calls = []
     aq.read_attributes("~/v/n.pdf", run=fake_run({}, calls), platform_ok=True)
     assert calls[0] == ["xattr", str(tmp_path / "v" / "n.pdf")]

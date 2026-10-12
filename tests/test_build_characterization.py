@@ -10,6 +10,7 @@ The expectations below are the observed behaviour, including oddities a lane mus
 marked "kept as is"). Regenerate the golden file only for a deliberate behaviour change:
     REGENERATE_STEP_GOLDEN=1 uv run pytest tests/test_build_characterization.py -k golden
 """
+import client_bootstrap
 import json
 import os
 
@@ -72,8 +73,8 @@ def variant(tmp_path_factory):
 
 def test_the_step_order_is_build_rules_steps_for(baseline):
     import build_rules
-    assert build_rules.steps_for(ALL_SOURCES) == FULL_ORDER
-    assert build_rules.steps_for(()) == CORE_ORDER
+    assert client_bootstrap.registry().steps_for(ALL_SOURCES) == FULL_ORDER
+    assert client_bootstrap.registry().steps_for(()) == CORE_ORDER
     assert baseline.order == FULL_ORDER        # and build.build ran exactly that, once each, in that order
 
 
@@ -86,7 +87,7 @@ def test_the_step_order_is_build_rules_steps_for(baseline):
 ])
 def test_each_client_source_adds_its_steps_at_fixed_places(enabled, extra):
     import build_rules
-    got = build_rules.steps_for((enabled,))
+    got = client_bootstrap.registry().steps_for((enabled,))
     assert [p for p in got if p not in CORE_ORDER] == extra
     assert [p for p in got if p in CORE_ORDER] == CORE_ORDER      # the core order is the same either way
     assert [p for p in FULL_ORDER if p in got] == got              # and the relative order is the full order's
@@ -95,7 +96,7 @@ def test_each_client_source_adds_its_steps_at_fixed_places(enabled, extra):
 def test_every_pipeline_path_is_a_module_with_run_con_ctx():
     import ast
     import build_rules
-    for path, _ in build_rules.PIPELINE:
+    for path in client_bootstrap.registry().all_steps():
         tree = ast.parse(open(os.path.join(REPO, path), encoding="utf-8").read())
         runs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run"]
         assert runs, f"{path} has no module-level run()"

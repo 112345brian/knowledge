@@ -14,3 +14,4 @@ class StepContext:
     locations: Locations
     inputs: Any
     stores: Any
+    clients: Any = None

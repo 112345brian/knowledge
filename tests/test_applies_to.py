@@ -4,6 +4,7 @@ NULL means unknown and is distinct from an explicit "general"; blank/whitespace 
 it is a mutable revision field, part of the facts FTS, shown by show/search, privacy-scanned like the other
 free-text fields, and included in the normal-only DB and the modes row shapes.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -244,7 +245,7 @@ def test_normal_db_includes_applies_to_scans_it_and_indexes_it():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET applies_to = 'example population' WHERE id = 1")
@@ -253,7 +254,7 @@ def test_normal_db_includes_applies_to_scans_it_and_indexes_it():
         c.commit()
         c.close()
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert con.execute("SELECT applies_to FROM facts WHERE id = 1").fetchone()[0] == "example population"
         assert con.execute("SELECT COUNT(*) FROM facts WHERE id = 2").fetchone()[0] == 0   # keyword in applies_to: left out
         assert [r[0] for r in con.execute("SELECT rowid FROM facts_fts WHERE facts_fts MATCH 'example population'")] == [1]

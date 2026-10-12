@@ -5,8 +5,9 @@ record into the history and then makes the facts row follow the LATEST revision 
 carries, and how the `superseded_by` source key becomes a fact id. The store only writes what these functions
 return; it decides nothing.
 """
-from typing import Dict, Iterable, List, Mapping, Tuple
+from typing import Dict, Iterable, Mapping, Sequence, Tuple
 
+import build_records as r
 import revisions
 from fact_entry import MUTABLE_FIELDS
 
@@ -14,31 +15,30 @@ from fact_entry import MUTABLE_FIELDS
 STATE_FIELDS = tuple("superseded_by_fact_id" if f == "superseded_by" else f for f in MUTABLE_FIELDS)
 
 
-def latest_by_key(records: Iterable[Tuple[int, dict]]) -> Dict[str, dict]:
+def latest_by_key(records: Iterable[Tuple[int, Mapping[str, object]]]) -> Dict[str, Mapping[str, object]]:
     """{source_key: its last record in the log}, keys in order of first appearance."""
-    latest: Dict[str, dict] = {}
+    latest: Dict[str, Mapping[str, object]] = {}
     for _, rec in records:
-        latest[rec["source_key"]] = rec
+        latest[str(rec["source_key"])] = rec
     return latest
 
 
-def current_state(rec: Mapping, fact_ids: Mapping[str, int]) -> dict:
-    """The values the facts row takes from revision `rec`; `superseded_by` is resolved to the replacement's fact id."""
-    state = {f: rec[f] for f in MUTABLE_FIELDS if f != "superseded_by"}
-    state["superseded_by_fact_id"] = fact_ids[rec["superseded_by"]] if rec["superseded_by"] else None
-    return state
+def write_back(fact_id: r.FactId, rec: Mapping[str, object], fact_ids: Mapping[str, r.FactId]) -> r.RevisionWriteBack:
+    """What the facts row takes from revision `rec`; `superseded_by` is resolved to the replacement's fact id."""
+    replacement_key = rec["superseded_by"]
+    replacement = fact_ids[str(replacement_key)] if replacement_key else None
+    return r.RevisionWriteBack(fact_id, rec, replacement)
 
 
-def originals_view(originals: Mapping[str, Mapping]) -> Tuple[Dict[str, str], Dict[str, str], Dict[str, dict]]:
-    """(changed_at, freshness, legacy-inherited fields) by source key, from the revision-1 rows the store returns:
-    the three things `validate_sequence` and the log parser need to know about each fact's original entry."""
-    first = {k: v["changed_at"] for k, v in originals.items()}
-    fresh = {k: v["freshness"] for k, v in originals.items()}
-    base = {k: {f: v[f] for f in revisions.LEGACY_INHERITED} for k, v in originals.items()}
-    return first, fresh, base
+def inherited_by_key(firsts: Mapping[str, r.FirstRevision]) -> Dict[str, dict]:
+    """{source_key: the legacy-inherited fields of its original entry}: what the log parser needs to fill a
+    pre-#39 line that lacks them."""
+    return {k: dict(v.inherited) for k, v in firsts.items()}
 
 
-def validate(path: str, records: List[Tuple[int, dict]], fact_ids: Mapping[str, int], originals: Mapping[str, Mapping]) -> None:
+def validate(path: str, records: Sequence[Tuple[int, Mapping[str, object]]], fact_ids: Mapping[str, r.FactId],
+             firsts: Mapping[str, r.FirstRevision]) -> None:
     """Raise RevisionError (naming `path:line`) unless the log is a valid continuation of the originals."""
-    first, fresh, _ = originals_view(originals)
+    first = {k: v.changed_at for k, v in firsts.items()}
+    fresh = {k: v.freshness for k, v in firsts.items()}
     revisions.validate_sequence(path, records, first, set(fact_ids), fresh)

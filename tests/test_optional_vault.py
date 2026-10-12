@@ -3,6 +3,7 @@
 A checkout with only a database directory and a private data directory must load and build the core. The
 vault is `NOTES_VAULT` (the old `BODYBUILDING_VAULT` still works); a step that needs a missing path says which
 setting to define instead of formatting `None` into a path."""
+import client_bootstrap
 import os
 import re
 import sys
@@ -65,10 +66,10 @@ def test_a_placeholder_with_no_setting_names_the_setting_to_define():
 def test_the_vault_input_is_listed_only_when_a_vault_is_configured():
     import build_info_store
     from locations import Locations
-    without = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data"))
+    without = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data"), client_bootstrap.registry())
     assert not [k for k, _ in without if k.endswith("vault-db")]
-    with_vault = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v"))
-    assert ("input:vault-db", os.path.join("/v", "bodybuilding.db")) in with_vault
+    with_vault = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v"), client_bootstrap.registry())
+    assert ("input:vault-db", "/v/bodybuilding.db") in with_vault      # a POSIX fake joins as POSIX on every host
 
 
 def test_no_vault_means_no_citation_notes():

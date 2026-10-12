@@ -580,11 +580,11 @@ FACT_READERS_ALLOWED = {
     "leak_scan_store.py",
     # SQLite adapter that reads the full db rows the normal db is built from and writes the normal db; build-time only
     "normal_db_store.py",
-    # builds the entity link table (and entity_tools below edits files only); the build pipeline writes it, never serves it
-    "entities_store.py", "link_entities.py",
+    # builds the entity link table: the build's EntityRepository adapter reads each fact's text (it replaced the
+    # SQL that sat in entities_store.link_facts); the build pipeline writes it, never serves it
+    "entity_repository_store.py", "link_entities.py",
     # the SQLite adapters of the build-time revision, privacy-floor and entity-link passes (they moved out of revisions_store,
     # privacy_store and entities_store); the build pipeline drives them, they never serve
-    "fact_tables_store.py",
     # links facts to the measurements they cite at build time (the `measurements` client source)
     "link_fact_measurements.py",
     # links facts to the measurements they cite at build time (the `measurements` client source; the fact-id
@@ -610,6 +610,8 @@ FACT_READERS_ALLOWED = {
     "fact_queries.py",
     # names the tables the build report counts, reads none
     "build_rules.py",
+    # Client bootstrap declares table names and report order only; it reads no fact rows.
+    "bootstrap.py",
 }
 FACT_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:facts|fact_revisions|claim_facts)\b"

@@ -37,7 +37,7 @@ def clean(files, csv_path, stdout=None):
 def main():
     from container import Container
     app = Container()
-    csv_path = app.locations.concerts_csv
+    csv_path = app.locations.client_input("CONCERTS_CSV")
     if csv_path is None:
         sys.exit("error: CONCERTS_CSV is not set in local_paths.py (the `concerts` client source is not configured)")
     clean(app.datafiles, csv_path)

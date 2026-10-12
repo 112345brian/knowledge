@@ -31,103 +31,23 @@ class NormalBuildError(BuildError):
 # The stages that are not a step file: where in the build a BuildError can come from besides the steps.
 STAGES = ("config", "open", "schema", "build_info", "finalize", "backup", "publish")
 
-# The optional client sources: data a given client may or may not have and want in knowledge.db. A checkout
-# enables the ones it uses with CLIENT_SOURCES in local_paths.py (see paths.py); the core pipeline needs none.
-#   concerts      a concerts CSV                                   (CONCERTS_CSV)
-#   ratings       a RateYourMusic ratings export                   (RYM_EXPORT_CSV)
-#   scrobbles     a Last.fm scrobbles export                       (SCROBBLES_JSON)
-#   measurements  structured measurements from an optional local source
-#   claims        hand-authored claims from the private data directory
-# concerts, ratings and scrobbles share the artists tables, so the first one enabled brings client/music.sql.
-CLIENT_SOURCES = ("concerts", "ratings", "scrobbles", "measurements", "claims")
-MUSIC_SOURCES = ("concerts", "ratings", "scrobbles")
-
-# (schema file, the sources that need it): applied after schema.sql when any of its sources is enabled.
-SCHEMA_FRAGMENTS = (
-    ("client/music.sql", MUSIC_SOURCES),
-    ("client/measurements.sql", ("measurements",)),
+# Every core build step in run order. Paths are relative to the repo root. Client sources add their own steps
+# after one of these (or after each other) through `client_registry`; nothing here names one.
+CORE_PIPELINE = (
+    "ingest/seed_sources.py",
+    "ingest/literature_sources.py",
+    "ingest/facts.py",
+    "ingest/seed_subject_hierarchy.py",
+    "ingest/seed_general_facts.py",
+    "ingest/apply_fact_revisions.py",
+    "ingest/link_entities.py",
+    "ingest/link_source_relations.py",
 )
 
-# The local_paths.py name of the input file each source reads; a source whose path is not set cannot be built.
-REQUIRED_PATHS = {"concerts": "CONCERTS_CSV", "ratings": "RYM_EXPORT_CSV", "scrobbles": "SCROBBLES_JSON"}
-
-# Every build step in run order, with the client source(s) it belongs to: None = core, a name, or a tuple meaning
-# "any of these". Paths are relative to the repo root. A step runs when its source is None or enabled; the order
-# is the same either way.
-PIPELINE = (
-    ("ingest/seed_sources.py", None),
-    ("ingest/literature_sources.py", None),
-    ("client/measurements.py", "measurements"),
-    ("ingest/facts.py", None),
-    ("client/link_fact_measurements.py", "measurements"),
-    ("client/seed_claims.py", "claims"),
-    ("ingest/seed_subject_hierarchy.py", None),
-    ("client/concerts.py", "concerts"),
-    ("client/music_ratings.py", "ratings"),
-    ("client/scrobbles.py", "scrobbles"),
-    ("client/seed_artist_members.py", MUSIC_SOURCES),
-    ("ingest/seed_general_facts.py", None),
-    ("ingest/apply_fact_revisions.py", None),
-    ("ingest/link_entities.py", None),
-    ("ingest/link_source_relations.py", None),
-)
-
-REPORT_TABLES = ("sources", "authors", "source_authors", "publishers", "metrics", "measurements", "facts", "subjects",
-                 "vault_files", "source_identifiers", "build_info", "build_inputs", "source_relations", "entities", "entity_aliases", "fact_entities", "claims", "claim_facts", "fact_sources", "fact_revisions", "fact_measurements",
-                 "exercises", "training_sets", "foods", "food_log_entries", "meal_log_entries",
-                 "muscles", "muscle_volume_weekly",
-                 "artists", "artist_members", "venues", "festivals", "concert_attendances", "albums",
-                 "tracks", "import_sources", "scrobbles")
-
-
-def check_client_sources(names):
-    """`names` as a tuple, or ValueError naming an unknown or repeated source."""
-    names = tuple(names)
-    unknown = [n for n in names if n not in CLIENT_SOURCES]
-    if unknown:
-        raise ValueError(f"unknown client source(s) {unknown} in CLIENT_SOURCES; known: {list(CLIENT_SOURCES)}")
-    if len(set(names)) != len(names):
-        raise ValueError(f"CLIENT_SOURCES lists a source twice: {list(names)}")
-    return names
-
-
-def client_sources_note(sources, implicit=False):
-    """One line saying which optional client sources a build includes (and why, if that was a guess)."""
-    if not sources:
-        return "[build] client sources: none (core only; list them in CLIENT_SOURCES in local_paths.py)"
-    note = f"[build] client sources: {', '.join(sources)}"
-    if implicit:
-        note += ("  (assumed: local_paths.py defines the music inputs but no CLIENT_SOURCES; add "
-                 f"CLIENT_SOURCES = {tuple(sources)!r} to make this explicit)")
-    return note
-
-
-def _wanted(source, enabled):
-    return source is None or any(n in enabled for n in ((source,) if isinstance(source, str) else source))
-
-
-def steps_for(enabled):
-    """The step files to run, in order, for the enabled client sources."""
-    enabled = check_client_sources(enabled)
-    return [path for path, source in PIPELINE if _wanted(source, enabled)]
-
-
-def schema_files(enabled):
-    """The schema files to apply, in order: schema.sql, then the fragment of each enabled source."""
-    enabled = check_client_sources(enabled)
-    return ["schema.sql"] + [path for path, needed_by in SCHEMA_FRAGMENTS if _wanted(needed_by, enabled)]
-
-
-def missing_paths(enabled, defined):
-    """[(source, local_paths name)] for enabled sources whose input path is not set. `defined` is the set of
-    names that have a value."""
-    enabled = check_client_sources(enabled)
-    return [(n, REQUIRED_PATHS[n]) for n in enabled if n in REQUIRED_PATHS and REQUIRED_PATHS[n] not in set(defined)]
-
-
-def report_tables(existing):
-    """REPORT_TABLES that exist in the built db (a client without the music source has no `artists`)."""
-    return [t for t in REPORT_TABLES if t in set(existing)]
+# The tables the build report counts that the core schema creates, in report order; a client source adds its own.
+CORE_REPORT_TABLES = ("sources", "authors", "source_authors", "publishers", "facts", "subjects", "vault_files",
+                      "source_identifiers", "build_info", "build_inputs", "source_relations", "entities",
+                      "entity_aliases", "fact_entities", "claims", "claim_facts", "fact_sources", "fact_revisions")
 
 
 def backup_name(now):
@@ -166,8 +86,8 @@ def _backup_order(name):
 
 def backups_to_prune(names, keep=KEEP_BACKUPS):
     """Of the backup file names `names`, the ones to delete so only the `keep` most recent remain --
-    scrobbles pushed a routine backup from a few hundred KB to 20-45MB, so leaving these unpruned turns every
-    rebuild into unbounded disk growth."""
+    a large optional input can make a routine backup much bigger, so leaving these unpruned turns every rebuild
+    into unbounded disk growth."""
     backups = sorted((f for f in names if f.startswith(BACKUP_PREFIX)), key=_backup_order, reverse=True)
     return backups[keep:]
 

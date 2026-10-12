@@ -81,7 +81,8 @@ def load_general_entries(deps) -> List[EntryRef]:
     return decisions.entry_refs(items, FACTS_FILENAME)
 
 
-def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest_rules.NO_HINTS, warn=None) -> IngestReport:
+def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest_rules.NO_HINTS, warn=None,
+                   personal_fact_keys=()) -> IngestReport:
     """Load `entries` into the database `con` under `profile`; the report. A malformed entry, a duplicate key or a
     missing date raises ValueError (RevisionError for freshness, kind, validity, applies_to): the build fails.
     `warn(line)` receives a skipped entry's warning as it is found, so a build that fails later has already said it."""
@@ -102,7 +103,7 @@ def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest
             raise decisions.duplicate_key_error(screened)
         report.derived_keys += 0 if entry.has_own_key else 1
 
-        plan = decisions.plan_fact(screened, profile, hints, deps.locations.notes_vault_stored)
+        plan = decisions.plan_fact(screened, profile, hints, deps.locations.notes_vault_stored, personal_fact_keys)
         if plan.subject not in subjects:
             subjects[plan.subject] = deps.identity.subject_id(plan.subject, plan.domain, profile.resolve_aliases)
         subject_id = subjects[plan.subject]
@@ -130,10 +131,11 @@ def ingest_entries(deps, con, entries, profile: IngestProfile, hints=fact_ingest
     return report
 
 
-def ingest_fact_files(deps, con, warn=None) -> IngestReport:
+def ingest_fact_files(deps, con, warn=None, personal_fact_keys=()) -> IngestReport:
     """Load pilot_facts.json and facts_batch1-4.json (hand-authored, and extracted from the vault's notes)."""
     hints = read_hints(deps.inputs, deps.locations.in_data_dir(HINTS_FILENAME))   # the author's vault hints, or none
-    return ingest_entries(deps, con, load_fact_file_entries(deps), decisions.FACT_FILES, hints, warn)
+    return ingest_entries(deps, con, load_fact_file_entries(deps), decisions.FACT_FILES, hints, warn,
+                          personal_fact_keys)
 
 
 def ingest_general_facts(deps, con, warn=None) -> IngestReport:

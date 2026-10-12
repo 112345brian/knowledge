@@ -7,10 +7,10 @@ Runs after the artist imports so the member artists already exist
 from their own solo credits rather than being created fresh here with
 nothing else attached.
 
-The work is `music_ingest_service.seed_artist_members`; this step composes it for the build
+The work is `music_service.seed_artist_members`; this step composes it for the build
 connection and prints what it reports.
 """
-import music_ingest
+from client import music_ingest
 
 
 def run(con, ctx):

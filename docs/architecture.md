@@ -102,202 +102,239 @@ registers a handler in `building.register_steps`; the change that registers a ha
 path. A failure in any stage raises `BuildError(stage)`; the swap is one replace of a finished temp file; a failure
 after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 
-| Module | Role | What it is |
-| --- | --- | --- |
-| `acquisition_rules` | model | an acquisition record's vocabulary and validation (pure) |
-| `build_port` | domain service | ports of the rebuild: session factory, step registry, provenance reader, outputs (draft foundation contracts) |
-| `build_files_port` | domain service | port: the disk and process work of a database rebuild |
-| `cli_audits` | driving adapter | `audit-claims`, `build-info`, `audit-source-status`, `audit-sources` |
-| `cli_build` | driving adapter | `build`, `clean-concerts` |
-| `cli_common` | driving adapter | helpers and options shared by the knowledge.py command modules |
-| `cli_facts` | driving adapter | `search`, `show`, `history`, `subjects`, `facts` |
-| `cli_privacy` | driving adapter | `privacy ...` commands |
-| `cli_review` | driving adapter | `review-pending`, `approve`, `reject` |
-| `container` | composition root | wires every use case for one Locations; made by an entry point |
-| `datafiles_port` | domain service | port: the data files a maintenance tool reads and rewrites |
-| `fact_entry` | model | the fact entry and the revision record as types with behaviour (pure) |
-| `fact_reads_port` | domain service | read-side port: facts, history, audits, build info (no connection) |
-| `fact_reads_store` | infrastructure | one read-only connection per call over fact_queries / claims_store |
-| `fact_state` | model | a fact's lifecycle: Status, Visibility, FactState (pure) |
-| `fixity_rules` | model | a file fingerprint's vocabulary (pure) |
-| `inputs_port` | domain service | port: what a build step reads from outside the database |
-| `local_buildfiles` | infrastructure | the real disk, sqlite files and module loader (implements build_files_port) |
-| `music_export_port` | domain service | port: typed album, concert and artist records for the music-taste export |
-| `music_export_store` | infrastructure | the SQL behind the music-taste export (implements music_export_port) |
-| `local_datafiles` | infrastructure | the real files, the atomic writer and the lock (implements datafiles_port) |
-| `local_inputs` | infrastructure | the real file system, the vault db, fingerprints (implements inputs_port) |
-| `local_stores` | infrastructure | the privacy, entity, subject, revision, claims and source stores, by name (implements step_stores_port) |
-| `locations` | model | where the data lives, as one immutable value (pure) |
-| `pipeline_context` | model | what a build step is given besides its connection (a value, no I/O) |
-| `queries` | composition root | binds queries_service to fact_reads_store |
-| `queries_service` | application service | read side: search, list, show, history, audits, build info |
-| `script_runner_port` | domain service | port for running the standalone scripts as processes |
-| `scripts` | composition root | binds scripts_service to script_runner; a child is started for the container's checkout and fixed clock only |
-| `scripts_service` | application service | build and clean-concerts as a script run |
-| `seed_sources` | ETL adapter (driving, batch) | manual sources from `manual_sources.json` |
-| `literature_sources` | ETL adapter (driving, batch) | citation notes in the notes vault, parsed into sources |
-| `measurements` | ETL adapter (driving, batch) | numeric readings and lab results (measurements source) |
-| `facts` | ETL adapter (driving, batch) | hand-authored pilot and batch fact files (a step over fact_ingest) |
-| `seed_claims` | ETL adapter (driving, batch) | claims citing the facts that back them (claims source) |
-| `seed_subject_hierarchy` | ETL adapter (driving, batch) | subject parents, relation types, aliases, deprecations |
-| `concerts` | ETL adapter (driving, batch) | concerts CSV export (concerts source) |
-| `music_ratings` | ETL adapter (driving, batch) | ratings export (ratings source) |
-| `scrobbles` | ETL adapter (driving, batch) | scrobble export (scrobbles source) |
-| `seed_artist_members` | ETL adapter (driving, batch) | curated artist membership (music sources) |
-| `seed_general_facts` | ETL adapter (driving, batch) | ad hoc facts from `general_facts.json` (a step over fact_ingest) |
-| `apply_fact_revisions` | ETL adapter (driving, batch) | validates and applies the append-only revision log |
-| `link_entities` | ETL adapter (driving, batch) | loads entities and links facts to the entities they mention |
-| `link_source_relations` | ETL adapter (driving, batch) | source-to-source relations: replaces, is-version-of |
-| `shared` | ETL adapter (driving, batch) | helpers shared by the core ingest steps (authors, publishers, identifiers, hints) |
-| `acquisition_store` | infrastructure | custodial history from macOS file attributes (read-only xattr) |
-| `add_fact` | composition root | binds add_fact_service; the library API |
-| `cli_add_fact` | driving adapter | `knowledge.py add-fact` (#7) |
-| `add_fact_service` | application service | add one fact |
-| `add_fact_store` | infrastructure | locked JSON file, citekey/subject lookups |
-| `artist_rules` | domain service | artist aliases and the shape of artist_rules.json (pure) |
-| `backfill_dates` | ETL adapter (driving, batch) | one-time: `date_added` for legacy fact entries |
-| `backfill_extracted_hashes` | ETL adapter (driving, batch) | one-off: records fixity baselines |
-| `backfill_rules` | pipeline rules | key insertion into JSON text |
-| `backfill_snapshot_date` | ETL adapter (driving, batch) | one-time: writes measurements_snapshot.json (measurements source) |
-| `backfill_source_keys` | ETL adapter (driving, batch) | one-time: `source_key` for legacy fact entries |
-| `build` | ETL adapter (driving, batch) | runs the steps, swaps the db |
-| `build_info_store` | infrastructure | which inputs and code produced the db (implements the provenance reader port) |
-| `build_service` | application service | the rebuild: step order, failure naming, atomic publication, backups, normal-db generation |
-| `building` | composition root | binds build_service; owns the session factory and the composed step registry |
-| `build_rules` | domain service | step order, backups, BuildError (pure; the build use case imports it) |
-| `claims_audit` | domain service | staleness rules |
-| `claims_rules` | domain service | claim normalization and the premise-matching (LIKE) policy |
-| `claims_store` | infrastructure | claims audit SQL + claim/premise INSERTs (repository) |
-| `clean_concerts_csv` | ETL adapter (driving, batch) | idempotent cleanup of the concerts CSV (concerts source) |
-| `cli_entities` | driving adapter | entity commands (#42) |
-| `cli_facts_batch` | driving adapter | `knowledge.py add-facts` |
-| `cli_inbox` | driving adapter | `knowledge.py inbox` and `edit` |
-| `cli_lifecycle` | driving adapter | `knowledge.py supersede`, `retract`, `set-visibility` |
-| `cli_migrate` | driving adapter | `knowledge.py migrate-memory` |
-| `cli_parity` | driving adapter | CLI/serving parity registry (pure) |
-| `cli_sources` | driving adapter | source ids (#48) |
-| `cli_subjects` | driving adapter | subject commands (#43) |
-| `clock` | infrastructure | time |
-| `clock_port` | domain service | interface for time required by use cases |
-| `add_fact_port` | domain service | interface exposing single-fact operations to batch callers |
-| `entity_rules` | model | entity vocabulary, validation, matching and the pure edits (`add_entity`, `add_alias`, `set_private`, `find`); `entities_service` calls these directly |
-| `entities` | composition root | binds entity use cases to file, migration and query adapters |
-| `entity_files_port` | domain service | I/O only: read the entities file, save it atomically, the locked `edit_file` git flow |
-| `entity_migration_port` | domain service | interface for keyword migration |
-| `entity_queries_port` | domain service | interface for entity and subject read queries |
-| `entities_service` | application service | entity command operations |
-| `entity_queries_store` | infrastructure | entity/subject CLI read queries |
-| `entities_store` | infrastructure | entities.json: validation, linking, edits |
-| `entity_link_rules` | domain service | which facts mention which entities; a private mention must be stored private (pure) |
-| `entity_link_service` | application service | link facts to entities; refuse a private mention that is not stored private |
-| `entity_link_table_port` | domain service | port: the entity and link rows entity linking writes |
-| `fact_tables_store` | infrastructure | SQLite adapters for the revision, privacy-floor and entity-link ports |
-| `entity_migration_store` | infrastructure | keywords to private entities (two files at once) |
-| `export_music_taste` | ETL adapter (driving, batch) | exports the music dataset as one JSON file (music sources) |
-| `fact_ingest_rules` | domain service | fact-file ingest rules: which entries load, is_personal, origin note, date_added |
-| `fact_ingest_decisions` | domain service | the decisions both fact steps share: screening, keys, the row, the implicit revision, the report (pure) |
-| `fact_ingest_port` | domain service | ports the fact steps go through besides the build's repositories: identity, the revision write, the privacy floor |
-| `fact_ingest_service` | application service | load the fact files into facts, fact_sources, fact_revisions, through `build_repositories_port.FactRepository` and `identity_service` |
-| `fact_ingest_store` | infrastructure | `FactRepository` in SQLite (facts, fact_sources, fact_measurements), the revision write, the unit of work; decides nothing |
-| `fact_ingest` | composition root | binds fact_ingest_service to the adapters a build step is given |
-| `facts_file_port` | domain service | interface for the persisted fact file and its lookups |
-| `fact_queries` | infrastructure | CLI read-only SQL |
-| `fact_rules` | model | allowed values |
-| `facts_batch` | composition root | binds facts_batch_service |
-| `facts_batch_rules` | domain service | batch item rules |
-| `facts_batch_service` | application service | batch add |
-| `fixity_store` | infrastructure | file fingerprints and the changed-since-extraction audit |
-| `identifiers` | model | DOI / ISBN / ISSN / PMID / arXiv normalization (pure) |
-| `ids` | infrastructure | random source keys |
-| `ids_port` | domain service | interface for creating source identifiers |
-| `inbox` | driving adapter | HTTP review page |
-| `knowledge` | driving adapter | Typer app |
-| `leak_rules` | domain service | marker matching, derived markers from private rows, leak finding (pure) |
-| `leak_scan_store` | infrastructure | SQLite adapter: a database's cells and the full DB's private rows, read-only (implements LeakScan) |
-| `leak_test` | ETL adapter (driving, batch) | the fixture self-test and the real-build check (also a script) |
-| `lifecycle` | composition root | binds lifecycle_service |
-| `lifecycle_rules` | domain service | supersede/retract/visibility/edit decisions |
-| `lifecycle_service` | application service | supersede / retract / set-visibility / edit |
-| `lifecycle_store` | infrastructure | rules + subject tree for the floor |
-| `lifecycle_reads_port` | domain service | interface for inputs used by lifecycle decisions |
-| `measurement_rules` | pipeline rules | vault rows to measurements |
-| `measurements_port` | domain service | interfaces for the measurement writes and the fact <-> measurement links |
-| `measurements_service` | pipeline use case | load the vault's readings, link facts to measurements, through ports (measurements source) |
-| `measurements_store` | infrastructure | SQLite measurement repository and fact-link queries |
-| `link_fact_measurements` | ETL adapter (driving, batch) | links facts to the measurements they cite (measurements source) |
-| `locks` | infrastructure | inter-process file lock for the data-file writers |
-| `migrate_memory` | composition root | binds migrate_memory_service |
-| `migrate_memory_rules` | domain service | memory-file rules |
-| `migrate_memory_service` | application service | memory migration |
-| `migrate_memory_store` | infrastructure | memory files, run lock |
-| `memory_files_port` | domain service | interface for memory-file operations |
-| `modes` | domain service | mode policy, write gating |
-| `modes_store` | infrastructure | mode-filtered fact queries |
-| `music_ingest` | composition root | binds music_ingest_service to music_store for one build connection |
-| `music_ingest_rules` | domain service | concerts / RYM / Last.fm rules |
-| `music_ingest_service` | application service | concerts, ratings, scrobbles and artist members as services returning a StepResult; the per-run ArtistDirectory is the canonical artist identity |
-| `music_repository_port` | domain service | port: the music tables the client music steps write |
-| `music_store` | infrastructure | the music tables of the build database (implements music_repository_port) |
-| `new_fact` | domain service | NewFact + validation + build_entry |
-| `normal_db` | ETL adapter (driving, batch) | entry point: binds normal_db_service to the SQLite adapters and a BuildFiles (also a script) |
-| `normal_db_port` | domain service | ports: the full DB's rows in (`NormalSource`), the normal DB out (`NormalSink`), the leak scan's reads (`LeakScan`) |
-| `normal_db_service` | application service | builds the normal db, leak-checks it, swaps it in or removes the stale one |
-| `normal_db_store` | infrastructure | SQLite adapter: reads the full DB's rows, writes the normal DB (implements NormalSource and NormalSink) |
-| `normal_rules` | domain service | normal-tier whitelist and which rows may enter (pure) |
-| `paths` | infrastructure | personal paths |
-| `sql_runner_port` | domain service | port: run scripts and statements against a database file |
-| `sql_runner_store` | infrastructure | SQLite adapter for SqlRunner |
-| `step_stores_port` | domain service | port: the data files and table writers a build step uses |
-| `source_record` | model | a source as one validated value before it has a database id (pure) |
-| `subject_rules` | model | subjects as values: vocabulary, validation, pure edits, the hierarchy plan, name/alias identity; `subjects_service` calls these directly |
-| `wiring` | composition helper | `bind_all` / `verify`: checks adapters against their ports, publishes a service's functions bound |
-| `build_records` | domain service | the plain frozen values the build repositories exchange (pure) |
-| `build_repositories_port` | domain service | ports: one repository per aggregate for the database being built, plus `BuildSession` and the unit of work; see [build-contracts.md](build-contracts.md) |
-| `build_steps_port` | domain service | the bound-step shape (`run() -> StepResult`), diagnostics, the vault reader and the step environment |
-| `artist_directory` | domain service | the artists of one import run, keyed the one way artist names compare (the cache `identity_service` and `music_ingest_service` share) |
-| `identity_rules` | domain service | artist-name canonicalization, byline split, identifier-conflict warning (pure) |
-| `identity_service` | application service | the one definition of source, subject and artist identity for the build |
-| `build_composition` | composition root | opens a build session and binds the ordered pipeline to it |
-| `privacy` | domain service | visibility rules + resolver |
-| `privacy_store` | infrastructure | rules file, db apply |
-| `privacy_floor_service` | application service | apply the current privacy rules to a built database, raise-only |
-| `fact_privacy_table_port` | domain service | port: the rules reader and the subject/fact rows the privacy floor touches |
-| `privacy_rules_port` | domain service | interface for reading and editing privacy rules |
-| `private_edit_store` | infrastructure | load-edit-write-commit flow for hand-curated files |
-| `private_git` | infrastructure | git around knowledge-private |
-| `private_git_port` | domain service | protocol for operations application code needs from the private-data Git adapter |
-| `revisions_port` | domain service | interface for entries and the revision log |
-| `review_reads_port` | domain service | interface for review queue and fact-state reads |
-| `reviews_port` | domain service | interface exposing review operations to lifecycle |
-| `review` | composition root | binds review_service |
-| `review_rules` | domain service | review decisions |
-| `review_service` | application service | approve / reject |
-| `review_store` | infrastructure | pending rows, states |
-| `revisions` | domain service | entries, keys, log format, next revision |
-| `revisions_store` | infrastructure | entry files, log file, lock, db |
-| `revision_apply_rules` | domain service | what applying the revision log writes onto a fact (pure) |
-| `revision_apply_service` | application service | apply the log, then the privacy floor, then raise history of private facts |
-| `fact_revision_table_port` | domain service | port: the log reader and the facts/history rows a revision pass writes |
-| `rules_edit` | composition root | binds rules_edit_service; also the knowledge privacy commands' read access to the rules |
-| `rules_edit_service` | application service | edit privacy rules |
-| `script_runner` | infrastructure | starts the standalone scripts |
-| `snapshot_date` | ETL adapter (driving, batch) | snapshot date and configuration of the measurements load (measurements source) |
-| `source_ingest_rules` | pipeline rules | citation notes |
-| `source_ingest_service` | application service | store sources, validate and store their relations, record vault files (through `sources_port`) |
-| `source_readers` | ETL adapter (driving, batch) | composed readers: manual_sources.json and the vault notes as `SourceRecord`s |
-| `source_repository_store` | infrastructure | sources, publishers, authors, identifiers, relations and vault_files in SQLite (implements `sources_port`) |
-| `sources_port` | domain service | ports: `SourceReader` (where records come from) and `SourceRepository` (where they are kept) |
-| `source_status` | model | source status, relation checks, replacement chains |
-| `source_status_store` | infrastructure | the fact-to-source audit SQL |
-| `subjects` | composition root | binds subject use cases to file and query adapters |
-| `subjects_service` | application service | subject command operations |
-| `subjects_store` | infrastructure | subjects.json: hierarchy as data, aliases, edits |
-| `subject_files_port` | domain service | I/O only: read the subjects file, save it atomically, the locked `edit_file` git flow |
-| `subject_repository_port` | domain service | interface for the stored subjects: lookups, creation, placement, alias claims |
-| `subject_repository_store` | infrastructure | the stored subjects of a build database (implements subject_repository_port) |
-| `subject_hierarchy_service` | application service | loads the subject hierarchy and resolves the subject a fact is filed under |
-| `textmatch` | model | whole-word term matching |
-| `timestamps` | model | revision-time parsing |
-| `validtime` | model | valid-time dates: parsing, ordering, containment |
-| `vault_reader_port` | domain service | interface for reading the vault's database as typed records |
-| `vault_reader_store` | infrastructure | SQLite reader of the vault's database |
+<!-- generated:module-map:start -->
+<!-- Generated by `knowledge.py docs build` (generator: module-map). Do not edit by hand: change the code it is rendered from, then rebuild. -->
+
+| Module | Layer | Role | What it is |
+| --- | --- | --- | --- |
+| `inbox` | serving | driving adapter | Local review inbox (#33): a small web page for the pending queue (#6), standard library only. |
+| `cli_add_fact` | cli | driving adapter | `knowledge.py add-fact`: the Typer command over add_fact.record_fact (CLI-first rule #34). |
+| `cli_audits` | cli | driving adapter | `knowledge.py audit-claims \| build-info \| audit-source-status \| audit-sources`: the premise and provenance audits. |
+| `cli_build` | cli | driving adapter | `knowledge.py build` and registered client tools: commands that run a script (through `ctx.obj.scripts`). |
+| `cli_common` | cli | driving adapter | Helpers and option definitions shared by the knowledge.py command modules (cli_facts, cli_audits, cli_review, cli_privacy, cli_build)… |
+| `cli_docs` | cli | driving adapter | Typer commands for the generated docs (CLI-first rule #34): `docs build` rewrites them, `docs check` fails when stale. |
+| `cli_entities` | cli | driving adapter | Typer commands for entities (#42): `entity list\|show\|add\|alias\|tag\|untag\|migrate-keywords`. |
+| `cli_facts` | cli | driving adapter | `knowledge.py search \| show \| history \| subjects \| facts`: the read commands over the built db. |
+| `cli_facts_batch` | cli | driving adapter | `knowledge.py add-facts`: the Typer command over facts_batch.add_facts (#32, CLI-first rule #34). |
+| `cli_inbox` | cli | driving adapter | Typer commands for the inbox (#33): `inbox` (start the local server) and `edit`. |
+| `cli_lifecycle` | cli | driving adapter | Typer commands for the fact lifecycle (#8, #23): supersede, retract, set-visibility. |
+| `cli_migrate` | cli | driving adapter | Typer command `migrate-memory` (issue #29): a thin printer over migrate_memory.migrate(). |
+| `cli_parity` | cli | driving adapter | CLI-first parity registry (issue #34). |
+| `cli_privacy` | cli | driving adapter | `knowledge.py privacy check \| rules \| tag \| untag \| add-keyword \| remove-keyword`: the privacy rules. |
+| `cli_review` | cli | driving adapter | `knowledge.py review-pending \| approve \| reject`: the review queue. |
+| `cli_sources` | cli | driving adapter | Typer commands about sources (#48): `source ids CITEKEY`. |
+| `cli_subjects` | cli | driving adapter | Typer commands for the subject hierarchy (#43): `subject list\|show\|alias\|describe\|deprecate`. |
+| `knowledge` | cli | driving adapter | Single entry point for this repo (Typer CLI; run `uv sync` once, then `uv run python knowledge.py --help`). |
+| `apply_fact_revisions` | pipeline | ETL adapter (driving, batch) | Apply fact_revisions.jsonl (issue #30): validate the append-only revision log, insert revisions \>= 2 into `fact_revisions`, and write each… |
+| `backfill_dates` | pipeline | ETL adapter (driving, batch) | One-time backfill of `date_added` onto the legacy fact entries (issue #35). |
+| `backfill_extracted_hashes` | pipeline | ETL adapter (driving, batch) | One-time backfill of the fixity baseline `extracted_from_sha256` onto legacy fact entries (#38). |
+| `backfill_rules` | pipeline | pipeline rules | Byte-preserving backfill of keys into fact files, the rules (domain: no file, no lock). |
+| `backfill_source_keys` | pipeline | ETL adapter (driving, batch) | One-time backfill of `source_key` onto the legacy fact entries (issue #30). |
+| `build` | pipeline | ETL adapter (driving, batch) | Rebuild the configured knowledge database from scratch: schema + every seed/ingest script in this directory, in order. |
+| `facts` | pipeline | ETL adapter (driving, batch) | Load pilot_facts.json (hand-authored) plus facts_batch1-4.json (extracted by background agents reading the vault's notes) into `facts`… |
+| `leak_test` | pipeline | ETL adapter (driving, batch) | Leak test for knowledge-normal.db (#21). |
+| `link_entities` | pipeline | ETL adapter (driving, batch) | Load entities.json (#42) and link facts to the entities they mention. |
+| `link_source_relations` | pipeline | ETL adapter (driving, batch) | Load source-to-source relations (#41): `replaces` and `is-version-of`. |
+| `literature_sources` | pipeline | ETL adapter (driving, batch) | Parse every citation note's (sources/\*.md, see paths.py -\> NOTES_VAULT) frontmatter into a `sources` row. |
+| `normal_db` | pipeline | ETL adapter (driving, batch) | Build knowledge-normal.db (the entry point: it binds `normal_db_service` to the SQLite adapters; the whitelist and row decisions are in… |
+| `seed_general_facts` | pipeline | ETL adapter (driving, batch) | Load general_facts.json (in the private data directory, not this repo): ad hoc facts with no separate source database behind them (no… |
+| `seed_sources` | pipeline | ETL adapter (driving, batch) | Hand-authored/manual sources: the original pilot sources plus small manual instruments and deliberately-unlocatable carry-forwards that… |
+| `seed_subject_hierarchy` | pipeline | ETL adapter (driving, batch) | Load the subject hierarchy (#43): parents, relation types, descriptions, aliases, deprecations. |
+| `shared` | pipeline | ETL adapter (driving, batch) | Small helpers shared across the ingest scripts: the fact hints file and the generic get-or-create against a dimension table. |
+| `source_ingest_rules` | pipeline | pipeline rules | Source ingest rules (steps 01 and 02), domain: no file, no db. |
+| `source_readers` | pipeline | ETL adapter (driving, batch) | Composed source readers: objects that yield normalized `SourceRecord`s from manual_sources.json and from the vault's citation notes, so… |
+| `add_fact` | composition | composition root | Composition root for the single-fact use case: binds `add_fact_service` to the real adapters (the facts file, the privacy rules, git, the… |
+| `build_composition` | composition | composition root | Composition root of the build: opens a session and binds the ordered pipeline to it. |
+| `building` | composition | composition root | Composition root of the database rebuild: binds `build_service` to its adapters and owns the session factory and the step registry. |
+| `client_bootstrap` | composition | composition root | Composition: the one place the base looks for the client's registration, and the only place that does. |
+| `container` | composition | composition root | The composition root of the whole application: one object that wires every use case for one `Locations` and one `Clock`. |
+| `docs` | composition | composition root | Composition root for checking and rebuilding the generated documentation regions. |
+| `entities` | composition | composition root | Composition root for entity command use cases. |
+| `fact_ingest` | composition | composition root | The fact ingest (the facade: binds the use case in `fact_ingest_service` to the adapters a build step is given). |
+| `facts_batch` | composition | composition root | Batch add_facts (the facade: binds the use case in `facts_batch_service` to the real adapters and keeps the public API): the library… |
+| `lifecycle` | composition | composition root | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `migrate_memory` | composition | composition root | Import Claude Code memory files as private, pending facts (issue #29). |
+| `queries` | composition | composition root | Composition root for the read side: binds `queries_service` to the real read adapter (`fact_reads_store`). |
+| `review` | composition | composition root | Review of pending facts (#6): list the queue, approve or reject items. |
+| `rules_edit` | composition | composition root | Editing and reading the privacy rules file (#31): the facade (composition root) that binds the use case in `rules_edit_service` to the… |
+| `scripts` | composition | composition root | Composition root for the script-backed commands: binds `scripts_service` to `script_runner`. |
+| `subjects` | composition | composition root | Composition root for subject command use cases. |
+| `wiring` | composition | composition helper | Composition helper: verify a service's dependencies, then publish its functions with them bound. |
+| `acquisition_store` | infrastructure | infrastructure | Custodial history for sources and vault files (#46): when and how a file came into the collection. |
+| `add_fact_store` | infrastructure | infrastructure | Adapter for adding facts: the locked, atomically written JSON array file, plus the two db lookups (a source citekey, the subject tree). |
+| `build_info_store` | infrastructure | infrastructure | Build info and an inputs manifest (#47). |
+| `claims_store` | infrastructure | infrastructure | Adapter for claims: the stale-premise audit (#1) and the claims repository the build seeds through. |
+| `clock` | infrastructure | infrastructure | The system's clocks: where `Clock` (clock_port) is implemented. |
+| `docs_store` | infrastructure | infrastructure | Adapter for `DocsFiles`: reads and writes the repository's own docs and sources under one root directory. |
+| `entities_store` | infrastructure | infrastructure | Entities as first-class rows (#42): the people, organizations, places, projects and substances facts are about. |
+| `entity_migration_store` | infrastructure | infrastructure | Moving privacy keywords onto private entities (#42). |
+| `entity_queries_store` | infrastructure | infrastructure | Read-only entity and subject queries for the CLI. |
+| `entity_repository_store` | infrastructure | infrastructure | SQLite adapter for the build's `EntityRepository` (`build_repositories_port`): the entities file as values, the entity and alias rows, and… |
+| `fact_ingest_store` | infrastructure | infrastructure | SQLite adapters of the fact ingest: the part of `build_repositories_port.FactRepository` the ingest uses (not source-specific links) and… |
+| `fact_queries` | infrastructure | infrastructure | Adapter for reading the built knowledge.db: the queries behind `knowledge.py search\|facts\|show\|subjects` and the connection helpers. |
+| `fact_reads_store` | infrastructure | infrastructure | Adapter for `fact_reads_port.FactReads`: each read opens its own read-only connection to the built knowledge.db, runs one `fact_queries` /… |
+| `fixity_store` | infrastructure | infrastructure | File fixity and identity for source files (#38). |
+| `ids` | infrastructure | infrastructure | Adapter for fresh identifiers: a random source_key for a new fact (randomness is infrastructure, so the domain takes the key as an… |
+| `leak_scan_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.LeakScan`: it reads every cell of a normal DB and the private rows of the full DB, read-only. |
+| `lifecycle_store` | infrastructure | infrastructure | Adapter for the fact lifecycle (#8, #23, #33): what the decisions need from the outside world. |
+| `local_buildfiles` | infrastructure | infrastructure | Adapter for `build_files_port.BuildFiles`: the real disk, sqlite files and module loader. |
+| `local_datafiles` | infrastructure | infrastructure | Adapter for `datafiles_port.DataFiles`: the real files, the revisions store's array reader and atomic writer, and the inter-process lock… |
+| `local_inputs` | infrastructure | infrastructure | Adapter for `inputs_port.Inputs`: the real file system, the vault's sqlite database, and the file-fingerprint and acquisition-attribute… |
+| `local_stores` | infrastructure | infrastructure | Adapter for `step_stores_port.StepStores`: the privacy, entity, subject, revision, claims and source stores, by name. |
+| `locks` | infrastructure | infrastructure | Adapter for the inter-process file lock: the sidecar lock file and the exclusive lock on it (fcntl on POSIX, msvcrt on Windows). |
+| `migrate_memory_store` | infrastructure | infrastructure | Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the source keys already in the entry… |
+| `modes_store` | infrastructure | infrastructure | Adapter for the mode rules (#22): the SQL that applies `modes` to the knowledge db. |
+| `normal_db_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the normal DB. |
+| `paths` | infrastructure | infrastructure | Reads where this person's data lives from the private data checkout, once, at an entry point. |
+| `privacy_store` | infrastructure | infrastructure | Adapter for the privacy rules (driven side of the privacy domain). |
+| `private_edit_store` | infrastructure | infrastructure | The shared edit-and-commit flow for hand-curated JSON files in knowledge-private (#43, #42). |
+| `private_git` | infrastructure | infrastructure | Commit every mutation of the knowledge-private JSON files, so git is a reliable backup and safety net for them (issue #10). |
+| `review_store` | infrastructure | infrastructure | Adapter for review (#6): the reads behind the review queue. |
+| `revisions_store` | infrastructure | infrastructure | Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and the db. |
+| `script_runner` | infrastructure | infrastructure | Adapter for the standalone scripts (build.py and the client tools): `knowledge.py build` and each client tool are thin dispatches to them. |
+| `source_repository_store` | infrastructure | infrastructure | SQLite adapter for `build_repositories_port.SourceRepository`: the sources, publishers, authors, identifiers, relations and vault_files… |
+| `source_status_store` | infrastructure | infrastructure | Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. |
+| `sql_runner_store` | infrastructure | infrastructure | Adapter for `sql_runner_port.SqlRunner`: executes scripts and statements against a sqlite file. |
+| `subject_repository_store` | infrastructure | infrastructure | SQLite adapter for `build_repositories_port.SubjectRepository` over the build database's subjects tables. |
+| `subjects_store` | infrastructure | infrastructure | The subject hierarchy as data (#43). |
+| `add_fact_service` | application | application service | Append one ad hoc fact: the use case. |
+| `build_service` | application | application service | Rebuild the knowledge database: the use case behind `build.py` and `knowledge build`. |
+| `docs_service` | application | application service | Keep the generated regions of README.md and docs/\*.md in step with the code: `build` rewrites them, `check` reports drift. |
+| `entities_service` | application | application service | Entity command use cases. |
+| `entity_link_service` | application | application service | Link facts to the entities they mention in a built database (#42), and prove no private mention is public. |
+| `fact_ingest_service` | application | application service | The fact ingest (the use case, through the port protocols; `fact_ingest` binds it to the adapters). |
+| `facts_batch_service` | application | application service | Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the… |
+| `identity_service` | application | application service | The identity operations every build step shares: which source and which subject a name means. |
+| `lifecycle_service` | application | application service | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `migrate_memory_service` | application | application service | Import Claude Code memory files as private, pending facts (issue #29). |
+| `normal_db_service` | application | application service | Building the normal-tier database and checking it for leaks: the use case. |
+| `privacy_floor_service` | application | application service | Apply the CURRENT privacy rules to every fact and subject of a built database (the privacy floor, #31). |
+| `queries_service` | application | application service | The read side as an application service: look facts, subjects, history, audits and build info up through the `FactReads` port. |
+| `review_service` | application | application service | Review of pending facts (#6): list the queue, approve or reject items. |
+| `revision_apply_service` | application | application service | Apply the revision log to a built database, then re-assert the privacy floor (#30, #31). |
+| `rules_edit_service` | application | application service | Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag\|untag\|add-keyword\| remove-keyword`, mirroring add-fact's… |
+| `scripts_service` | application | application service | The commands that are a script run: rebuild the database, or a tool a client source ships. |
+| `source_ingest_service` | application | application service | Application service for loading sources: store the records a reader produced, validate and store their relations, and record the vault… |
+| `subject_hierarchy_service` | application | application service | Subject hierarchy use cases: load the hierarchy file's entries into the stored subjects, and find (or create) the subject a fact is filed… |
+| `subjects_service` | application | application service | Subject command use cases. |
+| `add_fact_port` | domain_services | domain service | Port exposing the single-fact use case to batch and migration flows. |
+| `build_files_port` | domain_services | domain service | Port for the file-system work of building, swapping and checking database files: reading the schema, loading step modules, making the… |
+| `build_port` | domain_services | domain service | Ports of the database rebuild that are not the file system (`build_files_port` is that one): the session a build writes through, the… |
+| `build_records` | domain_services | domain service | The plain values a build step and the build repositories exchange: the core's (sources, subjects, facts, revisions, privacy and entities. |
+| `build_repositories_port` | domain_services | domain service | Ports a build step uses to read and write the database being built: one repository per aggregate. |
+| `build_rules` | domain_services | domain service | Build pipeline rules, domain: no file, no db, no clock. |
+| `build_steps_port` | domain_services | domain service | The shape of a build step once it is bound to its dependencies: `run() -> StepResult`. |
+| `claims_audit` | domain_services | domain service | Stale-premise audit for claims (#1). |
+| `claims_rules` | domain_services | domain service | Claim normalization and the premise-matching policy for seeding claims (#44). |
+| `client_registry` | domain_services | domain service | What the build knows about optional client sources, as data the client hands it: domain, no file, no db. |
+| `clock_port` | domain_services | domain service | Port for the application's clock. |
+| `datafiles_port` | domain_services | domain service | Port for the data files a maintenance tool reads and rewrites: locked, atomic, byte-exact. |
+| `docs_files_port` | domain_services | domain service | Port for the files the documentation generator reads and writes: the docs, the two config files, and every module's source. |
+| `docs_rules` | domain_services | domain service | Generated documentation, the rules: which doc regions are rendered from code, and how (domain: no file, no import of the code it describes). |
+| `entity_files_port` | domain_services | domain service | Port for the persisted entity file: the I/O only. |
+| `entity_link_rules` | domain_services | domain service | Which facts mention which entities, and the invariant that a private mention is stored private (pure). |
+| `entity_migration_port` | domain_services | domain service | Port for migrating privacy keywords into private entities. |
+| `entity_migration_rules` | domain_services | domain service | Moving privacy keywords onto private entities (#42): what the migration changes, and the proof it never lowers privacy (pure). |
+| `entity_queries_port` | domain_services | domain service | Read port for entity links and subject hierarchy query results. |
+| `fact_ingest_decisions` | domain_services | domain service | The decisions of the fact ingest (pilot/batch files and general_facts.json), domain: no file, no db. |
+| `fact_ingest_port` | domain_services | domain service | Ports of the fact ingest that are not the build's repositories: which subject and vault file a name or path means, the revision a loaded… |
+| `fact_ingest_rules` | domain_services | domain service | Fact ingest rules (steps 04 and 11), domain: no file, no db. |
+| `fact_reads_port` | domain_services | domain service | Port for reading the built knowledge.db: what `knowledge.py search\|facts\|show\|subjects\|history\|audit-*\|build-info` need, without a… |
+| `facts_batch_rules` | domain_services | domain service | Batch add_facts, the rules (domain: no file, db, git, clock or mode state). |
+| `facts_file_port` | domain_services | domain service | Port for the persisted fact-entry file and its validation lookups. |
+| `identity_rules` | domain_services | domain service | Identity rules the build shares, pure: how names and keys are normalized before they are compared. |
+| `ids_port` | domain_services | domain service | Port for creating fresh source identifiers. |
+| `inputs_port` | domain_services | domain service | Port for what a build step reads from outside the database: files, the vault's own database and their fingerprints. |
+| `leak_rules` | domain_services | domain service | Leak test rules (domain: no sqlite, no files). |
+| `lifecycle_reads_port` | domain_services | domain service | Read port for inputs used by lifecycle decisions. |
+| `lifecycle_rules` | domain_services | domain service | Fact lifecycle (#8, #23, #33), the rules: result types and the pure decisions. |
+| `memory_files_port` | domain_services | domain service | Port for discovering and reading source memory files. |
+| `migrate_memory_rules` | domain_services | domain service | Import Claude Code memory files as private, pending facts (issue #29), the rules (domain: no file, db, git, clock or lock). |
+| `modes` | domain_services | domain service | Issue #22: the mode rules (domain), plus set_mode. |
+| `new_fact` | domain_services | domain service | A new fact, the rules (domain: no file, db, clock or randomness). |
+| `normal_db_port` | domain_services | domain service | Ports for building the normal-tier database: what is read from the full DB, what is written to the normal one, and what the leak check… |
+| `normal_rules` | domain_services | domain service | The normal tier's whitelist, the rules (domain: no sqlite, no files). |
+| `privacy` | domain_services | domain service | Deterministic privacy rules (issue #31). |
+| `privacy_rules_port` | domain_services | domain service | Port for reading and editing the persisted privacy rules (the CLI services' side). |
+| `private_git_port` | domain_services | domain service | Application boundary for Git operations on the private data repository. |
+| `review_reads_port` | domain_services | domain service | Read port for the pending review queue and current fact states. |
+| `review_rules` | domain_services | domain service | Review of pending facts (#6), the rules: result types and the pure decisions behind the queue. |
+| `reviews_port` | domain_services | domain service | Port exposing review operations to lifecycle use cases. |
+| `revision_apply_rules` | domain_services | domain service | What applying the revision log to a built database means (pure; domain service). |
+| `revisions` | domain_services | domain service | Fact revisions (#30): an append-only log of changes to facts, queryable as history. |
+| `revisions_port` | domain_services | domain service | Port for persisted entries and the append-only revision log's writer. |
+| `script_runner_port` | domain_services | domain service | Port for starting this repo's standalone scripts and tools as separate processes. |
+| `sources_port` | domain_services | domain service | Port for sources: where normalized source records come from. |
+| `sql_runner_port` | domain_services | domain service | Port for running SQL against a database file by path: the leak self-test's fixture builder and its marker-injection step. |
+| `step_stores_port` | domain_services | domain service | Port for the data a build step loads from the private data files and the table writers that belong with them. |
+| `subject_files_port` | domain_services | domain service | Port for editing the persisted subject hierarchy: the I/O only. |
+| `acquisition_rules` | model | model | What a source's acquisition record may hold (when, how, from where, a note): the vocabulary and the validation of the data-supplied… |
+| `entity_rules` | model | model | Entities as values: the vocabulary, the validation of an entities file, matching and the pure edits. |
+| `fact_entry` | model | model | The fact entry and the revision record as types with behaviour. |
+| `fact_rules` | model | model | Pure vocabulary shared by the fact-writing modules (domain: no I/O). |
+| `fact_state` | model | model | A fact's lifecycle as types with behaviour: `Status`, `Visibility` and `FactState`. |
+| `fixity_rules` | model | model | What a file fingerprint may hold: the vocabulary of a fixity record, free of how a file is read or hashed. |
+| `identifiers` | model | model | Persistent identifiers for sources (#48): DOI, ISBN, ISSN, PMID, arXiv and `other`, normalized so the same work cannot hide behind two… |
+| `locations` | model | model | Where this person's data lives, as one immutable value. |
+| `pipeline_context` | model | model | What a build step is given besides its database connection: where the data lives and how to read it. |
+| `source_record` | model | model | A source as one value: what the build knows about a citable work before it has a database id. |
+| `source_status` | model | model | Source status over time, editions and source-to-source relations (#41). |
+| `subject_rules` | model | model | Subjects as values: the vocabulary, the validation of a subjects file, canonical-name resolution and the pure edits. |
+| `textmatch` | model | model | Literal whole-word term matching, shared by the privacy keyword list (#31) and entity aliases (#42). |
+| `timestamps` | model | model | Pure timestamp parsing for revision times (domain: no clock, no I/O). |
+| `validtime` | model | model | Valid time on facts (#40): when a fact was TRUE, as opposed to when it was recorded (date_added, revisions: transaction time). |
+| `artist_directory` | client | domain service | The artists of one import run, keyed the one way the build compares artist names. |
+| `artist_identity_service` | client | application service | The artist directory plus the configured group memberships, over the record-shaped music contract. |
+| `artist_rules` | client | pipeline rules | Pure helpers for canonicalizing names from optional music sources, and the reading of artist_rules.json. |
+| `backfill_snapshot_date` | client | ETL adapter (driving, batch) | One-time backfill of `measurements_snapshot.json` for the `measurements` client source (issue #35). |
+| `bootstrap` | client | composition root | The client's registration with the build: which sources exist here, where their steps run, what they need. |
+| `claims_port` | client | domain service | Port and records of the claims source's record-shaped repository contract. |
+| `clean_concerts_csv` | client | ETL adapter (driving, batch) | One-time (but re-runnable/idempotent) cleanup of the concerts export CSV (see paths.py -\> CONCERTS_CSV): - strips stray whitespace from… |
+| `concerts` | client | ETL adapter (driving, batch) | Ingest the concerts export CSV (see paths.py -\> CONCERTS_CSV) into the normalized artists / venues / festivals / concert_attendances tables. |
+| `export_music_taste` | client | ETL adapter (driving, batch) | Export the full music-taste dataset from knowledge.db as one JSON file: every rated album, per-artist rollups (albums rated + concerts… |
+| `link_fact_measurements` | client | ETL adapter (driving, batch) | Link facts to the measurements they cite (the `measurements` client source). |
+| `measurement_rules` | client | pipeline rules | Measurement ingest rules (step 03), domain: no vault db, no knowledge db. |
+| `measurements` | client | ETL adapter (driving, batch) | Ingest structured, repeatable numeric readings, lab results, manual measurements, activity summaries, and other local source records into… |
+| `measurements_port` | client | domain service | Port for what the measurements load writes into the knowledge database: the metrics, measurements, exercises, foods, muscles and the… |
+| `measurements_records` | client | domain service | The plain values of the measurements source's record-shaped repository contract (`measurements_port.MeasurementRepository`). |
+| `measurements_service` | client | application service | Measurements use cases: load a vault's numeric readings into the knowledge database, and link facts to the measurements they cite. |
+| `measurements_store` | client | infrastructure | SQLite adapters for the measurement aggregate of `build_repositories_port`: `MeasurementRepository` (the measurement, metric, exercise… |
+| `music_export_port` | client | domain service | Port for what the music-taste export reads: albums, concerts and per-artist rollups as typed records. |
+| `music_export_store` | client | infrastructure | Adapter for `music_export_port.MusicExportReads`: the SQL behind the music-taste export, run over the knowledge database at `db_path`. |
+| `music_ingest` | client | composition root | Composition root for the client music steps: binds `music_service` to the SQLite music adapter for the build connection a step is given. |
+| `music_ingest_rules` | client | pipeline rules | Music ingest rules (steps 07, 08, 09 and clean_concerts_csv), domain: no file, no db. |
+| `music_port` | client | domain service | Port for the music tables the client music steps write: artists, venues, festivals, attendances, albums, tracks, scrobbles and the import… |
+| `music_ratings` | client | ETL adapter (driving, batch) | Ingest the RYM ratings export (see paths.py -\> RYM_EXPORT_CSV) (a RateYourMusic ratings export) into the `albums` table, reusing the… |
+| `music_records` | client | domain service | The plain values of the music source's record-shaped repository contract (`music_port.MusicRepository`). |
+| `music_service` | client | application service | The music client steps as application services: the concerts CSV, the RYM ratings export, the Last.fm scrobble dump and the curated artist… |
+| `music_store` | client | infrastructure | SQLite adapter for `client.music_port.MusicRepository`: the music tables of the build database it is given. |
+| `scrobbles` | client | ETL adapter (driving, batch) | Ingest a Last.fm scrobble export into `tracks`/`scrobbles`, reusing `artists` (shared with concert_attendances/albums) for artist identity. |
+| `seed_artist_members` | client | ETL adapter (driving, batch) | Seed artist_members from the curated `members` of artist_rules.json -- e.g. |
+| `seed_claims` | client | ETL adapter (driving, batch) | Hand-authored broader claims, each citing the specific facts backing it. |
+| `snapshot_date` | client | ETL adapter (driving, batch) | The private-data inputs of the vault-db measurements load: the adapter that reads `measurements_snapshot.json` (the snapshot date, issue… |
+| `vault_reader_port` | client | domain service | Port for reading the vault's own database (the health/fitness vault's `bodybuilding.db`), as typed records. |
+| `vault_reader_store` | client | infrastructure | SQLite adapter for `vault_reader_port.VaultReader`: the vault's own database, read table by table. |
+<!-- generated:module-map:end -->
+
+## Base / client boundary
+
+The repository is a general-purpose machine that clients extend. Everything outside `client/` is the **base**
+(the core, `ingest/` and the build); `client/` holds the **optional sources** a checkout enables with
+`CLIENT_SOURCES` in its private `local_paths.py` (music: concerts, ratings, scrobbles; measurements; claims
+seeding). Direction is one way:
+
+- the base never imports `client.*` (shadow name `kn.<client module>`). Enforced by the import-linter contract
+  "The base (core and ingest) never imports a client source", by `tests/test_client_boundary.py` (an AST scan of every
+  non-client module) and by tach's deny-by-default `depends_on` (no base module lists a `client.*` path);
+- a client module may import core types (ids, `UnitOfWork`, `Locations`, ports of the core), so a client source is
+  onion-architected inside `client/` with client-owned ports (`client/music_port.py`, `client/music_records.py`,
+  `client/music_service.py`, `client/music_store.py`, ...);
+- the only seam from the base to a client source is data: `build_rules` lists the step files of each client source
+  and the build loads them from the registry; a client source's own composition root (`client/music_ingest.py`)
+  hands its ports to `wiring.bind_all(..., ports=...)`, so `wiring.PORT_PROTOCOLS` names no client port;
+- the core's build contract (`build_repositories_port`, `build_records`) is the sources, subjects, facts,
+  revisions, privacy and entities aggregates and the unit of work. `BuildSession` carries nothing of a client.
+
+The claims *audit* (`claims_audit`, `claims_rules`, `claims_store`, the `audit-claims` CLI) stays in the base: the
+`claims` and `claim_facts` tables are in the core `schema.sql` and the audit runs with `CLIENT_SOURCES=()`. Only the
+seeding of claims from a private `claims.json` (`client/seed_claims.py`) is a client source.

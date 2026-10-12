@@ -29,6 +29,7 @@ def _read(path):
 
 
 PACKAGES = ("ingest", "client")   # the sub-packages: ETL core, optional client sources
+TACH_PACKAGES = ("ingest",)       # the ones tach governs: client/ is the client's own and is excluded from tach.toml
 
 
 def _bare(name):
@@ -68,7 +69,7 @@ def test_git_only_runs_inside_private_git():
 
 MODEL = {"fact_rules", "timestamps", "validtime", "textmatch", "identifiers", "source_status", "entity_rules", "fact_state", "fact_entry", "locations", "pipeline_context", "fixity_rules", "acquisition_rules", "source_record", "subject_rules"}  # the innermost ring: imports nothing else
 PIPELINE_RULES = {"measurement_rules", "source_ingest_rules",
-                  "backfill_rules"}  # pure, but only the pipeline (or one person) uses them
+                  "backfill_rules", "artist_rules", "music_ingest_rules"}  # pure, but only the pipeline (or one client) uses them
 BUILD_TOOLING = {"normal_db", "leak_test"}  # the normal-db and leak-test entry points: pipeline adapters
 ONION_LAYERS = ("composition", "infrastructure", "application", "domain_services", "model")  # the library side of tach.toml, outermost first
 
@@ -84,6 +85,11 @@ def test_packages_hold_only_modules_tach_knows_under_their_package_name():
     seen = {f[:-3] for f in os.listdir(REPO) if f.endswith(".py")}
     for package, names in _package_modules().items():
         assert names, package
+        if package not in TACH_PACKAGES:
+            assert not any(m.startswith(package + ".") for m in raw), f"tach.toml lists {package}/ modules; it excludes them"
+            assert not seen & names, f"a module exists in both the repo root and {package}/: {sorted(seen & names)}"
+            seen |= names
+            continue
         assert {f"{package}.{n}" for n in names} <= raw, sorted(f"{package}.{n}" for n in names - {m.split('.', 1)[1] for m in raw if m.startswith(package + '.')})
         assert not seen & names, f"a module exists in both the repo root and {package}/: {sorted(seen & names)}"
         seen |= names
@@ -99,16 +105,73 @@ def test_nothing_in_ingest_imports_the_client_package():
             assert not any(m == "client" or m.startswith("client.") for m in mods), f"ingest/{name}.py imports {mods}"
 
 
+CLIENT_LAYERS = ("pipeline", "composition", "infrastructure", "application", "domain_services", "model")
+
+
+def _client_layer(stem):
+    if stem == "bootstrap" or stem.endswith("_ingest"):
+        return "composition"
+    if stem.endswith("_store"):
+        return "infrastructure"
+    if stem.endswith("_service"):
+        return "application"
+    if stem.endswith(("_port", "_records", "_rules")) or stem == "artist_directory":
+        return "domain_services"
+    return "pipeline"
+
+
+def _client_ring_violations(source, source_layer, known_layers):
+    import ast
+    tree = ast.parse(source)
+    source_rank = CLIENT_LAYERS.index(source_layer)
+    problems = []
+    for node in ast.walk(tree):
+        imported = []
+        if isinstance(node, ast.Import):
+            imported = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            imported = ([f"client.{a.name}" for a in node.names] if node.module == "client" else [node.module])
+        for name in imported:
+            root = name.split(".")[0]
+            target = "pipeline" if root == "ingest" else known_layers.get(root)
+            if root == "client" and len(name.split(".")) > 1:
+                target = _client_layer(name.split(".")[1])
+            if target is not None and CLIENT_LAYERS.index(target) < source_rank:
+                problems.append(f"imports outward to {name} ({target})")
+            elif root == "sqlite3" and source_rank > CLIENT_LAYERS.index("infrastructure"):
+                problems.append(f"imports sqlite3 from {source_layer}")
+    return problems
+
+
+def test_client_ring_rules_are_derived_without_a_client_config():
+    tach = _tach_modules(_read(TACH_TOML))
+    known = {name.split(".", 1)[-1]: row["layer"] for name, row in tach.items()}
+    problems = []
+    for stem in sorted(ac.client_stems(REPO)):
+        path = os.path.join(REPO, "client", stem + ".py")
+        problems.extend(f"client/{stem}.py: {problem}" for problem in
+                        _client_ring_violations(_read(path), _client_layer(stem), known))
+    assert problems == [], "client ring violations:\n" + "\n".join(problems)
+
+
+def test_client_ring_rules_flag_outward_imports_without_registration():
+    assert _client_ring_violations("import sqlite3", "application", {})
+    assert _client_ring_violations("from client import foo_store", "application", {})
+    assert _client_ring_violations("import json", "application", {}) == []
+
+
 def test_every_module_is_classified_in_both_configs():
     """A new top-level module must pick a layer in tach.toml AND appear in the import-linter
     contracts (tach's root_module=forbid catches the first; this catches the second)."""
     contracts = _il_contracts(_read(PYPROJECT))
     up = contracts["libraries-never-import-upward"]
     classified = {m.split(".", 1)[1] for m in up["source_modules"] + up["forbidden_modules"]}
-    importable = set(ac.importable_stems(REPO))
-    assert importable == classified, (
+    client = set(ac.client_stems(REPO))
+    importable = set(ac.importable_stems(REPO)) - client       # client/ is the client's own: nothing there must be listed
+    assert importable == classified - client, (
         f"modules missing from import-linter contracts: {sorted(importable - classified)}; "
-        f"stale entries: {sorted(classified - importable)}")
+        f"stale entries: {sorted(classified - client - importable)}")
+    assert classified & client <= set(ac.importable_stems(REPO))
     tach = _tach_modules(_read(TACH_TOML))
     assert importable <= set(tach), f"modules missing from tach.toml: {sorted(importable - set(tach))}"
 
@@ -122,9 +185,10 @@ def test_configs_agree_on_what_a_library_is(enable):
         t, p = ac.enable_planned(t), ac.enable_planned(p)
     tach_libs = {n for n, m in _tach_modules(t).items() if m["layer"] in ONION_LAYERS or n in PIPELINE_RULES or n in BUILD_TOOLING}
     c = _il_contracts(p)
-    up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]}
+    client = set(ac.client_stems(REPO))      # listed in the contracts for the shipped sources, not in tach.toml
+    up = {m.split(".", 1)[1] for m in c["libraries-never-import-upward"]["source_modules"]} - client
     assert up == tach_libs
-    ty = {m.split(".", 1)[1] for m in c["typer-only-in-knowledge"]["source_modules"]}
+    ty = {m.split(".", 1)[1] for m in c["typer-only-in-knowledge"]["source_modules"]} - client
     serving = {n for n, m in _tach_modules(t).items() if m["layer"] == "serving"}
     assert ty == tach_libs | serving | {"cli_parity"}
     assert "libraries-layered" not in c, "ring order has one source of truth: tach.toml's `layers`"
@@ -179,6 +243,11 @@ def tree(tmp_path):
         lines = [f"import {dep}" for dep in mod["depends_on"]]
         lines.append(BASELINE_CODE.get(name, ""))
         _module_path(d, name).write_text("\n".join(lines) + "\n")
+    # client/ is not in tach.toml, but the import-linter contracts name the shipped client modules: an empty stub each
+    for stem in ac.client_stems(REPO):
+        stub = d / "client" / f"{stem}.py"
+        if not stub.exists():
+            stub.write_text("")
     return d
 
 
@@ -528,6 +597,15 @@ CASES = [
      [("tach", ["fact_ingest_rules", "add_fact"]), ("import-linter", ["kn.fact_ingest_rules", "kn.add_fact"])]),
     ("domain-source-ingest-rules-imports-glob", "source_ingest_rules", "import glob",
      [("import-linter", ["kn.source_ingest_rules", "glob"])]),
+    # ---- the base / client boundary: nothing outside client/ imports a client source (the shadow's `kncore`)
+    ("base-imports-a-client-module", "privacy", "import music_store",   # a bare stem: only the shadow resolves it
+     [("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store", "BROKEN"])]),
+    ("base-imports-a-client-module-from-the-package", "privacy", "from client import music_store",
+     [("tach", ["privacy", "music_store"]), ("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store"])]),
+    ("base-imports-a-client-module-lazily", "build_service", "def f():\n    import client.music_service",
+     [("import-linter", ["never imports a client source", "kncore.build_service", "kn.music_service"])]),
+    ("base-ingest-step-imports-a-client-module", "seed_sources", "from client import music_records",
+     [("tach", ["seed_sources", "music_records"]), ("import-linter", ["never imports a client source", "kncore.seed_sources", "kn.music_records"])]),
     ("domain-music-ingest-rules-imports-pathlib", "music_ingest_rules", "from pathlib import Path",
      [("import-linter", ["kn.music_ingest_rules", "pathlib"])]),
     ("domain-measurement-rules-imports-sqlite", "measurement_rules", "import sqlite3",
@@ -540,8 +618,6 @@ CASES = [
      [("tach", ["build_rules", "clock"]), ("import-linter", ["kn.build_rules", "kn.clock"])]),
     ("domain-backfill-rules-imports-lock", "backfill_rules", "import add_fact_store",
      [("tach", ["backfill_rules", "add_fact_store"]), ("import-linter", ["kn.backfill_rules", "kn.add_fact_store"])]),
-    ("ingest-script-imports-a-store", "concerts", "import revisions_store",
-     [("tach", ["concerts", "revisions_store"])]),
     ("build-imports-a-use-case", "build", "import review_service",
      [("tach", ["build", "review_service"])]),
     ("adapter-imports-upward", "privacy_store", "import add_fact",
@@ -549,6 +625,13 @@ CASES = [
     ("serving-imports-privacy-adapter", "inbox", "import privacy_store",
      [("tach", ["inbox", "privacy_store"]), ("import-linter", ["only through modes", "kn.privacy_store"])]),
 ]
+
+
+# tach does not govern client/ (a client adds modules with no entry anywhere), so a case whose offending module lives
+# there can only expect import-linter, and a case that expected nothing else is gone.
+_CLIENT = ac.client_stems(REPO)
+CASES = [(i, m, code, [e for e in ex if not (m in _CLIENT and e[0] == "tach")]) for i, m, code, ex in CASES]
+CASES = [c for c in CASES if c[3]]
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c[0] for c in CASES])
@@ -623,18 +706,19 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
                       "identity_service", "source_ingest_service", "fact_ingest_service",
                       "privacy_floor_service", "entity_link_service", "revision_apply_service",
                       "measurements_service",
-                      "music_ingest_service",
+                      "music_service", "artist_identity_service",
                       "normal_db_service",
-                      "build_service"}   # the last is a client source's use case: it sits in the pipeline ring
+                      "build_service", "docs_service"}   # build_service is a client source's use case in the pipeline ring
 
 
 def _architecture_roles():
     roles = {}
     for line in _read(os.path.join(REPO, "docs", "architecture.md")).splitlines():
-        m = re.match(r"^\| `([A-Za-z0-9_]+)` \| ([^|]+?) \|", line)
-        if m:
-            assert m.group(1) not in roles, f"{m.group(1)} is listed twice in docs/architecture.md"
-            roles[m.group(1)] = m.group(2)
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and re.fullmatch(r"`[A-Za-z0-9_]+`", cells[0]):
+            name = cells[0][1:-1]
+            assert name not in roles, f"{name} is listed twice in docs/architecture.md"
+            roles[name] = cells[2]
     return roles
 
 
@@ -642,7 +726,10 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     """docs/architecture.md says what each module is; it must not drift from the code or the contracts."""
     roles = _architecture_roles()
     on_disk = set(ac.top_level_stems(REPO))
-    assert set(roles) == on_disk, f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk)}"
+    client = set(ac.client_stems(REPO))
+    on_disk -= client                      # client/ is the client's own: its modules need no row, shipped ones may have one
+    assert on_disk <= set(roles) and set(roles) - on_disk <= client, (
+        f"unclassified: {sorted(on_disk - set(roles))}; stale: {sorted(set(roles) - on_disk - client)}")
     contracts = _il_contracts(_read(PYPROJECT))
     domain = {m.split(".", 1)[1] for m in contracts["domain-has-no-infrastructure"]["source_modules"]}
     services = {m.split(".", 1)[1] for m in contracts["use-cases-depend-on-ports"]["source_modules"]}
@@ -650,7 +737,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r in ("application service", "pipeline use case")} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "building", "music_ingest", "build_composition", "fact_ingest"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "container", "building", "music_ingest", "build_composition", "fact_ingest", "client_bootstrap", "bootstrap", "docs"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",
@@ -672,6 +759,8 @@ def test_tach_layers_are_the_onion():
                 "composition helper": "composition"}
     tach = _tach_modules(cfg)
     for name, role in _architecture_roles().items():
+        if name not in tach:          # the client's own modules: tach does not govern client/
+            continue
         layer = tach[name]["layer"]
         if role == "driving adapter":
             assert layer in ("cli", "serving"), f"{name} is a driving adapter but tach has it in {layer}"
@@ -688,7 +777,8 @@ def test_model_ring_is_pinned_and_the_contract_forbids_every_other_module():
     forbidden = {m.split(".", 1)[1] for m in contract["forbidden_modules"]}
     tach_model = {n for n, m in _tach_modules(_read(TACH_TOML)).items() if m["layer"] == "model"}
     assert sources == tach_model == MODEL
-    assert forbidden == set(ac.importable_stems(REPO)) - MODEL
+    client = set(ac.client_stems(REPO))
+    assert forbidden - client == set(ac.importable_stems(REPO)) - client - MODEL
     assert "ignore_imports" not in contract
 
 
@@ -768,6 +858,18 @@ def test_build_steps_import_no_infrastructure_module():
     assert bad == {}, f"steps importing infrastructure: {bad}"
 
 
+def _layers():
+    """Each module's layer: tach.toml's, and for the client's own modules (which tach does not govern) the one their
+    row in docs/architecture.md names, so the I/O scans still know an infrastructure adapter when they see one."""
+    layers = {n: m["layer"] for n, m in _tach_modules(_read(TACH_TOML)).items()}
+    ring = {"infrastructure": "infrastructure", "composition root": "composition", "domain service": "domain_services",
+            "application service": "application"}
+    for name, role in _architecture_roles().items():
+        if name not in layers and role in ring:
+            layers[name] = ring[role]
+    return layers
+
+
 def test_raw_file_and_database_io_lives_only_in_adapters():
     """Every call that touches the disk, a sqlite file or a process (open, os file ops, sqlite3.connect, shutil,
     subprocess, tempfile) is in an infrastructure module. Nothing else does any: not the model, domain, application,
@@ -779,7 +881,7 @@ def test_raw_file_and_database_io_lives_only_in_adapters():
               "os.path.isdir", "os.path.getsize", "os.path.getmtime", "sqlite3.connect", "shutil.copy", "shutil.copy2",
               "shutil.move", "shutil.rmtree", "subprocess.run", "subprocess.call", "subprocess.Popen",
               "tempfile.gettempdir", "tempfile.TemporaryDirectory", "os.fdopen", "os.open", "Path"}
-    layer = {n: m["layer"] for n, m in _tach_modules(_read(TACH_TOML)).items()}
+    layer = _layers()
     offenders = []
     for name, tree in _all_source_trees():
         if layer.get(name) == "infrastructure":
@@ -818,9 +920,10 @@ def test_build_steps_do_no_file_or_database_io_of_their_own():
                     "os.path.isdir", "os.path.getsize", "os.path.getmtime", "sqlite3.connect", "shutil.copy",
                     "shutil.move", "shutil.rmtree", "subprocess.run", "subprocess.call", "Path"}
     steps, offenders = [], []
+    layer = _layers()
     for name, tree in _all_source_trees():
-        if name in ENTRY_POINTS or name.endswith("_rules"):
-            continue
+        if name in ENTRY_POINTS or name.endswith("_rules") or layer.get(name) == "infrastructure":
+            continue    # a client source's own adapter (client/*_store.py) is infrastructure, not a step
         path = ac._source_files(REPO)[name]
         if os.path.relpath(path, REPO).split(os.sep)[0] not in ("ingest", "client"):
             continue
@@ -865,7 +968,7 @@ def test_composition_roots_import_only_what_they_use():
     import ast
     roles = _architecture_roles()
     for name in sorted(n for n, r in roles.items() if r == "composition root"):
-        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        tree = ast.parse(_read(ac._source_files(REPO)[name]))
         imported = {}
         for node in tree.body:
             if isinstance(node, ast.Import):

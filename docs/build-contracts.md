@@ -13,7 +13,7 @@ architecture.md, the pinned lists in `tests/test_architecture.py`) is a separate
 | What a step decides: skip an item, validate, normalize, which subject/source/artist a name means, what to print | application and domain rules | the step itself, `identity_service`, `identity_rules`, `*_ingest_rules`, `measurement_rules`, `revisions`, `privacy`, ... |
 | What persistence is asked to do, in the knowledge base's words | ports | `build_repositories_port` (build database), `build_steps_port.VaultReader` (vault database), `inputs_port.Inputs` (files) |
 | The values exchanged | plain frozen records | `build_records` (plus the model's `Subject`, `Entity`, `privacy.Rules`) |
-| SQL, files, fingerprints, the sqlite connection and its transaction | infrastructure (the adapters a lane adds) | `*_store`, `local_*`, a `SessionOpener` |
+| SQL, files, fingerprints and the sqlite connection | infrastructure (the adapters a lane adds) | `*_store`, `local_*`, a `SessionOpener` |
 | Which adapter backs which port; one session per build; step order and binding | composition root | `build_composition` |
 | The ingest order, schema, build_info, printing, `BuildError`, swapping the file | pipeline driver | `build.py`, `build_rules` |
 
@@ -31,8 +31,8 @@ none executes SQL, hands out a cursor or a row. `BuildSession` holds one of each
 | `SourceRepository` | `citekeys`, `find`, `add(NewSource)` (publisher get-or-create inside), identifier owner/add/conflict, `link_author`, vault-file lookup/add/fixity, `add_relation`, `count_by_status` | `ingest/shared.py`, SQL in `seed_sources`, `literature_sources`, `link_source_relations`, `client/measurements.get_source_id` |
 | `SubjectRepository` | `find_by_name`, `find_by_alias`, `add(name, domain?)`, `ensure`, `ids_by_name`, `set_hierarchy`, `set_replacement`, `add_alias` (raises `AliasRejected`), counts, `read_file` | the three `get_or_create_subject`, `seed_subject_hierarchy.run_entries` |
 | `FactRepository` | `source_key_exists`, `find_by_source_key`, `add(NewFact)`, `link_source`, `link_measurements`, `tally(by)` | SQL in `facts`, `seed_general_facts`, `link_fact_measurements` |
-| `RevisionRepository` | `insert`, `fact_ids_by_source_key`, `first_revisions`, `read_log`, `write_back`, `count` | `revisions_store.insert_revision_row` / `apply_revisions` |
-| `PrivacyRepository` | `load_rules`, `apply_rules -> PrivacyOutcome`, `raise_history_of_private_facts` | `privacy_store.load_rules` / `apply_rules_to_db`, the UPDATE in `apply_fact_revisions` |
+| `RevisionRepository` | `insert`, `fact_ids_by_source_key`, `first_revisions`, `read_log`, `write_back`, `count` | `revisions_store.SqliteRevisionRepository` (`insert_revision_row` / `apply_revisions` remain as thin callers) |
+| `PrivacyRepository` | `load_rules`, `apply_rules -> PrivacyOutcome`, `raise_history_of_private_facts` | `privacy_store.SqlitePrivacyRepository` (`load_rules` / `apply_rules_to_db` remain as thin callers) |
 | `EntityRepository` | `read_file`, `add(Entity)`, `fact_texts`, `link_fact`, `fact_visibility` | `entities_store.read_file` / `link_facts` |
 | `MeasurementRepository` | `find_metric`, `add_metric`, `add`, `exercise`/`food`/`muscle` (get-or-create), `add_training_set`, `add_food_log_entry`, `add_meal_log_entry`, `add_muscle_volume`, `totals` | SQL in `client/measurements` |
 | `ClaimRepository` | `add`, `link_facts_by_prefix` | SQL in `client/seed_claims` |
@@ -40,13 +40,19 @@ none executes SQL, hands out a cursor or a row. `BuildSession` holds one of each
 | `UnitOfWork` | `commit()` | `con.commit()` |
 | `VaultReader` / `VaultOpener` (`build_steps_port`) | one method per vault table the measurements step reads | `inputs.open_database(...)` + `SELECT * FROM ...` |
 
+The pipeline's `build_port.BuildSession` still carries `con` and `context` while legacy batch steps run as
+`run(con, ctx)`; those are an explicit migration seam, not application-service ports. The pipeline service can
+commit only through `session.unit_of_work.commit()`. The repository `BuildSession` in
+`build_repositories_port` is the typed aggregate bundle and has no database handle.
+
 Adapter obligations (an adapter that breaks one fails the characterization or golden test):
 
 * Allocate ids in call order, one row per `add`/get-or-create call (the golden dump compares ids).
 * `add(NewSource)` get-or-creates the publisher *before* inserting the source; authors are linked by separate
   `link_author` calls after identifiers, as the steps do.
-* `apply_rules` does not commit; `RevisionRepository` work done by the legacy `apply_revisions` commits
-  internally (see acceptance doc: that is why `apply_fact_revisions` commits twice).
+* `apply_rules` and the repositories never commit; `revision_apply_service` commits through the `UnitOfWork`, once after the
+  log is applied and once after the privacy floor and the history raise (see acceptance doc: `apply_fact_revisions`
+  commits twice).
 * A document reader (`read_file`, `load_rules`, `read_log`) returns `None`/empty for an absent file and raises for
   a corrupt one, exactly like the store it delegates to.
 

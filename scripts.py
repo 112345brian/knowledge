@@ -3,7 +3,7 @@ import script_runner
 import scripts_service
 from wiring import bind_all
 
-API = ("build", "clean_concerts")
+API = ("build", "run_tool")
 
 
 def compose(locations, clock):

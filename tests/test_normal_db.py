@@ -282,6 +282,7 @@ def hooked(tmp_path, monkeypatch):
 
         def __init__(self, path):
             self.path = path
+            self.unit_of_work = self
 
         def apply_schema(self, sources):
             shutil.copy(fixture, self.path)

@@ -8,7 +8,8 @@ import pytest
 import subject_hierarchy_service as svc
 import subject_repository_store
 import subject_rules
-from subject_rules import AliasRefused, HierarchyTally
+from build_repositories_port import AliasRejected
+from subject_rules import HierarchyTally
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,50 +26,52 @@ class FakeSubjects:
         self.rows, self.aliases, self.log = {}, {}, []
         self._next = 1
         for name, domain in existing:
-            self.create_subject(name, domain)
+            self.add(name, domain)
         self.log.clear()
 
-    def find_subject(self, name):
+    def find_by_name(self, name):
         return self.rows[name]["id"] if name in self.rows else None
 
-    def find_alias(self, alias):
+    def find_by_alias(self, alias):
         return self.rows[self.aliases[alias]]["id"] if alias in self.aliases else None
 
-    def subject_ids(self):
+    def ids_by_name(self):
         return {n: r["id"] for n, r in self.rows.items()}
 
-    def alias_owners(self):
-        return dict(self.aliases)
-
-    def create_subject(self, name, domain=None):
+    def add(self, name, domain=None):
         self.log.append(("create", name, domain))
         self.rows[name] = {"id": self._next, "domain": domain or "health-and-fitness", "parent": None,
                            "relation": "broader", "description": None, "deprecated": False, "replaced_by": None}
         self._next += 1
         return self.rows[name]["id"]
 
-    def ensure_subject(self, name, domain):
+    def ensure(self, name, domain):
         if name not in self.rows:
-            self.create_subject(name, domain)
+            self.add(name, domain)
 
     def _by_id(self, i):
         return next(r for r in self.rows.values() if r["id"] == i)
 
-    def place(self, subject_id, parent_id, relation, description, deprecated):
+    def set_hierarchy(self, subject_id, parent_id, relation, description, deprecated):
         self.log.append(("place", subject_id, parent_id, relation))
         self._by_id(subject_id).update(parent=parent_id, relation=relation, description=description, deprecated=deprecated)
 
-    def replace_with(self, subject_id, replacement_id):
+    def set_replacement(self, subject_id, replacement_id):
         self._by_id(subject_id)["replaced_by"] = replacement_id
 
     def add_alias(self, subject_id, alias):
         if alias in self.rows or alias in self.aliases:
-            raise AliasRefused("alias collides with a subject name")
+            raise AliasRejected("alias collides with a subject name")
         self.aliases[alias] = next(n for n, r in self.rows.items() if r["id"] == subject_id)
 
-    def tally(self):
-        return HierarchyTally(sum(1 for r in self.rows.values() if r["parent"] is not None), len(self.aliases),
-                              sum(1 for r in self.rows.values() if r["deprecated"]))
+    def count_with_parent(self):
+        return sum(1 for r in self.rows.values() if r["parent"] is not None)
+
+    def count_aliases(self):
+        return len(self.aliases)
+
+    def count_deprecated(self):
+        return sum(1 for r in self.rows.values() if r["deprecated"])
 
 
 def deps(repo):
@@ -144,8 +147,8 @@ def test_alias_equal_to_a_stored_subject_name_is_refused_naming_both():
 
 def test_alias_claimed_by_another_subject_is_refused():
     repo = FakeSubjects()
-    repo.create_subject("one")
-    repo.add_alias(repo.find_subject("one"), "shared")
+    repo.add("one")
+    repo.add_alias(repo.find_by_name("one"), "shared")
     with pytest.raises(ValueError, match="alias 'shared' of 'two' cannot be loaded"):
         svc.load_hierarchy(deps(repo), [entry("two", aliases=["shared"])])
 
@@ -153,7 +156,7 @@ def test_alias_claimed_by_another_subject_is_refused():
 def test_a_refusal_from_the_adapter_is_reported_the_same_way():
     class Strict(FakeSubjects):
         def add_alias(self, subject_id, alias):
-            raise AliasRefused("UNIQUE constraint failed: subject_aliases.alias")
+            raise AliasRejected("UNIQUE constraint failed: subject_aliases.alias")
     with pytest.raises(ValueError, match=r"alias 'x' of 'a' cannot be loaded \(UNIQUE constraint failed"):
         svc.load_hierarchy(deps(Strict()), [entry("a", aliases=["x"])])
 
@@ -168,9 +171,9 @@ def test_loading_nothing_changes_nothing():
 
 def test_subject_for_fact_name_then_alias_then_create_with_a_cache():
     repo = FakeSubjects(existing=[("steroids", "health")])
-    repo.add_alias(repo.find_subject("steroids"), "aas")
+    repo.add_alias(repo.find_by_name("steroids"), "aas")
     cache = {}
-    sid = repo.find_subject("steroids")
+    sid = repo.find_by_name("steroids")
     assert svc.subject_for_fact(deps(repo), "steroids", None, cache) == sid
     assert svc.subject_for_fact(deps(repo), "aas", None, cache) == sid       # filed under the canonical subject
     assert "aas" not in repo.rows
@@ -210,27 +213,27 @@ def test_adapter_runs_the_same_load_as_the_fake(con):
     assert r["topic-a"][1] == "example" and r["detail"][2:4] == ("part-of", "sub") and r["old"][4] == 1
     assert con.execute("SELECT s.name FROM subjects s JOIN subjects o ON o.replaced_by_subject_id = s.id "
                        "WHERE o.name = 'old'").fetchone()[0] == "topic-a"
-    assert repo.alias_owners() == {"ta": "topic-a"}
+    assert con.execute("SELECT alias, subject_id FROM subject_aliases").fetchall() == [("ta", repo.find_by_name("topic-a"))]
 
 
 def test_adapter_lookups_and_creation(con):
     repo = subject_repository_store.SqliteSubjects(con)
-    assert repo.find_subject("x") is None and repo.find_alias("y") is None
-    sid = repo.create_subject("x")
-    assert repo.find_subject("x") == sid
+    assert repo.find_by_name("x") is None and repo.find_by_alias("y") is None
+    sid = repo.add("x")
+    assert repo.find_by_name("x") == sid
     assert con.execute("SELECT domain FROM subjects WHERE id = ?", (sid,)).fetchone()[0] == subject_rules.DEFAULT_DOMAIN
-    assert repo.create_subject("z", "general") != sid
+    assert repo.add("z", "general") != sid
     repo.add_alias(sid, "y")
-    assert repo.find_alias("y") == sid and repo.subject_ids() == {"x": sid, "z": sid + 1}
+    assert repo.find_by_alias("y") == sid and repo.ids_by_name() == {"x": sid, "z": sid + 1}
 
 
-def test_adapter_translates_trigger_and_unique_failures_to_alias_refused(con):
+def test_adapter_translates_trigger_and_unique_failures_to_alias_rejected(con):
     repo = subject_repository_store.SqliteSubjects(con)
-    a = repo.create_subject("a")
+    a = repo.add("a")
     repo.add_alias(a, "ay")
-    with pytest.raises(AliasRefused, match="collides"):
+    with pytest.raises(AliasRejected, match="collides"):
         repo.add_alias(a, "a")
-    with pytest.raises(AliasRefused, match="UNIQUE|constraint"):
+    with pytest.raises(AliasRejected, match="UNIQUE|constraint"):
         repo.add_alias(a, "ay")
 
 
@@ -242,8 +245,8 @@ def test_adapter_end_to_end_alias_refusal_message_matches_the_old_step(con):
     assert "it equals an existing subject name or another alias" in str(e.value)
 
 
-def test_adapter_ensure_subject_keeps_the_stored_domain(con):
+def test_adapter_ensure_keeps_the_stored_domain(con):
     repo = subject_repository_store.SqliteSubjects(con)
     con.execute("INSERT INTO subjects (name, domain) VALUES ('x', 'general')")
-    repo.ensure_subject("x", "music")
+    repo.ensure("x", "music")
     assert con.execute("SELECT domain FROM subjects WHERE name = 'x'").fetchone()[0] == "general"

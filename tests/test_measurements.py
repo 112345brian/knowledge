@@ -1,17 +1,23 @@
 """The measurements load and the fact links through their ports (no file, no vault db, no knowledge db):
-`measurements_service` against in-memory fakes of `vault_reader_port.VaultReader` and
-`measurements_port.MeasurementRepository`, then the SQLite adapters (`vault_reader_store`, `measurements_store`)
-against throwaway databases. The step-level behavior on a fixture vault is tests/test_measurements_dates.py and
-the pipeline golden."""
+`measurements_service` against the foundation's in-memory repositories (tests/fake_build_repositories.py) and a
+fake `vault_reader_port.VaultReader`, then the SQLite adapters (`vault_reader_store`, `measurements_store`)
+against throwaway databases. The step-level behavior on a fixture vault is tests/test_measurements_dates.py,
+tests/test_measurements_pins.py and the pipeline golden."""
 import ast
+import dataclasses
+import inspect
 import os
 import sqlite3
 
 import pytest
 
-from client import measurement_rules, measurements_service as svc, measurements_store, vault_reader_store  # noqa: E402
-from client.measurements_port import TableCounts  # noqa: E402
+import build_records as r  # noqa: E402
+from client.measurements_port import MeasurementRepository  # noqa: E402
+from client import measurements_records as mr  # noqa: E402
+from client import measurement_rules, measurements_service as svc, measurements_store, vault_reader_port, vault_reader_store  # noqa: E402
 from client.vault_reader_port import ColumnTable, FoodLog, JefitSet, MealLog, WorkoutSet  # noqa: E402
+from fake_build_repositories import FakeSources, FakeSubjects, FakeUnitOfWork  # noqa: E402
+from fake_client_repositories import FakeClientState as FakeState, FakeFactLinks, FakeMeasurements  # noqa: E402
 from schema_helper import REPO, full_schema  # noqa: E402
 
 SNAPSHOT = "2026-09-11"
@@ -54,95 +60,91 @@ class FakeVault:
     def close(self): self.closed = True
 
 
-class FakeRepository:
-    """A MeasurementRepository in memory. `events` is the ordered write log (kind, payload)."""
+class World:
+    """The foundation's in-memory repositories over one state, with the manual sources step 01 seeds already in."""
 
     def __init__(self, sources=None):
-        self.sources = dict(sources if sources is not None else {ck: n + 1 for n, ck in enumerate(MANUAL.values())})
-        self.dims = {k: {} for k in ("subject", "metric", "exercise", "food", "muscle")}
-        self.lookups = []
-        self.events = []
-        self.committed = 0
-        self.rows = {k: 0 for k in ("measurement", "training", "volume", "meal", "food")}
+        self.state = FakeState()
+        self.measurements = FakeMeasurements(self.state)
+        self.sources = FakeSources(self.state)
+        self.subjects = FakeSubjects(self.state)
+        self.unit_of_work = FakeUnitOfWork(self.state)
+        for citekey in (MANUAL.values() if sources is None else sources):
+            self.sources.add(r.NewSource(citekey=citekey, name=citekey, source_type="primary"))
+        self.state.operations.clear()
+
+    def deps(self, vault):
+        return svc.MeasurementsDeps(vault=vault, measurements=self.measurements, sources=self.sources,
+                                    subjects=self.subjects, unit_of_work=self.unit_of_work)
+
+    @property
+    def ops(self):
+        return self.state.operations
+
+    def metric(self, key):
+        return self.state.metrics[self.measurements.find_metric(key)]
 
     def source_id(self, citekey):
-        return self.sources.get(citekey)
-
-    def get_or_create_source(self, citekey, name, description, origin_path, retrieved_date, author):
-        self.events.append(("source", (citekey, retrieved_date, author, origin_path, description)))
-        return self.sources.setdefault(citekey, len(self.sources) + 1)
-
-    def _dim(self, kind, key):
-        self.lookups.append((kind, key))
-        return self.dims[kind].setdefault(key, len(self.dims[kind]) + 1)
-
-    def get_or_create_subject(self, name): return self._dim("subject", name)
-    def get_or_create_exercise(self, name): return self._dim("exercise", name)
-    def get_or_create_food(self, name): return self._dim("food", name)
-    def get_or_create_muscle(self, name): return self._dim("muscle", name)
-
-    def get_or_create_metric(self, key, unit, label, good_direction):
-        self.metric_args = getattr(self, "metric_args", {})
-        self.metric_args.setdefault(key, (unit, label, good_direction))
-        return self._dim("metric", key)
-
-    def add_measurement(self, r): self.rows["measurement"] += 1; self.events.append(("measurement", r))
-    def add_training_set(self, r): self.rows["training"] += 1; self.events.append(("training_set", r))
-    def add_muscle_volume(self, r): self.rows["volume"] += 1; self.events.append(("volume", r))
-    def add_meal_log_entry(self, r): self.rows["meal"] += 1; self.events.append(("meal", r))
-    def add_food_log_entry(self, r): self.rows["food"] += 1; self.events.append(("food", r))
-
-    def counts(self):
-        return TableCounts(self.rows["measurement"], self.rows["training"], self.rows["food"], self.rows["meal"],
-                           self.rows["volume"])
-
-    def commit(self): self.committed += 1
-
-    def of(self, kind):
-        return [p for k, p in self.events if k == kind]
+        return self.sources.find(citekey)
 
 
-def load(vault=None, repo=None, scans=(("2026-01-01", "dexa"),), sources=None):
+def load(vault=None, world=None, scans=(("2026-01-01", "dexa"),), sources=None):
     vault = vault if vault is not None else FakeVault(dexa={"2026-01-01": DEXA})
-    repo = repo if repo is not None else FakeRepository()
-    summary = svc.load_measurements(svc.MeasurementsDeps(vault=vault, repository=repo), snapshot_date=SNAPSHOT,
-                                    notes_vault="/vault", manual_sources=sources or MANUAL, scans=list(scans))
-    return summary, vault, repo
+    world = world if world is not None else World()
+    summary = svc.load_measurements(world.deps(vault), snapshot_date=SNAPSHOT, notes_vault="/vault",
+                                    manual_sources=sources or MANUAL, scans=list(scans))
+    return summary, vault, world
 
 
 # ---------------------------------------------------------------- the load, against fakes
 
 def test_a_scan_becomes_the_rules_readings_with_ids_resolved_and_the_snapshot_date_stamped():
-    _, _, repo = load()
+    _, _, w = load()
     expected = measurement_rules.dexa_measurements(DEXA, "2026-01-01", "dexa")
-    got = repo.of("measurement")
-    assert [(r.measured_at, r.value, r.trust_level, r.notes) for r in got] == \
+    got = w.state.measurements
+    assert [(m.measured_at, m.value, m.trust_level, m.notes) for m in got] == \
            [(m.measured_at, m.value, m.trust_level, m.notes) for m in expected]
-    assert {r.date_added for r in got} == {SNAPSHOT}
-    assert {r.source_id for r in got} == {repo.sources["ck-dexa"]}
-    assert repo.dims["metric"]["body_fat_pct"] == got[1].metric_id
-    assert repo.metric_args["body_fat_pct"] == ("%", "Body fat", -1)             # the curated label and direction
-    assert repo.metric_args["lmi"][1:] == ("LMI", None)
-    assert repo.committed == 1
+    assert {m.date_added for m in got} == {SNAPSHOT}
+    assert {m.source_id for m in got} == {w.source_id("ck-dexa")}
+    assert w.measurements.find_metric("body_fat_pct") == got[1].metric_id
+    fat, lmi = w.metric("body_fat_pct"), w.metric("lmi")
+    assert (fat.unit, fat.label, fat.good_direction) == ("%", "Body fat", -1)      # the curated label and direction
+    assert (lmi.label, lmi.good_direction) == ("LMI", None)
+    assert w.state.commits == 1
 
 
 def test_a_metric_without_curated_metadata_gets_the_generated_label():
     vault = FakeVault(dexa={"2026-01-01": DEXA}, micronutrients=ColumnTable(
         ("vitamin_d_iu",), [{"date": "2026-02-05", "vitamin_d_iu": 400}]))
-    _, _, repo = load(vault)
-    assert repo.metric_args["vitamin_d_iu"] == ("iu", "Vitamin d iu", None)
+    _, _, w = load(vault)
+    m = w.metric("vitamin_d_iu")
+    assert (m.unit, m.label, m.good_direction) == ("iu", "Vitamin d iu", None)
+
+
+class CountingMeasurements(FakeMeasurements):
+    def __init__(self, state):
+        super().__init__(state)
+        self.metric_lookups = []
+
+    def find_metric(self, key):
+        self.metric_lookups.append(key)
+        return super().find_metric(key)
 
 
 def test_the_per_run_caches_dedupe_lookups_within_a_run_and_do_not_survive_it():
+    tape = {c: None for c in measurement_rules.TAPE_COLUMNS if c != "waist_in"}
     vault = FakeVault(dexa={"2026-01-01": DEXA}, body_measurements=[
-        {"date": "2026-01-01", "waist_in": 32, **{c: None for c in measurement_rules.TAPE_COLUMNS if c != "waist_in"}},
-        {"date": "2026-01-08", "waist_in": 31.5, **{c: None for c in measurement_rules.TAPE_COLUMNS if c != "waist_in"}}])
-    _, _, repo = load(vault)
-    assert repo.lookups.count(("metric", "waist_in")) == 1                         # two readings, one lookup
-    assert repo.lookups.count(("subject", "body-composition")) == 1
-    n = len(repo.lookups)
-    load(vault, repo)                                                              # a second run on the same repository
-    assert len(repo.lookups) == 2 * n                                              # asks again: nothing was kept between runs
+        {"date": "2026-01-01", "waist_in": 32, **tape}, {"date": "2026-01-08", "waist_in": 31.5, **tape}])
+    w = World()
+    w.measurements = counting = CountingMeasurements(w.state)
+    load(vault, w)
+    assert counting.metric_lookups.count("waist_in") == 1                          # two readings, one lookup
+    assert w.ops.count(("subjects.add", "body-composition")) == 1
+    n = len(counting.metric_lookups)
+    load(vault, w)                                                                 # a second run on the same repositories
+    assert len(counting.metric_lookups) == 2 * n                                   # asks again: nothing was kept between runs
+    assert w.ops.count(("subjects.add", "body-composition")) == 1                  # and found what the first run made
+    assert [op[1] for op in w.ops if op[0] == "measurements.add_metric"] == [m.key for m in w.state.metrics.values()]
 
 
 def test_sources_are_created_in_the_original_order_between_the_readings():
@@ -155,23 +157,36 @@ def test_sources_are_created_in_the_original_order_between_the_readings():
                           "protein_g": None, "fat_g": None, "carbs_g": None, "expenditure_kcal": None}],
         muscle_volume_weekly=ColumnTable(("chest_sets",), [{"date": "2026-02-02", "chest_sets": 10}]),
         workout_sets=[WorkoutSet("2026-02-03", "Squat", 225, "lb", 5, 2, 0, None)])
-    _, _, repo = load(vault)
+    _, _, w = load(vault)
     order = []
-    for kind, payload in repo.events:
-        if kind == "source":
-            order.append(payload[0])
-        elif kind in ("measurement", "volume", "training_set") and (not order or order[-1] != kind):
-            order.append(kind)
+    kinds = {"measurements.add": "measurement", "measurements.add_muscle_volume": "volume",
+             "measurements.add_training_set": "training_set"}
+    for op in w.ops:
+        if op[0] == "sources.add":
+            order.append(op[1])
+        elif op[0] in kinds and (not order or order[-1] != kinds[op[0]]):
+            order.append(kinds[op[0]])
     # dexa + strength readings, then the four summary sources, nutrition reading, volume rows, then the raw sources
     assert order == ["measurement", "vault-db-nutrition-daily", "vault-db-scale-readings", "vault-db-scale-estimates",
                      "vault-db-muscle-volume-weekly", "measurement", "volume", "vault-db-workout-sets",
                      "vault-db-jefit-sets", "vault-db-mfp-measurements", "vault-db-mfp-exercise-log",
                      "vault-db-mfp-nutrition-log", "vault-db-nutrition-food-log", "vault-db-micronutrients",
                      "training_set"]
-    created = {p[0]: p for k, p in repo.events if k == "source"}
-    assert created["vault-db-nutrition-daily"][1:3] == (SNAPSHOT, "user")
-    assert created["vault-db-nutrition-daily"][3] == "/vault/source.db#nutrition_daily"
-    assert f"as of {SNAPSHOT}" in created["vault-db-nutrition-daily"][4]
+    created = {s.citekey: s for s in w.state.sources.values() if s.citekey.startswith("vault-db-")}
+    daily = created["vault-db-nutrition-daily"]
+    assert (daily.retrieved_date, daily.source_type) == (SNAPSHOT, "primary")
+    assert daily.origin_path == "/vault/source.db#nutrition_daily"
+    assert f"as of {SNAPSHOT}" in daily.description
+    assert set(w.state.authors) == {"user"} and len(w.state.source_authors) == len(created)
+
+
+def test_a_vault_source_that_is_already_stored_is_reused_not_recreated():
+    w = World()
+    load(world=w)
+    stored = dict(w.sources.citekeys())
+    links = len(w.state.source_authors)
+    load(world=w)
+    assert dict(w.sources.citekeys()) == stored and len(w.state.source_authors) == links
 
 
 def test_event_tables_apply_the_fallbacks_and_flags():
@@ -181,32 +196,43 @@ def test_event_tables_apply_the_fallbacks_and_flags():
                       WorkoutSet("2026-02-03", "Squat", 225, "kg", 5, 2, 0, None)],
         jefit_exercise_sets=[JefitSet("2020-01-01", None, 135, "kg", 5)],
         nutrition_food_log=[FoodLog("2026-02-05", "12:00", None, 1, "cup", 200, 1, 45, 4, 0)])
-    summary, _, repo = load(vault)
-    sets = repo.of("training_set")
+    summary, _, w = load(vault)
+    sets = w.state.training_sets
     assert [(s.weight_unit, s.is_warmup, s.rir, s.notes) for s in sets] == [("lb", 1, None, "warm"), ("kg", 0, 2, None),
                                                                            ("kg", 0, None, None)]
-    assert repo.dims["exercise"] == {"Unknown exercise": 1, "Squat": 2}
-    assert repo.dims["food"] == {"Unknown food": 1}
+    assert w.state.exercises == {"Unknown exercise": 1, "Squat": 2}
+    assert w.state.foods == {"Unknown food": 1}
     assert (summary.exercises, summary.foods, summary.training_sets, summary.food_log_entries) == (2, 1, 3, 1)
+
+
+def test_a_meal_log_row_carries_every_nutrient_by_column_name():
+    values = {c: float(i) for i, c in enumerate(svc.MEAL_LOG_NUTRIENTS, 1)}
+    vault = FakeVault(dexa={"2026-01-01": DEXA}, mfp_nutrition_log=[MealLog("2026-02-04", "Lunch", **values)])
+    _, _, w = load(vault)
+    [entry] = w.state.meal_log
+    assert (entry.measured_at, entry.meal, dict(entry.nutrients)) == ("2026-02-04", "Lunch", values)
+    assert entry.source_id == w.source_id("vault-db-mfp-nutrition-log")
+    assert [f.name for f in dataclasses.fields(MealLog)] == ["date", "meal", *svc.MEAL_LOG_NUTRIENTS]
+    assert measurements_store.MEAL_LOG_COLUMNS == svc.MEAL_LOG_NUTRIENTS
 
 
 def test_nulls_in_a_dynamic_column_table_are_skipped_and_an_empty_table_makes_nothing():
     vault = FakeVault(dexa={"2026-01-01": DEXA}, muscle_volume_weekly=ColumnTable(
         ("chest_sets", "upper_back_sets"), [{"date": "2026-02-02", "chest_sets": 10, "upper_back_sets": None}]),
         micronutrients=ColumnTable(("iron_mg", "zinc_mg"), [{"date": "2026-02-05", "iron_mg": None, "zinc_mg": 9}]))
-    _, _, repo = load(vault)
-    assert repo.dims["muscle"] == {"chest": 1}
-    assert [v.sets for v in repo.of("volume")] == [10]
-    assert [r for r in repo.dims["metric"] if r.endswith("_mg")] == ["zinc_mg"]
+    _, _, w = load(vault)
+    assert w.state.muscles == {"chest": 1}
+    assert [v.sets for v in w.state.muscle_volume] == [10]
+    assert [m.key for m in w.state.metrics.values() if m.key.endswith("_mg")] == ["zinc_mg"]
     _, _, empty = load(FakeVault(dexa={"2026-01-01": DEXA}, muscle_volume_weekly=ColumnTable(("chest_sets",), [])))
-    assert empty.dims["muscle"] == {} and empty.of("volume") == []
+    assert empty.state.muscles == {} and empty.state.muscle_volume == []
 
 
 def test_a_missing_manual_source_names_the_citekey_and_writes_nothing():
-    repo = FakeRepository(sources={"ck-dexa": 1})
+    w = World(sources=["ck-dexa"])
     with pytest.raises(RuntimeError, match="ck-lab.*seed_sources"):
-        load(repo=repo)
-    assert repo.events == [] and repo.committed == 0
+        load(world=w)
+    assert w.ops == [] and w.state.commits == 0
 
 
 def test_a_configured_scan_the_vault_lacks_fails_naming_its_date():
@@ -222,11 +248,13 @@ def test_a_reading_for_a_source_key_the_config_did_not_name_is_an_error_not_a_gu
 
 
 def test_the_summary_counts_this_run_and_matches_the_report_lines():
-    repo = FakeRepository()
-    repo.rows["measurement"] = 100          # rows an earlier load left: `inserted` is this run's only
-    summary, _, _ = load(repo=repo)
+    w = World()
+    for _ in range(100):                        # rows an earlier load left: `inserted` is this run's only
+        w.measurements.add(mr.NewMeasurement(r.SubjectId(1), mr.MetricId(1), 1, "2020-01-01", r.SourceId(1), "high",
+                                            None, "2020-01-01"))
+    summary, _, _ = load(world=w)
     n = len(measurement_rules.dexa_measurements(DEXA, "2026-01-01", "dexa"))
-    assert summary.inserted == repo.rows["measurement"] - 100 == n
+    assert summary.inserted == len(w.state.measurements) - 100 == n
     lines = measurement_rules.summary_lines(summary)
     assert lines[0] == f"[measurements] inserted {n} measurement rows (3 subjects, {n} metrics touched)"
     assert lines[1].startswith("  plus 0 training_sets (0 exercises), 0 food_log_entries (0 foods), 0 meal_log_entries, 0 muscle_volume_weekly rows (0 muscles)")
@@ -236,11 +264,16 @@ def test_the_summary_counts_this_run_and_matches_the_report_lines():
 
 class FakeLinks:
     def __init__(self, facts, per_metric=3):
-        self.facts, self.per_metric, self.linked, self.committed = facts, per_metric, [], 0
+        self.facts, self.per_metric, self.linked = facts, per_metric, []
 
-    def fact_id(self, source_key): return self.facts.get(source_key)
-    def link_metric(self, fact_id, metric_key): self.linked.append((fact_id, metric_key)); return self.per_metric
-    def commit(self): self.committed += 1
+    def find_by_source_key(self, source_key): return self.facts.get(source_key)
+    def link_measurements(self, fact_id, metric_key): self.linked.append((fact_id, metric_key)); return self.per_metric
+
+
+def link(links, items):
+    state = FakeState()
+    linked = svc.link_fact_measurements(svc.FactLinksDeps(facts=links, unit_of_work=FakeUnitOfWork(state)), items)
+    return linked, state.commits
 
 
 def test_facts_are_linked_to_the_metric_they_cite_and_invalid_or_unloaded_ones_are_skipped():
@@ -250,15 +283,26 @@ def test_facts_are_linked_to_the_metric_they_cite_and_invalid_or_unloaded_ones_a
              {"_source_key": "x", "measurement_metric_link": "weight_lb"},             # the facts step skipped it
              {"_source_key": "b", "measurement_metric_link": ""},
              {"_source_key": "b", "measurement_metric_link": "waist_in"}]
-    assert svc.link_fact_measurements(svc.FactLinksDeps(links=links), items) == 6
+    assert link(links, items) == (6, 1)
     assert links.linked == [(1, "weight_lb"), (2, "waist_in")]
-    assert links.committed == 1
 
 
 def test_no_items_commits_once_and_links_nothing():
-    links = FakeLinks({})
-    assert svc.link_fact_measurements(svc.FactLinksDeps(links=links), []) == 0
-    assert links.committed == 1
+    assert link(FakeLinks({}), []) == (0, 1)
+
+
+def test_the_in_memory_fact_links_answer_the_link_step():
+    """The two members the step calls: the fake links the way the SQLite adapter does (one row per measurement)."""
+    state = FakeState()
+    measurements = FakeMeasurements(state)
+    metric = measurements.add_metric(mr.NewMetric("weight_lb", "Total weight", "lb", 1))
+    for day in ("2026-01-01", "2026-01-02"):
+        measurements.add(mr.NewMeasurement(r.SubjectId(1), metric, 1.0, day, r.SourceId(1), "high", None, SNAPSHOT))
+    state.facts[1] = type("F", (), {"source_key": "p-1"})()
+    linked, commits = link(FakeFactLinks(state), [{"_source_key": "p-1", "measurement_metric_link": "weight_lb"},
+                                              {"_source_key": "p-9", "measurement_metric_link": "weight_lb"}])
+    assert (linked, commits) == (2, 1)
+    assert state.fact_measurements == [(1, "weight_lb"), (1, "weight_lb")]
 
 
 # ---------------------------------------------------------------- guards
@@ -280,6 +324,18 @@ def test_every_driver_of_the_load_uses_the_summary_it_returns():
         for n in ast.walk(tree):
             if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute):
                 assert n.value.func.attr not in ("load_measurements", "link_fact_measurements"), f"{name}:{n.lineno} discards the result"
+
+
+def test_no_module_defines_a_second_measurement_repository():
+    """One contract for the measurement tables, in the client's own port; the fact link is the service's `FactLinks`."""
+    owners = []
+    for name in sorted(os.listdir(os.path.join(REPO, "client"))):
+        if name.endswith(".py"):
+            text = open(os.path.join(REPO, "client", name), encoding="utf-8").read()
+            assert "class FactMeasurementLinks" not in text and "class MeasurementRecordRepository" not in text, name
+            if "class MeasurementRepository" in text:
+                owners.append(name)
+    assert owners == ["measurements_port.py"]
 
 
 # ---------------------------------------------------------------- the SQLite adapters
@@ -307,8 +363,8 @@ def test_scans_come_back_in_the_tables_own_order_as_plain_records(vault_db):
         vault_db.execute("INSERT INTO bloodwork VALUES (?, 'LH', 1.0)", (d,))
     vault_db.execute("INSERT INTO workout_sets VALUES ('2026-02-03', 'Squat', 225, 'lb', 5, 2, 0, 'n')")
     reader = vault_reader_store.SqliteVaultReader(vault_db)
-    assert [r["date"] for r in reader.bloodwork()] == ["2026-03-01", "2025-01-01", "2026-01-01"]
-    assert all(type(r) is dict for r in reader.bloodwork())
+    assert [row["date"] for row in reader.bloodwork()] == ["2026-03-01", "2025-01-01", "2026-01-01"]
+    assert all(type(row) is dict for row in reader.bloodwork())
     assert list(reader.workout_sets()) == [WorkoutSet("2026-02-03", "Squat", 225, "lb", 5, 2, 0, "n")]
 
 
@@ -332,8 +388,8 @@ def test_dynamic_metric_columns_come_from_the_table_definition_even_when_it_is_e
     vault_db.execute("INSERT INTO micronutrients VALUES ('2026-02-05', 1.0, NULL, 'f.csv', 9.0)")
     table = reader.micronutrients()
     assert table.columns == ("iron_mg", "vitamin_d_iu", "zinc_mg")
-    assert [dict(r) for r in table.rows] == [{"date": "2026-02-05", "iron_mg": 1.0, "vitamin_d_iu": None,
-                                               "source_file": "f.csv", "zinc_mg": 9.0}]
+    assert [dict(row) for row in table.rows] == [{"date": "2026-02-05", "iron_mg": 1.0, "vitamin_d_iu": None,
+                                                  "source_file": "f.csv", "zinc_mg": 9.0}]
 
 
 @pytest.fixture
@@ -345,73 +401,78 @@ def knowledge_db():
     return con
 
 
-def test_the_repository_looks_up_before_it_inserts_and_links_source_authors(knowledge_db):
+def _seed(con):
+    source = con.execute("INSERT INTO sources (citekey, name, source_type) VALUES ('s', 'n', 'primary')").lastrowid
+    subject = con.execute("INSERT INTO subjects (name) VALUES ('body-composition')").lastrowid
+    return r.SourceId(source), r.SubjectId(subject)
+
+
+def test_the_repository_gets_or_creates_dimensions_and_finds_metrics_without_rewriting_them(knowledge_db):
     repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
-    assert repo.source_id("vault-x") is None
-    sid = repo.get_or_create_source("vault-x", "Name", "Desc", "/v/source.db#t", SNAPSHOT, "user")
-    assert repo.get_or_create_source("vault-x", "Other", "Other", None, "2030-01-01", "user") == sid
-    assert repo.source_id("vault-x") == sid
-    row = knowledge_db.execute("SELECT source_type, retrieved_date, description, origin_path FROM sources WHERE id = ?", (sid,)).fetchone()
-    assert tuple(row) == ("primary", SNAPSHOT, "Desc", "/v/source.db#t")
-    repo.get_or_create_source("vault-y", "N2", "D2", None, SNAPSHOT, "user")
-    assert knowledge_db.execute("SELECT COUNT(*) FROM authors WHERE name = 'user'").fetchone()[0] == 1
-    assert knowledge_db.execute("SELECT COUNT(*) FROM source_authors").fetchone()[0] == 2
-    for method in ("subject", "exercise", "food", "muscle"):
-        a = getattr(repo, f"get_or_create_{method}")("thing")
-        assert getattr(repo, f"get_or_create_{method}")("thing") == a
-    m = repo.get_or_create_metric("body_fat_pct", "%", "Body fat", -1)
-    assert repo.get_or_create_metric("body_fat_pct", "kg", "Changed", 1) == m       # an existing metric is not rewritten
+    for method in ("exercise", "food", "muscle"):
+        first = getattr(repo, method)("thing")
+        assert getattr(repo, method)("thing") == first
+        assert getattr(repo, method)("other") == first + 1
+    assert repo.find_metric("body_fat_pct") is None
+    m = repo.add_metric(mr.NewMetric("body_fat_pct", "Body fat", "%", -1))
+    assert repo.find_metric("body_fat_pct") == m
     assert tuple(knowledge_db.execute("SELECT label, unit, good_direction FROM metrics WHERE id = ?", (m,)).fetchone()) == ("Body fat", "%", -1)
+    assert repo.add_metric(mr.NewMetric("plain", "Plain", "u", None)) == m + 1
+    assert knowledge_db.execute("SELECT good_direction FROM metrics WHERE key = 'plain'").fetchone()[0] is None
 
 
 def test_the_repository_writes_each_record_kind_and_counts_whole_tables(knowledge_db):
-    from client.measurements_port import (FoodLogRecord, MealLogRecord, MeasurementRecord, MuscleVolumeRecord,
-                                          TrainingSetRecord)
     repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
-    src = repo.get_or_create_source("s", "n", "d", None, SNAPSHOT, "user")
-    subject, metric = repo.get_or_create_subject("body-composition"), repo.get_or_create_metric("k", "u", "K", None)
-    repo.add_measurement(MeasurementRecord(subject, metric, 1.5, "2026-01-01", src, "high", "why", SNAPSHOT, "n", "soon", "r"))
-    repo.add_training_set(TrainingSetRecord(repo.get_or_create_exercise("Squat"), "2026-01-01", 225, "lb", 5, None, 1, src, "x"))
-    repo.add_muscle_volume(MuscleVolumeRecord(repo.get_or_create_muscle("chest"), "2026-01-05", 10, src))
-    repo.add_meal_log_entry(MealLogRecord("2026-01-01", "Lunch", *range(14), src))
-    repo.add_food_log_entry(FoodLogRecord(repo.get_or_create_food("Rice"), "2026-01-01", "12:00", 1, "cup", 200, 1, 45, 4, 0, src))
-    repo.commit()
-    assert repo.counts() == TableCounts(1, 1, 1, 1, 1)
+    src, subject = _seed(knowledge_db)
+    metric = repo.add_metric(mr.NewMetric("k", "K", "u", None))
+    repo.add(mr.NewMeasurement(subject, metric, 1.5, "2026-01-01", src, "high", "why", SNAPSHOT, "n", "soon", "r"))
+    repo.add_training_set(mr.NewTrainingSet(repo.exercise("Squat"), "2026-01-01", 225, "lb", 5, None, 1, src, "x"))
+    repo.add_muscle_volume(mr.NewMuscleVolume(repo.muscle("chest"), "2026-01-05", 10, src))
+    nutrients = {c: float(i) for i, c in enumerate(measurements_store.MEAL_LOG_COLUMNS, 1)}
+    repo.add_meal_log_entry(mr.NewMealLogEntry("2026-01-01", "Lunch", nutrients, src))
+    repo.add_food_log_entry(mr.NewFoodLogEntry(repo.food("Rice"), "2026-01-01", "12:00", 1, "cup", 200, 1, 45, 4, 0, src))
+    assert repo.totals() == mr.MeasurementTotals(1, 1, 1, 1, 1)
     assert tuple(knowledge_db.execute("SELECT subject_id, metric_id, value, date_added, notes, recheck_by, recheck_rationale "
                                       "FROM measurements").fetchone()) == (subject, metric, 1.5, SNAPSHOT, "n", "soon", "r")
-    assert knowledge_db.execute("SELECT is_warmup, rir FROM training_sets").fetchone()[:] == (1, None)
+    assert tuple(knowledge_db.execute("SELECT is_warmup, rir FROM training_sets").fetchone()) == (1, None)
+    meal = dict(knowledge_db.execute("SELECT * FROM meal_log_entries").fetchone())
+    assert {k: meal[k] for k in ("measured_at", "meal", "source_id", *nutrients)} == {
+        "measured_at": "2026-01-01", "meal": "Lunch", "source_id": src, **nutrients}
+
+
+def test_the_repository_never_commits(knowledge_db):
+    repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
+    repo.exercise("Squat")
+    knowledge_db.rollback()
+    assert knowledge_db.execute("SELECT COUNT(*) FROM exercises").fetchone()[0] == 0
 
 
 def test_links_attach_every_measurement_of_the_metric_to_the_fact(knowledge_db):
-    from client.measurements_port import MeasurementRecord
     repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
-    src = repo.get_or_create_source("s", "n", "d", None, SNAPSHOT, "user")
-    subject = repo.get_or_create_subject("body-composition")
+    src, subject = _seed(knowledge_db)
     for key, n in (("weight_lb", 2), ("waist_in", 1)):
-        metric = repo.get_or_create_metric(key, "u", key, None)
+        metric = repo.add_metric(mr.NewMetric(key, key, "u", None))
         for i in range(n):
-            repo.add_measurement(MeasurementRecord(subject, metric, 1.0, f"2026-01-0{i + 1}", src, "high", None, SNAPSHOT))
-    knowledge_db.execute("INSERT INTO facts (statement, subject_id, source_key, trust_level, freshness) VALUES ('f', ?, 'p-2', 'high', 'unreviewed')", (subject,))
-    knowledge_db.commit()
+            repo.add(mr.NewMeasurement(subject, metric, 1.0, f"2026-01-0{i + 1}", src, "high", None, SNAPSHOT))
+    knowledge_db.execute("INSERT INTO facts (statement, subject_id, source_key, trust_level, freshness) "
+                         "VALUES ('f', ?, 'p-2', 'high', 'unreviewed')", (subject,))
     links = measurements_store.SqliteFactMeasurementLinks(knowledge_db)
-    fact_id = links.fact_id("p-2")
-    assert fact_id is not None and links.fact_id("nope") is None
-    assert links.link_metric(fact_id, "weight_lb") == 2
-    assert links.link_metric(fact_id, "no_such_metric") == 0
-    links.commit()
+    fact_id = links.find_by_source_key("p-2")
+    assert fact_id is not None and links.find_by_source_key("nope") is None
+    assert links.link_measurements(fact_id, "weight_lb") == 2
+    assert links.link_measurements(fact_id, "no_such_metric") == 0
     assert knowledge_db.execute("SELECT COUNT(*) FROM fact_measurements WHERE fact_id = ?", (fact_id,)).fetchone()[0] == 2
 
 
 def test_each_adapter_has_every_member_of_its_port_with_the_same_parameters():
     """The runtime half of what tests/port_types.py checks for mypy: names and parameter order."""
-    import inspect
-    from client import measurements_port, vault_reader_port
-    pairs = [(vault_reader_port.VaultReader, vault_reader_store.SqliteVaultReader),
-             (measurements_port.MeasurementRepository, measurements_store.SqliteMeasurementRepository),
-             (measurements_port.FactMeasurementLinks, measurements_store.SqliteFactMeasurementLinks)]
-    for proto, impl in pairs:
+    links = measurements_store.SqliteFactMeasurementLinks
+    pairs = [(vault_reader_port.VaultReader, vault_reader_store.SqliteVaultReader, None),
+             (MeasurementRepository, measurements_store.SqliteMeasurementRepository, None),
+             (svc.FactLinks, links, None)]
+    for proto, impl, only in pairs:
         for name, member in inspect.getmembers(proto, inspect.isfunction):
-            if name.startswith("_"):
+            if name.startswith("_") or (only is not None and name not in only):
                 continue
             assert hasattr(impl, name), f"{impl.__name__} lacks {name}"
             want = list(inspect.signature(member).parameters)

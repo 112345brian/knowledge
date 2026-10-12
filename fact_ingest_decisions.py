@@ -145,15 +145,17 @@ class FactPlan:
     quote: Optional[str]
 
 
-def plan_fact(screened: Screened, profile: IngestProfile, hints: Hints = NO_HINTS, notes_vault=None) -> FactPlan:
+def plan_fact(screened: Screened, profile: IngestProfile, hints: Hints = NO_HINTS, notes_vault=None,
+              personal_fact_keys=()) -> FactPlan:
     """Everything the entry says about its row, or the build error (invalid baseline hash, missing/invalid
     date_added #35, freshness #7, kind #39, validity #40, applies_to #45). No side effect."""
     entry, item = screened.entry, screened.entry.item
     statement = screened.statement
     is_original = 1 if item.get("is_original_claim") else 0
     if profile.derive_personal:
+        client_signal = any(item.get(key) for key in personal_fact_keys)
         is_personal = fact_ingest_rules.classify_is_personal(statement, item.get("notes"), is_original,
-                                                             item.get("measurement_metric_link"), hints)
+                                                             client_signal, hints)
     else:
         is_personal = 1 if item.get("is_personal", True) else 0
     origin_path = item.get("origin_path")

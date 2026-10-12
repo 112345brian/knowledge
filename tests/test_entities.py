@@ -4,6 +4,7 @@ Covers the shared matcher (textmatch), the file rules, deterministic linking, th
 ('entity', raise-only), the build step and its invariant, the CLI with its git flow and the keyword
 migration, the --entity filters in both query layers, and the normal-only DB. Temp dirs only.
 """
+import contextlib
 import importlib.util
 import json
 import os
@@ -567,12 +568,28 @@ def build_normal(full, d, rules=None):
     import normal_db
     import privacy
     path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, rules or privacy.Rules())
-    return sqlite3.connect(path), path
+    con = sqlite3.connect(path)
+    _OPEN.append(con)
+    return con, path
+
+
+_OPEN = []
+
+
+@contextlib.contextmanager
+def scratch_dir():
+    """A temp dir whose normal-db connections (opened by build_normal) are closed first: Windows cannot delete an open file."""
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            yield d
+        finally:
+            while _OPEN:
+                _OPEN.pop().close()
 
 
 def test_normal_db_excludes_private_entities_and_includes_public_ones():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
+    with scratch_dir() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         con, path = build_normal(full, d)
         assert [tuple(r) for r in con.execute("SELECT entity_key, canonical_name, type, external_id, notes FROM entities")] == \
@@ -588,7 +605,7 @@ def test_normal_db_excludes_private_entities_and_includes_public_ones():
 
 def test_leak_test_flags_an_injected_private_entity_marker():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
+    with scratch_dir() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         con, path = build_normal(full, d)
         con.execute("INSERT INTO entity_aliases (entity_id, alias, alias_norm) VALUES (2, ?, 'planted')", (leak_test.MARKERS["private entity alias"],))
@@ -600,7 +617,7 @@ def test_leak_test_flags_an_injected_private_entity_marker():
 def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_entity():
     import leak_test
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with scratch_dir() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE entities SET notes = 'Zorbak relatives lab' WHERE id = 2")
@@ -610,7 +627,7 @@ def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_enti
         con, _ = build_normal(full, d, privacy.Rules(keywords=("zorbak",)))
         assert con.execute("SELECT notes FROM entities WHERE id = 2").fetchone()[0] is None
         assert sorted(r[0] for r in con.execute("SELECT alias FROM entity_aliases")) == ["Acme"]
-    with tempfile.TemporaryDirectory() as d:
+    with scratch_dir() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         con, _ = build_normal(full, d, privacy.Rules(keywords=("acme",)))               # the NAME trips the rule: entity left out
         assert con.execute("SELECT COUNT(*) FROM entities").fetchone()[0] == 0
@@ -619,7 +636,7 @@ def test_normal_db_drops_entity_text_that_trips_a_keyword_and_skips_a_named_enti
 
 def test_normal_db_never_copies_a_private_entity_even_if_linked_to_an_included_fact():
     import leak_test
-    with tempfile.TemporaryDirectory() as d:
+    with scratch_dir() as d:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("INSERT INTO fact_entities (fact_id, entity_id) VALUES (1, 1)")        # normal fact 1 "linked" to the private entity

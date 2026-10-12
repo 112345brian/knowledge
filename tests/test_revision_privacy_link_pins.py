@@ -2,7 +2,7 @@
 
 Written against the code before it moved behind repository ports, and kept as the contract the ports must keep:
 the public store functions (`revisions_store.apply_revisions`, `privacy_store.apply_rules_to_db`,
-`entities_store.link_facts`), their result shapes, their transaction behaviour, and the order and failure of the
+`entity_link_service.link_facts`), their result shapes, their transaction behaviour, and the order and failure of the
 two build steps that call them. In-memory databases and temp files only.
 """
 import json
@@ -11,7 +11,9 @@ import sqlite3
 
 import pytest
 
-import entities_store
+import entity_link_service
+import entity_repository_store
+import entity_rules
 import privacy
 import privacy_store
 import revisions
@@ -203,6 +205,12 @@ def test_apply_rules_on_an_empty_database_and_a_cyclic_subject_chain():
 # ------------------------------------------------------------------ link_facts
 
 
+def _link_facts(con, entities):
+    """The build's entity linking over `con`, as the dict these pins were written against."""
+    deps = entity_link_service.EntityLinkDeps(entity_repository_store.SqliteEntityRepository(con))
+    return entity_link_service.link_facts(deps, [entity_rules.Entity.from_dict(e) for e in entities]).as_dict()
+
+
 def entity(id, name, private=False, aliases=(), type="person", external_id=None, notes=None):
     return {"id": id, "canonical_name": name, "type": type, "aliases": list(aliases), "private": private,
             "external_id": external_id, "notes": notes}
@@ -217,7 +225,7 @@ def test_link_facts_result_rows_and_no_commit():
     es = [entity("zed", "Zed Name", private=True, aliases=["Zeddy"]),
           entity("acme", "Acme Labs", aliases=["Acme"], type="organization", external_id="wikidata:Q1", notes="a lab"),
           entity("bro", "brother")]
-    out = entities_store.link_facts(con, es)
+    out = _link_facts(con, es)
     assert out == {"entities": 3, "links": 3, "unprotected": [1]}        # k1 mentions private Zed but is normal
     assert con.in_transaction is True
     assert {(r[0], r[1]) for r in con.execute(
@@ -230,15 +238,15 @@ def test_link_facts_result_rows_and_no_commit():
 
 def test_link_facts_with_no_entities_or_no_facts():
     con = new_db()
-    assert entities_store.link_facts(con, []) == {"entities": 0, "links": 0, "unprotected": []}
-    assert entities_store.link_facts(con, [entity("a", "Alpha")]) == {"entities": 1, "links": 0, "unprotected": []}
+    assert _link_facts(con, []) == {"entities": 0, "links": 0, "unprotected": []}
+    assert _link_facts(con, [entity("a", "Alpha")]) == {"entities": 1, "links": 0, "unprotected": []}
 
 
 def test_link_facts_reports_every_unprotected_fact_in_id_order():
     con = new_db()
     for i in range(3):
         add_fact(con, f"k{i}", statement="About Zed Name.", visibility="normal" if i != 1 else "private")
-    out = entities_store.link_facts(con, [entity("zed", "Zed Name", private=True)])
+    out = _link_facts(con, [entity("zed", "Zed Name", private=True)])
     assert out["unprotected"] == [1, 3] and out["links"] == 3
 
 

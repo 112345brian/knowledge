@@ -1,18 +1,9 @@
 """Identity rules the build shares, pure: how names and keys are normalized before they are compared.
 
-Domain service ring: no I/O. The byline split and the identifier warning are defined here; the artist-name
-canonicalization is music-source logic and lives in `client/artist_rules.py`. The stateful operations that use
-them (find or create, with a per-run cache) are `identity_service`.
+Domain service ring: no I/O. The byline split and the identifier warning are defined here. Optional sources keep
+their own name canonicalization and stateful lookup rules in `client/`.
 """
-from typing import List, Mapping, Optional, Tuple
-
-import build_records as r
-
-
-def artist_rules_from_mapping(raw: Mapping) -> r.ArtistRules:
-    """`artist_rules.json`'s decoded, already validated content as the record (see music_shared.load_artist_rules)."""
-    return r.ArtistRules(dict(raw["aliases"]), {g: tuple(m) for g, m in raw["members"].items()},
-                         tuple(raw.get("festivals", ())))
+from typing import List, Optional, Tuple
 
 
 def author_links(author_string: Optional[str]) -> List[Tuple[str, int]]:

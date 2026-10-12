@@ -19,6 +19,7 @@ from build_files_port import BuildFiles
 from build_port import BuildOutputs, NormalBuild, ProvenanceReader, SessionFactory, StepRegistry, StepResult
 from build_rules import BuildError, NormalBuildError
 from clock_port import Clock
+from client_registry import ClientSources
 from locations import Locations
 
 BUILDING_PREFIX = "knowledge.db.building-"
@@ -38,6 +39,7 @@ class BuildDeps:
     steps: StepRegistry
     provenance: ProvenanceReader
     outputs: BuildOutputs
+    clients: ClientSources      # the client sources registered by the client directory's bootstrap
 
 
 @dataclass(frozen=True)
@@ -61,11 +63,17 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
     ones these locations enable). A failing stage raises BuildError(stage); the file at `target_path` is then
     incomplete and the caller removes it (`build_to_temp` does)."""
     locations = deps.locations
-    sources = build_rules.check_client_sources(locations.client_sources if sources is None else sources)
-    emit(build_rules.client_sources_note(sources, implicit=locations.client_sources_implicit and sources == locations.client_sources))
-    configured = [name for name, value in (("CONCERTS_CSV", locations.concerts_csv), ("RYM_EXPORT_CSV", locations.rym_export_csv),
-                                           ("SCROBBLES_JSON", locations.scrobbles_json)) if value]
-    missing = build_rules.missing_paths(sources, configured)
+    clients = deps.clients
+    if sources is None:
+        declared = locations.client_sources
+        implicit = not locations.client_sources_declared and not declared
+        sources = declared or (clients.implicit_sources(locations.client_inputs) if implicit else ())
+        implicit = implicit and bool(sources)
+    else:
+        implicit = False
+    sources = clients.check(sources)
+    emit(clients.note(sources, implicit=implicit))
+    missing = clients.missing_inputs(sources, locations.client_inputs)
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +
                          ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
@@ -89,7 +97,7 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
             built_at = deps.clock.now_iso()
             provenance = deps.provenance.read(session.con)
             deps.provenance.write(session.con, provenance, built_at, deps.clock.now_iso())
-            session.commit()
+            session.unit_of_work.commit()
         except Exception as e:
             raise BuildError("build_info", e) from e
         try:

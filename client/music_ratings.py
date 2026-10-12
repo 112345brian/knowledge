@@ -16,10 +16,10 @@ rather than carried into empty columns.
 
 Idempotent: re-running deletes and re-inserts this source file's own albums.
 
-The work is `music_ingest_service.import_ratings`; this step composes it for the build connection
+The work is `music_service.import_ratings`; this step composes it for the build connection
 and prints what it reports.
 """
-import music_ingest
+from client import music_ingest
 
 
 def run(con, ctx):

@@ -63,3 +63,21 @@ def test_the_container_uses_the_clock_it_is_given():
     app = container.Container(loc, fixed)
     assert app.clock is fixed
     assert app.add_fact.deps.clock is fixed and app.review.deps.clock is fixed and app.queries.deps.clock is fixed
+
+
+def test_two_containers_keep_locations_and_clocks_independent():
+    from locations import Locations
+    import container
+    first_locations = Locations(knowledge_db_dir="/one/db", private_data_dir="/one/data",
+                                notes_vault="/one/vault", health_dir="/one/health")
+    second_locations = Locations(knowledge_db_dir="/two/db", private_data_dir="/two/data",
+                                 notes_vault="/two/vault", health_dir="/two/health")
+    first_clock = clock.FixedClock("2026-10-03T08:00:00+00:00")
+    second_clock = clock.FixedClock("2027-02-04T09:30:00+00:00")
+    first = container.Container(first_locations, first_clock)
+    second = container.Container(second_locations, second_clock)
+    assert first.locations is first_locations and second.locations is second_locations
+    assert first.clock is first_clock and second.clock is second_clock
+    assert first.add_fact.deps.locations is first_locations and second.add_fact.deps.locations is second_locations
+    assert first.add_fact.deps.clock is first_clock and second.add_fact.deps.clock is second_clock
+    assert first.add_fact is first.add_fact and first.add_fact is not second.add_fact

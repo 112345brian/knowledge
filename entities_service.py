@@ -1,7 +1,7 @@
 """Entity command use cases. All file and database work is supplied through ports."""
 from dataclasses import dataclass
 import entity_rules
-from entity_files_port import EntityFiles
+from entity_files_port import EntityFileReader, EntityFiles
 from entity_migration_port import EntityMigration
 from entity_queries_port import EntityQueries
 from private_git_port import PrivateGit
@@ -13,14 +13,15 @@ class EntitiesDeps:
     """Everything this service reaches the world through; the composition root supplies each one."""
     git: PrivateGit
     entity_files: EntityFiles
+    entity_reader: EntityFileReader
     entity_migration: EntityMigration
     entity_queries: EntityQueries
     locations: Locations
 
 
 def load_entities(deps: EntitiesDeps):
-    assert deps.entity_files is not None
-    return deps.entity_files.read_file(deps.locations.entities_file()) or []
+    assert deps.entity_reader is not None
+    return [e.to_dict() for e in deps.entity_reader.read_file(deps.locations.entities_file()) or []]
 
 
 def find(deps: EntitiesDeps, entities, ref):

@@ -10,6 +10,7 @@ equivalent by tracing the legacy pipeline here and its own bound step against th
 import contextlib
 import io
 import os
+import pathlib
 import re
 import sqlite3
 import sys
@@ -123,6 +124,8 @@ class SpyFiles:
 
     def load_module(self, path):
         mod = self._real.load_module(path)
+        if not hasattr(mod, "run"):      # the client's bootstrap is loaded through the same files: not a step
+            return mod
         real_run = mod.run
         trace, spy = self._trace, self
 
@@ -150,7 +153,8 @@ def scrub(lines, root) -> List[str]:
     """Replace the world's temp root so a recorded line does not depend on where the test ran."""
     out = []
     for ln in lines:
-        for variant in {str(root), os.path.realpath(str(root))}:
+        for variant in {str(root), os.path.realpath(str(root)), pathlib.Path(root).as_posix(),
+                        pathlib.Path(os.path.realpath(str(root))).as_posix()}:
             ln = ln.replace(variant, "<ROOT>")
         out.append(ln)
     return out
@@ -163,8 +167,9 @@ def trace_build(root, sources=("concerts", "ratings", "scrobbles", "measurements
     env = build_world(root, sources)
     if mutate is not None:
         mutate(str(root))
-    saved = {k: os.environ.get(k) for k in ("KNOWLEDGE_PRIVATE_DIR", "KNOWLEDGE_FROZEN_NOW", "PYTHONHASHSEED")}
+    saved = {k: os.environ.get(k) for k in ("KNOWLEDGE_PRIVATE_DIR", "KNOWLEDGE_HOME", "KNOWLEDGE_FROZEN_NOW", "PYTHONHASHSEED")}
     os.environ["KNOWLEDGE_PRIVATE_DIR"] = env["KNOWLEDGE_PRIVATE_DIR"]
+    os.environ["KNOWLEDGE_HOME"] = env["KNOWLEDGE_HOME"]
     os.environ["KNOWLEDGE_FROZEN_NOW"] = env["KNOWLEDGE_FROZEN_NOW"]
     try:
         for name in ("build", "paths", "clock"):

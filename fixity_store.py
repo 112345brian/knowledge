@@ -10,13 +10,15 @@ never invented and nothing here raises for a bad path. Caveat: ANY edit to a not
 frontmatter edit, changes its hash and raises an audit row. Hashing only the note body is the follow-up
 if that proves noisy.
 
-Paths are stored as written (they may begin with `~`); every read goes through expanduser.
+Paths are stored as written (they may begin with `~`); every read expands `~` (under $KNOWLEDGE_HOME when set, else the OS home).
 """
 import hashlib
 import mimetypes
 import os
 import re
 from datetime import datetime, timezone
+
+import locations
 
 HASH_BUFFER = 1 << 20  # read files in 1 MiB chunks, never whole
 from fixity_rules import FILE_STATES, FINGERPRINT_COLUMNS, SHA256_RE, valid_sha256  # noqa: F401  (defined with the rules)
@@ -28,7 +30,8 @@ _MIME_OVERRIDES = {".md": "text/markdown", ".markdown": "text/markdown", ".json"
 
 
 def _expand(path):
-    return os.path.expanduser(path)
+    home = os.environ.get(locations.HOME_ENV_VAR)     # the same rule as paths.expand
+    return os.path.expanduser(locations.expand_home(path, home) if home else path)
 
 
 def sha256_of(path):

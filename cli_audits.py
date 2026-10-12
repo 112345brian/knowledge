@@ -60,7 +60,7 @@ def cmd_build_info(ctx: typer.Context, compare: Optional[str] = typer.Option(Non
         print("No input differs." if not diff else "\n".join(f"{d['key']}: {d['change']}" for d in diff))
     else:
         b = mine["build"]
-        print(f"Built {b['built_at']}  schema v{b['schema_version']}  python {b['python_version']}  sqlite {b['sqlite_version']}")
+        print(f"Built {b['built_at']}  schema v{b['schema_version']}  python {b['python_version']}  sqlite {b['sqlite_version']}  platform {b.get('platform') or 'unknown'}")
         for label, c, d in (("code", b["code_commit"], b["code_dirty"]), ("knowledge-private", b["private_commit"], b["private_dirty"])):
             print(f"{label}: {c or 'not in git'}" + (" (uncommitted changes)" if d else ""))
         for i in mine["inputs"]:

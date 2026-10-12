@@ -1,5 +1,9 @@
 """Ports a build step uses to read and write the database being built: one repository per aggregate.
 
+The core's aggregates only: sources, subjects, facts, revisions, privacy and entities, plus the unit of work. The
+optional client sources own their repositories and records under `client/`; this module does not import them, and
+`BuildSession` carries none of them (a client source composes its own repository over the build connection).
+
 Domain service ring: protocols and one value (`BuildSession`), no I/O. A method is one decision-free persistence
 operation in the language of the knowledge base ("find the subject called X", "add this fact") that takes and
 returns the records of `build_records`. There is no `execute`, no cursor, no row, no SQL text on any port: a
@@ -87,8 +91,6 @@ class FactRepository(Protocol):
     def add(self, fact: r.NewFact) -> r.FactId: ...
     def link_source(self, link: r.FactSourceLink) -> None:
         """INSERT OR IGNORE into fact_sources."""
-    def link_measurements(self, fact_id: r.FactId, metric_key: str) -> int:
-        """One fact_measurements row per measurement of the metric; returns how many were linked."""
     def tally(self, by: FactTally) -> Mapping[Any, int]:
         """fact count per value of the column, ordered by value (what `GROUP BY` returns)."""
 
@@ -124,55 +126,6 @@ class EntityRepository(Protocol):
     def fact_visibility(self, fact_id: r.FactId) -> Optional[str]: ...
 
 
-class MeasurementRepository(Protocol):
-    def find_metric(self, key: str) -> Optional[r.MetricId]: ...
-    def add_metric(self, metric: r.NewMetric) -> r.MetricId: ...
-    def add(self, measurement: r.NewMeasurement) -> None: ...
-    def exercise(self, name: str) -> int:
-        """Get-or-create."""
-    def food(self, name: str) -> int:
-        """Get-or-create."""
-    def muscle(self, name: str) -> int:
-        """Get-or-create."""
-    def add_training_set(self, training_set: r.NewTrainingSet) -> None: ...
-    def add_food_log_entry(self, entry: r.NewFoodLogEntry) -> None: ...
-    def add_meal_log_entry(self, entry: r.NewMealLogEntry) -> None: ...
-    def add_muscle_volume(self, volume: r.NewMuscleVolume) -> None: ...
-    def totals(self) -> r.MeasurementTotals: ...
-
-
-class ClaimRepository(Protocol):
-    def add(self, claim: r.NewClaim) -> r.ClaimId: ...
-    def link_facts_by_prefix(self, claim_id: r.ClaimId, prefix: str, role: str, note: Optional[str]) -> int:
-        """The claim-to-fact link rows for every fact whose statement starts with `prefix` (LIKE, so `%`/`_` in a prefix are
-        wildcards, as today); returns how many were linked."""
-
-
-class MusicRepository(Protocol):
-    def import_source(self, path: Optional[str]) -> r.ImportSourceId:
-        """Get-or-create the import_sources row for an input file."""
-    def delete_attendances(self, import_source_id: r.ImportSourceId) -> None: ...
-    def delete_albums(self, import_source_id: r.ImportSourceId) -> None: ...
-    def delete_scrobbles(self, import_source_id: r.ImportSourceId) -> None: ...
-    def artists(self) -> Iterable[Tuple[r.ArtistId, str]]:
-        """(id, name) of every artist, in table order."""
-    def add_artist(self, name: str) -> r.ArtistId: ...
-    def venue(self, name: str, city_state: Optional[str]) -> r.VenueId:
-        """Get-or-create on (name, city_state); NULL matches NULL."""
-    def festival(self, name: str) -> r.FestivalId:
-        """Get-or-create."""
-    def add_attendance(self, attendance: r.NewAttendance) -> None: ...
-    def add_album(self, album: r.NewAlbum) -> None: ...
-    def tracks(self) -> Iterable[Tuple[r.TrackId, r.ArtistId, str, Optional[str]]]:
-        """(id, artist id, title, album) of every track."""
-    def add_track(self, artist_id: r.ArtistId, title: str, album: Optional[str]) -> r.TrackId: ...
-    def add_scrobbles(self, scrobbles: Sequence[r.NewScrobble]) -> None:
-        """INSERT OR IGNORE, in the order given."""
-    def add_artist_member(self, group_id: r.ArtistId, member_id: r.ArtistId) -> bool:
-        """INSERT OR IGNORE; True when a row was added."""
-    def totals(self) -> r.MusicTotals: ...
-
-
 @dataclass(frozen=True)
 class BuildSession:
     """The repositories and unit of work of one build, over one database. Built by the composition root's session
@@ -183,15 +136,11 @@ class BuildSession:
     revisions: RevisionRepository
     privacy: PrivacyRepository
     entities: EntityRepository
-    measurements: MeasurementRepository
-    claims: ClaimRepository
-    music: MusicRepository
     unit_of_work: UnitOfWork
 
 
 REPOSITORY_PORTS = {
     "sources": SourceRepository, "subjects": SubjectRepository, "facts": FactRepository,
     "revisions": RevisionRepository, "privacy": PrivacyRepository, "entities": EntityRepository,
-    "measurements": MeasurementRepository, "claims": ClaimRepository, "music": MusicRepository,
     "unit_of_work": UnitOfWork,
 }

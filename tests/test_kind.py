@@ -5,6 +5,7 @@ The vocabulary is CHECK-enforced; the choice among kinds is self-reported guidan
 `show --as-of`), the query layers (`--kind` filter, row shape in knowledge and modes), the normal-only DB,
 and the batch tool. Temp dirs and fixture dbs only.
 """
+import contextlib
 import json
 import os
 import sqlite3
@@ -180,7 +181,7 @@ def test_normal_db_includes_kind_on_facts_and_revisions():
     import leak_test
     import normal_db
     import tempfile
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE facts SET kind = 'decision' WHERE id = 1")
@@ -188,7 +189,7 @@ def test_normal_db_includes_kind_on_facts_and_revisions():
         c.commit()
         c.close()
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy_rules())
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert con.execute("SELECT kind FROM facts WHERE id = 1").fetchone()[0] == "decision"
         assert con.execute("SELECT kind FROM facts WHERE id = 2").fetchone()[0] == "unclassified"
         assert {r[0] for r in con.execute("SELECT kind FROM fact_revisions")} <= set(VOCAB)

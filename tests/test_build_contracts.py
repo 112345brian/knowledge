@@ -19,7 +19,7 @@ import build_records as r
 import build_repositories_port as ports
 import build_steps_port as steps
 import wiring
-from fake_build_repositories import (CollectingDiagnostics, FakeInputs, FakeSessionOpener, FakeState, FakeVault,
+from fake_build_repositories import (CollectingDiagnostics, FakeInputs, FakeSessionOpener, FakeState,
                                      fake_session)
 from locations import Locations
 
@@ -68,7 +68,7 @@ def test_every_repository_method_is_annotated():
 
 def test_every_record_is_a_frozen_dataclass():
     records = [c for _, c in inspect.getmembers(r, inspect.isclass) if c.__module__ == "build_records"]
-    assert len(records) >= 20
+    assert len(records) >= 12
     for cls in records:
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls.__name__  # type: ignore[attr-defined]
 
@@ -81,6 +81,13 @@ def test_the_session_holds_exactly_the_ports_and_is_frozen():
         session.facts = None    # type: ignore[misc]
 
 
+def test_pipeline_session_exposes_commit_only_through_unit_of_work():
+    import build_port
+    assert "commit" not in vars(build_port.BuildSession)
+    assert {name for name, fn in vars(ports.UnitOfWork).items() if callable(fn) and not name.startswith("_")} == {"commit"}
+    assert "unit_of_work" in build_port.BuildSession.__annotations__
+
+
 # --------------------------------------------------------------------------------------------- the fakes
 
 @pytest.mark.parametrize("name", sorted(ports.REPOSITORY_PORTS))
@@ -89,17 +96,6 @@ def test_the_fakes_satisfy_their_ports_by_name_and_signature(name, monkeypatch):
     the protocol allows (minimal, maximal, by name)."""
     monkeypatch.setitem(wiring.PORT_PROTOCOLS, f"build.{name}", ports.REPOSITORY_PORTS[name])
     assert wiring.conformance_problems(f"build.{name}", getattr(fake_session(), name)) == []
-
-
-@pytest.mark.parametrize("name, port", [("vault", steps.VaultReader), ("vault_opener", steps.VaultOpener)])
-def test_the_fake_vault_satisfies_the_vault_ports(name, port, monkeypatch):
-    monkeypatch.setitem(wiring.PORT_PROTOCOLS, f"build.{name}", port)
-    assert wiring.conformance_problems(f"build.{name}", FakeVault()) == []
-
-
-def test_the_vault_reader_exposes_no_sql_either():
-    for method, fn in _methods(steps.VaultReader).items():
-        assert not SQL_WORDS & set(inspect.signature(fn).parameters) and "sql" not in method.lower(), method
 
 
 def test_conformance_check_fails_for_a_fake_missing_a_method(monkeypatch):

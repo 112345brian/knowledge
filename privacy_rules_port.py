@@ -1,4 +1,9 @@
-"""Port for reading and editing the persisted privacy rules."""
+"""Port for reading and editing the persisted privacy rules (the CLI services' side).
+
+`load_rules` is the foundation's `build_repositories_port.PrivacyRepository.load_rules` (same name, same `path`
+parameter; a test pins the two together): the editing services call only it, not the repository's database
+methods, so they declare just that slice. The rest is file editing the foundation contract has no use for.
+"""
 from typing import Any, Protocol
 
 

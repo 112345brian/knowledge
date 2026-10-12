@@ -1,4 +1,4 @@
-"""The commands that are a script run: rebuild the database, clean the concerts CSV. The service decides which
+"""The commands that are a script run: rebuild the database, or a tool a client source ships. The service decides which
 script, with which arguments and for which configuration; the `ScriptRunner` port runs it and returns its exit
 code. Never prints or exits. `scripts` is the composition root that binds it to the real runner.
 
@@ -40,6 +40,6 @@ def build(deps, check=False):
     return deps.runner.run_script("build.py", ["--check"] if check else [], env=child_env(deps))
 
 
-def clean_concerts(deps):
-    """Clean the concerts export CSV in place (dedupes rows). Returns the tool's exit code."""
-    return deps.runner.run_module("client.clean_concerts_csv", env=child_env(deps))
+def run_tool(deps, module):
+    """Run a client tool (`python -m <module>`, as the client's bootstrap registers it). Returns its exit code."""
+    return deps.runner.run_module(module, env=child_env(deps))

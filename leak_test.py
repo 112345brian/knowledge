@@ -19,7 +19,7 @@ left in free pages or FTS shadow tables.
 import os
 import sys
 
-import build_rules
+import client_bootstrap
 import normal_db
 import normal_db_service
 import sql_runner_store
@@ -58,7 +58,7 @@ MARKERS = {
     "where_from URL": "https://private.example/ws-download-9921/secret-topic.pdf",
     "code commit": "9d1c0ffee5badc0de1234567890abcdef1234567",
     "private commit": "7a3b0ffee5badc0de1234567890abcdef7654321",
-    "build input key": "input:scrobbles-json-zq7",
+    "build input key": "input:sample-client-file-zq7",
     "source status note": "https://private.example/zq-retraction-notice-7731",
     "vault path": "Vault/Journal/zanzibar-secret-note.md",
     "file hash": "9f3c1a7be25d48e0a6b1c7d3f09e82a45b6d1e7c30f8a29b4c5d6e7f8091a2b3",
@@ -72,12 +72,13 @@ MARKERS = {
 NORMAL_STATEMENTS = ("Creatine monohydrate is well studied for strength.", "Sleep duration affects recovery: café study.")
 
 
-def build_fixture(files, directory, runner=sql_runner_store):
+def build_fixture(files, directory, runner=sql_runner_store, clients=None):
     """Make a full DB with the real schema, all MARKERS private, and normal facts. Returns its path. The schema
     and the rows are data (`scripts`, `statements`); `runner` (a SqlRunner) executes them."""
     path = os.path.join(directory, "fixture-full.db")
-    # the fixture holds music rows, so every fragment
-    scripts = [files.read_text(os.path.join(HERE, name)) for name in build_rules.schema_files(build_rules.CLIENT_SOURCES)]
+    # the fixture holds the client sources' rows too, so every registered fragment is applied
+    clients = clients or client_bootstrap.registry(files)
+    scripts = [files.read_text(os.path.join(HERE, name)) for name in clients.schema_files(clients.names)]
     statements = []
 
     def ex(sql, params=()):
@@ -150,7 +151,8 @@ def build_fixture(files, directory, runner=sql_runner_store):
     ex("INSERT INTO fact_sources (fact_id, source_id, locator, quote) VALUES (6, 2, 'p. 2', 'private press quote')")
     ex("INSERT INTO claims (id, statement) VALUES (1, ?)", (M["claim text"],))
     # non-fact tables with private-ish rows
-    ex("INSERT INTO artists (id, name) VALUES (1, 'Secret Band')")
+    for sql, params in clients.leak_rows():
+        ex(sql, params)
     runner.run(path, scripts, statements)
     return path
 

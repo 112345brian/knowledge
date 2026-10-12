@@ -3,7 +3,6 @@
 
     knowledge.py build [--check]
     knowledge.py add-fact "statement" --subject x --trust medium ...
-    knowledge.py clean-concerts
     knowledge.py search "some terms" [--subject x] [--trust high] [--personal-only|--not-personal] [--status S] [--include-pending] [--limit N] [--json]
     knowledge.py show <fact_id> [--as-of DATE] [--json]
     knowledge.py history <fact_id|source_key> [--json]
@@ -30,8 +29,8 @@ tool / inbox handler third. `cli_parity.py` registers each action's CLI
 command and tests/test_cli_parity.py fails when a registered command is
 missing or a future MCP tool / inbox action has no registry entry.
 
-`build`, `add-fact`, and `clean-concerts` are thin dispatches to the existing
-standalone scripts (build.py, client/clean_concerts_csv.py) -- those
+`build` and `add-fact` are thin dispatches to the existing standalone scripts, while client tools are
+registered by the client's bootstrap -- those
 still run fine on their own, without typer; this just gives one name to
 remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
@@ -57,7 +56,7 @@ import cli_facts_batch; cli_facts_batch.register(app)  # `add-facts` (#32)
 import cli_add_fact; cli_add_fact.register(app)  # `add-fact` (#7)
 
 
-import cli_build; app.add_typer(cli_build.app)  # build, clean-concerts
+import cli_build; app.add_typer(cli_build.app)  # build and registered client tools
 import cli_facts; app.add_typer(cli_facts.app)  # search, show, history, subjects, facts
 import cli_audits; app.add_typer(cli_audits.app)  # audit-claims, build-info, audit-source-status, audit-sources
 import cli_review; app.add_typer(cli_review.app)  # review-pending, approve, reject (#6)
@@ -73,11 +72,15 @@ import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 
 from cli_inbox import register as _register_inbox; _register_inbox(app)  # inbox, edit (#33)
 
+import cli_docs; app.add_typer(cli_docs.app, name="docs")  # docs build|check
+
 
 def main(argv=None):
     """Run the CLI and return the exit code instead of exiting (used by tests)."""
     try:
-        app(args=argv, prog_name="knowledge.py")
+        # click would otherwise glob-expand `*` and `~` in arguments on Windows (cmd has no globbing), which corrupts
+        # a search term like `protei*`; the same command line must mean the same thing on every OS.
+        app(args=argv, prog_name="knowledge.py", windows_expand_args=False)
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
     return 0

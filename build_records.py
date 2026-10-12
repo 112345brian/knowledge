@@ -1,4 +1,5 @@
-"""The plain values a build step and the build repositories exchange.
+"""The plain values a build step and the build repositories exchange: the core's (sources, subjects, facts,
+revisions, privacy and entities. Optional client sources own their records under `client/`; the core never imports them.
 
 Domain service ring: frozen dataclasses and identifier types, no I/O, no database handle. A repository
 (`build_repositories_port`) accepts and returns only these (and the model's own values: `subject_rules.Subject`,
@@ -9,21 +10,14 @@ characterization tests (tests/test_build_characterization.py) compare against ro
 is `None`, which the adapter stores as NULL exactly as the step's own INSERT does today (the nullable columns of
 `sources` and `facts` have no non-NULL default, so an omitted column and an explicit None are the same row).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, NewType, Optional, Tuple
 
 SourceId = NewType("SourceId", int)
 SubjectId = NewType("SubjectId", int)
 FactId = NewType("FactId", int)
 VaultFileId = NewType("VaultFileId", int)
-MetricId = NewType("MetricId", int)
-ClaimId = NewType("ClaimId", int)
 EntityRowId = NewType("EntityRowId", int)
-ArtistId = NewType("ArtistId", int)
-ImportSourceId = NewType("ImportSourceId", int)
-VenueId = NewType("VenueId", int)
-FestivalId = NewType("FestivalId", int)
-TrackId = NewType("TrackId", int)
 
 
 # ----------------------------------------------------------------------------------------------- sources
@@ -178,145 +172,3 @@ class FactText:
     """The text of one fact the entity matcher scans (the same text the privacy resolver scans)."""
     fact_id: FactId
     texts: Tuple[Optional[str], ...]
-
-
-# ---------------------------------------------------------------------------------------- measurements
-
-@dataclass(frozen=True)
-class NewMetric:
-    key: str
-    label: str
-    unit: Optional[str]
-    good_direction: Optional[str]
-
-
-@dataclass(frozen=True)
-class NewMeasurement:
-    subject_id: SubjectId
-    metric_id: MetricId
-    value: object
-    measured_at: str
-    source_id: SourceId
-    trust_level: str
-    trust_rationale: Optional[str]
-    date_added: str
-    notes: Optional[str] = None
-    recheck_by: Optional[str] = None
-    recheck_rationale: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class NewTrainingSet:
-    exercise_id: int
-    measured_at: str
-    weight: Optional[float]
-    weight_unit: str
-    reps: Optional[int]
-    rir: Optional[float]
-    is_warmup: int
-    source_id: SourceId
-    notes: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class NewFoodLogEntry:
-    food_id: int
-    measured_at: str
-    time: Optional[str]
-    serving_qty: Optional[float]
-    serving_size: Optional[str]
-    calories_kcal: Optional[float]
-    fat_g: Optional[float]
-    carbs_g: Optional[float]
-    protein_g: Optional[float]
-    alcohol_g: Optional[float]
-    source_id: SourceId
-
-
-@dataclass(frozen=True)
-class NewMealLogEntry:
-    measured_at: str
-    meal: Optional[str]
-    nutrients: Mapping[str, Optional[float]]    # calories_kcal, fat_g, saturated_fat_g, carbs_g, fiber_g, sugar_g,
-    source_id: SourceId                         # protein_g, sodium_mg, potassium_mg, cholesterol_mg, vitamin_a,
-    # vitamin_c, calcium, iron: the columns of meal_log_entries, by name
-
-
-@dataclass(frozen=True)
-class NewMuscleVolume:
-    muscle_id: int
-    week_start: str
-    sets: object
-    source_id: SourceId
-
-
-@dataclass(frozen=True)
-class MeasurementTotals:
-    """The table sizes the measurements step reports."""
-    measurements: int
-    training_sets: int
-    food_log_entries: int
-    meal_log_entries: int
-    muscle_volume_weekly: int
-
-
-# --------------------------------------------------------------------------------------------- claims
-
-@dataclass(frozen=True)
-class NewClaim:
-    statement: str
-    notes: Optional[str]
-    inference_type: Optional[str]
-    warrant: Optional[str]
-    qualifier: Optional[str]
-
-
-# ---------------------------------------------------------------------------------------------- music
-
-@dataclass(frozen=True)
-class NewAttendance:
-    artist_id: ArtistId
-    start_date: str
-    end_date: Optional[str]
-    venue_id: Optional[VenueId]
-    festival_id: Optional[FestivalId]
-    billing: Optional[str]
-    supporting_for_artist_id: Optional[ArtistId]
-    notes: Optional[str]
-    import_source_id: ImportSourceId
-    domain: str = "music"
-
-
-@dataclass(frozen=True)
-class NewAlbum:
-    artist_id: ArtistId
-    title: str
-    release_year: Optional[int]
-    rating: Optional[float]
-    rym_id: Optional[str]
-    import_source_id: ImportSourceId
-
-
-@dataclass(frozen=True)
-class NewScrobble:
-    track_id: TrackId
-    played_at: object
-    import_source_id: ImportSourceId
-
-
-@dataclass(frozen=True)
-class MusicTotals:
-    """The table sizes the music steps report (any may be unused by a given step)."""
-    artists: int
-    venues: int
-    festivals: int
-    tracks: int
-    scrobbles: int
-
-
-@dataclass(frozen=True)
-class ArtistRules:
-    """artist_rules.json: aliases (lowercased source name -> canonical name), group memberships, known festivals."""
-    aliases: Mapping[str, str]
-    members: Mapping[str, Tuple[str, ...]]
-    festivals: Tuple[str, ...] = ()

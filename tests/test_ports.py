@@ -10,6 +10,7 @@ import dataclasses
 import importlib
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -20,7 +21,7 @@ from appctx import app
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
             "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service",
-            "privacy_floor_service", "entity_link_service", "revision_apply_service", "music_ingest_service", "normal_db_service", "build_service")
+            "privacy_floor_service", "entity_link_service", "revision_apply_service", "client.music_service", "normal_db_service", "build_service", "docs_service")
 
 
 def test_composing_every_root_verifies_its_adapters_against_their_ports():
@@ -35,6 +36,54 @@ def test_composing_every_root_verifies_its_adapters_against_their_ports():
         deps = getattr(app, name).deps
         assert dataclasses.is_dataclass(deps)
         assert all(getattr(deps, f.name) is not None for f in dataclasses.fields(deps)), name
+    assert dataclasses.is_dataclass(container.Container(loc).docs_at().deps)
+
+
+def test_every_declared_port_has_a_static_adapter_assignment():
+    """Mypy must check at least one concrete adapter against every core and client port."""
+    assigned = set()
+    for filename in ("port_types.py", "build_port_types.py", "client_port_types.py"):
+        tree = ast.parse(open(os.path.join(REPO, "tests", filename), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AnnAssign) and isinstance(node.annotation, ast.Name):
+                assigned.add(node.annotation.id)
+    from client import music_ingest
+    protocols = {proto.__name__ for proto in (*wiring.PORT_PROTOCOLS.values(), *music_ingest.ports().values())}
+    assert protocols <= assigned, f"ports without mypy adapter assignments: {sorted(protocols - assigned)}"
+
+
+def test_all_port_protocols_keep_commit_and_raw_sql_out_of_their_api():
+    """Only UnitOfWork exposes commit; ports never offer SQL execution or cursor access."""
+    root = Path(REPO)
+    paths = sorted((*root.glob("*_port.py"), *(root / "client").glob("*_port.py")))
+    commits = []
+    forbidden = {"execute", "executemany", "executescript", "cursor"}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for member in node.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        if member.name == "commit":
+                            commits.append((path.name, node.name))
+                        assert member.name not in forbidden, f"{path.name}.{node.name}.{member.name} leaks SQL access"
+    assert commits == [("build_repositories_port.py", "UnitOfWork")]
+
+
+def test_application_services_commit_only_through_unit_of_work():
+    offenders = []
+    paths = sorted((*Path(REPO).glob("*_service.py"), *(Path(REPO) / "client").glob("*_service.py")))
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "commit":
+                continue
+            owner = node.func.value
+            if isinstance(owner, ast.Name) and owner.id == "unit_of_work":
+                continue
+            if not isinstance(owner, ast.Attribute) or owner.attr != "unit_of_work":
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert offenders == [], offenders
 
 
 def test_verify_rejects_a_wrong_adapter_a_renamed_method_and_an_unknown_port():
@@ -137,7 +186,7 @@ def test_review_service_reports_a_failed_write_per_item():
 
 def _service_trees():
     for name in SERVICES + ("wiring",):
-        path = os.path.join(REPO, name + ".py")
+        path = os.path.join(REPO, *name.split(".")) + ".py"
         yield name, ast.parse(open(path, encoding="utf-8").read())
 
 
@@ -174,18 +223,20 @@ DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleD
                 "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
                 "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
                 "revision_apply_service": "RevisionApplyDeps",
-                "music_ingest_service": "MusicIngestDeps",
-                "normal_db_service": "NormalDbDeps", "build_service": "BuildDeps"}
+                "client.music_service": "MusicIngestDeps",
+                "normal_db_service": "NormalDbDeps", "build_service": "BuildDeps", "docs_service": "DocsDeps"}
 
 
 def test_every_service_has_a_frozen_deps_class_with_only_required_ports():
     assert set(DEPS_CLASSES) == set(SERVICES)
+    from client import music_ingest
+    known_ports = {**wiring.PORT_PROTOCOLS, **music_ingest.ports()}   # a client source brings its own ports
     for module, cls_name in DEPS_CLASSES.items():
         cls = getattr(importlib.import_module(module), cls_name)
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls_name
         for f in dataclasses.fields(cls):
             assert f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING, f"{cls_name}.{f.name} is optional"
-            assert f.name == "locations" or f.name in wiring.PORT_PROTOCOLS, f"{cls_name}.{f.name} is not a known port"
+            assert f.name == "locations" or f.name in known_ports, f"{cls_name}.{f.name} is not a known port"
 
 
 def test_a_service_uses_exactly_the_dependencies_it_declares():
@@ -193,7 +244,7 @@ def test_a_service_uses_exactly_the_dependencies_it_declares():
     a declared-but-unused port is a wiring lie, and an undeclared one fails only when that path runs."""
     for module, cls_name in DEPS_CLASSES.items():
         declared = {f.name for f in dataclasses.fields(getattr(importlib.import_module(module), cls_name))}
-        tree = ast.parse(open(os.path.join(REPO, module + ".py"), encoding="utf-8").read())
+        tree = ast.parse(open(os.path.join(REPO, *module.split(".")) + ".py", encoding="utf-8").read())
         used = {n.attr for n in ast.walk(tree)
                 if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "deps"}
         assert used <= declared, f"{module} uses undeclared dependencies: {sorted(used - declared)}"
@@ -350,7 +401,7 @@ def test_library_and_composition_modules_import_without_a_private_repo():
     composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
     import subprocess
     import glob
-    steps = sorted(os.path.splitext(p)[0].replace("/", ".") for p in
+    steps = sorted(os.path.splitext(p)[0].replace(os.sep, ".").replace("/", ".") for p in
                    glob.glob("ingest/*.py") + glob.glob("client/*.py") if not p.endswith("__init__.py"))
     code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
             "fact_queries, knowledge, cli_add_fact, build, queries, " + ", ".join(steps) + "; print('ok')")

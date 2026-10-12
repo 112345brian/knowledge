@@ -1,6 +1,7 @@
 """#48: persistent identifiers for sources. Normalization and checksums, loading from frontmatter and
 manual_sources.json, duplicate detection (reported, never merged), `source ids`, `--identifier`, and the
 normal-only DB. Temp dirs only; no network."""
+import contextlib
 import importlib.util
 import json
 import os
@@ -303,7 +304,7 @@ def test_normal_db_carries_identifiers_of_included_sources_only():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.executemany("INSERT INTO source_identifiers VALUES (?, ?, ?)", [(1, "doi", "10.1210/pub"), (2, "doi", "10.1210/onlyprivate"), (1, "other", "pmcid:PMC1234567")])
@@ -311,6 +312,6 @@ def test_normal_db_carries_identifiers_of_included_sources_only():
         c.commit()
         c.close()
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("pmc1234567",)))
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert [tuple(r) for r in con.execute("SELECT * FROM source_identifiers")] == [(1, "doi", "10.1210/pub")]       # source 2 not included; the keyword drops the 'other'
         assert "source_identifier_conflicts" not in {r[0] for r in con.execute("SELECT name FROM sqlite_master")}

@@ -9,7 +9,7 @@ import uuid
 
 
 def read_text(path):
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -45,10 +45,6 @@ def makedirs(path):
 
 def exists(path):
     return os.path.exists(path)
-
-
-def join(directory, name):
-    return os.path.join(directory, name)
 
 
 def replace(source, target):

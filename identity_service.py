@@ -1,8 +1,8 @@
-"""The identity operations every build step shares: which source, which subject, which artist a name means.
+"""The identity operations every build step shares: which source and which subject a name means.
 
 Application ring: orchestrates the repositories (`build_repositories_port`) with the pure rules
 (`identity_rules`); imports no adapter. Each class here is the ONE definition of its operation: a step that
-finds-or-creates a subject, claims a citekey or resolves an artist does it through these, never with its own
+finds-or-creates a subject or claims a citekey through these, never with its own
 SELECT/INSERT. They are constructed per step run, so their caches never survive a step (today's `State`/dict
 caches are per run too).
 
@@ -14,18 +14,15 @@ Frozen semantics (tests/test_identity_service.py pins each against the legacy st
     Subject  exact name first; the alias table is consulted only when asked (`via_aliases`); only then is a subject
              created, with the given domain or the schema default (`domain=None`). The cache is keyed by the name
              as given and remembers the id the first lookup produced.
-    Artist   the key is `artist_key(canonical_artist_name(name, aliases))`; the cache is loaded once from the
-             table (the first row of a case-variant group wins) and a created artist is added to it; nothing
-             is ever evicted.
 """
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import acquisition_rules
-from artist_directory import ArtistDirectory
 import build_records as r
 import identity_rules
 import inputs_port
-from build_repositories_port import MusicRepository, SourceRepository, SubjectRepository
+import subject_rules
+from build_repositories_port import SourceRepository, SubjectRepository
 from build_steps_port import Diagnostics
 
 
@@ -116,7 +113,7 @@ class SubjectIdentity:
 
     @property
     def touched(self) -> int:
-        """How many distinct names this run has resolved (the measurements summary reports it)."""
+        """How many distinct names this run has resolved."""
         return len(self._cache)
 
     def resolve(self, name: str, *, domain: Optional[str] = None, via_aliases: bool = False) -> r.SubjectId:
@@ -125,28 +122,9 @@ class SubjectIdentity:
         domain to the schema default."""
         if name in self._cache:
             return self._cache[name]
-        found = self._subjects.find_by_name(name)
-        if found is None and via_aliases:
-            found = self._subjects.find_by_alias(name)
+        found, _via = subject_rules.identify(name, self._subjects.find_by_name,
+                                             self._subjects.find_by_alias if via_aliases else (lambda _alias: None))
         subject_id = found if found is not None else self._subjects.add(name, domain)
         self._cache[name] = subject_id
         return subject_id
 
-
-class ArtistIdentity(ArtistDirectory):
-    """The artist directory plus the configured group memberships."""
-    def __init__(self, music: MusicRepository, rules: r.ArtistRules):
-        super().__init__(music, rules.aliases)
-        self._music = music
-        self._rules = rules
-
-    def seed_members(self) -> int:
-        """Record the configured group memberships; returns how many rows were new. Run after the imports so the
-        members already exist from their own credits."""
-        inserted = 0
-        for group_name, member_names in self._rules.members.items():
-            group_id = r.ArtistId(self.resolve(group_name))
-            for member_name in member_names:
-                if self._music.add_artist_member(group_id, r.ArtistId(self.resolve(member_name))):
-                    inserted += 1
-        return inserted

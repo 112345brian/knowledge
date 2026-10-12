@@ -25,13 +25,23 @@ class _Report:
 def new_source(record: SourceRecord) -> r.NewSource:
     """The `sources` row a record becomes: its fields, then its file fingerprint, status and custodial history."""
     fingerprint, state, acquisition = record.fingerprint or {}, record.state.columns(), record.acquisition
+
+    def text(key):
+        value = fingerprint.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"source {record.citekey!r}: fingerprint {key} must be text or null")
+        return value
+
+    size_bytes = fingerprint.get("size_bytes")
+    if size_bytes is not None and (not isinstance(size_bytes, int) or isinstance(size_bytes, bool)):
+        raise ValueError(f"source {record.citekey!r}: fingerprint size_bytes must be an integer or null")
     return r.NewSource(
         citekey=record.citekey, name=record.name, source_type=record.source_type, publisher=record.publisher,
         url=record.url, published_date=record.published_date, retrieved_date=record.retrieved_date,
         description=record.description, origin_path=record.origin_path,
-        content_sha256=fingerprint.get("content_sha256"), size_bytes=fingerprint.get("size_bytes"),
-        file_mtime=fingerprint.get("file_mtime"), mime_type=fingerprint.get("mime_type"),
-        file_state=fingerprint.get("file_state"),
+        content_sha256=text("content_sha256"), size_bytes=size_bytes,
+        file_mtime=text("file_mtime"), mime_type=text("mime_type"),
+        file_state=text("file_state"),
         status=state["status"], status_date=state["status_date"], status_note=state["status_note"],
         edition=state["edition"], original_published_date=state["original_published_date"],
         acquired_at=acquisition.get("acquired_at"), acquired_via=acquisition.get("acquired_via"),
@@ -54,7 +64,8 @@ def add_sources(repo: SourceRepository, records: Iterable[SourceRecord], skip_kn
         identity.attach_identifiers(source_id, record.citekey, record.identifiers)
         for order, name in record.authors:
             repo.link_author(source_id, name, order)
-        known.add(record.citekey)
+        if record.citekey is not None:
+            known.add(record.citekey)
         stored += 1
     return stored
 

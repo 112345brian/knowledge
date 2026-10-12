@@ -16,10 +16,10 @@ Usage:
 """
 import argparse
 import json
-import os
 import sys
 
 from client.snapshot_date import MEASUREMENTS_SNAPSHOT_FILE, read_snapshot_date
+from locations import join_path
 
 # What the old `TODAY` constant in the measurements step stood for.
 MEASUREMENTS_LEGACY_DATE = "2026-09-11"
@@ -28,7 +28,7 @@ MEASUREMENTS_LEGACY_DATE = "2026-09-11"
 def find_problems(files, inputs, data_dir):
     """[(where, what)]: the snapshot file is there but unusable."""
     problems = []
-    if files.exists(os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
+    if files.exists(join_path(data_dir, MEASUREMENTS_SNAPSHOT_FILE)):
         try:
             read_snapshot_date(inputs, data_dir)
         except RuntimeError as e:
@@ -38,7 +38,7 @@ def find_problems(files, inputs, data_dir):
 
 def write_snapshot(files, data_dir, apply):
     """Create measurements_snapshot.json if absent. Returns 1 if it was (or would be) written."""
-    path = os.path.join(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
+    path = join_path(data_dir, MEASUREMENTS_SNAPSHOT_FILE)
     with files.locked(path):
         if files.exists(path):
             return 0

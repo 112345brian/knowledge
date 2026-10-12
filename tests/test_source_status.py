@@ -4,6 +4,7 @@ Pins what 01/02 do with legacy sources first (counts, columns, status 'active' w
 fields from frontmatter and manual_sources.json, relation validation (unknown citekey, self, cycles), the
 audit in every status, the CLI, and the normal-only DB. Temp dirs only.
 """
+import contextlib
 import importlib.util
 import json
 import os
@@ -415,10 +416,10 @@ def test_normal_db_carries_status_and_edition_but_not_the_note_date_or_relations
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         cols = {r[1] for r in con.execute("PRAGMA table_info(sources)")}
         assert {"status", "edition"} <= cols and not ({"status_note", "status_date", "original_published_date", "origin_path"} & cols)
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE citekey = 'pub2020'").fetchone()) == ("corrected", "2nd edition")
@@ -431,14 +432,14 @@ def test_normal_db_drops_an_edition_that_trips_a_keyword():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         c = sqlite3.connect(full)
         c.execute("UPDATE sources SET edition = 'Zorbak family edition' WHERE id = 1")
         c.commit()
         c.close()
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules(keywords=("zorbak",)))
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         assert tuple(con.execute("SELECT status, edition FROM sources WHERE id = 1").fetchone()) == ("corrected", None)
 
 
@@ -446,10 +447,10 @@ def test_leak_test_flags_a_status_note_planted_in_the_normal_db():
     import leak_test
     import normal_db
     import privacy
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as conns:
         full = leak_test.build_fixture(local_buildfiles, d)
         path, _ = normal_db.build_normal_atomic(local_buildfiles, full, d, privacy.Rules())
-        con = sqlite3.connect(path)
+        con = conns.enter_context(contextlib.closing(sqlite3.connect(path)))
         con.execute("UPDATE sources SET edition = ? WHERE id = 1", (leak_test.MARKERS["source status note"],))
         con.commit()
         con.close()
