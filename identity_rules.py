@@ -1,7 +1,7 @@
 """Identity rules the build shares, pure: how names and keys are normalized before they are compared.
 
 Domain service ring: no I/O. The byline split and the identifier warning are defined here; the artist-name
-canonicalization is music-source logic and lives in `client/artist_rules.py`. The stateful operations that use
+canonicalization and the artist rules record are music-source logic and live in `client/artist_rules.py`. The stateful operations that use
 them (find or create, with a per-run cache) are `identity_service`.
 """
 from typing import List, Optional, Tuple

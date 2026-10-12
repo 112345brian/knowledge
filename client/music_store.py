@@ -1,11 +1,11 @@
-"""SQLite adapter for the build's `MusicRepository` (`build_repositories_port`): the music tables of the build
-database it is given. It decides nothing: it stores the records it is handed and answers for what is stored. Which
-artist a name means, which rows a rerun replaces and when to commit are the service's (`music_ingest_service`,
-`identity_service`); get-or-create and INSERT OR IGNORE are the port's documented operations."""
+"""SQLite adapter for `client.music_port.MusicRepository`: the music tables of the build database it is given. It
+decides nothing: it stores the records it is handed and answers for what is stored. Which artist a name means, which
+rows a rerun replaces and when to commit are the service's (`music_service`, `artist_identity_service`);
+get-or-create and INSERT OR IGNORE are the port's documented operations."""
 import sqlite3
 from typing import Iterable, Optional, Sequence, Tuple
 
-import build_records as r
+from client import music_records as r
 
 
 class SqliteMusicRepository:

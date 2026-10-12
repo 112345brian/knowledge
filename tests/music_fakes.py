@@ -1,5 +1,5 @@
-"""An in-memory Inputs port (JSON kept as text) for the music steps; the repository fake is the foundation's
-`fake_build_repositories.FakeMusic`."""
+"""An in-memory Inputs port (JSON kept as text) for the music steps; the repository fake is the client's
+`fake_client_repositories.FakeMusic`."""
 import json
 
 

@@ -1,4 +1,4 @@
-"""The four music steps end to end over the real client schema (`music_ingest.compose` -> service -> SQLite adapter).
+"""The four music steps end to end over the real client schema (`client.music_ingest.compose` -> service -> SQLite adapter).
 
 These pin what the callers of the music repository see: the rows, their ids in first-seen order, what a rerun
 replaces, what is committed when, and the edge inputs (blank, NUL, partial objects, a failure on the second
@@ -12,7 +12,7 @@ import sqlite3
 
 import pytest
 
-import music_ingest
+from client import music_ingest
 from locations import Locations
 from music_fakes import FakeInputs
 from schema_helper import full_schema
@@ -228,7 +228,7 @@ def _calls(attr):
 
 def test_only_the_artist_directory_creates_artists():
     """Artist identity (the key, the canonical spelling, first-seen ids) is decided in one place."""
-    assert sorted({f for f, _, _ in _calls("add_artist")}) == ["artist_directory.py"]
+    assert sorted({f for f, _, _ in _calls("add_artist")}) == ["client/artist_directory.py"]
 
 
 def test_nobody_discards_whether_a_membership_was_new():

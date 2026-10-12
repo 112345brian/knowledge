@@ -528,6 +528,15 @@ CASES = [
      [("tach", ["fact_ingest_rules", "add_fact"]), ("import-linter", ["kn.fact_ingest_rules", "kn.add_fact"])]),
     ("domain-source-ingest-rules-imports-glob", "source_ingest_rules", "import glob",
      [("import-linter", ["kn.source_ingest_rules", "glob"])]),
+    # ---- the base / client boundary: nothing outside client/ imports a client source (the shadow's `kncore`)
+    ("base-imports-a-client-module", "privacy", "import music_store",   # a bare stem: only the shadow resolves it
+     [("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store", "BROKEN"])]),
+    ("base-imports-a-client-module-from-the-package", "privacy", "from client import music_store",
+     [("tach", ["privacy", "music_store"]), ("import-linter", ["never imports a client source", "kncore.privacy", "kn.music_store"])]),
+    ("base-imports-a-client-module-lazily", "build_service", "def f():\n    import client.music_service",
+     [("import-linter", ["never imports a client source", "kncore.build_service", "kn.music_service"])]),
+    ("base-ingest-step-imports-a-client-module", "seed_sources", "from client import music_records",
+     [("tach", ["seed_sources", "music_records"]), ("import-linter", ["never imports a client source", "kncore.seed_sources", "kn.music_records"])]),
     ("domain-music-ingest-rules-imports-pathlib", "music_ingest_rules", "from pathlib import Path",
      [("import-linter", ["kn.music_ingest_rules", "pathlib"])]),
     ("domain-measurement-rules-imports-sqlite", "measurement_rules", "import sqlite3",
@@ -623,7 +632,7 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
                       "identity_service", "source_ingest_service", "fact_ingest_service",
                       "privacy_floor_service", "entity_link_service", "revision_apply_service",
                       "measurements_service",
-                      "music_ingest_service",
+                      "music_service", "artist_identity_service",
                       "normal_db_service",
                       "build_service"}   # the last is a client source's use case: it sits in the pipeline ring
 
@@ -818,9 +827,10 @@ def test_build_steps_do_no_file_or_database_io_of_their_own():
                     "os.path.isdir", "os.path.getsize", "os.path.getmtime", "sqlite3.connect", "shutil.copy",
                     "shutil.move", "shutil.rmtree", "subprocess.run", "subprocess.call", "Path"}
     steps, offenders = [], []
+    layer = {n: m["layer"] for n, m in _tach_modules(_read(TACH_TOML)).items()}
     for name, tree in _all_source_trees():
-        if name in ENTRY_POINTS or name.endswith("_rules"):
-            continue
+        if name in ENTRY_POINTS or name.endswith("_rules") or layer.get(name) == "infrastructure":
+            continue    # a client source's own adapter (client/*_store.py) is infrastructure, not a step
         path = ac._source_files(REPO)[name]
         if os.path.relpath(path, REPO).split(os.sep)[0] not in ("ingest", "client"):
             continue
@@ -865,7 +875,7 @@ def test_composition_roots_import_only_what_they_use():
     import ast
     roles = _architecture_roles()
     for name in sorted(n for n, r in roles.items() if r == "composition root"):
-        tree = ast.parse(_read(os.path.join(REPO, name + ".py")))
+        tree = ast.parse(_read(ac._source_files(REPO)[name]))
         imported = {}
         for node in tree.body:
             if isinstance(node, ast.Import):

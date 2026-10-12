@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Mapping, Optional, Protocol, Sequence
 
 import build_records as r
-from build_repositories_port import MeasurementRepository, SourceRepository, UnitOfWork
+from build_repositories_port import SourceRepository, UnitOfWork
 from client import measurement_rules
+from client import measurements_records as mr
+from client.measurements_port import MeasurementRepository
 from client.vault_reader_port import VaultReader
 
 SOURCE_AUTHOR = "user"      # the author recorded on the sources a load creates from vault tables
@@ -59,7 +61,7 @@ class _Run:
         self.subject_directory = deps.subjects
         self.snapshot_date = snapshot_date
         self.subjects: Dict[str, r.SubjectId] = {}
-        self.metrics: Dict[str, r.MetricId] = {}
+        self.metrics: Dict[str, mr.MetricId] = {}
         self.exercises: Dict[str, int] = {}
         self.foods: Dict[str, int] = {}
         self.muscles: Dict[str, int] = {}
@@ -70,13 +72,13 @@ class _Run:
             self.subjects[name] = found if found is not None else self.subject_directory.add(name)
         return self.subjects[name]
 
-    def metric_id(self, key: str, unit: str) -> r.MetricId:
+    def metric_id(self, key: str, unit: str) -> mr.MetricId:
         if key not in self.metrics:
             found = self.repository.find_metric(key)
             if found is None:
                 label, good_direction = measurement_rules.metric_label(key)
                 found = self.repository.add_metric(
-                    r.NewMetric(key=key, label=label, unit=unit, good_direction=good_direction))
+                    mr.NewMetric(key=key, label=label, unit=unit, good_direction=good_direction))
             self.metrics[key] = found
         return self.metrics[key]
 
@@ -100,7 +102,7 @@ class _Run:
         for m in measurements:
             subject_id = self.subject_id(m.subject)
             metric_id = self.metric_id(m.metric, m.unit)
-            self.repository.add(r.NewMeasurement(
+            self.repository.add(mr.NewMeasurement(
                 subject_id=subject_id, metric_id=metric_id, value=m.value, measured_at=m.measured_at,
                 source_id=source_ids[m.source], trust_level=m.trust_level, trust_rationale=m.trust_rationale,
                 date_added=self.snapshot_date, notes=m.notes, recheck_by=m.recheck_by,
@@ -176,20 +178,20 @@ def load_measurements(deps: MeasurementsDeps, *, snapshot_date: str, notes_vault
             if row[col] is None:
                 continue
             muscle_id = run.muscle_id(measurement_rules.muscle_name(col))
-            repo.add_muscle_volume(r.NewMuscleVolume(muscle_id=muscle_id, week_start=row["date"], sets=row[col],
+            repo.add_muscle_volume(mr.NewMuscleVolume(muscle_id=muscle_id, week_start=row["date"], sets=row[col],
                                                      source_id=ids["volume"]))
 
     # ---------------- Raw per-set / per-food / Fitbit / micronutrient logs ----------------
     ids.update(run.create_sources(raw))
 
     for s in vault.workout_sets():
-        repo.add_training_set(r.NewTrainingSet(
+        repo.add_training_set(mr.NewTrainingSet(
             exercise_id=run.exercise_id(s.exercise or "Unknown exercise"), measured_at=s.date, weight=s.completed_weight,
             weight_unit=s.weight_unit or "lb", reps=s.completed_reps, rir=s.rir, is_warmup=1 if s.is_warmup else 0,
             source_id=ids["sets"], notes=s.notes))
 
     for j in vault.jefit_exercise_sets():
-        repo.add_training_set(r.NewTrainingSet(
+        repo.add_training_set(mr.NewTrainingSet(
             exercise_id=run.exercise_id(j.exercise or "Unknown exercise"), measured_at=j.date, weight=j.weight,
             weight_unit=j.weight_unit or "lb", reps=j.reps, rir=None, is_warmup=0, source_id=ids["jefit"], notes=None))
 
@@ -200,12 +202,12 @@ def load_measurements(deps: MeasurementsDeps, *, snapshot_date: str, notes_vault
         run.add_measurements(measurement_rules.exercise_log_measurements(row), ids)
 
     for meal in vault.mfp_nutrition_log():
-        repo.add_meal_log_entry(r.NewMealLogEntry(
+        repo.add_meal_log_entry(mr.NewMealLogEntry(
             measured_at=meal.date, meal=meal.meal, nutrients={c: getattr(meal, c) for c in MEAL_LOG_NUTRIENTS},
             source_id=ids["mfp_n"]))
 
     for f in vault.nutrition_food_log():
-        repo.add_food_log_entry(r.NewFoodLogEntry(
+        repo.add_food_log_entry(mr.NewFoodLogEntry(
             food_id=run.food_id(f.food_name or "Unknown food"), measured_at=f.date, time=f.time,
             serving_qty=f.serving_qty, serving_size=f.serving_size, calories_kcal=f.calories_kcal, fat_g=f.fat_g,
             carbs_g=f.carbs_g, protein_g=f.protein_g, alcohol_g=f.alcohol_g, source_id=ids["food"]))

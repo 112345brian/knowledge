@@ -68,7 +68,7 @@ def test_every_repository_method_is_annotated():
 
 def test_every_record_is_a_frozen_dataclass():
     records = [c for _, c in inspect.getmembers(r, inspect.isclass) if c.__module__ == "build_records"]
-    assert len(records) >= 20
+    assert len(records) >= 12
     for cls in records:
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls.__name__  # type: ignore[attr-defined]
 

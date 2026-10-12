@@ -181,65 +181,9 @@ def test_the_cache_is_keyed_by_the_name_as_given_and_remembers_the_first_lookup(
     assert state.subjects[first]["domain"] == "one"
 
 
-# ----------------------------------------------------------------------------------------- artist identity
-
-def artists(*names, aliases=None, members=None):
-    state = FakeState()
-    s = fake_session(state)
-    for n in names:
-        s.music.add_artist(n)
-    return state, s, ident.ArtistIdentity(s.music, r.ArtistRules(aliases or {}, members or {}))
-
-
-def test_artist_names_match_case_insensitively_with_python_lower():
-    state, s, ids = artists("Jpegmafia")
-    assert ids.resolve("JPEGMAFIA") == 1 and len(state.artists) == 1
-    assert ids.resolve("Ünter") == ids.resolve("ÜNTER")        # non-ASCII folds too: not SQLite NOCASE
-
-
-def test_the_first_row_of_a_case_variant_group_wins_the_cache():
-    state, s, ids = artists("Beck", "BECK", "beck")
-    assert ids.resolve("bEcK") == 1 and len(ids) == 1
-
-
-def test_html_is_unescaped_then_the_alias_table_is_applied():
-    state, s, ids = artists(aliases={"a & b": "A and B"})
-    a = ids.resolve("A &amp; B")
-    assert state.artists[a] == "A and B" and ids.resolve("a and b") == a
-
-
-def test_a_created_artist_is_cached_and_len_counts_distinct_keys():
-    state, s, ids = artists("Known")
-    start = len(ids)
-    new = ids.resolve("New")
-    assert ids.resolve("new") == new and len(ids) == start + 1
-    assert state.operations.count(("music.add_artist", "New")) == 1
-
-
-def test_the_cache_is_loaded_once_so_a_later_external_insert_is_not_seen():
-    """Kept as is: nothing refreshes it (one step, one run)."""
-    state, s, ids = artists()
-    s.music.add_artist("Late")
-    assert ids.resolve("late") == 2 and len(state.artists) == 2      # a second row, as the legacy cache would make
-
-
-def test_seed_members_creates_missing_artists_and_counts_only_new_links():
-    state, s, ids = artists("Solo", members={"Group": ("Solo", "Other")})
-    assert ids.seed_members() == 2
-    assert ids.seed_members() == 0
-    assert sorted(state.artists.values()) == ["Group", "Other", "Solo"]
-
-
-def test_artist_rules_are_one_record_built_by_parse_artist_rules():
-    got = parse_artist_rules({"version": 1, "aliases": {"x": "Y"}, "members": {"G": ["a", "b"]}}, "rules.json")
-    assert isinstance(got, r.ArtistRules)
-    assert got == r.ArtistRules({"x": "Y"}, {"G": ("a", "b")}, ())
-    assert r.ArtistRules() == r.ArtistRules({}, {}, ())          # the default is no rules
-
-
 # ------------------------------------------------------------------------- one definition each (ratchet)
 
-IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "parse_artist_rules", "artist_rules_from_mapping",
+IDENTITY_FUNCTION_NAMES = {"canonical_artist_name", "artist_key", "parse_artist_rules",
                            "get_or_create_artist", "load_artist_cache",
                            "get_or_create_subject", "get_source_id", "link_authors", "get_or_create_author",
                            "add_source_identifiers", "get_or_create_vault_file", "get_or_create_publisher"}
@@ -274,7 +218,7 @@ def test_identity_functions_have_one_definition_and_no_new_copies_appear():
 
 
 def test_artist_rules_has_one_definition_and_only_two_places_build_it():
-    """`build_records.ArtistRules` is the only record; a second one (the client dataclass had its own) would let
+    """`client.music_records.ArtistRules` is the only record; a second one (the client dataclass had its own) would let
     the aliases the directory reads and the members the identity seeds come from two shapes."""
     defined, built = set(), set()
     for sub in ("", "ingest", "client"):
@@ -287,8 +231,8 @@ def test_artist_rules_has_one_definition_and_only_two_places_build_it():
                 if isinstance(node, ast.ClassDef) and node.name == "ArtistRules":
                     defined.add(path)
                 if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "ArtistRules" and getattr(node.func.value, "id", "") == "r"):
+                        and node.func.attr == "ArtistRules" and getattr(node.func.value, "id", "") in ("r", "music_records")):
                     built.add(path)
-    assert defined == {"build_records.py"}
+    assert defined == {"client/music_records.py"}
     # the parser builds the file's rules; the service builds the "no rules" default; nobody else
-    assert built == {"client/artist_rules.py", "music_ingest_service.py"}
+    assert built == {"client/artist_rules.py", "client/music_service.py"}

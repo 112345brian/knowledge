@@ -9,7 +9,8 @@ are `measurements_service`'s and `measurement_rules`'. Each `add` allocates its 
 import sqlite3
 from typing import Optional
 
-import build_records as r
+from build_records import FactId
+from client import measurements_records as r
 
 MEAL_LOG_COLUMNS = ("calories_kcal", "fat_g", "saturated_fat_g", "carbs_g", "fiber_g", "sugar_g", "protein_g",
                     "sodium_mg", "potassium_mg", "cholesterol_mg", "vitamin_a", "vitamin_c", "calcium", "iron")
@@ -93,11 +94,11 @@ class SqliteFactMeasurementLinks:
     def __init__(self, con: sqlite3.Connection):
         self._con = con
 
-    def find_by_source_key(self, source_key: str) -> Optional[r.FactId]:
+    def find_by_source_key(self, source_key: str) -> Optional[FactId]:
         row = self._con.execute("SELECT id FROM facts WHERE source_key = ?", (source_key,)).fetchone()
-        return r.FactId(row[0]) if row else None
+        return FactId(row[0]) if row else None
 
-    def link_measurements(self, fact_id: r.FactId, metric_key: str) -> int:
+    def link_measurements(self, fact_id: FactId, metric_key: str) -> int:
         return self._con.execute(
             """INSERT INTO fact_measurements (fact_id, measurement_id)
                SELECT ?, m.id FROM measurements m JOIN metrics mt ON mt.id = m.metric_id WHERE mt.key = ?""",

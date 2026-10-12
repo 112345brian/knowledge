@@ -14,12 +14,12 @@ import dataclasses
 import functools
 import inspect
 from types import SimpleNamespace
-from typing import Any, Callable, Iterable, List, Mapping, Union
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Union
 
 from add_fact_port import AddFact
 from build_files_port import BuildFiles
 from build_port import BuildOutputs, ProvenanceReader, SessionFactory, StepRegistry
-from build_repositories_port import MusicRepository, PrivacyRepository, RevisionRepository, UnitOfWork
+from build_repositories_port import PrivacyRepository, RevisionRepository, UnitOfWork
 from clock_port import Clock
 from datafiles_port import DataFiles
 from entity_files_port import EntityFileReader, EntityFiles
@@ -35,7 +35,6 @@ from inputs_port import Inputs
 from lifecycle_reads_port import LifecycleReads
 from locations import Locations
 from memory_files_port import MemoryFiles
-from music_export_port import MusicExportReads
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
 from privacy_floor_service import FloorRows
@@ -60,17 +59,21 @@ def bind(fn: Callable, deps: Any) -> Callable:
     return bound
 
 
-def bind_all(service, deps: Any, names: Union[Iterable[str], Mapping[str, str]]) -> SimpleNamespace:
+def bind_all(service, deps: Any, names: Union[Iterable[str], Mapping[str, str]],
+             ports: Optional[Mapping[str, Any]] = None) -> SimpleNamespace:
     """The public API of one composition root: `names` is either the service function names, or a mapping of
     public name -> service function name. Each is bound to `deps`; `deps` itself is kept as `.deps` so a test or
-    a debugger can see what the root wired."""
-    verify(deps)
+    a debugger can see what the root wired. `ports` names the protocols of a client source's own ports (see
+    `verify`)."""
+    verify(deps, ports)
     mapping = dict(names) if isinstance(names, Mapping) else {n: n for n in names}
     api = SimpleNamespace(**{public: bind(getattr(service, fn), deps) for public, fn in mapping.items()})
     api.deps = deps
     return api
 
 
+# The core's ports. A client source's ports are not listed here (the core does not know the client): its composition
+# root passes them as `ports=` to `bind_all`/`verify`/`conformance_problems`.
 PORT_PROTOCOLS = {
     "git": PrivateGit, "revisions": Revisions, "rules": Rules, "reads": ReviewReads, "reviews": Reviews,
     "lifecycle_reads": LifecycleReads, "facts_file": FactsFile, "clock": Clock, "ids": Ids,
@@ -79,10 +82,9 @@ PORT_PROTOCOLS = {
     "subject_files": SubjectFiles, "entity_queries": EntityQueries, "subjects": SubjectRepository,
     "facts": FactStore, "revision_writer": FactRevisionWriter, "sources": SourceRepository,
     "unit_of_work": UnitOfWork, "identity": Identity, "inputs": Inputs, "privacy_floor": PrivacyFloor,
-    "datafiles": DataFiles, "music_export": MusicExportReads,
+    "datafiles": DataFiles,
     "revision_repository": RevisionRepository, "privacy_repository": PrivacyRepository,
     "floor_rows": FloorRows, "entities": EntityRepository,
-    "music": MusicRepository,
     "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
@@ -130,9 +132,10 @@ def _call_problems(name: str, member: str, proto_fn, impl) -> List[str]:
     return problems
 
 
-def conformance_problems(name: str, adapter: Any) -> List[str]:
-    """What is missing or not call-compatible in `adapter` against the protocol for port `name` (empty = conforms)."""
-    proto = PORT_PROTOCOLS[name]
+def conformance_problems(name: str, adapter: Any, ports: Optional[Mapping[str, Any]] = None) -> List[str]:
+    """What is missing or not call-compatible in `adapter` against the protocol for port `name` (empty = conforms).
+    `ports` adds a client source's own protocols to the core's."""
+    proto = {**PORT_PROTOCOLS, **(ports or {})}[name]
     problems = []
     for member, value in vars(proto).items():
         if member.startswith("_") or member in ("__annotations__",):
@@ -150,9 +153,11 @@ def conformance_problems(name: str, adapter: Any) -> List[str]:
     return problems
 
 
-def verify(deps: Any) -> Any:
+def verify(deps: Any, ports: Optional[Mapping[str, Any]] = None) -> Any:
     """Raise PortMismatch unless every dependency in `deps` (a frozen *Deps dataclass) is a known port and has the
-    shape of its protocol. `locations` is a value, not a port. Returns `deps`."""
+    shape of its protocol. `locations` is a value, not a port. `ports` adds a client source's own protocols (name ->
+    protocol) to the core's. Returns `deps`."""
+    known = {**PORT_PROTOCOLS, **(ports or {})}
     problems = []
     for field in dataclasses.fields(deps):
         value = getattr(deps, field.name)
@@ -160,10 +165,10 @@ def verify(deps: Any) -> Any:
             if not isinstance(value, Locations):
                 problems.append(f"locations: expected a Locations, got {type(value).__name__}")
             continue
-        if field.name not in PORT_PROTOCOLS:
+        if field.name not in known:
             problems.append(f"{field.name}: not a known port (add it to wiring.PORT_PROTOCOLS)")
             continue
-        problems.extend(conformance_problems(field.name, value))
+        problems.extend(conformance_problems(field.name, value, ports))
     if problems:
         raise PortMismatch(f"{type(deps).__name__} is wired wrong:\n  " + "\n  ".join(problems))
     return deps

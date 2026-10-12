@@ -12,11 +12,12 @@ import sqlite3
 import pytest
 
 import build_records as r  # noqa: E402
-from build_repositories_port import FactRepository, MeasurementRepository  # noqa: E402
+from client.measurements_port import MeasurementRepository  # noqa: E402
+from client import measurements_records as mr  # noqa: E402
 from client import measurement_rules, measurements_service as svc, measurements_store, vault_reader_port, vault_reader_store  # noqa: E402
 from client.vault_reader_port import ColumnTable, FoodLog, JefitSet, MealLog, WorkoutSet  # noqa: E402
-from fake_build_repositories import (FakeFacts, FakeMeasurements, FakeSources, FakeState, FakeSubjects,  # noqa: E402
-                                     FakeUnitOfWork)
+from fake_build_repositories import FakeSources, FakeSubjects, FakeUnitOfWork  # noqa: E402
+from fake_client_repositories import FakeClientState as FakeState, FakeFactLinks, FakeMeasurements  # noqa: E402
 from schema_helper import REPO, full_schema  # noqa: E402
 
 SNAPSHOT = "2026-09-11"
@@ -249,7 +250,7 @@ def test_a_reading_for_a_source_key_the_config_did_not_name_is_an_error_not_a_gu
 def test_the_summary_counts_this_run_and_matches_the_report_lines():
     w = World()
     for _ in range(100):                        # rows an earlier load left: `inserted` is this run's only
-        w.measurements.add(r.NewMeasurement(r.SubjectId(1), r.MetricId(1), 1, "2020-01-01", r.SourceId(1), "high",
+        w.measurements.add(mr.NewMeasurement(r.SubjectId(1), mr.MetricId(1), 1, "2020-01-01", r.SourceId(1), "high",
                                             None, "2020-01-01"))
     summary, _, _ = load(world=w)
     n = len(measurement_rules.dexa_measurements(DEXA, "2026-01-01", "dexa"))
@@ -290,15 +291,15 @@ def test_no_items_commits_once_and_links_nothing():
     assert link(FakeLinks({}), []) == (0, 1)
 
 
-def test_the_foundation_fake_of_the_fact_repository_answers_the_link_step():
-    """The two members the step calls are `FactRepository`'s own: its in-memory fake links the way the step expects."""
+def test_the_in_memory_fact_links_answer_the_link_step():
+    """The two members the step calls: the fake links the way the SQLite adapter does (one row per measurement)."""
     state = FakeState()
     measurements = FakeMeasurements(state)
-    metric = measurements.add_metric(r.NewMetric("weight_lb", "Total weight", "lb", 1))
+    metric = measurements.add_metric(mr.NewMetric("weight_lb", "Total weight", "lb", 1))
     for day in ("2026-01-01", "2026-01-02"):
-        measurements.add(r.NewMeasurement(r.SubjectId(1), metric, 1.0, day, r.SourceId(1), "high", None, SNAPSHOT))
+        measurements.add(mr.NewMeasurement(r.SubjectId(1), metric, 1.0, day, r.SourceId(1), "high", None, SNAPSHOT))
     state.facts[1] = type("F", (), {"source_key": "p-1"})()
-    linked, commits = link(FakeFacts(state), [{"_source_key": "p-1", "measurement_metric_link": "weight_lb"},
+    linked, commits = link(FakeFactLinks(state), [{"_source_key": "p-1", "measurement_metric_link": "weight_lb"},
                                               {"_source_key": "p-9", "measurement_metric_link": "weight_lb"}])
     assert (linked, commits) == (2, 1)
     assert state.fact_measurements == [(1, "weight_lb"), (1, "weight_lb")]
@@ -325,12 +326,16 @@ def test_every_driver_of_the_load_uses_the_summary_it_returns():
                 assert n.value.func.attr not in ("load_measurements", "link_fact_measurements"), f"{name}:{n.lineno} discards the result"
 
 
-def test_the_lane_port_is_gone_and_no_module_defines_a_second_measurement_repository():
-    assert not os.path.exists(os.path.join(REPO, "client", "measurements_port.py"))
+def test_no_module_defines_a_second_measurement_repository():
+    """One contract for the measurement tables, in the client's own port; the fact link is the service's `FactLinks`."""
+    owners = []
     for name in sorted(os.listdir(os.path.join(REPO, "client"))):
         if name.endswith(".py"):
             text = open(os.path.join(REPO, "client", name), encoding="utf-8").read()
-            assert "class MeasurementRepository" not in text and "class FactMeasurementLinks" not in text, name
+            assert "class FactMeasurementLinks" not in text and "class MeasurementRecordRepository" not in text, name
+            if "class MeasurementRepository" in text:
+                owners.append(name)
+    assert owners == ["measurements_port.py"]
 
 
 # ---------------------------------------------------------------- the SQLite adapters
@@ -409,24 +414,24 @@ def test_the_repository_gets_or_creates_dimensions_and_finds_metrics_without_rew
         assert getattr(repo, method)("thing") == first
         assert getattr(repo, method)("other") == first + 1
     assert repo.find_metric("body_fat_pct") is None
-    m = repo.add_metric(r.NewMetric("body_fat_pct", "Body fat", "%", -1))
+    m = repo.add_metric(mr.NewMetric("body_fat_pct", "Body fat", "%", -1))
     assert repo.find_metric("body_fat_pct") == m
     assert tuple(knowledge_db.execute("SELECT label, unit, good_direction FROM metrics WHERE id = ?", (m,)).fetchone()) == ("Body fat", "%", -1)
-    assert repo.add_metric(r.NewMetric("plain", "Plain", "u", None)) == m + 1
+    assert repo.add_metric(mr.NewMetric("plain", "Plain", "u", None)) == m + 1
     assert knowledge_db.execute("SELECT good_direction FROM metrics WHERE key = 'plain'").fetchone()[0] is None
 
 
 def test_the_repository_writes_each_record_kind_and_counts_whole_tables(knowledge_db):
     repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
     src, subject = _seed(knowledge_db)
-    metric = repo.add_metric(r.NewMetric("k", "K", "u", None))
-    repo.add(r.NewMeasurement(subject, metric, 1.5, "2026-01-01", src, "high", "why", SNAPSHOT, "n", "soon", "r"))
-    repo.add_training_set(r.NewTrainingSet(repo.exercise("Squat"), "2026-01-01", 225, "lb", 5, None, 1, src, "x"))
-    repo.add_muscle_volume(r.NewMuscleVolume(repo.muscle("chest"), "2026-01-05", 10, src))
+    metric = repo.add_metric(mr.NewMetric("k", "K", "u", None))
+    repo.add(mr.NewMeasurement(subject, metric, 1.5, "2026-01-01", src, "high", "why", SNAPSHOT, "n", "soon", "r"))
+    repo.add_training_set(mr.NewTrainingSet(repo.exercise("Squat"), "2026-01-01", 225, "lb", 5, None, 1, src, "x"))
+    repo.add_muscle_volume(mr.NewMuscleVolume(repo.muscle("chest"), "2026-01-05", 10, src))
     nutrients = {c: float(i) for i, c in enumerate(measurements_store.MEAL_LOG_COLUMNS, 1)}
-    repo.add_meal_log_entry(r.NewMealLogEntry("2026-01-01", "Lunch", nutrients, src))
-    repo.add_food_log_entry(r.NewFoodLogEntry(repo.food("Rice"), "2026-01-01", "12:00", 1, "cup", 200, 1, 45, 4, 0, src))
-    assert repo.totals() == r.MeasurementTotals(1, 1, 1, 1, 1)
+    repo.add_meal_log_entry(mr.NewMealLogEntry("2026-01-01", "Lunch", nutrients, src))
+    repo.add_food_log_entry(mr.NewFoodLogEntry(repo.food("Rice"), "2026-01-01", "12:00", 1, "cup", 200, 1, 45, 4, 0, src))
+    assert repo.totals() == mr.MeasurementTotals(1, 1, 1, 1, 1)
     assert tuple(knowledge_db.execute("SELECT subject_id, metric_id, value, date_added, notes, recheck_by, recheck_rationale "
                                       "FROM measurements").fetchone()) == (subject, metric, 1.5, SNAPSHOT, "n", "soon", "r")
     assert tuple(knowledge_db.execute("SELECT is_warmup, rir FROM training_sets").fetchone()) == (1, None)
@@ -446,9 +451,9 @@ def test_links_attach_every_measurement_of_the_metric_to_the_fact(knowledge_db):
     repo = measurements_store.SqliteMeasurementRepository(knowledge_db)
     src, subject = _seed(knowledge_db)
     for key, n in (("weight_lb", 2), ("waist_in", 1)):
-        metric = repo.add_metric(r.NewMetric(key, key, "u", None))
+        metric = repo.add_metric(mr.NewMetric(key, key, "u", None))
         for i in range(n):
-            repo.add(r.NewMeasurement(subject, metric, 1.0, f"2026-01-0{i + 1}", src, "high", None, SNAPSHOT))
+            repo.add(mr.NewMeasurement(subject, metric, 1.0, f"2026-01-0{i + 1}", src, "high", None, SNAPSHOT))
     knowledge_db.execute("INSERT INTO facts (statement, subject_id, source_key, trust_level, freshness) "
                          "VALUES ('f', ?, 'p-2', 'high', 'unreviewed')", (subject,))
     links = measurements_store.SqliteFactMeasurementLinks(knowledge_db)
@@ -464,7 +469,6 @@ def test_each_adapter_has_every_member_of_its_port_with_the_same_parameters():
     links = measurements_store.SqliteFactMeasurementLinks
     pairs = [(vault_reader_port.VaultReader, vault_reader_store.SqliteVaultReader, None),
              (MeasurementRepository, measurements_store.SqliteMeasurementRepository, None),
-             (FactRepository, links, {"find_by_source_key", "link_measurements"}),
              (svc.FactLinks, links, None)]
     for proto, impl, only in pairs:
         for name, member in inspect.getmembers(proto, inspect.isfunction):

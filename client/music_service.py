@@ -1,15 +1,15 @@
 """The music client steps as application services: the concerts CSV, the RYM ratings export, the Last.fm scrobble
 dump and the curated artist memberships. Each returns a `StepResult` and prints nothing; the step modules
-(`client/concerts.py` ...) are thin driving adapters that print it. `music_ingest` is the composition root that
+(`client/concerts.py` ...) are thin driving adapters that print it. `client.music_ingest` is the composition root that
 binds these functions to the SQLite adapter (`music_store`).
 
-The service talks to the build's `MusicRepository` (`build_repositories_port`) and decides everything the adapter
+The service talks to the client's `MusicRepository` (`client.music_port`) and decides everything the adapter
 does not: it maps a CSV row or a scrobble to the records the repository stores, decides which rows a rerun
 replaces (its own import source's, and only those) and commits through the unit of work once a step's writes are
 complete (never when it fails before writing).
 
 Artist identity: an artist seen live, rated on RYM and scrobbled is one `artists` row. Every importer resolves a
-source name through `identity_service.ArtistIdentity`: the name is canonicalized by `client.artist_rules` (HTML
+source name through `client.artist_identity_service.ArtistIdentity`: the name is canonicalized by `client.artist_rules` (HTML
 unescape, then the alias table) and looked up case-insensitively, because Last.fm, RYM and hand-typed concert names
 disagree on casing far more often than SQL's ASCII-only NOCASE could fold. An identity is built per run and lives
 for exactly one service call (a plain local, never module state), so two runs can never share a stale cache.
@@ -26,12 +26,13 @@ import json
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-import build_records as r
-from build_repositories_port import MusicRepository, UnitOfWork
+from build_repositories_port import UnitOfWork
 from build_steps_port import StepResult
 from client import music_ingest_rules
+from client import music_records as r
+from client.artist_identity_service import ArtistIdentity
 from client.artist_rules import parse_artist_rules
-from identity_service import ArtistIdentity
+from client.music_port import MusicRepository
 from inputs_port import Inputs
 from locations import Locations
 

@@ -3,8 +3,8 @@ import sqlite3
 
 import pytest
 
-import build_records as r
-import music_store
+from client import music_records as r
+from client import music_store
 from schema_helper import full_schema
 
 

@@ -16,7 +16,6 @@ import lifecycle
 import local_datafiles
 import local_inputs
 import migrate_memory
-import music_export_store
 import paths
 import queries
 import review
@@ -48,11 +47,6 @@ class Container:
     def datafiles(self):
         """The data files a maintenance tool reads and rewrites: locked, atomic, byte-exact (`datafiles_port`)."""
         return local_datafiles
-
-    @property
-    def music_export(self):
-        """A fresh `MusicExportReads` over the built database; the caller closes it."""
-        return music_export_store.open_reads(self.locations.db_path)
 
     @cached_property
     def review(self):

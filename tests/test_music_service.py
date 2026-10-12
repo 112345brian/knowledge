@@ -1,17 +1,18 @@
-"""The music client steps as application services, against the foundation's fake `MusicRepository` and a fake
+"""The music client steps as application services, against the client's fake `MusicRepository` and a fake
 Inputs: canonical artist identity, the per-run directory, replacement of a source's own rows, festival handling,
 the reported counts and when the unit of work commits."""
 import json
 
 import pytest
 
-import build_records as r
-from artist_directory import ArtistDirectory
+from client import music_records as r
+from client.artist_directory import ArtistDirectory
 from client.artist_rules import parse_artist_rules
-from fake_build_repositories import FakeState, fake_session
+from fake_build_repositories import fake_session
+from fake_client_repositories import FakeClientState, FakeMusic
 from locations import Locations
 from music_fakes import FakeInputs
-import music_ingest_service as svc
+from client import music_service as svc
 
 CSV_HEADER = "Concert,Start Date,End Date,Location,Notes\n"
 DATA = "/data"
@@ -22,14 +23,15 @@ RULES_PATH = f"{DATA}/artist_rules.json"
 
 def world(*artists, files=None, rules=None, locations=LOCS):
     """(state, deps): a fake build whose artists table already holds `artists`, in id order."""
-    state = FakeState()
+    state = FakeClientState()
     session = fake_session(state)
+    music = FakeMusic(state)
     for name in artists:
-        session.music.add_artist(name)
+        music.add_artist(name)
     files = dict(files or {})
     if rules is not None:
         files[RULES_PATH] = json.dumps({"version": 1, **rules})
-    deps = svc.MusicIngestDeps(music=session.music, unit_of_work=session.unit_of_work, inputs=FakeInputs(files),
+    deps = svc.MusicIngestDeps(music=music, unit_of_work=session.unit_of_work, inputs=FakeInputs(files),
                                locations=locations)
     return state, deps
 

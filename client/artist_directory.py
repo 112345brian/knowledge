@@ -1,15 +1,15 @@
 """The artists of one import run, keyed the one way the build compares artist names.
 
-Domain service ring: it asks the build's `MusicRepository` for the artists already stored and for a new one to be
-added, and decides nothing else. Artist identity is defined here and in `client.artist_rules` (the key and the
-canonical spelling) and nowhere else; `identity_service.ArtistIdentity` is this class plus the group memberships, and
+Domain service ring: it asks the `MusicRepository` for the artists already stored and for a new one to be added, and
+decides nothing else. Artist identity is defined here and in `client.artist_rules` (the key and the canonical
+spelling) and nowhere else; `artist_identity_service.ArtistIdentity` is this class plus the group memberships, and
 every music step goes through it.
 """
 from typing import Dict, Mapping, Optional
 
-import build_records as r
-from build_repositories_port import MusicRepository
 from client import artist_rules
+from client import music_records as r
+from client.music_port import MusicRepository
 
 
 class ArtistDirectory:

@@ -11,10 +11,10 @@ music_ingest_rules). Idempotent: re-running deletes and re-inserts this source f
 attendances (and any artists/venues/festivals become orphaned only if nothing else references
 them, which is fine -- they're just not re-created if already present).
 
-The work is `music_ingest_service.import_concerts`; this step composes it for the build connection
+The work is `music_service.import_concerts`; this step composes it for the build connection
 and prints what it reports.
 """
-import music_ingest
+from client import music_ingest
 
 
 def run(con, ctx):
