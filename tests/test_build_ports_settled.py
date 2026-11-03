@@ -95,14 +95,16 @@ def _locations(tmp_path):
     (root / "data").mkdir()
     (root / "vault" / "bodybuilding.db").write_bytes(b"vault-db-bytes")
     return Locations(knowledge_db_dir=str(root / "db"), private_data_dir=str(root / "data"),
-                     notes_vault=str(root / "vault"), notes_vault_written="~/MEGA/vault",
-                     health_dir=str(root / "health"), health_dir_written="~/MEGA/health")
+                     notes_vault=str(root / "notes"), notes_vault_written="~/MEGA/notes",
+                     health_dir=str(root / "health"), health_dir_written="~/MEGA/health",
+                     client_inputs={"VAULT_DB": str(root / "vault" / "bodybuilding.db")},
+                     client_inputs_written={"VAULT_DB": "~/MEGA/vault/bodybuilding.db"})
 
 
-def test_the_vault_input_is_read_from_the_expanded_directory_and_no_path_is_recorded(tmp_path):
+def test_the_vault_db_input_is_read_from_the_expanded_path_and_no_path_is_recorded(tmp_path):
     loc = _locations(tmp_path)
     paths = dict(bi.input_paths(loc, client_bootstrap.registry()))
-    assert paths["input:vault-db"] == os.path.join(loc.notes_vault, "bodybuilding.db")   # read where the file is
+    assert paths["input:vault-db"] == loc.client_input("VAULT_DB")   # read where the file is
     assert "~" not in paths["input:vault-db"]
     con = new_db()
     reader = bi.BuildProvenance(loc, str(tmp_path), private_git, client_bootstrap.registry())
@@ -110,7 +112,7 @@ def test_the_vault_input_is_read_from_the_expanded_directory_and_no_path_is_reco
     rows = list(con.execute("SELECT * FROM build_inputs"))
     assert {r["input_key"]: r["state"] for r in rows}["input:vault-db"] == "present"
     for cell in (c for r in rows for c in tuple(r)):
-        assert not any(p and str(p) in str(cell) for p in (loc.notes_vault, loc.notes_vault_written, str(tmp_path), "MEGA")), cell
+        assert not any(p and str(p) in str(cell) for p in (loc.client_input("VAULT_DB"), loc.client_input_stored("VAULT_DB"), loc.notes_vault, loc.notes_vault_written, str(tmp_path), "MEGA")), cell
 
 
 def _manifest_with(origin_path):

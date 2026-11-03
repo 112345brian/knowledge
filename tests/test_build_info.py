@@ -68,7 +68,8 @@ def fake_paths(tmp_path, present=("vault", "csv")):
     ns = Locations(knowledge_db_dir=str(root / "db"), private_data_dir=str(root / "data"),
                    notes_vault=str(root / "vault"), health_dir=str(root / "health"),
                    client_inputs={"CONCERTS_CSV": str(root / "concerts.csv"), "RYM_EXPORT_CSV": str(root / "rym.csv"),
-                                  "SCROBBLES_JSON": str(root / "scrobbles.json")})
+                                  "SCROBBLES_JSON": str(root / "scrobbles.json"),
+                                  "VAULT_DB": str(root / "vault" / "bodybuilding.db")})
     if "vault" in present:
         (root / "vault" / "bodybuilding.db").write_bytes(b"vault-db-bytes")
     if "csv" in present:
@@ -124,8 +125,9 @@ def test_present_inputs_are_hashed_and_missing_ones_are_recorded_not_errors(tmp_
     assert got["input:vault-source-notes"][0] == "missing"                          # no sources in this db
 
 
-def test_a_missing_vault_directory_is_a_missing_input_too(tmp_path):
-    paths = dataclasses.replace(fake_paths(tmp_path, present=()), notes_vault=str(tmp_path / "does" / "not" / "exist"))
+def test_a_missing_vault_database_is_a_missing_input_too(tmp_path):
+    base = fake_paths(tmp_path, present=())
+    paths = dataclasses.replace(base, client_inputs={**base.client_inputs, "VAULT_DB": str(tmp_path / "does" / "not" / "exist" / "bodybuilding.db")})
     con = new_db()
     record(con, paths, str(tmp_path), private_git, system_clock())
     assert inputs(con)["input:vault-db"][0] == "missing"

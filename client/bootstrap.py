@@ -51,7 +51,7 @@ def register(registry: ClientRegistry) -> None:
         steps=(Step("client/measurements.py", after="ingest/literature_sources.py"),
                Step("client/link_fact_measurements.py", after=AFTER_FACTS, order=10)),
         schema=("client/measurements.sql",),
-        inputs=(Input("NOTES_VAULT", "vault-db", file="bodybuilding.db"),),
+        inputs=(Input("VAULT_DB", "vault-db", required=True),),
         report_tables=_MEASUREMENT_TABLES, report_after=_MEASUREMENT_REPORT_AFTER,
         data_files=("measurements_snapshot.json", "measurements_config.json"),
         personal_fact_keys=("measurement_metric_link",)))

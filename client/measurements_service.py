@@ -123,10 +123,11 @@ class _Run:
         return ids
 
 
-def load_measurements(deps: MeasurementsDeps, *, snapshot_date: str, notes_vault: str,
+def load_measurements(deps: MeasurementsDeps, *, snapshot_date: str, vault_dir: str,
                       manual_sources: Mapping[str, str], scans: Sequence[Sequence[str]]
                       ) -> measurement_rules.LoadSummary:
-    """Insert the vault's readings, in the vault tables' own order, and return what was written. `manual_sources`
+    """Insert the vault's readings, in the vault tables' own order, and return what was written. `vault_dir` is the
+    folder of the vault database in its stored form (the origin the created sources record). `manual_sources`
     maps a source key to the citekey step 01 seeded; `scans` is [(scan date, source key)] of the DEXA scans."""
     vault, repo = deps.vault, deps.measurements
     run = _Run(deps, snapshot_date)
@@ -162,7 +163,7 @@ def load_measurements(deps: MeasurementsDeps, *, snapshot_date: str, notes_vault
         run.add_measurements(measurement_rules.strength_measurements(latest), ids)
 
     # ---------------- Daily/weekly summary tables ----------------
-    summary, raw = measurement_rules.vault_db_sources(notes_vault, measurement_rules.stale_note(snapshot_date))
+    summary, raw = measurement_rules.vault_db_sources(vault_dir, measurement_rules.stale_note(snapshot_date))
     ids.update(run.create_sources(summary))
 
     for row in vault.nutrition_daily():

@@ -259,7 +259,8 @@ def test_check_normal_failure_is_not_published_and_discards_nothing():
 
 ALL_COMBINATIONS = [c for r in range(len(client_bootstrap.registry().names) + 1)
                     for c in itertools.combinations(client_bootstrap.registry().names, r)]
-INPUTS = dict(client_inputs={"CONCERTS_CSV": "/in/c.csv", "RYM_EXPORT_CSV": "/in/r.csv", "SCROBBLES_JSON": "/in/s.json"})
+INPUTS = dict(client_inputs={"CONCERTS_CSV": "/in/c.csv", "RYM_EXPORT_CSV": "/in/r.csv", "SCROBBLES_JSON": "/in/s.json",
+                             "VAULT_DB": "/in/bodybuilding.db"})
 
 
 @pytest.mark.parametrize("sources", ALL_COMBINATIONS, ids=lambda c: "+".join(c) or "core")
@@ -281,7 +282,7 @@ def test_every_client_source_combination_builds_with_its_inputs_and_schema_fragm
 
 
 @pytest.mark.parametrize("source, missing", [("concerts", "CONCERTS_CSV"), ("ratings", "RYM_EXPORT_CSV"),
-                                             ("scrobbles", "SCROBBLES_JSON")])
+                                             ("scrobbles", "SCROBBLES_JSON"), ("measurements", "VAULT_DB")])
 def test_an_enabled_source_without_its_input_is_a_config_failure_that_runs_nothing(source, missing):
     deps, files, calls = make(sources=(source,))
     with pytest.raises(BuildError) as ei:
@@ -290,7 +291,7 @@ def test_an_enabled_source_without_its_input_is_a_config_failure_that_runs_nothi
 
 
 def test_sources_that_need_no_input_file_build_without_one():
-    deps, files, calls = make(sources=("measurements", "claims"))
+    deps, files, calls = make(sources=("claims",))
     build_service.build_database(deps, "/db/x")
 
 
