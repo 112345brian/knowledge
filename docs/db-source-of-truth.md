@@ -103,6 +103,39 @@ the authoritative log and the rest in the db (not recommended: two truths for on
    writes; MEGA can still capture a mid-write file.
 3. *Live db local only, git export only, no snapshots.* Smaller, but restore needs a full import.
 
+## Logging
+
+Added after approval; the owner chose all three layers, built on our own SQL triggers and the standard library (no new
+dependency). The owner also wants to **know when an entry is accessed**, so reads are logged too.
+
+| Layer | What it records | Where |
+| --- | --- | --- |
+| **Row audit** | every insert/update/delete on a curated table: table, row key, old and new values (JSON), time, `via` (cli, mcp, inbox, import, restore), session id | `audit_log` table, written by `AFTER` triggers; append-only by trigger like `fact_revisions` |
+| **Access log** | each time a fact is read through a driving adapter: `source_key`, time, `via`, session id, mode, and the kind of read (`show`, `history`, `search-hit`, `list`) | `access_log` table, written by the read use cases |
+| **Operation log** | one record per command or run (write, import, export, snapshot, restore, build check, failure): name, arguments with secrets/statement text left out, outcome, duration | `operation_log` table |
+| **Diagnostic log** | debugging detail from the CLI, MCP server and inbox | stdlib `logging`, JSON lines to a rotating local file next to the live db (not the synced folder) |
+
+Decisions and constraints that follow:
+
+- **Who** made a change: a trigger sees only the row, so the write use case sets the actor/session on its connection
+  (a one-row `session_context` temp table the triggers read). A write without a context is recorded as `unknown`, never skipped.
+- **Reads become writes.** Today every read opens its own read-only connection (`fact_reads_store`). Logging an access
+  needs a writable one, so the read use cases get a separate `AccessLog` port whose adapter writes on its own short
+  connection. A failure to log an access is reported (diagnostic log, a warning) but **does not fail the read**; a
+  failed *audit* write is part of the write transaction and does fail it.
+- **Search volume.** A search returns many entries; they are logged as one batched insert per query (kind `search-hit`),
+  and `show` / `history` of one entry are the strong signal ("opened"). Retention is bounded: access rows older than a
+  configured number of days are rolled up into a per-fact `last_accessed_at` / `access_count` summary table, never silently dropped.
+- **Privacy.** All four logs are `private`: they are not in the normal-tier whitelist (`normal_rules`), and the leak test
+  must fail if one appears in `knowledge-normal.db`. Normal mode reads still log, but only the keys of entries the
+  caller was allowed to see, and the access log of a fact never reveals a private fact's existence to a normal-mode reader.
+  Statement text is never copied into the operation or diagnostic logs (only keys), so a log file cannot leak a private fact.
+- **CLI-first**: `knowledge.py log audit|access|ops [--fact KEY] [--since ...]` reads each log; every new use case has its command.
+- **Prior art** for the trigger design: [sqlite-history-json](https://pypi.org/project/sqlite-history-json/) and
+  [sqlite-diff-log](https://pypi.org/project/sqlite-diff-log/) (JSON audit rows from triggers, restore-to-entry); both
+  note that triggers cannot see the actor, which the session-context table above addresses. Not adopted: alpha-stage and
+  we need the append-only and privacy rules covered by our own tests.
+
 ## Prior art
 
 Checked 2026-11-03 with two web searches (anecdotal sources; the sqlite.org pages were not fetched):
@@ -125,8 +158,9 @@ Checked 2026-11-03 with two web searches (anecdotal sources; the sqlite.org page
 
 1. **Characterize.** Tests pinning every current write path (callers of `facts_file_port`, `revisions_port`, ...) and a
    golden export of today's data. No behavior change.
-2. **Schema + stable ids + append-only triggers**, plus the deterministic export and `restore` (round-trip tested
+2. **Schema + stable ids + append-only triggers + `audit_log`/`access_log`/`operation_log` tables and triggers**, plus the deterministic export and `restore` (round-trip tested
    against the live data: file -> db -> export equals file).
+2b. **Logging use cases**: `AccessLog` and operation-log ports and adapters, the diagnostic log, `knowledge.py log ...`, and the leak-test extension.
 3. **Importers become upserts** for the derived group; curated steps become `import`.
 4. **Flip the write ports** to a db adapter behind a config switch; a test scans callers so no write silently still
    goes to a file. Run both paths on a copy and diff.
