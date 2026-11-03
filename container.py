@@ -23,6 +23,8 @@ import local_datafiles
 import local_inputs
 import migrate_memory
 import paths
+import mcp_moded_store
+import modes
 import queries
 import review
 import rules_edit
@@ -113,6 +115,19 @@ class Container:
     def docs_at(self, root=None):
         """Generated documentation use case, rooted at this checkout or an explicit repository copy."""
         return docs.compose(root)
+
+    @cached_property
+    def mcp_session(self):
+        """The mode the MCP server runs under (`mcp_mode` in the config file): fixed for the life of the process."""
+        return modes.Session(mode=self.locations.mcp_mode)
+
+    @cached_property
+    def mcp_lookup(self):
+        return mcp_moded_store.ModedFactLookup(self.locations.db_path, self.mcp_session)
+
+    @cached_property
+    def mcp_capture(self):
+        return mcp_moded_store.ModedCapture(self.add_fact, self.mcp_session)
 
     @cached_property
     def queries(self):

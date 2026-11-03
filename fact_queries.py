@@ -113,7 +113,7 @@ def _filters(sql, params, subject=None, trust=None, status=None, personal=None, 
 def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, status=None, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Full-text search, best match first; active facts unless `status` / `include_pending` say otherwise. Raises sqlite3.OperationalError on FTS syntax errors."""
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.recheck_by, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -129,7 +129,7 @@ def search_facts(con, terms, subject=None, trust=None, personal=None, limit=20, 
 
 def list_facts(con, subject=None, trust=None, status=None, personal=None, limit=50, include_pending=False, kind=None, valid_at=None, entity=None, identifier=None):
     """Facts by id; active only unless `status` names one or `include_pending` adds pending."""
-    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
+    sql = """SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.recheck_by, f.statement
              FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1"""
     params = []
     sql = _filters(sql, params, subject=subject, trust=trust, status=status, personal=personal,

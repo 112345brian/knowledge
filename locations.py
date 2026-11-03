@@ -86,6 +86,7 @@ class Locations:
     notes_vault_written: Optional[str] = None
     health_dir_written: Optional[str] = None
     client_inputs_written: Mapping[str, str] = field(default_factory=dict)   # the client settings as written
+    mcp_mode: str = "normal"   # what the MCP server may read and write: off, normal (no private facts) or private
 
     def need(self, field, setting, for_what):
         """The value of an optional path, or a ValueError naming the config setting to define."""

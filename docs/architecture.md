@@ -190,6 +190,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `local_inputs` | infrastructure | infrastructure | Adapter for `inputs_port.Inputs`: the real file system, the vault's sqlite database, and the file-fingerprint and acquisition-attribute… |
 | `local_stores` | infrastructure | infrastructure | Adapter for `step_stores_port.StepStores`: the privacy, entity, subject, revision, claims and source stores, by name. |
 | `locks` | infrastructure | infrastructure | Adapter for the inter-process file lock: the sidecar lock file and the exclusive lock on it (fcntl on POSIX, msvcrt on Windows). |
+| `mcp_moded_store` | infrastructure | infrastructure | The MCP server's reads and writes, held to the session's mode (off / normal / private; the rules are in `modes`). |
 | `migrate_memory_store` | infrastructure | infrastructure | Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the source keys already in the entry… |
 | `modes_store` | infrastructure | infrastructure | Adapter for the mode rules (#22): the SQL that applies `modes` to the knowledge db. |
 | `normal_db_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the normal DB. |

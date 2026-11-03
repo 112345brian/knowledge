@@ -67,13 +67,14 @@ data_dir = "~/code/knowledge-private/data"     # where your fact files and rules
 notes_vault = "~/notes"                   # optional: a directory of citation notes
 health_dir = "~/health"                   # optional
 client_sources = ["concerts", "ratings"]       # optional: which client sources to build
+mcp_mode = "normal"                       # optional: what the MCP server may read ("off", "normal" or "private")
 
 [client_inputs]                                # the inputs those sources read
 concerts_csv = "~/data/concerts.csv"
 vault_db = "~/health/tracking.db"            # the measurements source reads this database
 ```
 
-- **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources` and the
+- **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources`, `mcp_mode` (default `normal`) and the
   `[client_inputs]` table. `notes_vault` (citation notes, `sources/*.md`) and `vault_db` (the measurements database)
   are separate settings and may live in different folders. Nothing is guessed: a client source is built only if it is listed in `client_sources`
   (the default is the core alone), and one listed without its input stops the build with a configuration error.

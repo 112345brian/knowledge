@@ -21,6 +21,7 @@ __arbor__ = {"ring": "infrastructure"}
 
 import os
 import tomllib
+from typing import Literal
 
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, TomlConfigSettingsSource
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     health_dir: str | None = None
     client_sources: tuple[str, ...] = ()         # the optional sources to build; none: the core only
     client_inputs: dict[str, str] = {}
+    mcp_mode: Literal["off", "normal", "private"] = "normal"   # what the MCP server may read and write
 
 
 def expand(path):
@@ -120,5 +122,5 @@ def load():
         client_sources=settings.client_sources,
         notes_vault_written=settings.notes_vault or None, health_dir_written=settings.health_dir or None,
         client_inputs={name: expanded(value) for name, value in client_inputs.items()},
-        client_inputs_written=client_inputs,
+        client_inputs_written=client_inputs, mcp_mode=settings.mcp_mode,
     )
