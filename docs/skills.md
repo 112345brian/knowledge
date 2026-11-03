@@ -8,7 +8,7 @@ Three Claude skills teach Claude to use the knowledge base in conversation. They
 | `knowledge-record` | Search, then `add_fact` once per claim with a source quote, honest trust and freshness. Only when the user asks or agrees. |
 | `knowledge-freshness` | Compare each fact's `recheck_by` with today and offer to re-verify what is past it. |
 
-Search and list rows carry `recheck_by` for this. Visibility and mode stay the server's decision: the skills never filter private facts themselves.
+Search and list rows carry `recheck_by` for this. Visibility and mode stay the server's decision (`mcp_mode` in the config file, default `normal`: private facts are not returned): the skills never filter private facts themselves.
 
 ## Install
 

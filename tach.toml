@@ -800,7 +800,7 @@ depends_on = ["script_runner_port", "clock_port", "locations"]
 [[modules]]
 path = "container"            # COMPOSITION ROOT of the application: one object that wires every use case for one Locations
 layer = "composition"
-depends_on = ["add_fact", "building", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "docs"]
+depends_on = ["add_fact", "mcp_moded_store", "modes", "building", "entities", "facts_batch", "lifecycle", "migrate_memory", "paths", "queries", "review", "rules_edit", "scripts", "subjects", "clock", "local_inputs", "local_datafiles", "docs"]
 
 [[modules]]
 path = "docs"                  # COMPOSITION ROOT: binds the generated-docs use case to repository files
@@ -1089,6 +1089,11 @@ depends_on = [
     "fact_rules",
     "review_rules",
 ]
+
+[[modules]]
+path = "mcp_moded_store"    # INFRASTRUCTURE: the MCP server's reads and writes held to the session mode (over modes_store)
+layer = "infrastructure"
+depends_on = ["fact_queries", "fact_reads_port", "modes", "modes_store"]
 
 [[modules]]
 path = "mcp_server"         # #2 SERVING: the only code of the MCP feature that reads or writes (stdio); the use case is pure text in, text out
