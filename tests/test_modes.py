@@ -576,6 +576,8 @@ FACT_READERS_ALLOWED = {
     "fixity_store.py",
     # builds the audit triggers that WRITE a row per change; it names the tables but never selects from them
     "audit_rules.py",
+    # lists the table names the full-database export writes to files (pure; reads nothing, serves no tool results)
+    "export_rules.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     "entity_queries_store.py",

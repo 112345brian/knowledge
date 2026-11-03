@@ -174,7 +174,7 @@ def test_no_other_module_reads_claim_facts():
     # the audit result cannot be silently discarded by a caller that does not exist yet; when the CLI
     # lands it must use audit_claims, so this scan lists the only allowed readers
     allowed = {"claims_audit.py", "claims_store.py", "seed_claims.py", "build.py", "build_rules.py",
-               "audit_rules.py"}  # build* only count rows; audit_rules names the table to put an audit trigger on it
+               "audit_rules.py", "export_rules.py"}  # build* only count rows; audit_rules names the table to put an audit trigger on it
     for path in glob.glob(os.path.join(REPO, "*.py")):
         name = os.path.basename(path)
         if name not in allowed:
