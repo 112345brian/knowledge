@@ -45,23 +45,40 @@ def _apply(deps: RestoreTablesDeps, tables: List[str], rows: Mapping[str, Sequen
     missing = [t for t in tables if t not in deps.table_restore.tables()]
     if missing:
         raise rules.SnapshotError("the database lacks table(s): " + ", ".join(missing))
-    safety = ""
-    if not dry_run:
-        safety = snapshot_service.take_snapshot(snapshot_service.SnapshotDeps(deps.snapshots, deps.clock)).path
-    staged = deps.table_restore.stage(VIA, {t: rows[t] for t in tables})
+    snapshot_deps = snapshot_service.SnapshotDeps(deps.snapshots, deps.clock)
+    # The safety copy is taken WITHOUT pruning: until the restore has gone through, it may still be withdrawn, and a
+    # refused restore must not cost the user a retained snapshot (ten refused attempts would otherwise have replaced
+    # every older snapshot with a copy of the current database).
+    safety = None if dry_run else snapshot_service.take_snapshot(snapshot_deps, prune=False)
     try:
-        broken = staged.new_violations()
-        if broken:
-            raise rules.SnapshotError("restoring would leave dangling references: " + "; ".join(broken[:5])
-                                      + (f" (and {len(broken) - 5} more)" if len(broken) > 5 else ""))
-        if dry_run:
+        staged = deps.table_restore.stage(VIA, {t: rows[t] for t in tables})
+        try:
+            broken = staged.new_violations()
+            if broken:
+                raise rules.SnapshotError("restoring would leave dangling references: " + "; ".join(broken[:5])
+                                          + (f" (and {len(broken) - 5} more)" if len(broken) > 5 else ""))
+            if dry_run:
+                staged.discard()
+            else:
+                staged.apply()
+        except BaseException:
             staged.discard()
-        else:
-            staged.apply()
+            raise
     except BaseException:
-        staged.discard()
+        if safety is not None:
+            _withdraw(deps, safety.name)
         raise
-    return RestoreResult({t: len(rows[t]) for t in tables}, safety, not dry_run)
+    if safety is not None:
+        snapshot_service.prune_snapshots(snapshot_deps)      # the restore went through: now the safety copy counts
+    return RestoreResult({t: len(rows[t]) for t in tables}, safety.path if safety else "", not dry_run)
+
+
+def _withdraw(deps: RestoreTablesDeps, name: str) -> None:
+    """Remove the safety snapshot of a restore that changed nothing; failing to do so is not worth hiding the real error."""
+    try:
+        deps.snapshots.remove(name)
+    except OSError:
+        pass
 
 
 def restore_tables_from_snapshot(deps: RestoreTablesDeps, tables: Sequence[str], dry_run: bool = False) -> RestoreResult:
@@ -79,7 +96,7 @@ def restore_tables_from_snapshot(deps: RestoreTablesDeps, tables: Sequence[str],
 def restore_tables_from_export(deps: RestoreTablesDeps, tables: Sequence[str], dry_run: bool = False) -> RestoreResult:
     """Replace `tables` with their rows from the export folder, after checking each file against its manifest."""
     names = rules.check_restorable(tables)
-    rows: Dict[str, List[Mapping[str, Any]]] = {}
+    rows: Dict[str, Sequence[Mapping[str, Any]]] = {}
     for table in names:
         part = export_rules.part_of(table)
         manifest = export_rules.read_manifest(deps.export_files.read, part)

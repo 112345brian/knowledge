@@ -3,6 +3,7 @@
 Fixture databases are built from the real schema.sql in memory; nothing here touches a real database.
 """
 import os
+import re
 import sqlite3
 
 import pytest
@@ -162,3 +163,20 @@ def test_identifiers_and_keyless_tables_are_refused():
         live.audit_trigger_sql("facts", [("id; --", 1)])
     with pytest.raises(ValueError):
         live.audit_trigger_sql("facts", [("id", 0)])
+
+
+def test_the_audit_install_has_no_production_caller_until_the_docs_say_it_does():
+    """Today nothing installs the audit triggers on the real database (docs/db-source-of-truth.md, increment 2a, says so).
+    When a command, the Container or the MCP server starts calling `install`/`set_context`, this fails: update that
+    paragraph (and any release note) in the same change instead of leaving the docs claiming the opposite."""
+    import glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    callers = []
+    for path in glob.glob(os.path.join(root, "**", "*.py"), recursive=True):
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        if rel.startswith(("tests/", ".venv/")) or rel == "live_schema_store.py":
+            continue
+        text = open(path, encoding="utf-8").read()
+        if re.search(r"^\s*(import|from)\s+live_schema_store\b", text, re.M):
+            callers.append(rel)
+    assert callers == [], f"{callers} use live_schema_store: update docs/db-source-of-truth.md (2a) and this test"

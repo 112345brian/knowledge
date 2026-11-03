@@ -15,6 +15,7 @@ from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 import audit_rules
 import snapshot_rules
+from export_store import readonly_uri
 from snapshot_rules import SnapshotError
 
 
@@ -25,7 +26,7 @@ def _problems(con: sqlite3.Connection) -> List[str]:
 def _open_readonly(path: str) -> sqlite3.Connection:
     if not os.path.isfile(path):
         raise SnapshotError(f"there is no database at {path}")
-    return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    return sqlite3.connect(readonly_uri(path), uri=True)
 
 
 def _backup_exclusive(source: str, dest: str) -> None:
@@ -43,6 +44,8 @@ def _backup_exclusive(source: str, dest: str) -> None:
         try:
             src.backup(out)
             problems = _problems(out)
+        except sqlite3.Error as e:
+            raise SnapshotError(f"cannot copy {source}: {e}") from e
         finally:
             out.close()
         if problems:
@@ -172,10 +175,10 @@ class SqliteTableRestore:
             extra = set(row) - known
             if extra:
                 raise SnapshotError(f"{table}: the source has column(s) this database lacks: {', '.join(sorted(extra))}")
-        con.execute(f"DELETE FROM {name}")
+        con.execute(f"DELETE FROM {audit_rules.quote_ident(table)}")
         for row in rows:
             cols = list(row)
-            con.execute(f"INSERT INTO {name} ({', '.join(audit_rules.ident(c) for c in cols)}) "
+            con.execute(f"INSERT INTO {audit_rules.quote_ident(table)} ({', '.join(map(audit_rules.quote_ident, cols))}) "
                         f"VALUES ({', '.join('?' for _ in cols)})", [row[c] for c in cols])
 
     def stage(self, via: str, replacements: Mapping[str, Sequence[Mapping[str, Any]]]) -> _Staged:
@@ -191,8 +194,10 @@ class SqliteTableRestore:
             for table, rows in replacements.items():
                 self._replace(con, table, rows)
             return _Staged(con, snapshot_rules.new_violations(before, self._violations(con)))
-        except BaseException:
+        except BaseException as e:
             if con.in_transaction:
                 con.execute("ROLLBACK")
             con.close()
+            if isinstance(e, sqlite3.Error):          # a row the database refuses: nothing changed, say so plainly
+                raise SnapshotError(f"restoring failed and nothing was changed: {e}") from e
             raise

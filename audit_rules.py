@@ -31,9 +31,15 @@ Column = Tuple[str, int]
 
 def ident(name: str) -> str:
     """`name` if it is a plain SQL identifier, else ValueError (it is about to become part of a statement)."""
-    if not _IDENT.match(name):
+    if not _IDENT.fullmatch(name):
         raise ValueError(f"not a plain SQL identifier: {name!r}")
     return name
+
+
+def quote_ident(name: str) -> str:
+    """`name` validated by `ident` and double-quoted, so a column or table named like an SQL keyword (order, group, ...)
+    is still a valid identifier in a statement."""
+    return f'"{ident(name)}"'
 
 
 def key_columns(columns: Sequence[Column]) -> List[str]:

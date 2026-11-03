@@ -27,7 +27,7 @@ def cmd_snapshot(ctx: typer.Context, db: Optional[str] = typer.Option(None, "--d
     """Take a snapshot and print its path (and any pruned or warned about)."""
     try:
         result = ctx.obj.db_snapshots(db, directory).take_snapshot(keep)
-    except snapshot_rules.SnapshotError as e:
+    except (snapshot_rules.SnapshotError, OSError) as e:
         fail(str(e))
     print(result.path)
     for name in result.pruned:
@@ -48,7 +48,7 @@ def cmd_restore(ctx: typer.Context, source: str = typer.Option(..., "--from", he
     """Verify the snapshot and copy it to a new file."""
     try:
         version = ctx.obj.db_snapshots().restore_snapshot(source, into)
-    except (snapshot_rules.SnapshotError, FileExistsError) as e:
+    except (snapshot_rules.SnapshotError, OSError) as e:
         fail(str(e))
     print(f"restored {source} to {into} (schema version {version})")
 
@@ -65,7 +65,7 @@ def cmd_restore_tables(ctx: typer.Context, table: List[str] = typer.Option(..., 
     try:
         api = ctx.obj.db_restore_tables(db, from_snapshot, from_export, snapshot_dir)
         result = (api.restore_tables_from_snapshot if from_snapshot else api.restore_tables_from_export)(table, dry_run)
-    except (snapshot_rules.SnapshotError, export_rules.ExportError) as e:
+    except (snapshot_rules.SnapshotError, export_rules.ExportError, OSError) as e:
         fail(str(e))
     for name, rows in result.replaced.items():
         print(f"{name}: {rows}")

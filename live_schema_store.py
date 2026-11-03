@@ -26,11 +26,11 @@ _ACTOR = ("COALESCE((SELECT at FROM audit_context WHERE id = 1), " + _NOW + "), 
 
 
 def _row(prefix: str, columns: Sequence[audit_rules.Column]) -> str:
-    return "json_object(" + ", ".join(f"'{audit_rules.ident(c)}', {prefix}.{c}" for c, _ in columns) + ")"
+    return "json_object(" + ", ".join(f"'{audit_rules.ident(c)}', {prefix}.{audit_rules.quote_ident(c)}" for c, _ in columns) + ")"
 
 
 def _key(prefix: str, columns: Sequence[audit_rules.Column]) -> str:
-    return "json_array(" + ", ".join(f"{prefix}.{c}" for c in audit_rules.key_columns(columns)) + ")"
+    return "json_array(" + ", ".join(f"{prefix}.{audit_rules.quote_ident(c)}" for c in audit_rules.key_columns(columns)) + ")"
 
 
 def audit_trigger_sql(table: str, columns: Sequence[audit_rules.Column]) -> List[str]:
@@ -53,13 +53,13 @@ def revisions_guard_sql(columns: Sequence[audit_rules.Column]) -> List[str]:
     """DROP + CREATE of the triggers that make the fact history append-only (see `audit_rules`)."""
     t = audit_rules.ident(audit_rules.REVISIONS_TABLE)
     raisable = audit_rules.ident(audit_rules.RAISABLE_COLUMN)
-    others = " AND ".join(f"NEW.{audit_rules.ident(c)} IS OLD.{c}" for c, _ in columns if c != raisable)
+    others = " AND ".join(f"NEW.{audit_rules.quote_ident(c)} IS OLD.{audit_rules.quote_ident(c)}" for c, _ in columns if c != raisable)
     return [
         f"DROP TRIGGER IF EXISTS {t}_no_delete",
         f"DROP TRIGGER IF EXISTS {t}_update_guard",
         f"CREATE TRIGGER {t}_no_delete BEFORE DELETE ON {t} BEGIN SELECT RAISE(ABORT, '{t} is append-only'); END",
         f"CREATE TRIGGER {t}_update_guard BEFORE UPDATE ON {t} "
-        f"WHEN NOT (NEW.{raisable} = '{audit_rules.RAISED_VALUE}' AND {others}) "
+        f"WHEN NOT (NEW.{audit_rules.quote_ident(raisable)} = '{audit_rules.RAISED_VALUE}' AND {others}) "
         f"BEGIN SELECT RAISE(ABORT, '{t} is append-only (only {raisable} may be raised to {audit_rules.RAISED_VALUE})'); END",
     ]
 

@@ -8,9 +8,10 @@ creating a database refuses to touch one that exists.
 __arbor__ = {"ring": "infrastructure"}
 
 import os
+import pathlib
 import sqlite3
 import tempfile
-from typing import Any, Collection, Iterator, List, Mapping, Sequence
+from typing import Any, Collection, Iterator, List, Mapping, Optional, Sequence
 
 import audit_rules
 from export_rules import ExportError
@@ -18,51 +19,79 @@ from export_rules import ExportError
 CODE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def readonly_uri(path: str) -> str:
+    """The SQLite URI that opens the file at `path` read-only. The path is percent-encoded (`as_uri`), so a folder named
+    with `?`, `#` or `%`, or a Windows drive path, opens the file it names and not another."""
+    return pathlib.Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+
+
 def _columns(con: sqlite3.Connection, table: str) -> List[tuple]:
     return con.execute(f"PRAGMA table_info({audit_rules.ident(table)})").fetchall()
 
 
 class SqliteExportReads:
-    """`ExportReads` over a database file, opened read-only."""
+    """`ExportReads` over a database file, opened read-only.
+
+    ONE connection, in ONE read transaction, serves every call: the version, the table list and every table's rows all
+    come from the same moment. (A connection per call would let a rebuild that swaps the file in, or a write, land
+    between two tables and give a backup whose foreign keys point at rows of another generation, with manifests that
+    still verify.) Call `close()` when done; garbage collection closes it otherwise."""
 
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._con: Optional[sqlite3.Connection] = None
 
-    def _connect(self) -> sqlite3.Connection:
-        if not os.path.isfile(self.db_path):
-            raise ExportError(f"there is no database at {self.db_path}")
-        return sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+    def _connection(self) -> sqlite3.Connection:
+        if self._con is None:
+            if not os.path.isfile(self.db_path):
+                raise ExportError(f"there is no database at {self.db_path}")
+            try:
+                con = sqlite3.connect(readonly_uri(self.db_path), uri=True, isolation_level=None)
+                con.execute("BEGIN")
+                con.execute("SELECT count(*) FROM sqlite_master").fetchone()      # the first read starts the snapshot
+            except sqlite3.Error as e:
+                raise ExportError(f"cannot read {self.db_path}: {e}") from e
+            self._con = con
+        return self._con
+
+    def close(self) -> None:
+        """End the read transaction and close the connection (a later call opens a new one)."""
+        if self._con is not None:
+            self._con.close()
+            self._con = None
+
+    def __del__(self) -> None:
+        self.close()
 
     def user_version(self) -> int:
         """The schema version of the database."""
-        con = self._connect()
         try:
-            return con.execute("PRAGMA user_version").fetchone()[0]
-        finally:
-            con.close()
+            return self._connection().execute("PRAGMA user_version").fetchone()[0]
+        except sqlite3.Error as e:
+            raise ExportError(f"cannot read {self.db_path}: {e}") from e
 
     def tables(self) -> Collection[str]:
         """The names of the tables that exist."""
-        con = self._connect()
         try:
-            return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        finally:
-            con.close()
+            return {r[0] for r in self._connection().execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        except sqlite3.Error as e:
+            raise ExportError(f"cannot read {self.db_path}: {e}") from e
 
     def rows(self, table: str) -> Iterator[Mapping[str, Any]]:
         """Every row of `table`, in primary-key order."""
-        con = self._connect()
+        con = self._connection()
         try:
             columns = _columns(con, table)
             names = [c[1] for c in columns]
             keys = [c[1] for c in sorted((c for c in columns if c[5]), key=lambda c: c[5])]
             if not keys:
                 raise ExportError(f"{table} has no primary key, so its rows have no stable order")
-            cursor = con.execute(f"SELECT {', '.join(names)} FROM {table} ORDER BY {', '.join(keys)}")
+            cursor = con.execute(f"SELECT {', '.join(map(audit_rules.quote_ident, names))} FROM {audit_rules.quote_ident(table)} "
+                                 f"ORDER BY {', '.join(map(audit_rules.quote_ident, keys))}")
             for row in cursor:
                 yield dict(zip(names, row))
-        finally:
-            con.close()
+        except sqlite3.Error as e:
+            raise ExportError(f"cannot read {table} from {self.db_path}: {e}") from e
 
 
 def _inside(directory: str, name: str) -> str:
@@ -163,46 +192,57 @@ class SqliteImportTarget:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._con = None
+        self._con: Optional[sqlite3.Connection] = None
+
+    def _open(self) -> sqlite3.Connection:
+        """The connection `create` opened; calling anything before `create` is a programming error."""
+        if self._con is None:
+            raise RuntimeError("create() must be called before using the import target")
+        return self._con
 
     def create(self, schema_files: Sequence[str]) -> None:
         """Create the new database from these schema files (relative to the code directory); refuse to overwrite one."""
         if os.path.exists(self.db_path):
             raise FileExistsError(f"{self.db_path} already exists; an import never overwrites a database")
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
-        self._con = sqlite3.connect(self.db_path)
+        self._con = con = sqlite3.connect(self.db_path)
         try:
-            self._con.execute("PRAGMA foreign_keys = OFF")
+            con.execute("PRAGMA foreign_keys = OFF")
             for name in schema_files:
                 with open(_inside(CODE_DIR, name), encoding="utf-8") as f:
-                    self._con.executescript(f.read())
-            self._con.execute("PRAGMA foreign_keys = OFF")
+                    con.executescript(f.read())
+            con.execute("PRAGMA foreign_keys = OFF")
         except BaseException:
             self.discard()
             raise
 
     def user_version(self) -> int:
         """The schema version of the database."""
-        return self._con.execute("PRAGMA user_version").fetchone()[0]
+        return self._open().execute("PRAGMA user_version").fetchone()[0]
 
     def insert(self, table: str, rows: Sequence[Mapping[str, Any]]) -> None:
         """Insert `rows` into `table`; refuse a column this schema lacks."""
-        known = {c[1] for c in _columns(self._con, table)}
+        con = self._open()
+        known = {c[1] for c in _columns(con, table)}
         for row in rows:
             extra = set(row) - known
             if extra:
                 raise ExportError(f"{table}: the export has column(s) this schema lacks: {', '.join(sorted(extra))}")
         for row in rows:
             names = list(row)
-            self._con.execute(f"INSERT INTO {audit_rules.ident(table)} ({', '.join(audit_rules.ident(n) for n in names)}) "
-                              f"VALUES ({', '.join('?' for _ in names)})", [row[n] for n in names])
+            try:
+                con.execute(f"INSERT INTO {audit_rules.quote_ident(table)} ({', '.join(map(audit_rules.quote_ident, names))}) "
+                            f"VALUES ({', '.join('?' for _ in names)})", [row[n] for n in names])
+            except sqlite3.Error as e:
+                raise ExportError(f"{table}: cannot insert a row of the export: {e}") from e
 
     def finish(self) -> List[str]:
         """Commit and return the integrity and foreign-key problems found."""
-        self._con.commit()
-        problems = [f"integrity: {r[0]}" for r in self._con.execute("PRAGMA integrity_check") if r[0] != "ok"]
-        problems += [f"foreign key: {r[0]} row {r[1]} -> {r[2]}" for r in self._con.execute("PRAGMA foreign_key_check")]
-        self._con.close()
+        con = self._open()
+        con.commit()
+        problems = [f"integrity: {r[0]}" for r in con.execute("PRAGMA integrity_check") if r[0] != "ok"]
+        problems += [f"foreign key: {r[0]} row {r[1]} -> {r[2]}" for r in con.execute("PRAGMA foreign_key_check")]
+        con.close()
         self._con = None
         return problems
 

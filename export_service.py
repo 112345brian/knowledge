@@ -53,6 +53,16 @@ def _previous(deps: ExportDeps, part: str):
         return None
 
 
+def _keep_large_parts_out_of_git(deps: ExportDeps) -> None:
+    """Give the export folder a `.gitignore` for the parts that stay out of git, unless it already has one (the user's
+    own is never overwritten). Without it the first bulk or notes export leaves untracked files in the private repo,
+    and `add-fact` refuses to run on a repo that is not clean."""
+    try:
+        deps.export_files.read(rules.GITIGNORE)
+    except FileNotFoundError:
+        deps.export_files.write(rules.GITIGNORE, rules.gitignore_text())
+
+
 def export_database(deps: ExportDeps, tables: Sequence[str] = (), groups: Sequence[str] = (), skip: Sequence[str] = (),
                     include_notes: bool = False) -> Mapping[str, Mapping[str, int]]:
     """Write the selected tables (and the notes, with `include_notes`). Returns {part: {item: rows}} (a note counts 1).
@@ -70,6 +80,8 @@ def export_database(deps: ExportDeps, tables: Sequence[str] = (), groups: Sequen
         for name, text in texts.items():
             deps.export_files.write(rules.note_path(name) if part == rules.NOTES else rules.file_name(part, name), text)
         deps.export_files.write(rules.manifest_name(part), rules.build_manifest(version, texts, _previous(deps, part)))
+        if part in rules.UNTRACKED_PARTS:
+            _keep_large_parts_out_of_git(deps)
         result[part] = {n: (1 if part == rules.NOTES else rules.line_count(t)) for n, t in texts.items()}
     return result
 

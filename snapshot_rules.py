@@ -41,13 +41,13 @@ def candidate(name: str, attempt: int) -> str:
 
 
 def _order(name: str) -> Tuple[str, int]:
-    m = _NAME.match(name)
+    m = _NAME.fullmatch(name)
     return (m.group("stamp"), int(m.group("n") or 1)) if m else ("", 0)
 
 
 def is_snapshot(name: str) -> bool:
     """Whether `name` is a snapshot file name."""
-    return bool(_NAME.match(name))
+    return bool(_NAME.fullmatch(name))
 
 
 def newest_first(names: Iterable[str]) -> List[str]:
@@ -76,7 +76,7 @@ def check_restorable(tables: Sequence[str]) -> List[str]:
     if not tables:
         raise SnapshotError("name at least one table to restore")
     for t in tables:
-        if not re.match(r"^[a-z_][a-z0-9_]*$", t):
+        if not re.fullmatch(r"[a-z_][a-z0-9_]*", t):
             raise SnapshotError(f"{t!r} is not a valid table name")
         if t in HISTORY_TABLES:
             raise SnapshotError(f"{t} is history and is never replaced in place; restore a whole database instead")

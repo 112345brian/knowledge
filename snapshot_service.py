@@ -24,14 +24,28 @@ class SnapshotDeps:
 
 @dataclass(frozen=True)
 class SnapshotResult:
-    """The snapshot taken, the ones pruned, and a warning if pruning failed."""
+    """The snapshot taken (its path and file name), the ones pruned, and a warning if pruning failed."""
     path: str
     pruned: Tuple[str, ...]
     warning: str = ""
+    name: str = ""
 
 
-def take_snapshot(deps: SnapshotDeps, keep: int = rules.DEFAULT_KEEP) -> SnapshotResult:
-    """Snapshot the database and keep only the `keep` newest snapshots."""
+def prune_snapshots(deps: SnapshotDeps, keep: int = rules.DEFAULT_KEEP) -> Tuple[Tuple[str, ...], str]:
+    """Delete all but the `keep` newest snapshots. Returns (the names pruned, a warning if pruning failed part-way)."""
+    pruned: List[str] = []
+    try:
+        for old in rules.to_prune(deps.snapshots.names(), keep):
+            deps.snapshots.remove(old)
+            pruned.append(old)
+    except OSError as e:
+        return tuple(pruned), f"could not prune old snapshots: {e}"
+    return tuple(pruned), ""
+
+
+def take_snapshot(deps: SnapshotDeps, keep: int = rules.DEFAULT_KEEP, prune: bool = True) -> SnapshotResult:
+    """Snapshot the database and, with `prune`, keep only the `keep` newest snapshots. A caller that may still need to
+    withdraw the snapshot (a restore that is refused) passes `prune=False` and calls `prune_snapshots` once it is sure."""
     rules.to_prune([], keep)                                  # a bad `keep` fails before anything is written
     natural = rules.snapshot_name(deps.clock.now())
     first = rules.next_attempt(natural, deps.snapshots.names())
@@ -44,15 +58,9 @@ def take_snapshot(deps: SnapshotDeps, keep: int = rules.DEFAULT_KEEP) -> Snapsho
             continue
     if not path:
         raise rules.SnapshotError(f"no free snapshot name for {natural}")
-    pruned: List[str] = []
-    warning = ""
-    try:
-        for old in rules.to_prune(deps.snapshots.names(), keep):
-            deps.snapshots.remove(old)
-            pruned.append(old)
-    except OSError as e:
-        warning = f"could not prune old snapshots: {e}"
-    return SnapshotResult(path, tuple(pruned), warning)
+    name = rules.candidate(natural, attempt)
+    pruned, warning = prune_snapshots(deps, keep) if prune else ((), "")
+    return SnapshotResult(path, pruned, warning, name)
 
 
 def list_snapshots(deps: SnapshotDeps) -> List[str]:

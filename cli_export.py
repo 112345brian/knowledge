@@ -50,7 +50,9 @@ SELECTION = dict(
 )
 
 
-@app.command("export", help="Write the selected tables (default: all) as deterministic files, each part with a manifest.")
+@app.command("export", help="Write the selected tables (default: all) as deterministic files, each part with a manifest. "
+                            "core/ is meant to be committed (add-fact refuses a repo with uncommitted changes); bulk/ and notes/ "
+                            "are git-ignored by a .gitignore written into the folder, which you may edit.")
 def cmd_export(ctx: typer.Context, directory: Optional[str] = typer.Option(None, "--dir", help=DIR_HELP),
                db: Optional[str] = typer.Option(None, "--db", help=DB_HELP),
                table: Optional[List[str]] = SELECTION["table"], group: Optional[List[str]] = SELECTION["group"],
@@ -58,7 +60,7 @@ def cmd_export(ctx: typer.Context, directory: Optional[str] = typer.Option(None,
     """Write the selected tables and print the row count of each."""
     try:
         _print(ctx.obj.db_export(db, directory).export_database(table or (), group or (), skip or (), include_notes))
-    except export_rules.ExportError as e:
+    except (export_rules.ExportError, OSError) as e:
         fail(str(e))
 
 
@@ -70,7 +72,7 @@ def cmd_verify(ctx: typer.Context, directory: Optional[str] = typer.Option(None,
     """Compare the selected tables with the database and fail on any difference."""
     try:
         problems = ctx.obj.db_export(db, directory).verify_export(table or (), group or (), skip or (), include_notes)
-    except export_rules.ExportError as e:
+    except (export_rules.ExportError, OSError) as e:
         fail(str(e))
     if problems:
         print("the export and the database disagree:", file=sys.stderr)
@@ -88,6 +90,6 @@ def cmd_import(ctx: typer.Context, into: str = typer.Option(..., "--into", help=
     """Create a new database from an export and print the row count of each table."""
     try:
         result = ctx.obj.db_import(into, directory, notes_into).import_database(not core_only, notes_into is not None)
-    except (export_rules.ExportError, FileExistsError) as e:
+    except (export_rules.ExportError, OSError) as e:
         fail(str(e))
     _print(result)

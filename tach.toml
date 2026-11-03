@@ -505,7 +505,7 @@ depends_on = ["clock_port", "export_port", "export_rules", "snapshot_port", "sna
 [[modules]]
 path = "snapshot_store" # INFRASTRUCTURE: SQLite backup-API snapshots and the transactional table restore
 layer = "infrastructure"
-depends_on = ["audit_rules", "snapshot_rules"]
+depends_on = ["audit_rules", "export_store", "snapshot_rules"]
 
 [[modules]]
 path = "db_snapshot"    # COMPOSITION ROOT: binds the snapshot and restore-tables services to their adapters

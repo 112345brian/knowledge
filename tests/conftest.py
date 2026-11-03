@@ -15,7 +15,7 @@ def _no_ambient_private_checkout(monkeypatch):
     (a temp config.toml plus monkeypatch.setenv, or explicit Locations); anything else gets the synthetic
     locations in tests/appctx.py."""
     for var in ("KNOWLEDGE_CONFIG", "KNOWLEDGE_DB_DIR", "KNOWLEDGE_DATA_DIR", "KNOWLEDGE_NOTES_VAULT",
-                "KNOWLEDGE_HEALTH_DIR", "KNOWLEDGE_CLIENT_SOURCES", "KNOWLEDGE_CLIENT_INPUTS"):
+                "KNOWLEDGE_HEALTH_DIR", "KNOWLEDGE_CLIENT_SOURCES", "KNOWLEDGE_CLIENT_INPUTS", "KNOWLEDGE_MCP_MODE"):
         monkeypatch.delenv(var, raising=False)
 
 

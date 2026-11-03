@@ -94,7 +94,7 @@ No options.
 
 ### `db export`
 
-Write the selected tables (default: all) as deterministic files, each part with a manifest.
+Write the selected tables (default: all) as deterministic files, each part with a manifest. core/ is meant to be committed (add-fact refuses a repo with uncommitted changes); bulk/ and notes/ are git-ignored by a .gitignore written into the folder, which you may edit.
 
 - `--db DB`: Database (default: the configured one).
 - `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).

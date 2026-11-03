@@ -97,7 +97,7 @@ def test_an_export_has_core_and_bulk_parts_each_with_a_manifest(w):
     result = w.export()
     core = {rules.file_name("core", t) for t in rules.CORE_TABLES}
     bulk = {rules.file_name("bulk", t) for t in client_bootstrap.registry().data_tables()}
-    assert set(w.files()) == core | bulk | {"core/manifest.json", "bulk/manifest.json"}
+    assert set(w.files()) == core | bulk | {"core/manifest.json", "bulk/manifest.json", ".gitignore"}
     assert result["core"]["facts"] == 2 and result["core"]["fact_revisions"] == 1 and result["core"]["publishers"] == 0
     assert result["bulk"]["artists"] == 2 and result["bulk"]["measurements"] == 1
     manifest = json.loads(w.files()["core/manifest.json"])
@@ -274,7 +274,7 @@ def test_a_column_this_schema_lacks_removes_the_new_database(w):
 def test_a_constraint_violation_in_a_bulk_table_removes_the_new_database(w):
     w.export()
     _retype(w, "bulk", "measurements", lambda rows: rows[0].update(trust_level="certain"))
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(rules.ExportError, match="cannot insert a row"):       # a domain error, not a raw sqlite3 one
         w.restore()
     assert not os.path.exists(w.new_db)
 
@@ -385,7 +385,7 @@ def test_unknown_names_and_empty_selections_are_refused(w):
 def test_a_single_table_can_be_exported_and_verified(w):
     result = w.export(tables=("artists",))
     assert result == {"bulk": {"artists": 2}}
-    assert sorted(w.files()) == ["bulk/artists.ndjson", "bulk/manifest.json"]
+    assert sorted(w.files()) == [".gitignore", "bulk/artists.ndjson", "bulk/manifest.json"]
     assert w.verify(tables=("artists",)) == []
     assert w.verify(tables=("facts",)) == ["core/manifest.json is missing: this is not a complete export"]
 
@@ -543,3 +543,147 @@ def test_verify_exits_1_on_drift_and_the_default_directory_is_in_the_data_dir(w)
     con.close()
     r = cli(w, "verify", "--db", w.db)
     assert r.returncode == 1 and "claim_facts" in r.stderr
+
+
+# ---- names are validated whole: `$` matches before a trailing newline, so every validator uses fullmatch
+
+@pytest.mark.parametrize("name", ["facts\n", "facts\r\n", "facts\n\n", "fa cts", ""])
+def test_a_table_name_with_a_newline_or_space_is_refused_everywhere(name):
+    import audit_rules
+    import snapshot_rules
+    with pytest.raises(rules.ExportError):
+        rules.check_table(name)
+    with pytest.raises(ValueError):
+        audit_rules.ident(name)
+    with pytest.raises(snapshot_rules.SnapshotError):
+        snapshot_rules.check_restorable([name])
+
+
+@pytest.mark.parametrize("name", ["note.md\n", "a\nb.md", "../x.md", "dir/x.md"])
+def test_a_note_name_with_a_newline_or_directory_part_is_refused(name):
+    with pytest.raises(rules.ExportError):
+        rules.check_note(name)
+
+
+def test_a_snapshot_name_with_a_trailing_newline_is_not_a_snapshot():
+    import snapshot_rules
+    assert snapshot_rules.is_snapshot("snapshot-20260101T000000.db")
+    assert not snapshot_rules.is_snapshot("snapshot-20260101T000000.db\n")
+
+
+# ---- identifiers are quoted; the read-only URI is encoded; one export is one moment
+
+def test_a_column_named_like_an_sql_keyword_is_exported_and_imported(tmp_path):
+    import export_store
+    db = tmp_path / "keywords.db"
+    con = sqlite3.connect(db)
+    con.execute('CREATE TABLE t ("order" INTEGER PRIMARY KEY, "group" TEXT)')
+    con.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b')")
+    con.commit()
+    con.close()
+    reads = export_store.SqliteExportReads(str(db))
+    assert list(reads.rows("t")) == [{"order": 1, "group": "a"}, {"order": 2, "group": "b"}]
+    reads.close()
+    target = export_store.SqliteImportTarget(str(tmp_path / "new.db"))
+    target._con = sqlite3.connect(str(tmp_path / "new.db"))
+    target._con.execute('CREATE TABLE t ("order" INTEGER PRIMARY KEY, "group" TEXT)')
+    target.insert("t", [{"order": 1, "group": "a"}])
+    target._con.commit()
+    assert target._con.execute("SELECT * FROM t").fetchall() == [(1, "a")]
+    target._con.close()
+
+
+@pytest.mark.parametrize("folder", ["plain", "with#hash", "with?mark", "with%percent", "with space"])
+def test_a_database_in_a_folder_with_special_characters_is_read_from_that_folder(tmp_path, folder):
+    import export_store
+    path = tmp_path / folder / "knowledge.db"
+    path.parent.mkdir()
+    other = tmp_path / folder.split("#")[0].split("?")[0] / "knowledge.db"      # where a raw `file:` URI would look
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    con.execute("INSERT INTO t VALUES (1, 'here')")
+    con.commit()
+    con.close()
+    reads = export_store.SqliteExportReads(str(path))
+    assert list(reads.rows("t")) == [{"id": 1, "v": "here"}]
+    reads.close()
+
+
+def _two_tables(path, wal):
+    con = sqlite3.connect(path)
+    if wal:
+        con.execute("PRAGMA journal_mode = WAL")
+    con.execute("CREATE TABLE a (id INTEGER PRIMARY KEY)")
+    con.execute("CREATE TABLE b (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO a VALUES (1)")
+    con.execute("INSERT INTO b VALUES (1)")
+    con.commit()
+    con.close()
+
+
+def test_one_export_reads_every_table_from_the_same_moment_in_wal_mode(tmp_path):
+    """A write between two tables must not show in the export of the second: the writer proceeds (WAL), the reader keeps its moment."""
+    import export_store
+    path = tmp_path / "k.db"
+    _two_tables(path, wal=True)
+    reads = export_store.SqliteExportReads(str(path))
+    assert [r["id"] for r in reads.rows("a")] == [1]
+    other = sqlite3.connect(path)                      # someone commits between the two reads
+    other.execute("INSERT INTO b VALUES (2)")
+    other.commit()
+    other.close()
+    assert [r["id"] for r in reads.rows("b")] == [1], "the second table came from a later moment than the first"
+    reads.close()
+    assert [r["id"] for r in export_store.SqliteExportReads(str(path)).rows("b")] == [1, 2]     # a new export sees it
+
+
+def test_one_export_holds_its_moment_in_rollback_journal_mode_by_making_a_writer_wait(tmp_path):
+    import export_store
+    path = tmp_path / "k.db"
+    _two_tables(path, wal=False)
+    reads = export_store.SqliteExportReads(str(path))
+    assert [r["id"] for r in reads.rows("a")] == [1]
+    other = sqlite3.connect(path, timeout=0.1)
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        other.execute("INSERT INTO b VALUES (2)")
+        other.commit()                                  # cannot commit while the export reads
+    other.rollback()
+    assert [r["id"] for r in reads.rows("b")] == [1]
+    reads.close()                                       # the export is done: the writer may go on
+    other.execute("INSERT INTO b VALUES (2)")
+    other.commit()
+    other.close()
+
+
+# ---- the export folder lives in the private git repo: only core/ may be left for the user to commit
+
+def _git(cwd, *args):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
+                          env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"})
+
+
+def test_a_full_export_inside_a_git_repo_leaves_only_core_untracked(w, tmp_path):
+    repo = tmp_path / "private-repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    w.dir = str(repo / "export")
+    w.export(notes=True)
+    status = _git(repo, "status", "--porcelain", "--untracked-files=all").stdout
+    untracked = [line[3:] for line in status.splitlines()]
+    assert untracked, "an export writes something"
+    assert all(p.startswith("export/core/") or p == "export/.gitignore" for p in untracked), untracked
+    assert not any(p.startswith(("export/bulk/", "export/notes/")) for p in untracked)
+
+
+def test_an_existing_gitignore_in_the_export_folder_is_never_overwritten(w):
+    os.makedirs(w.dir)
+    mine = os.path.join(w.dir, ".gitignore")
+    open(mine, "w").write("# mine\n")
+    w.export()
+    assert open(mine).read() == "# mine\n"
+
+
+def test_a_core_only_export_writes_no_gitignore(w):
+    w.export(groups=("facts",))
+    assert not os.path.exists(os.path.join(w.dir, ".gitignore"))

@@ -302,11 +302,30 @@ def test_two_restores_cannot_overlap(w):
     blocker = sqlite3.connect(w.db, timeout=0.1)
     blocker.execute("BEGIN IMMEDIATE")                       # someone else is writing
     try:
-        with pytest.raises(sqlite3.OperationalError):
+        with pytest.raises(rules.SnapshotError, match="nothing was changed"):
             w.restorer(snapshot=snap).restore_tables_from_snapshot(["artists"])
     finally:
         blocker.rollback()
         blocker.close()
+
+
+def test_a_database_error_during_a_restore_is_reported_as_an_error_line_not_a_traceback(w):
+    snap = w.snapshots().take_snapshot().path
+    blocker = sqlite3.connect(w.db, timeout=0.1)
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        r = cli(w, "restore-tables", "--db", w.db, "--snapshot-dir", w.snaps, "--from-snapshot", snap, "--table", "artists")
+    finally:
+        blocker.rollback()
+        blocker.close()
+    assert r.returncode == 1 and r.stderr.startswith("error: ") and "Traceback" not in r.stderr, r.stderr
+
+
+def test_an_unwritable_snapshot_directory_is_reported_as_an_error_line(w, tmp_path):
+    blocked = tmp_path / "a-file-not-a-folder"
+    blocked.write_text("x")
+    r = cli(w, "snapshot", "--db", w.db, "--dir", str(blocked / "inside"))
+    assert r.returncode == 1 and r.stderr.startswith("error: ") and "Traceback" not in r.stderr, r.stderr
 
 
 # ---------------------------------------------------------------- the command line
@@ -340,3 +359,46 @@ def test_restore_tables_needs_exactly_one_source_and_reports_refusals(w):
     r = cli(w, "restore-tables", "--db", w.db, "--table", "fact_revisions", "--from-snapshot", w.db)
     assert r.returncode == 1 and "history" in r.stderr
     assert cli(w, "snapshot", "--db", w.db, "--dir", w.snaps, "--keep", "0").returncode == 1
+
+
+# ---- the safety snapshot of a restore is withdrawn when the restore is refused, and counts only when it goes through
+
+def _dangling_setup(w):
+    snap = w.snapshots().take_snapshot().path
+    w.sql("DELETE FROM subjects WHERE id = 2")
+    w.sql("UPDATE facts SET subject_id = 1")
+    w.sql("UPDATE facts SET subject_id = 2 WHERE id = 2", db=snap)
+    w.sql("DELETE FROM subjects WHERE id = 2", db=snap)
+    return snap
+
+
+def test_refused_restores_leave_every_retained_snapshot_untouched(w):
+    snap = _dangling_setup(w)
+    for i in range(1, 4):
+        w.snapshots(clock=f"2026-10-01T08:00:0{i}+00:00").take_snapshot()
+    kept = w.listing()
+    for _ in range(rules.DEFAULT_KEEP + 2):                          # more refused attempts than the retention limit
+        with pytest.raises(rules.SnapshotError, match="dangling"):
+            w.restorer(snapshot=snap).restore_tables_from_snapshot(["facts"])
+    assert w.listing() == kept, "a refused restore must not add a snapshot, nor prune an older one"
+
+
+def test_a_restore_that_fails_while_staging_leaves_no_safety_snapshot(w):
+    snap = w.snapshots().take_snapshot().path
+    w.sql("ALTER TABLE facts RENAME COLUMN notes TO annotations")
+    kept = w.listing()
+    with pytest.raises(rules.SnapshotError, match="lacks"):
+        w.restorer(snapshot=snap).restore_tables_from_snapshot(["facts"])
+    assert w.listing() == kept
+
+
+def test_a_restore_that_goes_through_keeps_its_safety_snapshot_and_respects_the_retention_limit(w):
+    for i in range(rules.DEFAULT_KEEP):
+        w.snapshots(clock=f"2026-10-01T08:00:{i:02d}+00:00").take_snapshot()
+    oldest = w.listing()[0]
+    snap = os.path.join(w.snaps, w.listing()[-1])
+    damage(w)
+    result = w.restorer(snapshot=snap).restore_tables_from_snapshot(["artists"])
+    listing = w.listing()
+    assert result.committed and os.path.basename(result.safety_snapshot) in listing
+    assert len(listing) == rules.DEFAULT_KEEP and oldest not in listing        # one in, the oldest out

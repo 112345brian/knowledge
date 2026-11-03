@@ -26,7 +26,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Sequence
+from typing import Any, Callable, Collection, Dict, Iterable, List, Mapping, Sequence
 
 FORMAT = 1
 CORE = "core"
@@ -34,6 +34,10 @@ BULK = "bulk"
 NOTES = "notes"
 TABLE_PARTS = (CORE, BULK)
 MANIFEST = "manifest.json"
+GITIGNORE = ".gitignore"
+# The parts that stay out of git by default (docs/db-source-of-truth.md, "One backup folder"): the client tables are
+# large and refreshed on demand, the notes are copies of files that already live elsewhere. `core/` is what is committed.
+UNTRACKED_PARTS = (BULK, NOTES)
 
 # Every table that holds data nothing else can recreate or that foreign keys point into, parents before children.
 # Not exported: build_info and build_inputs (build provenance) and the full-text index (rebuilt by the facts triggers).
@@ -71,16 +75,22 @@ class MissingPart(ExportError):
 
 def check_table(table: str) -> str:
     """`table` if it is a plain lower-case SQL name (it becomes a file name and part of a statement), else ExportError."""
-    if not isinstance(table, str) or not _IDENT.match(table):
+    if not isinstance(table, str) or not _IDENT.fullmatch(table):
         raise ExportError(f"{table!r} is not a valid table name")
     return table
 
 
 def check_note(name: str) -> str:
     """`name` if it is a plain `*.md` file name with no directory part, else ExportError."""
-    if not isinstance(name, str) or not _NOTE.match(name) or ".." in name:
+    if not isinstance(name, str) or not _NOTE.fullmatch(name) or ".." in name:
         raise ExportError(f"{name!r} is not a valid note file name")
     return name
+
+
+def gitignore_text() -> str:
+    """The `.gitignore` an export folder gets when it first holds a part that stays out of git."""
+    return ("# Written by `knowledge.py db export`. The large parts stay out of git by default: delete a line to commit\n"
+            "# that part. `core/` is the part that is committed.\n" + "".join(f"{part}/\n" for part in UNTRACKED_PARTS))
 
 
 def manifest_name(part: str) -> str:
@@ -218,7 +228,7 @@ def read_texts(read: Callable[[str], str], part: str, manifest: Manifest) -> Dic
     return texts
 
 
-def select(tables: Sequence[str], groups: Sequence[str], skip: Sequence[str], client_groups: Mapping[str, Sequence[str]],
+def select(tables: Sequence[str], groups: Sequence[str], skip: Sequence[str], client_groups: Mapping[str, Collection[str]],
            existing: Iterable[str], client_tables: Iterable[str]) -> List[str]:
     """The tables to export, in a fixed order (core tables, then logs, then client tables sorted): the named `tables`
     plus the tables of the named `groups`, or everything the database has when neither is given, minus `skip`.
