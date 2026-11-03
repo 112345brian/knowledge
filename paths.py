@@ -63,7 +63,7 @@ def config_file():
     if override:
         return os.path.abspath(expand(override))
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    return os.path.join(base, _APP_NAME, "config.toml")
+    return os.path.normpath(os.path.join(base, _APP_NAME, "config.toml"))      # one separator style on Windows too
 
 
 def local_override_file(path):

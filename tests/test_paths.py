@@ -250,7 +250,8 @@ def test_only_the_two_process_adapters_name_the_config_variable_and_they_agree()
     import glob
     import script_runner
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    spelled = sorted(os.path.relpath(p, root) for p in glob.glob(os.path.join(root, "**", "*.py"), recursive=True)
-                     if "/tests/" not in p and '"KNOWLEDGE_CONFIG"' in open(p, encoding="utf-8").read())
+    relative = (os.path.relpath(p, root).replace(os.sep, "/") for p in glob.glob(os.path.join(root, "**", "*.py"), recursive=True))
+    spelled = sorted(r for r in relative
+                     if not r.startswith("tests/") and '"KNOWLEDGE_CONFIG"' in open(os.path.join(root, r), encoding="utf-8").read())
     assert spelled == ["paths.py", "script_runner.py"]
     assert script_runner.CONFIG_ENV_VAR == paths.CONFIG_ENV_VAR
