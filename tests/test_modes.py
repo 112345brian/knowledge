@@ -574,6 +574,8 @@ FACT_READERS_ALLOWED = {
     "modes.py", "modes_store.py", "knowledge.py", "cli_common.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # CLI-only audit over the full local db (like claims_store); never serves tool results
     "fixity_store.py",
+    # builds the audit triggers that WRITE a row per change; it names the tables but never selects from them
+    "audit_rules.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     "entity_queries_store.py",

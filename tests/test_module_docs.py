@@ -178,7 +178,6 @@ NOT_YET_DESCRIBED = frozenset(
     "source_status_store",
     "sources_port",
     "sql_runner_port",
-    "live_schema_store",
     "sql_runner_store",
     "step_stores_port",
     "subject_files_port",
