@@ -71,7 +71,7 @@ depends_on = []
 [[modules]]
 path = "wiring"  # COMPOSITION helper: bind() publishes a service function with its dependencies bound
 layer = "composition"
-depends_on = ["add_fact_port", "build_files_port", "build_port", "build_repositories_port", "client_registry", "clock_port", "datafiles_port", "docs_files_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
+depends_on = ["add_fact_port", "mcp_port", "build_files_port", "build_port", "build_repositories_port", "client_registry", "clock_port", "datafiles_port", "docs_files_port", "entity_files_port", "entity_migration_port", "entity_queries_port", "fact_ingest_port", "fact_reads_port", "facts_file_port", "ids_port", "inputs_port", "lifecycle_reads_port", "locations", "memory_files_port", "normal_db_port", "privacy_floor_service", "privacy_rules_port", "private_git_port", "review_reads_port", "reviews_port", "revisions_port", "script_runner_port", "subject_files_port"]
 
 [[modules]]
 path = "private_git_port"  # DOMAIN: the Git interface implemented by private_git
@@ -1090,15 +1090,30 @@ depends_on = [
     "review_rules",
 ]
 
-#planned: [[modules]]
-#planned: path = "mcp_server"         # #2
-#planned: layer = "serving"
-#planned: depends_on = [
-#planned:     "cli_parity",
-#planned:     "modes",
-#planned:     "modes_store",
-#planned:     "review",
-#planned: ]
+[[modules]]
+path = "mcp_server"         # #2 SERVING: the only code of the MCP feature that reads or writes (stdio); the use case is pure text in, text out
+layer = "serving"
+depends_on = ["container", "mcp", "mcp_rules"]
+
+[[modules]]
+path = "mcp"                # COMPOSITION ROOT: binds mcp_service to the add_fact and queries use cases
+layer = "composition"
+depends_on = ["mcp_service", "wiring"]
+
+[[modules]]
+path = "mcp_service"        # USE CASE: one JSON-RPC message in, one reply out, through ports only
+layer = "application"
+depends_on = ["fact_reads_port", "mcp_port", "mcp_rules"]
+
+[[modules]]
+path = "mcp_rules"          # DOMAIN SERVICE: MCP tool catalog, argument checks and reply wording (pure)
+layer = "domain_services"
+depends_on = ["fact_rules", "new_fact"]
+
+[[modules]]
+path = "mcp_port"           # DOMAIN SERVICE: the ports of the MCP use case (record a fact, look facts up)
+layer = "domain_services"
+depends_on = []
 
 # ===================================================================== pipeline / ingest
 # build.py and the `ingest` package: the ETL steps (run in the order of build_rules.STEPS), their helpers

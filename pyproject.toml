@@ -93,6 +93,11 @@ files = [
     "private_git_port.py",
     "queries.py",
     "queries_service.py",
+    "mcp.py",
+    "mcp_port.py",
+    "mcp_rules.py",
+    "mcp_service.py",
+    "mcp_server.py",
     "review.py",
     "review_reads_port.py",
     "review_service.py",
@@ -201,7 +206,9 @@ source_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -255,6 +262,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.review_reads_port",
@@ -351,7 +360,7 @@ forbidden_modules = [
     "kn.knowledge",
     # serving
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
     # pipeline: build.py and the ingest steps and tools (tach models the steps as ingest.<name>)
     "kn.shared",
     "kn.backfill_dates",
@@ -425,7 +434,9 @@ source_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -481,6 +492,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.review_reads_port",
@@ -539,7 +552,7 @@ source_modules = [
     "kn.subject_hierarchy_service",
     "kn.textmatch",
     "kn.validtime",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
     "kn.build_composition",
     "kn.build_records",
     "kn.build_repositories_port",
@@ -592,7 +605,7 @@ source_modules = [
 ]
 forbidden_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 ignore_imports = [
     "kn.cli_inbox -> kn.inbox",   # launcher: the `inbox` command starts the server (see above)
@@ -605,7 +618,7 @@ name = "Serving never imports the pipeline"
 type = "forbidden"
 source_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 forbidden_modules = [
     "kn.shared",
@@ -653,7 +666,7 @@ name = "Serving reads facts only through modes"
 type = "forbidden"
 source_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 forbidden_modules = [
     "kn.add_fact",
@@ -758,10 +771,14 @@ forbidden_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.acquisition_store",
     "kn.add_fact",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.add_fact_service",
     "kn.add_fact_store",
     "kn.apply_fact_revisions",
@@ -925,6 +942,7 @@ forbidden_modules = [
     "kn.docs_files_port",
     "kn.docs_store",
     "kn.cli_docs",
+    "kn.mcp_server",
 ]
 allow_indirect_imports = true
 
@@ -994,6 +1012,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.revision_apply_rules",
@@ -1116,6 +1136,7 @@ source_modules = [
     "kn.scripts_service",
     "kn.music_service",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact_service",
     "kn.facts_batch_service",
     "kn.fact_ingest_service",

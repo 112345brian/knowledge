@@ -36,6 +36,7 @@ from ids_port import Ids
 from inputs_port import Inputs
 from lifecycle_reads_port import LifecycleReads
 from locations import Locations
+from mcp_port import FactCapture, FactLookup, Session
 from memory_files_port import MemoryFiles
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
@@ -90,7 +91,7 @@ PORT_PROTOCOLS = {
     "clients": ClientSources, "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
-    "docs_files": DocsFiles,
+    "docs_files": DocsFiles, "capture": FactCapture, "lookup": FactLookup, "session": Session,
 }
 
 

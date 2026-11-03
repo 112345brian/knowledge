@@ -80,12 +80,15 @@ def test_a_layer_module_with_an_unregistered_tool_fails(tmp_path, monkeypatch):
     """End to end: a stub mcp_server declaring a tool with no CLI command fails the layer check."""
     (tmp_path / "mcp_server.py").write_text("PARITY_ACTIONS = ['search_facts', 'stub_tool']\n")
     monkeypatch.syspath_prepend(str(tmp_path))
+    real = sys.modules.pop("mcp_server", None)  # the real mcp_server.py exists now; shadow it with the stub
     importlib.invalidate_caches()
     try:
         with pytest.raises(AssertionError, match="stub_tool"):
             _check_layer("mcp_server")
     finally:
         sys.modules.pop("mcp_server", None)
+        if real is not None:
+            sys.modules["mcp_server"] = real
 
 
 def test_a_layer_module_without_declaration_fails(tmp_path, monkeypatch):
