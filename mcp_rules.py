@@ -17,7 +17,7 @@ from fact_rules import KIND_VALUES, VALID_TRUST, VALID_VISIBILITY
 from new_fact import NewFact, check_fact
 
 SERVER_NAME = "knowledge"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.2.1"
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 DEFAULT_LIMIT = 10

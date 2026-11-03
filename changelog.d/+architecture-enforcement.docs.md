@@ -1,1 +1,0 @@
-`docs/architecture.md` has a table of every enforced gate and what it catches, and the I/O table covers the export, snapshot and MCP adapters; `docs/mcp.md` lists `mcp_moded_store`; `docs/README.md` indexes every document; the onion handoff note is marked historical.
