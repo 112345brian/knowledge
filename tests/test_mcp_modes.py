@@ -113,3 +113,18 @@ def test_an_off_server_refuses_add_and_search_over_stdio_and_writes_nothing(tmp_
 def test_the_shell_is_wired_to_the_moded_adapters_not_the_unfiltered_queries():
     src = open(os.path.join(REPO, "mcp_server.py"), encoding="utf-8").read()
     assert "app.queries" not in src and "app.mcp_lookup" in src and "app.mcp_capture" in src
+
+
+def test_private_mode_search_keeps_the_tool_contract_active_only_unless_pending_is_asked(db):
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO facts (id, subject_id, statement, trust_level, freshness, visibility, source_key, status) "
+                "VALUES (4, 1, 'Creatine pending fact.', 'low', 'unreviewed', 'normal', 'k4', 'pending'), "
+                "(5, 1, 'Creatine superseded fact.', 'low', 'unreviewed', 'normal', 'k5', 'superseded')")
+    con.commit()
+    con.close()
+    for mode in ("normal", "private"):
+        lk = lookup(db, mode)
+        assert 4 not in [r["id"] for r in lk.search_facts("creatine", limit=10)], mode
+        asked = [r["id"] for r in lk.search_facts("creatine", limit=10, include_pending=True)]
+        assert 4 in asked and 5 not in asked, mode
+    assert len(lookup(db, "private").search_facts("creatine", limit=2, include_pending=True)) == 2

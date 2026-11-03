@@ -26,6 +26,8 @@ The server runs under the `mcp_mode` setting in the config file (or `KNOWLEDGE_M
 | `private` | Everything. | `add_fact` works. |
 | `off` | Every tool call is refused. | Refused. |
 
+`list_subjects` counts the facts the mode may see; its `include_pending` flag does not change the counts, and in `private` mode they include every status.
+
 Set `mcp_mode = "private"` if you want the assistant to see your private facts. Restart the client after changing it.
 
 ## What the server decides, not Claude

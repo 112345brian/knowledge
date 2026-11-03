@@ -38,7 +38,14 @@ class ModedFactLookup:
 
     def search_facts(self, terms, **filters):
         """Matching facts under the mode: private facts and private subjects never appear in normal mode."""
-        return self._read(modes_store.search_facts, terms, **filters)
+        if "status" in filters or self._session.mode is not modes.Mode.private:
+            return self._read(modes_store.search_facts, terms, **filters)
+        # Private mode has no status restriction in `modes_store`; this tool promises active facts (plus pending when
+        # asked), so fetch the best matches, keep those statuses, and cut to the requested limit.
+        limit = filters.pop("limit", 20)
+        kept = ("active", "pending") if filters.get("include_pending") else ("active",)
+        rows = self._read(modes_store.search_facts, terms, limit=modes.MAX_LIMIT, **filters)
+        return [r for r in rows if r["status"] in kept][:limit]
 
     def list_subjects(self, include_pending=False):
         """The subjects the mode may see, with their visible-fact counts."""
