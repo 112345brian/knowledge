@@ -103,6 +103,24 @@ the authoritative log and the rest in the db (not recommended: two truths for on
    writes; MEGA can still capture a mid-write file.
 3. *Live db local only, git export only, no snapshots.* Smaller, but restore needs a full import.
 
+## Prior art
+
+Checked 2026-11-03 with two web searches (anecdotal sources; the sqlite.org pages were not fetched):
+
+- **Diffable export of a SQLite db into git** is an established pattern: [sqlite-diffable](https://github.com/tirkarthi/sqlite-diffable)
+  (Simon Willison's design: one JSON/NDJSON file per table plus metadata, "works great for less than a GB or so") and
+  [sqlite2dir](https://github.com/rotty/sqlite2dir) (SQL schema plus JSON data, can commit each export to a git repo).
+  sqlite2dir's author says an export is not a backup tool and points to SQLite's own `.backup`/`.dump`. This matches the
+  split here: export for history, online-backup snapshots for restore. Our export must additionally be *importable*
+  and byte-stable, so we write our own thin exporter over the curated tables rather than adopt either tool; the format
+  choice (NDJSON per table, sorted by key) follows sqlite-diffable.
+- **SQLite in a sync folder**: forum reports consistently say WAL's `-wal`/`-shm` files can sync out of order and corrupt the
+  db, sync clients ignore SQLite locks, and the workaround is a local db with the Backup API copying into the synced
+  folder (e.g. [a project that moved from WAL to TRUNCATE for this reason](https://github.com/foundry-9/quilltap-server/releases/tag/4.3.1),
+  [Zotero forum thread](https://forums.zotero.org/discussion/comment/282766/)). This supports decision (d).
+- Not looked at: Dolt (versioned SQL db) and Litestream (streaming replication). Both are heavier than a 26 MB single-user db;
+  worth a note if the owner wants them considered.
+
 ## Increments after approval (each independently mergeable, current pipeline untouched until step 4)
 
 1. **Characterize.** Tests pinning every current write path (callers of `facts_file_port`, `revisions_port`, ...) and a
