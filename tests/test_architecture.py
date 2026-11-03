@@ -709,6 +709,7 @@ def test_use_case_list_is_pinned_and_matches_the_ports_test():
     assert listed == {"review_service", "lifecycle_service", "add_fact_service", "facts_batch_service",
                       "migrate_memory_service", "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "queries_service", "scripts_service", "mcp_service",
                       "identity_service", "source_ingest_service", "fact_ingest_service",
+                      "export_service", "import_service",
                       "privacy_floor_service", "entity_link_service", "revision_apply_service",
                       "measurements_service",
                       "music_service", "artist_identity_service",
@@ -742,7 +743,7 @@ def test_architecture_map_classifies_every_module_and_matches_the_contracts():
     assert {n for n, r in roles.items() if r == "pipeline rules"} == PIPELINE_RULES
     assert {n for n, r in roles.items() if r == "model"} == MODEL
     assert {n for n, r in roles.items() if r in ("application service", "pipeline use case")} == services
-    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "mcp", "container", "building", "music_ingest", "build_composition", "fact_ingest", "client_bootstrap", "bootstrap", "docs"}
+    assert {n for n, r in roles.items() if r == "composition root"} == {"review", "lifecycle", "add_fact", "facts_batch", "migrate_memory", "rules_edit", "entities", "subjects", "queries", "scripts", "mcp", "container", "building", "music_ingest", "build_composition", "fact_ingest", "client_bootstrap", "bootstrap", "docs", "db_export"}
     driving = {m.split(".", 1)[1] for m in contracts["driving-adapters-no-infrastructure"]["source_modules"]}
     assert driving <= {n for n, r in roles.items() if r == "driving adapter"}
     allowed = {"model", "domain service", "application service", "infrastructure", "composition root", "composition helper", "pipeline rules",

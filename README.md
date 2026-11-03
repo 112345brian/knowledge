@@ -137,6 +137,9 @@ and `<command> --help` for its options. Read commands accept `--json`.
 | `build` | Rebuild knowledge.db from schema.sql + scripts + data/. |
 | `build-info` | Which inputs and code produced this knowledge.db: the latest build row and its input manifest. |
 | `clean-concerts` | Clean concerts.csv in place (dedupes rows). |
+| `db export` | Write one deterministic NDJSON file per curated table and a manifest. |
+| `db import` | Create a NEW database from an export. |
+| `db verify` | Exit 1 when the export files differ from the database; writes nothing. |
 | `docs build` | Rewrite every generated region of README.md and docs/\*.md from the code. |
 | `docs check` | Fail (exit 1) when a generated region differs from what the code renders; writes nothing. |
 | `edit REF` | Edit a fact by appending a revision. |

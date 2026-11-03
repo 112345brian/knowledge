@@ -14,6 +14,7 @@ from inputs_port import Inputs
 from reviews_port import Reviews
 from script_runner_port import ScriptRunner
 from docs_files_port import DocsFiles
+from export_port import ExportFiles, ExportReads, ImportTarget
 from build_port import BuildOutputs, BuildSession, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
 from build_repositories_port import EntityRepository
@@ -47,6 +48,7 @@ import build
 import client_registry
 import build_info_store
 import docs_store
+import export_store
 import add_fact_store
 import client_bootstrap
 import fact_ingest
@@ -130,6 +132,9 @@ build_sessions: SessionFactory = building.Sessions(local_buildfiles, "", None, c
 build_steps: StepRegistry = building.Registry(local_buildfiles, "")
 build_outputs: BuildOutputs = build.NormalOutputs(local_buildfiles, None)
 docs_files: DocsFiles = docs_store.RepoDocs()
+export_reads: ExportReads = export_store.SqliteExportReads("")
+export_files: ExportFiles = export_store.DirExportFiles("")
+import_target: ImportTarget = export_store.SqliteImportTarget("")
 add_fact_port: AddFact = add_fact.compose(None, None)
 fact_capture: FactCapture = add_fact.compose(None, None)
 session: Session = mcp.RunSession("s")

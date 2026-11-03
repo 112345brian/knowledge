@@ -92,6 +92,27 @@ Clean concerts.csv in place (dedupes rows).
 
 No options.
 
+### `db export`
+
+Write one deterministic NDJSON file per curated table and a manifest.
+
+- `--db DB`: Database to export (default: the configured one).
+- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+
+### `db import`
+
+Create a NEW database from an export. Refuses to overwrite an existing file.
+
+- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+- `--into INTO` (required): Path of the new database file.
+
+### `db verify`
+
+Exit 1 when the export files differ from the database; writes nothing.
+
+- `--db DB`: Database to compare (default: the configured one).
+- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+
 ### `docs build`
 
 Rewrite every generated region of README.md and docs/\*.md from the code. Hand-written text is untouched.

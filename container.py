@@ -14,6 +14,7 @@ import add_fact
 import building
 import clock as clocks
 import entities
+import db_export
 import docs
 import facts_batch
 import lifecycle
@@ -83,6 +84,15 @@ class Container:
     @cached_property
     def subjects(self):
         return subjects.compose(self.locations)
+
+    def db_export(self, db_path=None, directory=None):
+        """Export and verify use cases for a database (default: the configured one) and an export directory (default:
+        `export/` in the private data directory)."""
+        return db_export.compose_export(db_path or self.locations.db_path, directory or self.locations.in_data_dir("export"))
+
+    def db_import(self, db_path, directory=None):
+        """The import use case: build a new database at `db_path` from an export directory (default as for `db_export`)."""
+        return db_export.compose_import(db_path, directory or self.locations.in_data_dir("export"))
 
     def docs_at(self, root=None):
         """Generated documentation use case, rooted at this checkout or an explicit repository copy."""

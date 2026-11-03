@@ -115,6 +115,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `cli_common` | cli | driving adapter | Helpers and option definitions shared by the knowledge.py command modules (cli_facts, cli_audits, cli_review, cli_privacy, cli_build)… |
 | `cli_docs` | cli | driving adapter | Typer commands for the generated docs (CLI-first rule #34): `docs build` rewrites them, `docs check` fails when stale. |
 | `cli_entities` | cli | driving adapter | Typer commands for entities (#42): `entity list\|show\|add\|alias\|tag\|untag\|migrate-keywords`. |
+| `cli_export` | cli | driving adapter | CLI ring (tach layer `cli`): `knowledge.py db export \| verify \| import`: the database's deterministic text export (CLI-first rule #34). |
 | `cli_facts` | cli | driving adapter | `knowledge.py search \| show \| history \| subjects \| facts`: the read commands over the built db. |
 | `cli_facts_batch` | cli | driving adapter | `knowledge.py add-facts`: the Typer command over facts_batch.add_facts (#32, CLI-first rule #34). |
 | `cli_inbox` | cli | driving adapter | Typer commands for the inbox (#33): `inbox` (start the local server) and `edit`. |
@@ -149,6 +150,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `building` | composition | composition root | Composition root of the database rebuild: binds `build_service` to its adapters and owns the session factory and the step registry. |
 | `client_bootstrap` | composition | composition root | Composition: the one place the base looks for the client's registration, and the only place that does. |
 | `container` | composition | composition root | The composition root of the whole application: one object that wires every use case for one `Locations` and one `Clock`. |
+| `db_export` | composition | composition root | Composition root (tach layer `composition`) for exporting the database to text files and importing them into a new database. |
 | `docs` | composition | composition root | Composition root for checking and rebuilding the generated documentation regions. |
 | `entities` | composition | composition root | Composition root for entity command use cases. |
 | `fact_ingest` | composition | composition root | The fact ingest (the facade: binds the use case in `fact_ingest_service` to the adapters a build step is given). |
@@ -172,6 +174,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `entity_migration_store` | infrastructure | infrastructure | Moving privacy keywords onto private entities (#42). |
 | `entity_queries_store` | infrastructure | infrastructure | Read-only entity and subject queries for the CLI. |
 | `entity_repository_store` | infrastructure | infrastructure | SQLite adapter for the build's `EntityRepository` (`build_repositories_port`): the entities file as values, the entity and alias rows, and… |
+| `export_store` | infrastructure | infrastructure | Adapters of the database export and import: a SQLite file read-only, a directory of text files, a new SQLite file. |
 | `fact_ingest_store` | infrastructure | infrastructure | SQLite adapters of the fact ingest: the part of `build_repositories_port.FactRepository` the ingest uses (not source-specific links) and… |
 | `fact_queries` | infrastructure | infrastructure | Adapter for reading the built knowledge.db: the queries behind `knowledge.py search\|facts\|show\|subjects` and the connection helpers. |
 | `fact_reads_store` | infrastructure | infrastructure | Adapter for `fact_reads_port.FactReads`: each read opens its own read-only connection to the built knowledge.db, runs one `fact_queries` /… |
@@ -205,9 +208,11 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `docs_service` | application | application service | Keep the generated regions of README.md and docs/\*.md in step with the code: `build` rewrites them, `check` reports drift. |
 | `entities_service` | application | application service | Entity command use cases. |
 | `entity_link_service` | application | application service | Link facts to the entities they mention in a built database (#42), and prove no private mention is public. |
+| `export_service` | application | application service | Export the curated database to deterministic text files and check them against it (`import_service` reads them back). |
 | `fact_ingest_service` | application | application service | The fact ingest (the use case, through the port protocols; `fact_ingest` binds it to the adapters). |
 | `facts_batch_service` | application | application service | Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the… |
 | `identity_service` | application | application service | The identity operations every build step shares: which source and which subject a name means. |
+| `import_service` | application | application service | Import an export into a NEW database (the counterpart of `export_service`). |
 | `lifecycle_service` | application | application service | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
 | `mcp_service` | application | application service | The MCP server as a use case: one JSON-RPC message in, at most one reply out. |
 | `migrate_memory_service` | application | application service | Import Claude Code memory files as private, pending facts (issue #29). |
@@ -241,6 +246,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `entity_migration_port` | domain_services | domain service | Port for migrating privacy keywords into private entities. |
 | `entity_migration_rules` | domain_services | domain service | Moving privacy keywords onto private entities (#42): what the migration changes, and the proof it never lowers privacy (pure). |
 | `entity_queries_port` | domain_services | domain service | Read port for entity links and subject hierarchy query results. |
+| `export_port` | domain_services | domain service | Domain service (tach layer `domain_services`): ports of the database export and import: the database's rows out, the export directory's… |
+| `export_rules` | domain_services | domain service | The deterministic export format of the curated database (docs/db-source-of-truth.md, increment 2b), pure. |
 | `fact_ingest_decisions` | domain_services | domain service | The decisions of the fact ingest (pilot/batch files and general_facts.json), domain: no file, no db. |
 | `fact_ingest_port` | domain_services | domain service | Ports of the fact ingest that are not the build's repositories: which subject and vault file a name or path means, the revision a loaded… |
 | `fact_ingest_rules` | domain_services | domain service | Fact ingest rules (steps 04 and 11), domain: no file, no db. |
