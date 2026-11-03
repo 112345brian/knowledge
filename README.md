@@ -8,6 +8,10 @@ with a CLI for ingesting, reviewing, searching, and auditing them.
 - **History:** changes are appended as revisions, never overwritten, so any fact has a full history.
 - **Privacy:** facts are `normal` or `private`; privacy rules are checked before a fact is stored.
 - **Reproducible:** the database is a build artifact. Edit the inputs or the code, then rebuild.
+- **Backed up and restorable:** deterministic text exports, verified snapshots, and an in-place restore of chosen
+  tables (`knowledge.py db ...`; see [Backup, export and restore](#backup-export-and-restore)).
+- **Usable from Claude:** a local MCP server and three skills let Claude search the base before answering and record
+  researched facts with your agreement (see [Using it from Claude](#using-it-from-claude)).
 
 ## Contents
 
@@ -15,9 +19,12 @@ with a CLI for ingesting, reviewing, searching, and auditing them.
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Usage](#usage)
+- [Backup, export and restore](#backup-export-and-restore)
+- [Using it from Claude](#using-it-from-claude)
 - [How the build works](#how-the-build-works)
 - [Project layout](#project-layout)
 - [Development](#development)
+- [Releases](#releases)
 - [License](#license)
 
 ## Data boundary
@@ -80,7 +87,8 @@ vault_db = "~/health/tracking.db"            # the measurements source reads thi
   (the default is the core alone), and one listed without its input stops the build with a configuration error.
 - Unknown keys are an error, so a typo is reported instead of ignored.
 - Any setting can be overridden by an environment variable: `KNOWLEDGE_DB_DIR`, `KNOWLEDGE_DATA_DIR`,
-  `KNOWLEDGE_NOTES_VAULT`, `KNOWLEDGE_HEALTH_DIR`, `KNOWLEDGE_CLIENT_SOURCES` (a JSON list).
+  `KNOWLEDGE_NOTES_VAULT`, `KNOWLEDGE_HEALTH_DIR`, `KNOWLEDGE_MCP_MODE`, `KNOWLEDGE_CLIENT_SOURCES` (a JSON list) and
+  `KNOWLEDGE_CLIENT_INPUTS` (a JSON object). The file must still exist: a script the CLI starts re-reads it.
 - A step that needs an optional setting you left out stops with a message naming it. `paths.py` and
   `locations.py` document the full set.
 
@@ -190,6 +198,49 @@ Prefix each command with `uv run python knowledge.py`.
 `knowledge.py inbox` serves the pending-fact review page on `127.0.0.1`. It displays private facts,
 so keep it local: do not put it behind a proxy, tunnel, or port forward.
 
+## Backup, export and restore
+
+The database is rebuilt from your files, so the files are the ground truth today ([docs/db-source-of-truth.md](docs/db-source-of-truth.md)
+describes the planned move to the database as the source of truth, and what is already built). Three tools protect it
+and move it, all under `knowledge.py db`:
+
+- **Snapshots.** `db snapshot` takes a verified, consistent copy with SQLite's online backup (never a plain file copy)
+  into `snapshots/` beside the database and keeps the newest N (`--keep`, default 10). `db snapshots` lists them;
+  `db restore --from SNAPSHOT --into NEW.db` copies one to a **new** file and never overwrites; to replace the live
+  database, move the old one away yourself.
+- **Export.** `db export` writes deterministic text, one file per table, with a manifest of row counts and SHA-256
+  hashes: the same database always gives the same bytes. The folder (default `export/` in the data directory) has
+  `core/` (the curated tables), `bulk/` (the client sources' tables, such as scrobbles) and, only with
+  `--include-notes`, `notes/` (the citation-note markdown). `--table`, `--group` and `--skip` select what is exported.
+  `db verify` exits 1 when the folder and the database disagree; `db import --into NEW.db` builds a **new** database
+  from the folder and refuses to overwrite one.
+- **Restore chosen tables in place.** `db restore-tables --table NAME (--from-snapshot FILE | --from-export DIR)` takes a
+  safety snapshot first, replaces the tables in one transaction, and rolls back if that would leave dangling
+  references. History tables (`fact_revisions`, `audit_log`, `operation_log`) are never replaced in place; restore a
+  whole database instead. `--dry-run` does everything and then rolls back.
+
+The export folder normally lives inside the private data repository. Commit `export/core/` there: `add-fact` refuses to
+write into a repository with uncommitted changes. `bulk/` and `notes/` are large and are git-ignored by an
+`export/.gitignore` that the export writes (edit or delete it to track them).
+
+The audit, access and operation logs, and the append-only guard on fact history, are built and tested but **not yet
+installed by any command**; the database is not audited in 0.2.
+
+## Using it from Claude
+
+A local MCP server (`mcp_server.py`) and three skills let Claude use the base in conversation. Everything stays on your
+machine: the server is a stdio child of your own client, never a network service, so claude.ai on the web and the
+mobile apps cannot reach it.
+
+- **Register the server** (Claude Code): `claude mcp add knowledge -- uv run --project /path/to/knowledge python /path/to/knowledge/mcp_server.py`.
+  Its tools are `search_facts`, `list_subjects` and `add_fact`; details are in [docs/mcp.md](docs/mcp.md).
+- **`mcp_mode`** in the config file decides what the server may do: `normal` (the default) shows only `normal` facts on
+  non-private subjects; `private` shows everything; `off` refuses every call. A fact added through the server is
+  always stored private and pending until you approve it.
+- **Skills:** `knowledge-recall` (search before answering), `knowledge-record` (save a researched claim, only with your
+  agreement) and `knowledge-freshness` (find facts past their recheck date). Install them as described in
+  [docs/skills.md](docs/skills.md).
+
 ## How the build works
 
 `build.py` applies `schema.sql` and runs the ordered steps in `build_rules.py`. The core pipeline
@@ -248,10 +299,14 @@ Procedures for registering facts are in [docs/register-facts-protocol.md](docs/r
 | `knowledge.py`, `cli_*.py` | Typer CLI (driving adapter) |
 | `build.py`, `build_rules.py`, `ingest/` | Build pipeline and core ingest steps |
 | `client/` | Optional sources, enabled per checkout |
+| `export_*`, `import_service.py`, `snapshot_*`, `restore_tables_service.py`, `db_export.py`, `db_snapshot.py`, `cli_export.py`, `cli_snapshot.py` | Export, import, snapshots and table restore (`db` commands) |
+| `live.sql`, `live_schema_store.py`, `audit_rules.py` | Audit and log tables and triggers (built, not yet installed by any command) |
+| `mcp*.py`, `skills/` | The MCP server and the Claude skills that use it |
 | `*_service.py` | Application services that orchestrate rules through ports |
 | `*_rules.py`, `*_port.py` | Pure domain rules and port protocols |
 | `*_store.py`, `paths.py`, `clock.py` | Adapters for the database, files, git, and time |
 | `schema.sql` | Core database schema |
+| `.github/workflows/ci.yml`, `CHANGELOG.md` | Continuous integration; what changed in each release |
 | `docs/` | [Index](docs/README.md): [architecture](docs/architecture.md), [competency questions](docs/competency-questions.md), [fact registration protocol](docs/register-facts-protocol.md) |
 | `tests/` | Test suite and synthetic fixtures |
 
@@ -262,17 +317,35 @@ has the module map and the enforced boundaries.
 ## Development
 
 ```sh
-uv run pytest                        # full suite, parallel by default
+uv run pytest                        # full suite, parallel by default; includes the architecture gates
 uv run mypy
 uv run tach check                    # module layering
+uv run tach check-external           # every imported third-party package is declared in pyproject.toml
 uv run python tests/arch_check.py    # tach + import-linter + repository scan
+uv run arborescent check             # rings, external allow-lists, effects, annotations (baseline: arborescent-baseline.json)
+uv run python knowledge.py docs check    # generated README/docs regions match the code (docs build rewrites them)
 ```
+
+GitHub Actions runs the suite and mypy on every pull request and every push to `main`: ubuntu (Python 3.11 and 3.13) and
+macOS block, Windows is reported but does not block yet.
+
+Every module declares its architecture ring (`__arbor__ = {"ring": "..."}`, written by `arborescent annotate`), and a
+module's docstring must name its tach layer and describe its public functions (`tests/test_module_docs.py`; older
+modules sit on a shrinking allowlist). New code follows the same rule.
 
 Test fixtures must stay synthetic. Before adding examples or generated snapshots, check that they
 contain no private facts, names, paths, or client-specific data.
 
 Every action available in the UI is also a CLI command; see `cli_parity.py` and
 `tests/test_cli_parity.py`.
+
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org); [CHANGELOG.md](CHANGELOG.md) lists what changed and how to
+upgrade. To release: update `CHANGELOG.md` and the README/docs first, bump `version` in `pyproject.toml` (and
+`mcp_rules.SERVER_VERSION`, then `uv lock`; `tests/test_version.py` fails if the three disagree or the changelog has no
+entry for the version), merge through a pull request with CI green, then tag `vX.Y.Z` on the merge commit and publish
+the GitHub release with the changelog entry as its notes.
 
 ## License
 

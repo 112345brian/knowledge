@@ -1,5 +1,10 @@
 # Onion migration: integration handoff
 
+> **Historical.** This is the handoff note from the onion migration, kept for the record. It predates 0.2.0, which
+> replaced `local_paths.py` and `KNOWLEDGE_PRIVATE_DIR` with a TOML config (`~/.config/knowledge/config.toml`, or
+> `KNOWLEDGE_CONFIG`); where it says `local_paths.py`, read "the config file". Branch names and test counts below are
+> as they were then.
+
 **Goal.** Finish the onion migration of this repo: steps stop holding SQL, DB handles or dynamic loading, and
 services own decisions behind typed ports. The flat layout stays. The package-reorganization branch
 (`codex/clean-readme-private-data`) stays out.
@@ -81,7 +86,7 @@ integrated result, not a replacement for reviewing them.
    decodes with the locale codec). A second stored-path regression, in `client/measurements.py` (`vault-db-*`
    `origin_path`), was found this way and fixed.
    To repeat: copy the inputs under a scratch `USERPROFILE` so `~/MEGA/...` resolves there, point a copy of
-   `local_paths.py` at a scratch `KNOWLEDGE_DB_DIR`, build, and compare with the live DB opened `mode=ro&immutable=1`.
+   the config file (`KNOWLEDGE_CONFIG`) at a scratch `db_dir`, build, and compare with the live DB opened `mode=ro&immutable=1`.
 6. **PR #57's body** lacks the "Generated with Claude Code" footer; PR #56 (`claude/generated-docs`) is unrelated
    but may conflict on README and docs.
 

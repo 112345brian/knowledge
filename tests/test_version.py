@@ -30,3 +30,11 @@ def test_the_lock_file_records_the_project_version():
         packages = tomllib.load(f)["package"]
     mine = [p for p in packages if p["name"] == "knowledge"]
     assert len(mine) == 1 and mine[0]["version"] == _pyproject_version(), "run `uv lock` after changing the version"
+
+
+def test_the_changelog_has_an_entry_for_the_current_version():
+    """A release bumps the version AND writes its changelog entry (README, "Releases")."""
+    with open(os.path.join(REPO, "CHANGELOG.md"), encoding="utf-8") as f:
+        headings = re.findall(r"^## (\d+\.\d+\.\d+) - ", f.read(), re.M)
+    assert _pyproject_version() in headings, f"CHANGELOG.md has no '## {_pyproject_version()} - date' entry"
+    assert headings[0] == _pyproject_version(), "the newest entry must be the first one"
