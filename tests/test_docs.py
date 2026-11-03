@@ -425,7 +425,7 @@ def test_docs_commands_are_registered_for_cli_parity():
 
 
 def test_the_generator_needs_no_private_data_directory(monkeypatch, tmp_path):
-    for var in ("KNOWLEDGE_PRIVATE_DIR", "PRIVATE_DATA_DIR", "KNOWLEDGE_DB_DIR"):
+    for var in ("KNOWLEDGE_CONFIG", "KNOWLEDGE_DATA_DIR", "KNOWLEDGE_DB_DIR"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     assert knowledge.main(["docs", "check"]) == 0

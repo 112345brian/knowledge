@@ -184,10 +184,10 @@ class _FakeRunner:
         return self.code
 
 
-def _checkout_locations(private_dir="/checkout/A"):
+def _checkout_locations(config_file="/checkout/A/config.toml"):
     from locations import Locations
     return Locations(knowledge_db_dir="/x/db", private_data_dir="/x/data", notes_vault="/x/v",
-                     health_dir="/x/h", private_dir=private_dir)
+                     health_dir="/x/h", config_file=config_file)
 
 
 def test_the_build_command_runs_build_py_through_the_script_runner_port():
@@ -200,7 +200,7 @@ def test_the_build_command_runs_build_py_through_the_script_runner_port():
     assert scripts_service.build(deps) == 7
     assert scripts_service.build(deps, check=True) == 7
     assert scripts_service.run_tool(deps, "client.clean_concerts_csv") == 7
-    env = {"KNOWLEDGE_PRIVATE_DIR": "/checkout/A"}
+    env = {"KNOWLEDGE_CONFIG": "/checkout/A/config.toml"}
     assert runner.calls == [("script", "build.py", [], env), ("script", "build.py", ["--check"], env),
                             ("module", "client.clean_concerts_csv", [], env)]
     composed = scripts.compose(_checkout_locations(), clock.SystemClock())
@@ -213,27 +213,27 @@ def test_a_child_is_started_for_the_containers_configuration_not_the_environment
     import clock
     import container
     import script_runner
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", "/checkout/B")
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", "/checkout/B/config.toml")
     monkeypatch.setenv("KNOWLEDGE_FROZEN_NOW", "2001-01-01T00:00:00+00:00")
-    app = container.Container(_checkout_locations("/checkout/A"), clock.FixedClock("2026-10-03T08:00:00+00:00"))
+    app = container.Container(_checkout_locations("/checkout/A/config.toml"), clock.FixedClock("2026-10-03T08:00:00+00:00"))
     runner = _FakeRunner()
     object.__setattr__(app.scripts.deps, "runner", runner)       # swap the adapter, keep the real wiring
     app.scripts.build()
     (_kind, _name, _args, env), = runner.calls
-    assert env == {"KNOWLEDGE_PRIVATE_DIR": "/checkout/A", "KNOWLEDGE_FROZEN_NOW": "2026-10-03T08:00:00+00:00"}
+    assert env == {"KNOWLEDGE_CONFIG": "/checkout/A/config.toml", "KNOWLEDGE_FROZEN_NOW": "2026-10-03T08:00:00+00:00"}
     # and the real adapter never lets the parent's own values through
     child = script_runner.child_environment(env)
-    assert child["KNOWLEDGE_PRIVATE_DIR"] == "/checkout/A" and child["KNOWLEDGE_FROZEN_NOW"] == "2026-10-03T08:00:00+00:00"
-    assert "KNOWLEDGE_PRIVATE_DIR" not in script_runner.child_environment({}, {"KNOWLEDGE_PRIVATE_DIR": "/checkout/B", "X": "1"})
+    assert child["KNOWLEDGE_CONFIG"] == "/checkout/A/config.toml" and child["KNOWLEDGE_FROZEN_NOW"] == "2026-10-03T08:00:00+00:00"
+    assert "KNOWLEDGE_CONFIG" not in script_runner.child_environment({}, {"KNOWLEDGE_CONFIG": "/checkout/B/config.toml", "X": "1"})
     assert script_runner.child_environment({}, {"KNOWLEDGE_FROZEN_NOW": "x", "X": "1"}) == {"X": "1"}
 
 
-def test_locations_that_did_not_come_from_a_checkout_cannot_start_a_script():
+def test_locations_that_did_not_come_from_a_config_file_cannot_start_a_script():
     import clock
     import scripts_service
     deps = scripts_service.ScriptsDeps(runner=_FakeRunner(), clock=clock.SystemClock(),
-                                       locations=_checkout_locations(private_dir=None))
-    with pytest.raises(ValueError, match="not read from a private checkout"):
+                                       locations=_checkout_locations(config_file=None))
+    with pytest.raises(ValueError, match="not read from a config file"):
         scripts_service.build(deps)
     assert deps.runner.calls == []
 

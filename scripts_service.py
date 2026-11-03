@@ -3,8 +3,8 @@ script, with which arguments and for which configuration; the `ScriptRunner` por
 code. Never prints or exits. `scripts` is the composition root that binds it to the real runner.
 
 A child process re-reads its configuration from its environment, so the service hands it exactly the container's:
-the private checkout the `Locations` came from and, for a fixed clock, its instant. Locations that did not come
-from a checkout (built by hand) cannot start a script: that would silently run it against whatever the
+the config file the `Locations` came from and, for a fixed clock, its instant. Locations that did not come
+from a config file (built by hand) cannot start a script: that would silently run it against whatever the
 environment happens to hold."""
 from dataclasses import dataclass
 
@@ -12,7 +12,7 @@ from clock_port import Clock
 from locations import Locations
 from script_runner_port import ScriptRunner
 
-PRIVATE_DIR_VAR = "KNOWLEDGE_PRIVATE_DIR"
+CONFIG_VAR = "KNOWLEDGE_CONFIG"
 FROZEN_NOW_VAR = "KNOWLEDGE_FROZEN_NOW"
 
 
@@ -25,11 +25,11 @@ class ScriptsDeps:
 
 
 def child_env(deps):
-    """The configuration of a child started for these dependencies; ValueError when the locations have no checkout."""
-    if deps.locations.private_dir is None:
-        raise ValueError("these locations were not read from a private checkout (paths.load()), so a script cannot "
+    """The configuration of a child started for these dependencies; ValueError when the locations have no config file."""
+    if deps.locations.config_file is None:
+        raise ValueError("these locations were not read from a config file (paths.load()), so a script cannot "
                          "be started for them: it would run against whatever the environment holds")
-    env = {PRIVATE_DIR_VAR: deps.locations.private_dir}
+    env = {CONFIG_VAR: deps.locations.config_file}
     if deps.clock.is_fixed:
         env[FROZEN_NOW_VAR] = deps.clock.now_iso()
     return env

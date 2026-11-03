@@ -6,8 +6,8 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# The two variables that configure a child process. The parent's own values are never inherited.
-CONFIG_VARS = ("KNOWLEDGE_PRIVATE_DIR", "KNOWLEDGE_FROZEN_NOW")
+# The two variables that choose a child's config file and clock. The parent's own values are never inherited.
+CONFIG_VARS = ("KNOWLEDGE_CONFIG", "KNOWLEDGE_FROZEN_NOW")
 
 
 def child_environment(overrides=None, base=None):

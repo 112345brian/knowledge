@@ -1,6 +1,6 @@
 """Where this person's data lives, as one immutable value.
 
-Model ring: imports nothing else in the repo and does no I/O. An entry point reads `local_paths.py` once
+Model ring: imports nothing else in the repo and does no I/O. An entry point reads the config file once
 (`paths.load()`), builds a `Locations`, and hands it down; nothing below an entry point looks configuration
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
 """
@@ -21,7 +21,7 @@ def expand_home(path, home):
     """`path` with a leading `~`, `~/x` or its backslash spelling resolved under `home`; anything else is returned unchanged.
 
     Pure: the caller supplies `home` (infrastructure reads HOME_ENV_VAR and the OS home). Only the *expanded*
-    form changes with `home`; the form `local_paths.py` wrote (`~/MEGA/...`) is what the database stores.
+    form changes with `home`; the form the config file wrote (`~/MEGA/...`) is what the database stores.
     """
     if path == "~":
         return home
@@ -67,18 +67,18 @@ def join_path(directory, *names):
 class Locations:
     """`private_data_dir` is the knowledge-private data directory; `knowledge_db_dir` holds the built db and its
     backups. `client_sources` names the optional client sources this checkout builds (what they are is the client
-    directory's registration, `client_registry`); `client_inputs` holds every other setting `local_paths.py`
-    defines, by its name (`MY_FEED_JSON`), which the registered sources read. A checkout that does not use a source
+    directory's registration, `client_registry`); `client_inputs` holds every `[client_inputs]` setting the config
+    file defines, by its upper-case name (`MY_FEED_JSON`), which the registered sources read. A checkout that does not use a source
     leaves its settings out and the build never looks for them."""
     knowledge_db_dir: str
     private_data_dir: str
     notes_vault: Optional[str] = None
     health_dir: Optional[str] = None
-    private_dir: Optional[str] = None   # the checkout local_paths.py came from; None for locations built by hand
+    config_file: Optional[str] = None   # the file these were read from; None for locations built by hand
     client_sources: Tuple[str, ...] = ()
-    client_sources_declared: bool = True    # False: local_paths.py had no CLIENT_SOURCES (the registry may infer them)
+    client_sources_declared: bool = True    # False: the config had no client_sources (the registry may infer them)
     client_inputs: Mapping[str, str] = field(default_factory=dict)
-    # `notes_vault` and `health_dir` as local_paths.py wrote them (`~/...`). Reads use the expanded fields above;
+    # `notes_vault` and `health_dir` as the config file wrote them (`~/...`). Reads use the expanded fields above;
     # what the build compares against fact notes and stores in the database is the written form, so a database
     # does not carry one machine's home directory. None for locations built by hand: the field above is used.
     notes_vault_written: Optional[str] = None
@@ -86,21 +86,21 @@ class Locations:
     client_inputs_written: Mapping[str, str] = field(default_factory=dict)   # the client settings as written
 
     def need(self, field, setting, for_what):
-        """The value of an optional path, or a ValueError naming the `local_paths.py` setting to define."""
+        """The value of an optional path, or a ValueError naming the config setting to define."""
         value = getattr(self, field)
         if value is None:
-            raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
+            raise ValueError(f"{setting.lower()} is not set in the config file; {for_what} needs it")
         return value
 
     def client_input(self, setting):
-        """A client setting's path (expanded), or None when `local_paths.py` does not define it."""
+        """A client setting's path (expanded), or None when the config does not define it."""
         return self.client_inputs.get(setting)
 
     def need_input(self, setting, for_what):
-        """A client setting's path, or a ValueError naming the `local_paths.py` setting to define."""
+        """A client setting's path, or a ValueError naming the config setting to define."""
         value = self.client_inputs.get(setting)
         if value is None:
-            raise ValueError(f"{setting} is not set in local_paths.py; {for_what} needs it")
+            raise ValueError(f"{setting.lower()} is not set in the config file; {for_what} needs it")
         return value
 
     def client_input_stored(self, setting):

@@ -25,6 +25,7 @@ import migrate_memory_rules
 import new_fact
 from locations import Locations
 from appctx import app
+from config_files import write_unused_inputs_config
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 TODAY = date(2026, 10, 3)
@@ -46,13 +47,11 @@ class W:
         self.projects = os.path.join(self.root, "projects")
         for d in (self.data_dir, self.db_dir, self.projects):
             os.makedirs(d)
-        with open(os.path.join(self.private, "local_paths.py"), "w") as f:
-            f.write(f"KNOWLEDGE_DB_DIR = {self.db_dir!r}\nPRIVATE_DATA_DIR = {self.data_dir!r}\n")
-            for n in ("BODYBUILDING_VAULT", "HEALTH_DIR", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"):
-                f.write(f"{n} = {os.path.join(self.root, 'unused')!r}\n")
+        self.config = write_unused_inputs_config(os.path.join(self.private, "config.toml"), self.db_dir, self.data_dir,
+                                                      os.path.join(self.root, "unused"))
         self.facts = os.path.join(self.data_dir, "general_facts.json")
         self.db = os.path.join(self.db_dir, "knowledge.db")
-        self.env = {**os.environ, **GIT_ENV, "KNOWLEDGE_PRIVATE_DIR": self.private}
+        self.env = {**os.environ, **GIT_ENV, "KNOWLEDGE_CONFIG": self.config}
         unused = os.path.join(self.root, "unused")
         self.locations = Locations(knowledge_db_dir=self.db_dir, private_data_dir=self.data_dir,
                                    notes_vault=unused, health_dir=unused)

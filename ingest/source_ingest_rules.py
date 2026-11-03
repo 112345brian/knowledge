@@ -154,5 +154,5 @@ def format_origin_path(origin_path, vault, health):
         return origin_path
     for placeholder, value, setting in (("{VAULT}", vault, "NOTES_VAULT"), ("{HEALTH}", health, "HEALTH_DIR")):
         if placeholder in origin_path and not value:
-            raise ValueError(f"origin_path {origin_path!r} uses {placeholder}, but {setting} is not set in local_paths.py")
+            raise ValueError(f"origin_path {origin_path!r} uses {placeholder}, but {setting.lower()} is not set in the config file")
     return origin_path.format(VAULT=vault, HEALTH=health)

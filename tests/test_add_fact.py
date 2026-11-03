@@ -16,6 +16,7 @@ import sys
 import pytest
 import new_fact
 from appctx import app
+from config_files import write_unused_inputs_config
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADD_FACT = os.path.join(REPO, "add_fact.py")  # the library facade, imported in-process
@@ -35,13 +36,11 @@ class Env:
         self.db_dir = os.path.join(self.root, "db")
         for d in (self.private, self.data_dir, self.db_dir):
             os.makedirs(d, exist_ok=True)
-        with open(os.path.join(self.private, "local_paths.py"), "w") as f:
-            f.write(f"KNOWLEDGE_DB_DIR = {self.db_dir!r}\nPRIVATE_DATA_DIR = {self.data_dir!r}\n")
-            for n in ("BODYBUILDING_VAULT", "HEALTH_DIR", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"):
-                f.write(f"{n} = {os.path.join(self.root, 'unused')!r}\n")
+        self.config = write_unused_inputs_config(os.path.join(self.private, "config.toml"), self.db_dir, self.data_dir,
+                                                      os.path.join(self.root, "unused"))
         self.facts = os.path.join(self.data_dir, "general_facts.json")
         self.db = os.path.join(self.db_dir, "knowledge.db")
-        self.env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": self.private}
+        self.env = {**os.environ, "KNOWLEDGE_CONFIG": self.config}
 
     def make_db(self, *citekeys):
         con = sqlite3.connect(self.db)
@@ -245,8 +244,8 @@ def af(tmp_path_factory):
     """add_fact imported in-process against a throwaway private dir."""
     e = Env(tmp_path_factory.mktemp("afmod"))
     mp = pytest.MonkeyPatch()
-    mp.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "add_fact_under_test"):
+    mp.setenv("KNOWLEDGE_CONFIG", e.config)
+    for m in ("paths", "add_fact_under_test"):
         sys.modules.pop(m, None)
     mp.syspath_prepend(REPO)
     spec = importlib.util.spec_from_file_location("add_fact_under_test", ADD_FACT)

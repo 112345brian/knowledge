@@ -6,7 +6,7 @@ the client's own `client/bootstrap.py`
 names a client source, a client step, a client table or a client input: it asks this registry.
 
 A source says where its steps go (`Step.after` names the step it follows, a core step or one of its own; steps
-that follow the same step are ordered by `order`, then path), which schema files it needs, which `local_paths.py`
+that follow the same step are ordered by `order`, then path), which schema files it needs, which config
 settings it reads, which tables the build report counts and which private data files it owns. Declarations shared
 by several sources (two sources of one client may share a schema file and a step) are listed in each and
 applied once.
@@ -25,7 +25,7 @@ class Step:
 @dataclass(frozen=True)
 class Input:
     """A file the source reads, for provenance and (when `required`) for the configuration check. `setting` is the
-    `local_paths.py` name: a client setting (`MY_FEED_JSON`) or a core directory (`NOTES_VAULT`); `file` is joined
+    upper-case name of a `[client_inputs]` setting (`MY_FEED_JSON`) or of a core directory (`NOTES_VAULT`); `file` is joined
     onto a directory setting."""
     setting: str
     key: str                        # the stable provenance key, without the `input:` prefix
@@ -298,11 +298,11 @@ class ClientRegistry:
     def note(self, sources: Sequence[str], implicit: bool = False) -> str:
         """One line saying which optional client sources a build includes (and why, if that was a guess)."""
         if not sources:
-            return "[build] client sources: none (core only; list them in CLIENT_SOURCES in local_paths.py)"
+            return "[build] client sources: none (core only; list them in client_sources in the config file)"
         text = f"[build] client sources: {', '.join(sources)}"
         if implicit:
-            text += ("  (assumed: local_paths.py defines the inputs of these sources but no CLIENT_SOURCES; add "
-                     f"CLIENT_SOURCES = {tuple(sources)!r} to make this explicit)")
+            text += ("  (assumed: the config file defines the inputs of these sources but no client_sources; add "
+                     f"client_sources = {list(sources)!r} to make this explicit)")
         return text
 
 

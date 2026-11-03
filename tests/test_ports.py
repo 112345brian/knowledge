@@ -397,7 +397,7 @@ def test_record_fact_reports_a_failed_commit_but_keeps_the_fact():
 
 
 def test_library_and_composition_modules_import_without_a_private_repo():
-    """Configuration is injected, not read at import: with no knowledge-private checkout at all, every
+    """Configuration is injected, not read at import: with no config file at all, every
     composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
     import subprocess
     import glob
@@ -405,12 +405,12 @@ def test_library_and_composition_modules_import_without_a_private_repo():
                    glob.glob("ingest/*.py") + glob.glob("client/*.py") if not p.endswith("__init__.py"))
     code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
             "fact_queries, knowledge, cli_add_fact, build, queries, " + ", ".join(steps) + "; print('ok')")
-    env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": "/nonexistent/knowledge-private"}
+    env = {**os.environ, "KNOWLEDGE_CONFIG": "/nonexistent/config.toml"}
     r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
     r = subprocess.run([sys.executable, "-c", "import container; container.Container().add_fact.data_file_path()"], cwd=REPO, env=env,
                        capture_output=True, text=True)
-    assert r.returncode != 0 and "local_paths.py not found" in r.stderr
+    assert r.returncode != 0 and "config file not found" in r.stderr
 
 
 def test_verify_checks_that_the_calls_the_protocol_allows_are_accepted():

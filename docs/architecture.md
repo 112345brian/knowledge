@@ -1,7 +1,7 @@
 # Architecture map (onion)
 
 Two sub-packages hold the ETL: `ingest/` is the core pipeline and `client/` the optional client sources (a checkout enables
-them with `CLIENT_SOURCES` in local_paths.py; see the README). Module names are unique across both, so the table below
+them with `client_sources` in the config file; see the README). Module names are unique across both, so the table below
 uses the bare name; `ingest/` never imports `client/`.
 
 The repo is an onion in flat modules: dependencies point only inward. The **model** (vocabularies, time and identifier
@@ -185,7 +185,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `migrate_memory_store` | infrastructure | infrastructure | Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the source keys already in the entry… |
 | `modes_store` | infrastructure | infrastructure | Adapter for the mode rules (#22): the SQL that applies `modes` to the knowledge db. |
 | `normal_db_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the normal DB. |
-| `paths` | infrastructure | infrastructure | Reads where this person's data lives from the private data checkout, once, at an entry point. |
+| `paths` | infrastructure | infrastructure | Reads where this person's data lives from the config file, once, at an entry point. |
 | `privacy_store` | infrastructure | infrastructure | Adapter for the privacy rules (driven side of the privacy domain). |
 | `private_edit_store` | infrastructure | infrastructure | The shared edit-and-commit flow for hand-curated JSON files in knowledge-private (#43, #42). |
 | `private_git` | infrastructure | infrastructure | Commit every mutation of the knowledge-private JSON files, so git is a reliable backup and safety net for them (issue #10). |
@@ -320,7 +320,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 
 The repository is a general-purpose machine that clients extend. Everything outside `client/` is the **base**
 (the core, `ingest/` and the build); `client/` holds the **optional sources** a checkout enables with
-`CLIENT_SOURCES` in its private `local_paths.py` (music: concerts, ratings, scrobbles; measurements; claims
+`client_sources` in its config file (music: concerts, ratings, scrobbles; measurements; claims
 seeding). Direction is one way:
 
 - the base never imports `client.*` (shadow name `kn.<client module>`). Enforced by the import-linter contract

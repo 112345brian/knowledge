@@ -313,7 +313,7 @@ def test_concurrent_with_a_cli_process_loses_no_writes(ib):
     srv = w.start(repo=False)
     code = ("import sys; sys.path.insert(0, %r); import container; c = container.Container(); "
             "[c.review.approve(k, data_dir=%r, commit=False) for k in ('k0','k2','k4')]") % (REPO, w.env.data_dir)
-    env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": w.env.private}
+    env = {**os.environ, "KNOWLEDGE_CONFIG": w.env.config}
     proc = subprocess.Popen([sys.executable, "-c", code], env=env)
     for k in ("k1", "k3", "k5"):
         assert act(srv, action="approve", ref=k)[1]["ok"]
@@ -673,7 +673,7 @@ def test_knowledge_py_gets_exactly_one_line_for_this_feature():
 # ---------------------------------------------------------------- CLI: edit and inbox
 
 def run_cli(w, *args):
-    env = {**os.environ, **GIT_ENV, "KNOWLEDGE_PRIVATE_DIR": w.env.private}
+    env = {**os.environ, **GIT_ENV, "KNOWLEDGE_CONFIG": w.env.config}
     return subprocess.run([sys.executable, os.path.join(REPO, "knowledge.py"), *args], env=env, cwd=w.env.root,
                           capture_output=True, text=True, timeout=120)
 
@@ -726,7 +726,7 @@ def test_inbox_command_serves_on_loopback_and_stops(ib):
     seed(w)
     w.start(repo=False)
     p = subprocess.Popen([sys.executable, os.path.join(REPO, "knowledge.py"), "inbox", "--port", "0", "--no-open"],
-                         env={**os.environ, "KNOWLEDGE_PRIVATE_DIR": w.env.private}, cwd=w.env.root,
+                         env={**os.environ, "KNOWLEDGE_CONFIG": w.env.config}, cwd=w.env.root,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         line = p.stdout.readline()

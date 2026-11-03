@@ -76,7 +76,7 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
     missing = clients.missing_inputs(sources, locations.client_inputs)
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +
-                         ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
+                         ", ".join(f"{src} needs {name.lower()}" for src, name in missing) + " (set it under [client_inputs] in the config file)")
     deps.files.remove_if_exists(target_path)
     try:
         session = deps.sessions.open(target_path)

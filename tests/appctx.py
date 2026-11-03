@@ -35,7 +35,7 @@ def _default_locations():
     import paths
     try:
         return paths.load()
-    except ModuleNotFoundError:
+    except paths.ConfigError:
         return synthetic_locations()
 
 

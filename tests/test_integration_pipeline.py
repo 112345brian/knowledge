@@ -3,7 +3,7 @@ adapters and the real normal-db builder, in this process, with nothing ambient.
 
 Every test builds its own world under tmp_path, turns it into explicit `Locations` and hands a `FixedClock` to
 whatever needs time. No test reads a developer's private checkout, the wall clock, or KNOWLEDGE_FROZEN_NOW /
-KNOWLEDGE_PRIVATE_DIR (the autouse fixture in conftest removes the second; the first is removed here).
+KNOWLEDGE_CONFIG (the autouse fixture in conftest removes the second; the first is removed here).
 
 * the full and the normal database for each supported combination of optional client sources;
 * two containers configured independently in one process leak neither configuration nor time into each other;
@@ -42,19 +42,19 @@ MEASUREMENT_TABLES = {"metrics", "measurements", "fact_measurements", "exercises
 @pytest.fixture(autouse=True)
 def _no_ambient_time_or_checkout(monkeypatch):
     monkeypatch.delenv("KNOWLEDGE_FROZEN_NOW", raising=False)
-    monkeypatch.delenv("KNOWLEDGE_PRIVATE_DIR", raising=False)
+    monkeypatch.delenv("KNOWLEDGE_CONFIG", raising=False)
 
 
 def make_locations(root, monkeypatch, sources=()):
-    """Write a world under `root` and return the Locations its local_paths.py describes. The private checkout is
+    """Write a world under `root` and return the Locations its config file describes. The config file is
     named only for the one `paths.load()` call, then the environment is clean again."""
     env = build_world(root, sources)
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", env["KNOWLEDGE_PRIVATE_DIR"])
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", env["KNOWLEDGE_CONFIG"])
     monkeypatch.setenv("KNOWLEDGE_HOME", env["KNOWLEDGE_HOME"])
     try:
         return paths.load()
     finally:
-        monkeypatch.delenv("KNOWLEDGE_PRIVATE_DIR")
+        monkeypatch.delenv("KNOWLEDGE_CONFIG")
 
 
 def rebuild(locations, clock=None, *args):
@@ -190,7 +190,7 @@ def test_two_containers_in_one_process_share_neither_configuration_nor_time(tmp_
     assert loc_a.private_data_dir != loc_b.private_data_dir and loc_a.db_dir != loc_b.db_dir
     # an ambient clock and checkout that neither container was given must not reach either of them
     monkeypatch.setenv("KNOWLEDGE_FROZEN_NOW", "1999-12-31T23:59:59+00:00")
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", str(tmp_path / "does-not-exist"))
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", str(tmp_path / "does-not-exist.toml"))
     clock_a, clock_b = clocks.FixedClock("2026-01-02T03:04:05+00:00"), clocks.FixedClock("2027-06-07T08:09:10+00:00")
     app_a, app_b = container.Container(loc_a, clock_a), container.Container(loc_b, clock_b)
 

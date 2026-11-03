@@ -2,7 +2,7 @@
 
 Each source is registered in `client/bootstrap.py` (the base loads it by path once this directory exists; adding a
 source of your own is a module here plus one `registry.add(...)` there, and no file outside `client/` changes) and
-enabled per checkout with `CLIENT_SOURCES` in local_paths.py (see paths.py and client_registry.py).
+enabled per checkout with `client_sources` in the config file (see paths.py and client_registry.py).
 The core pipeline (`ingest/`) builds a complete knowledge.db without any of them; a source adds its own tables
 (`client/<source>.sql`, applied after schema.sql) and its own build steps.
 
