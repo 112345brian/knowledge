@@ -57,6 +57,11 @@ def test_tach_check_passes():
     assert rc == 0, "tach check failed (uv run tach check):\n" + out
 
 
+def test_every_imported_third_party_package_is_declared():
+    rc, out = ac.run_tach_external(REPO)
+    assert rc == 0, "an imported package is not declared in pyproject.toml (uv run tach check-external):\n" + out
+
+
 def test_import_linter_passes():
     rc, out = ac.run_import_linter(REPO, PYPROJECT)
     assert rc == 0, "import-linter contracts broken (uv run python tests/arch_check.py):\n" + out

@@ -167,6 +167,14 @@ def run_tach(project_dir):
     return p.returncode, p.stdout + p.stderr
 
 
+def run_tach_external(project_dir):
+    """`tach check-external` in project_dir: every third-party package a module imports must be declared in
+    pyproject.toml, not merely arrive as another package's dependency. Returns (returncode, output)."""
+    p = subprocess.run([os.path.join(BIN, "tach"), "check-external"], cwd=project_dir,
+                       capture_output=True, text=True)
+    return p.returncode, p.stdout + p.stderr
+
+
 def run_import_linter(src_dir, config_path):
     """lint-imports over a shadow of src_dir using config_path (a pyproject.toml / .importlinter).
     Returns (returncode, output)."""
