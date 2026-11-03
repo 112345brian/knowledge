@@ -10,6 +10,9 @@ is the inside of `build_repositories_port.PrivacyRepository.apply_rules`: the SQ
 answers `apply_rules` by running `apply_privacy_floor` over its own rows, so the decision (what a fact resolves
 to) lives here and the adapter only reads and writes rows.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Tuple
 

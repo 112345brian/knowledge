@@ -19,6 +19,9 @@ decide an exit status or a warning must look at `severity`, not just count rows 
 `claims_store.audit_claims()` never writes. A claim with no facts, or whose facts are all active and current, yields
 no rows. A fact cited by several claims yields one row per claim.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import calendar
 import re
 from datetime import date

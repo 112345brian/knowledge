@@ -4,6 +4,9 @@ Parsing a citation note's frontmatter into a `sources` row, the source-type mapp
 description, the byline split, and the placeholder substitution for the hand-authored sources. The scripts
 read the notes and the JSON and write the rows; they call these.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import re
 
 import source_status

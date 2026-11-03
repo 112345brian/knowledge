@@ -1,5 +1,8 @@
 """`knowledge.py audit-claims | build-info | audit-source-status | audit-sources`: the premise and provenance audits.
 Thin printers over `ctx.obj.queries`; they exit 1 when an audit finds something."""
+
+__arbor__ = {"ring": "cli"}
+
 import sys
 from fact_reads_port import FactQueryError
 from typing import Optional

@@ -26,6 +26,11 @@ wheels = [
 ]
 
 [[package]]
+name = "arborescent"
+version = "0.4.0"
+source = { git = "https://github.com/112345brian/arborescent?rev=938114f484a7dba6e60c1b69c91eafbb07e49578#938114f484a7dba6e60c1b69c91eafbb07e49578" }
+
+[[package]]
 name = "ast-serialize"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -281,6 +286,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "arborescent" },
     { name = "import-linter" },
     { name = "mypy" },
     { name = "pytest" },
@@ -297,6 +303,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "arborescent", git = "https://github.com/112345brian/arborescent?rev=938114f484a7dba6e60c1b69c91eafbb07e49578" },
     { name = "import-linter", specifier = ">=2.15" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8" },

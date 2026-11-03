@@ -1,5 +1,8 @@
 """Adapter for `inputs_port.Inputs`: the real file system, the vault's sqlite database, and the file-fingerprint
 and acquisition-attribute adapters. Stateless; the module is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import glob as _glob
 import json
 import os

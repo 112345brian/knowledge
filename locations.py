@@ -4,6 +4,9 @@ Model ring (tach layer `model`): the innermost ring. It imports nothing else in 
 (`paths.load()`), builds a `Locations`, and hands it down; nothing below an entry point looks configuration
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple

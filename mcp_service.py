@@ -7,6 +7,9 @@ notification). It reads facts and records them only through the ports in `mcp_po
 input or output of its own: `mcp_server` reads the lines and writes the replies. The rules (tool catalog,
 argument checks, reply wording) are in `mcp_rules`.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 
 import mcp_rules as rules

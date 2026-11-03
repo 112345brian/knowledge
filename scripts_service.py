@@ -8,6 +8,9 @@ A child process re-reads its configuration, so the service hands it exactly the 
 `Locations` came from and, for a fixed clock, its instant. How the child is told is the runner's business. Locations that did not come
 from a config file (built by hand) cannot start a script: that would silently run it against whatever the
 environment happens to hold."""
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 
 from clock_port import Clock

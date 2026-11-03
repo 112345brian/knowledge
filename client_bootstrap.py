@@ -5,6 +5,9 @@
 client directory the registry is empty and the build is core only. A client's own sources are registered there, in
 its directory, so nothing in the base changes when one is added.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import os
 
 import build_rules

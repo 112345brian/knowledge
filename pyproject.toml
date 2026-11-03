@@ -11,6 +11,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "arborescent",
     "import-linter>=2.15",
     "mypy>=1.11",
     "pytest>=8",
@@ -20,6 +21,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+arborescent = { git = "https://github.com/112345brian/arborescent", rev = "938114f484a7dba6e60c1b69c91eafbb07e49578" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -1264,3 +1268,56 @@ name = "The base (core and ingest) never imports a client source"
 type = "forbidden"
 source_modules = ["kncore"]
 forbidden_modules = ["kn"]
+
+# --------------------------------------------------------------------------------------------
+# Arborescent (https://github.com/112345brian/arborescent): the onion, enforced by its own engine as well as tach.
+# Rings and each module's ring come from tach.toml (`classify_from`); every module also declares its ring in code
+# (`__arbor__ = {"ring": ...}`, written by `arborescent annotate`) and `require_arbor_annotations` keeps it that way.
+# Inner rings (model, domain_services, application) list no external package, i.e. they import no I/O.
+# Findings that exist today are recorded in arborescent-baseline.json and may only shrink.
+# --------------------------------------------------------------------------------------------
+[tool.arborescent]
+python = "3.11"
+preset = "standard"
+sources = ["."]
+source_roots = ["."]
+exclude = ["tests", ".venv", "client", "docs", "scripts", "src"]
+classify_from = "tach.toml"
+
+rings = ["model", "domain_services", "application", "infrastructure", "composition", "pipeline", "cli", "serving"]
+disabled_tools = ["import-linter", "tach", "ruff", "ty"]
+require_arbor_annotations = true
+
+[tool.arborescent.classify]
+"ingest" = "pipeline"          # the package __init__: tach lists only ingest.<module> (arborescent#107)
+
+[tool.arborescent.ring.model]
+
+[tool.arborescent.ring.domain_services]
+may_import = ["model"]
+
+[tool.arborescent.ring.application]
+may_import = ["model", "domain_services"]
+
+[tool.arborescent.ring.infrastructure]
+may_import = ["model", "domain_services", "application"]
+external = ["os", "pathlib", "platform", "pydantic", "pydantic_settings", "shutil", "sqlite3", "subprocess", "tempfile", "tomllib"]
+os_branching = true
+forbid = []        # adapters: environment, processes, sleeping and dynamic loading are their job
+
+[tool.arborescent.ring.composition]
+may_import = ["model", "domain_services", "application", "infrastructure"]
+external = ["os"]
+
+[tool.arborescent.ring.pipeline]
+may_import = ["model", "domain_services", "application", "infrastructure", "composition"]
+external = ["os"]
+forbid = []        # adapters: environment, processes, sleeping and dynamic loading are their job
+
+[tool.arborescent.ring.cli]
+may_import = ["model", "domain_services", "application", "infrastructure", "composition", "pipeline"]
+external = ["click", "threading", "typer", "webbrowser"]
+
+[tool.arborescent.ring.serving]
+may_import = ["*"]
+external = ["http", "threading", "urllib"]

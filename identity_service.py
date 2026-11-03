@@ -15,6 +15,9 @@ Frozen semantics (tests/test_identity_service.py pins each against the legacy st
              created, with the given domain or the schema default (`domain=None`). The cache is keyed by the name
              as given and remembers the id the first lookup produced.
 """
+
+__arbor__ = {"ring": "application"}
+
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import acquisition_rules

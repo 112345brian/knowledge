@@ -6,6 +6,9 @@ seed_general_facts.py expects. The time and the fresh source_key are passed in. 
 `add_fact_store` (locked JSON file, citekey and subject lookups); `add_fact` is the use case and the
 `python3 add_fact.py` script.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional

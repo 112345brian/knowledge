@@ -3,6 +3,9 @@
 Result types, the per-item parsing and the duplicate test. `facts_batch` is the use case: it reads
 the facts file and the mode, resolves privacy, writes through `add_fact_store` and commits.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import re
 import unicodedata
 from dataclasses import asdict, dataclass, field

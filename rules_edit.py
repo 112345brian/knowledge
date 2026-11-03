@@ -5,6 +5,9 @@ net) and keeps the public API. `knowledge.py privacy ...` calls this and imports
     edit_rules(edit, describe, allow_dirty, dry_run) -> RulesEditResult   (writes and commits the rules file)
     load_rules() / rules_path() / rules_file_exists(path)                (read-only)
 """
+
+__arbor__ = {"ring": "composition"}
+
 import private_git
 import privacy_store
 import rules_edit_service

@@ -40,6 +40,9 @@ stored in the entry's notes. A run is serialized against other migrate runs with
 the system temp dir (keyed by the data file). It cannot be held across append_fact's own lock,
 so a concurrent add_fact still just appends its own random-keyed entry.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 import contextlib
 

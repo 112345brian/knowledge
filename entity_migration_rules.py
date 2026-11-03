@@ -8,6 +8,9 @@ refused (tag that entity private first), because removing the keyword would lowe
 
 `plan` decides; `entity_migration_store` reads and writes the two files and owns the git flow.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass, replace
 from typing import List, Sequence
 

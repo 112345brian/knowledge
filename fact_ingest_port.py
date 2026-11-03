@@ -8,6 +8,9 @@ adapter both satisfy it. Source-specific links stay with the client that owns th
 Subjects and vault files are not a repository here: a subject is found or created by `subject_hierarchy_service` and a
 vault file recorded by `source_ingest_service` (through `identity_service`), so the build has one definition of each.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Optional, Protocol
 
 

@@ -6,6 +6,9 @@ command and its library stay out of knowledge.py's query code. Does not import k
 Exit codes: 0 ok, 1 refused or files with problems reported (the rest is still processed), 3 the
 facts ARE written but the commit failed (same as add-fact).
 """
+
+__arbor__ = {"ring": "cli"}
+
 import json
 import sys
 

@@ -8,6 +8,9 @@ fact to private, because history is never more visible than the fact itself. A v
 before any rule is applied. Everything is read and written through the foundation's repositories (`build_repositories_port`); nothing here
 knows SQL or files.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import List
 

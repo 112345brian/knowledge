@@ -10,6 +10,9 @@ after the last entry apply the privacy rules (raise-only). A step passes a profi
     report = ingest_general_facts(con)    # general_facts.json
     fact_ingest_decisions.render(report)  # the lines to print
 """
+
+__arbor__ = {"ring": "application"}
+
 import dataclasses
 import json
 from dataclasses import dataclass

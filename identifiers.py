@@ -13,6 +13,9 @@ value. It never touches the network and never "fixes" a value it cannot verify:
   other  free text with whitespace collapsed (a PMC id is stored as `pmcid:PMC123456`)
 `candidates(raw)` is for lookups where the scheme is unknown: every (scheme, value) the text could be.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 
 SCHEMES = ("doi", "isbn", "issn", "pmid", "arxiv", "other")  # keep in sync with the CHECK in schema.sql

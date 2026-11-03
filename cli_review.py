@@ -1,5 +1,8 @@
 """`knowledge.py review-pending | approve | reject`: the review queue. Thin printers over `ctx.obj.queries` and
 `ctx.obj.review`; exit codes as documented on each command."""
+
+__arbor__ = {"ring": "cli"}
+
 import sys
 from fact_reads_port import FactQueryError
 from typing import List

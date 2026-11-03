@@ -16,6 +16,9 @@ differences out of the synced copy. Any one setting can also be overridden by it
 variable (`KNOWLEDGE_DB_DIR`, ...); the main file must still exist, because a script the CLI starts re-reads it.
 The settings, their types and the check that unknown keys are refused all come from `Settings` below.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import tomllib
 

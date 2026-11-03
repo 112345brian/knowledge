@@ -4,6 +4,9 @@ The order of the build steps and which of them a checkout runs, which backups to
 report counts, and how a failed build stage is named (`BuildError`). `build_service` runs the build through ports;
 `build.py` is the driving adapter that prints its outcome and sets the exit code.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import re
 
 KEEP_BACKUPS = 5

@@ -10,6 +10,9 @@ Draft contracts. `BuildSession`, `StepResult` and the session factory are the bu
 contracts (typed BuildSession / UnitOfWork / StepResult). When the foundation module lands, these names are
 replaced by imports from it; nothing else in the lane changes shape.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol, Sequence, Tuple
 

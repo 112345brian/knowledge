@@ -5,6 +5,9 @@ manual_sources.json and the vault's citation notes; a `SourceRepository` stores 
 already validated: status fields (`SourceState`), custodial history, identifiers (malformed ones are set aside in
 `identifier_problems`, never dropped silently) and relations.
 """
+
+__arbor__ = {"ring": "model"}
+
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 

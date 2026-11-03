@@ -1,6 +1,9 @@
 """SQLite adapter for `normal_db_port.LeakScan`: it reads every cell of a normal DB and the private rows of the
 full DB, read-only. It decides nothing; which marker texts those rows become, and what counts as a leak, are
 `leak_rules`. Stateless; the module is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import sqlite3
 

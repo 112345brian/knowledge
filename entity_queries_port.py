@@ -1,4 +1,7 @@
 """Read port for entity links and subject hierarchy query results."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Protocol
 
 

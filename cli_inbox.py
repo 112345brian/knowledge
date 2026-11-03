@@ -9,6 +9,9 @@ the `inbox` command has to start the server. It is a launcher: it only calls inb
 exception is a single named edge in tach.toml / pyproject.toml; every other CLI module is still
 forbidden to import serving.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import json
 import sys
 import threading

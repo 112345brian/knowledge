@@ -43,6 +43,9 @@ Decisions (each is tested):
 Callers must read the result: tests/test_facts_batch.py scans the repo and fails on a discarded
 `add_facts(...)` call.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import List, Optional
 

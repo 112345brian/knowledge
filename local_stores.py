@@ -1,4 +1,7 @@
 """Adapter for `step_stores_port.StepStores`: the privacy, entity, subject, revision, claims and source stores, by name."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import claims_store
 import entity_repository_store
 import fact_ingest_store

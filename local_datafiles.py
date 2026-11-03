@@ -1,5 +1,8 @@
 """Adapter for `datafiles_port.DataFiles`: the real files, the revisions store's array reader and atomic writer,
 and the inter-process lock the data-file writers share. Stateless; the module is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import locks
 import revisions_store
 

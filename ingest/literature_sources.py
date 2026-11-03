@@ -2,6 +2,9 @@
 frontmatter into a `sources` row. Mechanical: structured frontmatter -> low
 risk of misreading. Run after seed_sources.py.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import source_ingest_service
 from ingest import source_readers
 

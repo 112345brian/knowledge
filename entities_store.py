@@ -22,6 +22,9 @@ collapsed): one term cannot belong to two entities. A collision fails the build 
 
 A `private` entity makes every fact that mentions it private (privacy.py reads `private_terms`).
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import json
 import os

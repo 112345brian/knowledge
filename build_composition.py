@@ -18,6 +18,9 @@ The two things it owns:
 A step that is still a legacy `run(con, ctx)` module has no registry entry; `unbound(paths)` lists them and `bind`
 refuses to build a partial pipeline silently (`UnboundSteps`), so a cutover is a deliberate act.
 """
+
+__arbor__ = {"ring": "composition"}
+
 from contextlib import contextmanager
 from typing import Callable, ContextManager, Dict, Iterator, List, Mapping, Protocol, Sequence
 

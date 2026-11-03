@@ -23,6 +23,9 @@ An alias given as a fact's subject is resolved to the canonical subject (`canoni
 subject is refused for new facts with the replacement named (`check_new_fact`). Aliases are slugs, not
 free text, so a lookup is an exact match.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import json
 import os

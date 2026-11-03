@@ -1,5 +1,8 @@
 """Adapter for `build_files_port.BuildFiles`: the real disk, sqlite files and module loader. Stateless; the module
 is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import importlib.util
 import os
 import shutil

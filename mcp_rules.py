@@ -8,6 +8,9 @@ The server owns provenance and review state: `captured_via` is always "mcp", the
 (a person approves it in the inbox or with `knowledge.py approve`), and visibility defaults to private. A caller
 cannot set any of those, and an argument the schema does not list is refused rather than ignored.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import json
 
 from fact_rules import KIND_VALUES, VALID_TRUST, VALID_VISIBILITY

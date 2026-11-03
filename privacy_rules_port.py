@@ -4,6 +4,9 @@
 parameter; a test pins the two together): the editing services call only it, not the repository's database
 methods, so they declare just that slice. The rest is file editing the foundation contract has no use for.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Protocol
 
 

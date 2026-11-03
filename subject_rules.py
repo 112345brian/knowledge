@@ -5,6 +5,9 @@ Model ring: imports nothing else in the repo and does no I/O. `subjects_store` k
 write and the git flow; what a subject entry may say (names and aliases claimed once, a parent chain that never
 loops, a replacement that is a real subject) and how an edit changes a list of them lives here.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple

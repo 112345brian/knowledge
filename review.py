@@ -30,6 +30,9 @@ Batch semantics (decided, tested):
     A batch with nothing to do neither checks the tree nor commits.
 Library code never prints or exits.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import private_git
 import privacy_store
 import review_service

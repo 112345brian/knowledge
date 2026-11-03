@@ -12,6 +12,9 @@ Output contract (tests/test_build_characterization.py pins today's text per step
     * everything printed after the step's last write (privacy-raised note, the `[step] ...` summary line, the
       indented detail lines) is `StepResult.lines`, in order; the runner emits them after `run()` returns.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol, Sequence, Tuple
 

@@ -3,6 +3,9 @@
 Model ring: imports nothing else in the repo and does no I/O. `fixity_store` (the adapter that hashes files and
 audits the db) and the build steps share these names.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 
 FILE_STATES = ("present", "missing")  # keep in sync with the CHECKs in schema.sql

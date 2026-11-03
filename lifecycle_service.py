@@ -49,6 +49,9 @@ Semantics (decided, tested):
     `commit_error` (CLI exit 3). Not in a repo: written, not committed, with a note.
 Library code never prints or exits. Callers must check `.ok` (tests/test_lifecycle.py scans for it).
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 
 import lifecycle_rules

@@ -1,6 +1,9 @@
 """Port for what a build step reads from outside the database: files, the vault's own database and their
 fingerprints. A step is given an `Inputs` and does no file or sqlite I/O of its own; the adapter (`local_inputs`)
 owns the file system, so a test can hand a step an in-memory world."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, List, Protocol
 
 

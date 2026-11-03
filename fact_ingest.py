@@ -8,6 +8,9 @@ The repositories (`build_repositories_port`) are the ones the step's `stores` ha
 has, so the step imports no infrastructure module. Which subject a name means and which vault file a path is are not
 decided here: `BuildIdentity` asks `subject_hierarchy_service` and `source_ingest_service`, the build's one definition.
 """
+
+__arbor__ = {"ring": "composition"}
+
 from types import SimpleNamespace
 
 import fact_ingest_service

@@ -18,6 +18,9 @@ validates, writes and commits, and never prints or exits.
 Exit codes: 0 added (and committed when the data file is in a git repo); 1 invalid, refused or dirty tree;
 3 the fact IS in the file but the git commit failed.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import sys
 from typing import Optional

@@ -1,5 +1,7 @@
 """`knowledge.py build` and registered client tools: commands that run a script (through `ctx.obj.scripts`)."""
 
+__arbor__ = {"ring": "cli"}
+
 import sys
 
 import typer

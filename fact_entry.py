@@ -6,6 +6,9 @@ may contain, which fields are mutable, what a legacy entry means and what a snap
 `FactEntry` and `Revision`. `revisions` keeps its function names as thin delegations, so callers are unchanged.
 Nothing here reads a file, the clock or the configuration.
 """
+
+__arbor__ = {"ring": "model"}
+
 import json
 from dataclasses import dataclass
 from typing import Mapping, Optional

@@ -13,6 +13,9 @@ It never prints or exits: progress goes to the `emit` callable the driving adapt
 returned. Everything it touches is a port: files (`build_files_port`), a session and step registry, provenance
 and outputs (`build_port`), the clock and the locations.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Tuple
 

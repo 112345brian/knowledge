@@ -8,6 +8,9 @@ literal; spaces in a term match any whitespace run. No stemming, no fuzziness, n
 
 Pure functions; no imports from this repo.
 """
+
+__arbor__ = {"ring": "model"}
+
 import functools
 import re
 import unicodedata

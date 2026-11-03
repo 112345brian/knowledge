@@ -1,4 +1,7 @@
 """Adapter for `DocsFiles`: reads and writes the repository's own docs and sources under one root directory."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 from typing import Dict
 

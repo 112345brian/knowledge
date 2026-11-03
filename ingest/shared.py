@@ -1,5 +1,8 @@
 """Small helpers shared across the ingest scripts: the fact hints file and the generic get-or-create against a
 dimension table. Publishers, authors, identifiers and vault files are the source repository's (`build_repositories_port.SourceRepository`)."""
+
+__arbor__ = {"ring": "pipeline"}
+
 import fact_ingest_service
 import locations
 from ingest import fact_ingest_rules

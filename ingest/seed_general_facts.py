@@ -13,6 +13,9 @@ implementation facts.py runs); this step hands it the connection and prints the 
 Run last -- has no dependency on anything but schema.sql, but nothing else
 depends on it either.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import fact_ingest
 from fact_ingest_decisions import render
 

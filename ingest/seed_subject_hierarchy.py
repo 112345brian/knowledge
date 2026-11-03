@@ -9,6 +9,9 @@ name, or a duplicate alias fails the build.
 
 Until the file exists no hierarchy is loaded and a note says so.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import subject_hierarchy_service
 
 

@@ -4,6 +4,9 @@ Given the text of a JSON array file and the keys to add to each element, produce
 those keys inserted (matching each object's own layout) and verify that nothing else changed. The scripts
 (`backfill_source_keys`, `backfill_dates`) read and write the files under the inter-process lock.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import json
 
 import revisions

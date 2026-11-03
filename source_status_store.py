@@ -2,6 +2,9 @@
 `source_relations` and `fact_sources`; the rules (normalization, relation checks, following `replaces` chains)
 are in `source_status` (domain). Never writes.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 from source_status import latest_replacements
 
 

@@ -1,5 +1,8 @@
 """Ports of the MCP use case: how it records a fact and how it looks facts up, without a file, db or git in sight.
 `add_fact.compose(...)` and `queries.compose(...)` satisfy them; the use case never learns which."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import List, Protocol
 
 

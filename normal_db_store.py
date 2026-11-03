@@ -3,6 +3,9 @@ normal DB. It copies into a FRESH, empty database (never deletes from a copy of 
 pages, free-list garbage and FTS shadow rows holding the deleted text). It decides nothing; which rows go in is
 `normal_rules.select_content` (the visibility filter on facts and revisions below is only the read's narrowing: the
 rules check each row's visibility again, and a private entity is read with its flag and dropped there). Stateless; the module is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import sqlite3
 

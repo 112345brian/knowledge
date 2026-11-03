@@ -21,6 +21,9 @@ them: each `add`/`get-or-create` allocates its row when called, one at a time, i
 The unit of work is the build's one connection: a step calls `commit()` exactly where it commits today (see
 docs/architecture.md CONTRACTS and tests/test_build_characterization.py for where that is, per step).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal, Mapping, Optional, Protocol, Sequence, Tuple
 

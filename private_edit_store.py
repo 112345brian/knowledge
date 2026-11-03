@@ -12,6 +12,9 @@ that flow once, as a library function that never prints or exits (the CLI module
 An edit that changes nothing writes and commits nothing and needs no clean tree. The commit never
 pushes. Git operations arrive through the injected `PrivateGit` protocol.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 from private_git_port import PrivateGit
 

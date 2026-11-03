@@ -1,4 +1,7 @@
 """Read-only entity and subject queries for the CLI."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import fact_queries
 
 

@@ -5,6 +5,9 @@ database or git access. This module is the only place that touches the outside w
 rules: the rules file in PRIVATE_DATA_DIR (load/save) and the knowledge.db connection
 (`SqlitePrivacyRepository`, `apply_rules_to_db`). It does not commit; the CLI wraps writes with private_git (#10).
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import json
 import os

@@ -3,6 +3,9 @@
 `SourceReader` yields the records of one origin (manual_sources.json, the vault's citation notes, or several composed).
 Where sources are kept is `build_repositories_port.SourceRepository`; its SQLite adapter is `source_repository_store`.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import List, Protocol
 
 from source_record import SourceRecord

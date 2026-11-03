@@ -6,6 +6,9 @@ is a write, unchanged or refused, and validate an edit. `lifecycle` is the use c
 state (through `review_store`, `revisions_store`, `lifecycle_store`), calls these, writes the
 revision and commits.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import datetime
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional

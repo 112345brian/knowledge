@@ -11,6 +11,9 @@ settings it reads, which tables the build report counts and which private data f
 by several sources (two sources of one client may share a schema file and a step) are listed in each and
 applied once.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple
 

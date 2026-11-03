@@ -9,6 +9,9 @@ time). How a child is told is the adapter's business, not the caller's: the adap
 environment says about them first, so a child can never silently pick up another config file or clock than the one
 it was started for. (Per-setting overrides such as KNOWLEDGE_DB_DIR are inherited on purpose: the container's
 locations were read under them.)"""
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Optional, Protocol, Sequence
 

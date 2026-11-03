@@ -11,6 +11,9 @@ just the generic loading mechanism. An origin_path in that JSON may contain
 
 Run after schema.sql, before 02/03/04.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import source_ingest_service
 from ingest import source_readers
 

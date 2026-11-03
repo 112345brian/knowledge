@@ -2,6 +2,9 @@
 msvcrt on Windows). Shared by the writers of the data files in knowledge-private (the facts file, the revision
 log, the one-time backfills) so that two processes never read-modify-write the same file at once.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import hashlib
 import os

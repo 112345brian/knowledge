@@ -30,6 +30,9 @@ applying rules to a db live in the adapter `privacy_store`. The edit helpers (ta
 untag_subject, add_keyword, remove_keyword) return new rules and never write; the CLI saves them
 through privacy_store and wraps that with private_git (#10).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import re
 from dataclasses import dataclass, field, replace
 from typing import Dict, FrozenSet, List, Optional, Tuple

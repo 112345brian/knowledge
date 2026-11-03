@@ -1,5 +1,8 @@
 """Composition root for the read side: binds `queries_service` to the real read adapter (`fact_reads_store`).
 The CLI calls these; it never opens a connection."""
+
+__arbor__ = {"ring": "composition"}
+
 import fact_reads_store
 import queries_service
 from wiring import bind_all

@@ -8,6 +8,9 @@ A generated region is fenced by `<!-- generated:NAME:start -->` and `<!-- genera
 `name:start` / `name:end` convention as the `instruction-block` markers in docs/register-facts-protocol.md). NAME
 is the generator, one of the keys of `TARGETS`; the region begins with a do-not-edit line.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import ast
 import re
 import tomllib

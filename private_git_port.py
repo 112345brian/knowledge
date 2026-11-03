@@ -3,6 +3,9 @@
 The concrete subprocess implementation lives in ``private_git.py``. Composition roots inject
 that adapter as each service's `git` dependency; services and adapters depend on this protocol instead.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Optional, Protocol
 
 

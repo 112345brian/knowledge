@@ -3,6 +3,9 @@
 A thin printer over `queries.source_ids` (identifiers.py holds the rules). Registered in knowledge.py with
 `app.add_typer(cli_sources.app, name="source")`; it must not import knowledge at import time. Read-only.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import json
 import sys
 

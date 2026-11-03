@@ -1,4 +1,7 @@
 """Port exposing review operations to lifecycle use cases."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Dict, Optional, Protocol, Tuple
 
 

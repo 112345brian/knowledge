@@ -4,6 +4,9 @@ DOMAIN (import-linter contract "domain-has-no-infrastructure"): no file, db or g
 is the use case that orchestrates the adapters (`review_store`, `revisions_store`, `privacy_store`,
 `private_git`) and calls these.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 

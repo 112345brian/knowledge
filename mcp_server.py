@@ -10,6 +10,9 @@ stdio transport specifies; standard library only.
 LOCAL ONLY. The server can read private facts and write to the private repo as the user, so it is a stdio child
 of the user's own client, never a network service. Every tool has a CLI twin (PARITY_ACTIONS).
 """
+
+__arbor__ = {"ring": "serving"}
+
 import sys
 import uuid
 

@@ -1,4 +1,7 @@
 """Port for migrating privacy keywords into private entities."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Protocol
 from private_git_port import PrivateGit
 

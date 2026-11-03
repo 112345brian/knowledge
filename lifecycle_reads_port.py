@@ -1,4 +1,7 @@
 """Read port for inputs used by lifecycle decisions."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Dict, Optional, Protocol
 
 

@@ -3,6 +3,9 @@
 Infrastructure ring (tach layer `infrastructure`): it implements the `ScriptRunner` port with `subprocess`, and is the
 only place the CLI starts a Python subprocess, so the Typer app itself imports no `subprocess`. It alone knows that a
 child's `ScriptSettings` travel as the KNOWLEDGE_CONFIG and KNOWLEDGE_FROZEN_NOW environment variables."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import subprocess
 import sys

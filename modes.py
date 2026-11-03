@@ -28,6 +28,9 @@ Rules the code enforces:
     an input to the resolver. In private mode an unspecified request is 'private', never 'normal'.
   * Nothing here prints, exits, or touches the db. Failures are exceptions (ModeError family).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import enum
 import threading
 

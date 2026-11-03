@@ -12,6 +12,9 @@ call the missing or renamed method: every field of a `*Deps` must be a known por
 must have each of the protocol's methods with the protocol's parameters (in order) and attributes. A forgotten
 adapter is already a TypeError (the Deps fields are required); this catches the wrong adapter, or a renamed one.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import dataclasses
 import functools
 import inspect

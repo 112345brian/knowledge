@@ -6,6 +6,9 @@ links the domain finds, and reports the facts that mention a private entity with
 `link_entities` is the build step's entry: it refuses (UnprotectedPrivateMention) rather than return that list,
 so a caller cannot discard it. It does not commit; the caller owns the transaction.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 

@@ -9,6 +9,9 @@ it the connection and prints the report. seed_general_facts.py runs the same imp
 
 Run after seed_sources and literature_sources (needs sources + subjects to exist).
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import fact_ingest
 from fact_ingest_decisions import render
 

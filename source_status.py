@@ -27,6 +27,9 @@ The audit lists active/pending facts that cite a source whose status is retracte
 superseded WITH a replacement (a `replaces` relation points at it; chains are followed to the newest
 source). Sources marked superseded with no replacement are reported separately, not as rows.
 """
+
+__arbor__ = {"ring": "model"}
+
 import enum
 import re
 from dataclasses import dataclass

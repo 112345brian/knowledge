@@ -11,6 +11,9 @@ apply unchanged: ASCII letters match case-insensitively, non-ASCII ones do not, 
 wildcards, not literals. They are deliberately not escaped here; a plain-string prefix may be empty, and then it
 matches every fact. Do not reimplement this in Python: the build's existing claims depend on what LIKE does.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Optional, Tuple
 

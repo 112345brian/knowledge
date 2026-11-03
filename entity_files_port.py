@@ -1,4 +1,7 @@
 """Port for the persisted entity file: the I/O only. What an edit does to the entities is in entity_rules."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Optional, Protocol, Sequence
 from entity_rules import Entity
 from private_git_port import PrivateGit

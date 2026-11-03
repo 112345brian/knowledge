@@ -2,6 +2,9 @@
 and the connection helpers. Read-only; takes a connection, returns plain dicts, never prints or exits.
 (The mode-aware reads for the MCP server and the inbox live in `modes_store`.)
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import pathlib
 import sqlite3

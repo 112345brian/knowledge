@@ -5,6 +5,9 @@ vault's citation notes, so the steps that load sources and the step that links t
 of them in order (manual first). Nothing is cached: a caller that asks twice reads the files twice, which is what
 link_source_relations relies on (it sees the files as they are when it runs, not a snapshot from step 01/02).
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import os
 from typing import List
 

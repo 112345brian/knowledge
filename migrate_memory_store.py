@@ -2,6 +2,9 @@
 source keys already in the entry files. The rules are in `migrate_memory_rules`; the use case is
 `migrate_memory`.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import glob
 import hashlib

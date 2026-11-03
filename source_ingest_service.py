@@ -2,6 +2,9 @@
 relations, and record the vault files facts point at. It talks to the build's `SourceRepository`
 (`build_repositories_port`) and decides through `identity_service.SourceIdentity`; it knows no SQL, no file and no
 step. `report` receives the lines the build prints (a warning for a malformed or duplicate identifier)."""
+
+__arbor__ = {"ring": "application"}
+
 from typing import Callable, Iterable, List, Optional
 
 import build_records as r

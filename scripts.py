@@ -1,6 +1,9 @@
 """Composition root for the script-backed commands: binds `scripts_service` to `script_runner`.
 
 Composition ring (tach layer `composition`): the one place that picks the real `script_runner` adapter for `scripts_service`."""
+
+__arbor__ = {"ring": "composition"}
+
 import script_runner
 import scripts_service
 from wiring import bind_all

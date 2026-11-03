@@ -1,4 +1,7 @@
 """Composition root for subject command use cases."""
+
+__arbor__ = {"ring": "composition"}
+
 import entity_queries_store
 import private_git
 import subjects_service

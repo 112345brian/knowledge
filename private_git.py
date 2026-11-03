@@ -17,6 +17,9 @@ approve, supersede, retract, set-visibility later). The pattern:
 Never pushes. Library code never prints or exits; callers decide how to report a
 PrivateGitError. Git commands run via argv lists (no shell) with a fixed English locale.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import subprocess
 

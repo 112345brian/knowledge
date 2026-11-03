@@ -9,6 +9,9 @@ in `modes`; this module only builds the queries and shapes the rows.
 A fact that is not visible answers exactly like a fact that does not exist (None / [] / no row),
 never "forbidden", so ids and source_keys cannot be probed. `con` needs `row_factory = sqlite3.Row`.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import entities_store
 import identifiers
 import modes

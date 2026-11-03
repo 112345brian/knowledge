@@ -6,6 +6,9 @@ stored private, are `entity_link_rules` and `entity_link_service`. Ids are alloc
 contract in `build_repositories_port`): an entity row when `add` is called, then its alias rows. It never commits;
 the step owns the transaction.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 from typing import List, Optional, Sequence
 
 import build_records as r

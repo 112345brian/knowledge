@@ -8,6 +8,9 @@ hands it down; code that needs the time is given a `Clock`.
 truncated to whole seconds, so "what did I believe on date X" has one consistent source. A fixed value must
 carry an offset (naive times are rejected) and is normalised to UTC.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 from datetime import datetime, timezone
 

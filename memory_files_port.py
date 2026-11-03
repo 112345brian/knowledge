@@ -1,4 +1,7 @@
 """Port for discovering and reading source memory files."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, ContextManager, Dict, Protocol
 
 

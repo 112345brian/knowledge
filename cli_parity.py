@@ -16,6 +16,8 @@ Pure data and pure functions: no typer import here, so the registry can be
 read by any layer; the test passes in the click command tree.
 """
 
+__arbor__ = {"ring": "cli"}
+
 ACTIONS = {
     "build": ("build",),
     "add_fact": ("add-fact",),

@@ -16,6 +16,9 @@ A marker is looked for in (1) every text/blob cell of every table, with the tabl
 (2) the RAW BYTES of the db file (case-insensitive, NFC and NFD forms), which also catches text
 left in free pages or FTS shadow tables.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import os
 import sys
 
