@@ -46,7 +46,7 @@ data directory.
 
 - Python 3.11 or later
 - Runtime packages: `pydantic-settings>=2.6`, `pydantic>=2`, `typer>=0.12`
-- Development packages (`dev` group, installed by `uv sync`): `arborescent`, `import-linter>=2.15`, `mypy>=1.11`, `pytest-xdist>=3.8.0`, `pytest>=8`, `tach>=0.35.2`
+- Development packages (`dev` group, installed by `uv sync`): `arborescent`, `bump-my-version>=1.8.1`, `import-linter>=2.15`, `mypy>=1.11`, `pytest-xdist>=3.8.0`, `pytest>=8`, `tach>=0.35.2`, `towncrier>=26.9.0`
 <!-- generated:requirements:end -->
 - [uv](https://docs.astral.sh/uv/)
 
