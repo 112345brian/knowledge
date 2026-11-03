@@ -154,6 +154,22 @@ Checked 2026-11-03 with two web searches (anecdotal sources; the sqlite.org page
 - Not looked at: Dolt (versioned SQL db) and Litestream (streaming replication). Both are heavier than a 26 MB single-user db;
   worth a note if the owner wants them considered.
 
+## One backup folder (decided after 2b)
+
+The first export (2b) covered only the curated tables, so a restore still needed the outside source files. The owner
+wants one folder that is the whole backup, not an ingest from about 20 paths. Decided:
+
+- The export covers **every data table**; only build provenance and the full-text index are skipped (rebuilt).
+- **Two parts in one folder**: `export/core/` (curated tables; committed to the private repo after each write) and
+  `export/bulk/` (client tables such as scrobbles, measurements and music; refreshed on demand, kept out of git or
+  committed rarely, because it is large). One manifest per part; `restore` reads both.
+- **Notes are opt-in and separate**: the citation-note markdown is copied into `export/notes/` only with a flag
+  (`--include-notes`); the db keeps what was parsed from them either way.
+- Client modules **register their own table lists** as data (the base never imports `client/`), like the build step list.
+- The importers for the outside files become optional refreshes (increment 3).
+
+Open: measure the real size of `bulk/` before choosing git versus no git for it.
+
 ## Increments after approval (each independently mergeable, current pipeline untouched until step 4)
 
 1. **Characterize.** Tests pinning every current write path (callers of `facts_file_port`, `revisions_port`, ...) and a
