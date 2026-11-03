@@ -156,7 +156,7 @@ depends_on = []
 [[modules]]
 path = "script_runner"      # ADAPTER: starts this repo's standalone scripts (the only subprocess in the CLI path)
 layer = "infrastructure"
-depends_on = []
+depends_on = ["locations"]
 
 [[modules]]
 path = "rules_edit"   # FACADE (composition root): binds rules_edit_service to privacy_store and private_git

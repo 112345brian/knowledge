@@ -9,10 +9,11 @@ environment happens to hold."""
 from dataclasses import dataclass
 
 from clock_port import Clock
+import locations
 from locations import Locations
 from script_runner_port import ScriptRunner
 
-CONFIG_VAR = "KNOWLEDGE_CONFIG"
+CONFIG_VAR = locations.CONFIG_ENV_VAR
 FROZEN_NOW_VAR = "KNOWLEDGE_FROZEN_NOW"
 
 

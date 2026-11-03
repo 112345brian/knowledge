@@ -56,17 +56,10 @@ class ClientSource:
     personal_fact_keys: Tuple[str, ...] = ()  # fact-file metadata whose presence makes the heuristic flag personal
 
 
-@dataclass(frozen=True)
-class _Implicit:
-    trigger: str                    # a setting; when it is defined and no CLIENT_SOURCES is declared ...
-    sources: Tuple[str, ...]        # ... these are enabled (checkouts written before CLIENT_SOURCES existed)
-
-
 class ClientRegistry:
     def __init__(self, core_pipeline: Sequence[str]):
         self._core = tuple(core_pipeline)
         self._sources: Dict[str, ClientSource] = {}
-        self._implicit: List[_Implicit] = []
 
     # ---- registration
 
@@ -125,10 +118,6 @@ class ClientRegistry:
                                  f"{conflicts} differently")
         self._sources[source.name] = source
 
-    def enable_when_defined(self, setting: str, sources: Iterable[str]) -> None:
-        """Checkouts that predate CLIENT_SOURCES: with none declared and `setting` defined, enable `sources`."""
-        self._implicit.append(_Implicit(setting, tuple(sources)))
-
     # ---- what is registered
 
     @property
@@ -147,17 +136,10 @@ class ClientRegistry:
         names = tuple(names)
         unknown = [n for n in names if n not in self._sources]
         if unknown:
-            raise ValueError(f"unknown client source(s) {unknown} in CLIENT_SOURCES; known: {list(self._sources)}")
+            raise ValueError(f"unknown client source(s) {unknown} in client_sources; known: {list(self._sources)}")
         if len(set(names)) != len(names):
-            raise ValueError(f"CLIENT_SOURCES lists a source twice: {list(names)}")
+            raise ValueError(f"client_sources lists a source twice: {list(names)}")
         return names
-
-    def implicit_sources(self, defined: Iterable[str]) -> Tuple[str, ...]:
-        defined = set(defined)
-        for rule in self._implicit:
-            if rule.trigger in defined:
-                return rule.sources
-        return ()
 
     # ---- the build, for the enabled sources
 
@@ -295,15 +277,11 @@ class ClientRegistry:
     def leak_rows(self) -> List[Tuple[str, tuple]]:
         return [r for src in self._sources.values() for r in src.leak_rows]
 
-    def note(self, sources: Sequence[str], implicit: bool = False) -> str:
-        """One line saying which optional client sources a build includes (and why, if that was a guess)."""
+    def note(self, sources: Sequence[str]) -> str:
+        """One line saying which optional client sources a build includes."""
         if not sources:
             return "[build] client sources: none (core only; list them in client_sources in the config file)"
-        text = f"[build] client sources: {', '.join(sources)}"
-        if implicit:
-            text += ("  (assumed: the config file defines the inputs of these sources but no client_sources; add "
-                     f"client_sources = {list(sources)!r} to make this explicit)")
-        return text
+        return f"[build] client sources: {', '.join(sources)}"
 
 
 class ClientSources(Protocol):
@@ -311,8 +289,7 @@ class ClientSources(Protocol):
     @property
     def names(self) -> Tuple[str, ...]: ...
     def check(self, names: Iterable[str]) -> Tuple[str, ...]: ...
-    def implicit_sources(self, defined: Iterable[str]) -> Tuple[str, ...]: ...
-    def note(self, sources: Sequence[str], implicit: bool = False) -> str: ...
+    def note(self, sources: Sequence[str]) -> str: ...
     def missing_inputs(self, enabled, defined: Iterable[str]) -> List[Tuple[str, str]]: ...
     def steps_for(self, enabled) -> List[str]: ...
     def all_steps(self) -> List[str]: ...

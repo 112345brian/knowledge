@@ -35,7 +35,7 @@ def _detail(proc):
 
 def find_repo(directory):
     """Top-level dir of the git repo containing `directory`, or None if it is not in one
-    (or does not exist). Works with any KNOWLEDGE_PRIVATE_DIR layout."""
+    (or does not exist). Works wherever `data_dir` points."""
     if not os.path.isdir(directory):
         return None
     proc = _git(directory, "rev-parse", "--show-toplevel")

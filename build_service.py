@@ -64,15 +64,8 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
     incomplete and the caller removes it (`build_to_temp` does)."""
     locations = deps.locations
     clients = deps.clients
-    if sources is None:
-        declared = locations.client_sources
-        implicit = not locations.client_sources_declared and not declared
-        sources = declared or (clients.implicit_sources(locations.client_inputs) if implicit else ())
-        implicit = implicit and bool(sources)
-    else:
-        implicit = False
-    sources = clients.check(sources)
-    emit(clients.note(sources, implicit=implicit))
+    sources = clients.check(locations.client_sources if sources is None else sources)
+    emit(clients.note(sources))
     missing = clients.missing_inputs(sources, locations.client_inputs)
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +

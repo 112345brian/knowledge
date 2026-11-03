@@ -14,6 +14,7 @@ PRIVACY_RULES_FILENAME = "privacy_rules.json"
 ENTITIES_FILENAME = "entities.json"
 SUBJECTS_FILENAME = "subjects.json"
 
+CONFIG_ENV_VAR = "KNOWLEDGE_CONFIG"   # names the config file (see paths.config_file); a child process is started with it
 HOME_ENV_VAR = "KNOWLEDGE_HOME"   # where `~` means, when it must differ from the OS user's home (see expand_home)
 
 
@@ -76,7 +77,6 @@ class Locations:
     health_dir: Optional[str] = None
     config_file: Optional[str] = None   # the file these were read from; None for locations built by hand
     client_sources: Tuple[str, ...] = ()
-    client_sources_declared: bool = True    # False: the config had no client_sources (the registry may infer them)
     client_inputs: Mapping[str, str] = field(default_factory=dict)
     # `notes_vault` and `health_dir` as the config file wrote them (`~/...`). Reads use the expanded fields above;
     # what the build compares against fact notes and stores in the database is the written form, so a database

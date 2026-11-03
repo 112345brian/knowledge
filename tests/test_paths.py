@@ -160,28 +160,25 @@ def test_the_other_knowledge_variables_are_not_settings(default_dir, monkeypatch
 def sources_of(default_dir, **settings):
     write(default_dir, "x", **settings)
     loc = paths.load()
-    return loc.client_sources, loc.client_sources_declared, loc.client_input("CONCERTS_CSV")
+    return loc.client_sources, loc.client_input("CONCERTS_CSV")
 
 
 def test_client_sources_are_taken_as_written(default_dir):
     assert sources_of(default_dir, client_sources=["scrobbles", "claims"],
-                      client_inputs={"CONCERTS_CSV": "c.csv"}) == (("scrobbles", "claims"), True, "c.csv")
+                      client_inputs={"CONCERTS_CSV": "c.csv"}) == (("scrobbles", "claims"), "c.csv")
 
 
-def test_a_config_with_the_music_inputs_but_no_client_sources_is_assumed_to_want_everything(default_dir):
-    """`paths` only reports that nothing was declared; which sources that implies is the client's registration."""
-    import client_bootstrap
-    assert sources_of(default_dir, client_inputs={"CONCERTS_CSV": "c.csv"}) == ((), False, "c.csv")
-    assert client_bootstrap.registry().implicit_sources(["CONCERTS_CSV"]) == (
-        "concerts", "ratings", "scrobbles", "measurements", "claims")
+def test_inputs_without_client_sources_enable_nothing(default_dir):
+    """Nothing is guessed from which inputs happen to be defined: the core builds alone until sources are listed."""
+    assert sources_of(default_dir, client_inputs={"CONCERTS_CSV": "c.csv"}) == ((), "c.csv")
 
 
-def test_a_config_without_music_inputs_and_without_client_sources_builds_the_core_only(default_dir):
-    assert sources_of(default_dir) == ((), False, None)
+def test_a_config_without_client_sources_builds_the_core_only(default_dir):
+    assert sources_of(default_dir) == ((), None)
 
 
-def test_an_explicitly_empty_list_means_the_core_only_even_with_music_inputs(default_dir):
-    assert sources_of(default_dir, client_sources=[], client_inputs={"CONCERTS_CSV": "c.csv"}) == ((), True, "c.csv")
+def test_an_explicitly_empty_list_means_the_core_only(default_dir):
+    assert sources_of(default_dir, client_sources=[], client_inputs={"CONCERTS_CSV": "c.csv"}) == ((), "c.csv")
 
 
 def test_client_input_names_are_case_insensitive_in_the_file_and_empty_values_are_dropped(default_dir):
@@ -190,12 +187,6 @@ def test_client_input_names_are_case_insensitive_in_the_file_and_empty_values_ar
         'db_dir = "/db"\ndata_dir = "/d"\n[client_inputs]\nconcerts_csv = "c.csv"\nRYM_EXPORT_CSV = ""\n', encoding="utf-8")
     loc = paths.load()
     assert dict(loc.client_inputs) == {"CONCERTS_CSV": "c.csv"} and loc.client_input("RYM_EXPORT_CSV") is None
-
-
-def test_the_assumed_list_is_every_registered_source():
-    import client_bootstrap
-    registry = client_bootstrap.registry()
-    assert set(registry.implicit_sources(["CONCERTS_CSV"])) == set(registry.names)
 
 
 # ------------------------------------------------------------------ one synced file, several machines
@@ -251,3 +242,13 @@ def test_a_bad_local_file_is_refused_like_the_main_one(default_dir):
     (default_dir / "config.local.toml").write_text('notes_vualt = "/typo"\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="Extra inputs are not permitted"):
         paths.load()
+
+
+def test_the_config_variable_has_one_spelling_in_the_code():
+    """`KNOWLEDGE_CONFIG` is written once, in locations.py; every other module imports the constant, so the three
+    layers that name it (the loader, the script service and the process adapter) cannot drift apart."""
+    import glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    spelled = sorted(os.path.relpath(p, root) for p in glob.glob(os.path.join(root, "**", "*.py"), recursive=True)
+                     if "/tests/" not in p and '"KNOWLEDGE_CONFIG"' in open(p, encoding="utf-8").read())
+    assert spelled == ["locations.py"]

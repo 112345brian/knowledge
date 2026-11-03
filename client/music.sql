@@ -1,4 +1,4 @@
--- Optional client sources `concerts`, `ratings` and `scrobbles` (CLIENT_SOURCES in local_paths.py): concerts, album ratings and scrobbles --
+-- Optional client sources `concerts`, `ratings` and `scrobbles` (`client_sources` in the config file): concerts, album ratings and scrobbles --
 -- artists, venues, festivals, attendances, albums, tracks and the files they were imported from. Applied
 -- after schema.sql by build.py when any of the three is enabled; schema.sql knows nothing about these tables.
 

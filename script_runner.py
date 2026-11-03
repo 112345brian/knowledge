@@ -5,9 +5,11 @@ import os
 import subprocess
 import sys
 
+import locations
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The two variables that choose a child's config file and clock. The parent's own values are never inherited.
-CONFIG_VARS = ("KNOWLEDGE_CONFIG", "KNOWLEDGE_FROZEN_NOW")
+CONFIG_VARS = (locations.CONFIG_ENV_VAR, "KNOWLEDGE_FROZEN_NOW")
 
 
 def child_environment(overrides=None, base=None):

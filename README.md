@@ -73,7 +73,8 @@ concerts_csv = "~/MEGA/concerts.csv"
 ```
 
 - **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources` and the
-  `[client_inputs]` table.
+  `[client_inputs]` table. Nothing is guessed: a client source is built only if it is listed in `client_sources`
+  (the default is the core alone), and one listed without its input stops the build with a configuration error.
 - Unknown keys are an error, so a typo is reported instead of ignored.
 - Any setting can be overridden by an environment variable: `KNOWLEDGE_DB_DIR`, `KNOWLEDGE_DATA_DIR`,
   `KNOWLEDGE_NOTES_VAULT`, `KNOWLEDGE_HEALTH_DIR`, `KNOWLEDGE_CLIENT_SOURCES` (a JSON list).
@@ -224,7 +225,7 @@ config file. A required setting omitted from it makes the build stop with a conf
 
 `ClientSource` can also declare ordered steps with `Step(after=..., order=...)`, shared schema fragments, `Tool`
 commands, synthetic `leak_rows`, private `data_files`, report tables, and fact metadata that contributes to the
-personal-topic heuristic. `enable_when_defined` supports configs that predate `client_sources`.
+personal-topic heuristic.
 The base guarantees that adding a source does not require editing files outside `client/`. The architecture test
 derives ring rules from module suffixes; `client/` is not governed by `tach.toml`.
 

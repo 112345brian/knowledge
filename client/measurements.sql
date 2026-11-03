@@ -1,4 +1,4 @@
--- Optional client source `measurements` (CLIENT_SOURCES in local_paths.py): the structured numeric readings
+-- Optional client source `measurements` (`client_sources` in the config file): the structured numeric readings
 -- of a health/fitness vault -- metrics, measurements, training sets, food and meal logs, muscle volume --
 -- and the fact <-> measurement link. Applied after schema.sql by build.py only when the source is enabled;
 -- schema.sql knows nothing about these tables.

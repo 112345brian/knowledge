@@ -26,7 +26,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 import locations
 from locations import Locations
 
-CONFIG_ENV_VAR = "KNOWLEDGE_CONFIG"
+CONFIG_ENV_VAR = locations.CONFIG_ENV_VAR
 _APP_NAME = "knowledge"
 
 
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     data_dir: str                                # the data checkout: facts, revisions, rules, entities
     notes_vault: str | None = None
     health_dir: str | None = None
-    client_sources: tuple[str, ...] | None = None    # None: not declared (the registry may infer them)
+    client_sources: tuple[str, ...] = ()         # the optional sources to build; none: the core only
     client_inputs: dict[str, str] = {}
 
 
@@ -117,7 +117,7 @@ def load():
         private_data_dir=expanded(settings.data_dir),
         config_file=locations.canonical_path(path),
         notes_vault=expanded(settings.notes_vault), health_dir=expanded(settings.health_dir),
-        client_sources=tuple(settings.client_sources or ()), client_sources_declared=settings.client_sources is not None,
+        client_sources=settings.client_sources,
         notes_vault_written=settings.notes_vault or None, health_dir_written=settings.health_dir or None,
         client_inputs={name: expanded(value) for name, value in client_inputs.items()},
         client_inputs_written=client_inputs,
