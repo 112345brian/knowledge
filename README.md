@@ -70,10 +70,12 @@ client_sources = ["concerts", "ratings"]       # optional: which client sources 
 
 [client_inputs]                                # the inputs those sources read
 concerts_csv = "~/data/concerts.csv"
+vault_db = "~/health/tracking.db"            # the measurements source reads this database
 ```
 
 - **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources` and the
-  `[client_inputs]` table. Nothing is guessed: a client source is built only if it is listed in `client_sources`
+  `[client_inputs]` table. `notes_vault` (citation notes, `sources/*.md`) and `vault_db` (the measurements database)
+  are separate settings and may live in different folders. Nothing is guessed: a client source is built only if it is listed in `client_sources`
   (the default is the core alone), and one listed without its input stops the build with a configuration error.
 - Unknown keys are an error, so a typo is reported instead of ignored.
 - Any setting can be overridden by an environment variable: `KNOWLEDGE_DB_DIR`, `KNOWLEDGE_DATA_DIR`,
