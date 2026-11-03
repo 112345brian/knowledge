@@ -21,6 +21,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 API = ("validate_fact", "build_entry", "resolve_privacy", "canonicalize_subject", "append_fact", "record_fact")
 
 
+def data_file_label(data_path, here=HERE):
+    """The facts file as it is shown in messages: relative to `here` (this repo), or its absolute path when there is
+    no relative form. On Windows a file on another drive than the repo has none, and `os.path.relpath` raises for it;
+    a label for a message must never fail the command that already wrote the fact."""
+    try:
+        return os.path.relpath(data_path, here)
+    except ValueError:
+        return data_path
+
+
 def compose(locations, clock):
     """The single-fact API wired to the real adapters for these `locations`. `data_file_label()` is the facts
     file as it is shown in messages: relative to this repo."""
@@ -28,5 +38,5 @@ def compose(locations, clock):
                                         git=private_git, locations=locations)
     api = bind_all(add_fact_service, deps, API)
     api.data_file_path = lambda: locations.data_path
-    api.data_file_label = lambda: os.path.relpath(locations.data_path, HERE)
+    api.data_file_label = lambda: data_file_label(locations.data_path)
     return api
