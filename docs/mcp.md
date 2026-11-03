@@ -43,7 +43,8 @@ Set `mcp_mode = "private"` if you want the assistant to see your private facts. 
 | Module | Layer | I/O |
 | --- | --- | --- |
 | `mcp_server` | serving | the only one: reads lines from stdin, writes replies to stdout |
-| `mcp` | composition | none; binds the use case to `add_fact` and `queries` |
+| `mcp` | composition | none; binds the use case to the mode-aware adapters below |
+| `mcp_moded_store` | infrastructure | reads the database read-only (`modes_store`) and wraps `add_fact`; refuses everything when the mode is `off` |
 | `mcp_service` | application | none; one JSON-RPC line in, one reply out, through ports |
 | `mcp_rules`, `mcp_port` | domain services | none; tool catalog, argument checks, reply wording, ports |
 

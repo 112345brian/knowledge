@@ -78,6 +78,9 @@ Everything else reaches the disk through a port:
 | maintenance tools (backfills, concerts cleanup, music export) | `DataFiles` (`datafiles_port`), `Inputs`, `MusicExportReads` (`music_export_port`); each tool's `run(...)` takes them, its `main()` takes them from the `Container` | `local_datafiles`, `local_inputs`, `music_export_store` |
 | `build_service`, `build.py`, `normal_db`, `leak_scan_store`, `leak_test` | `BuildFiles` (`build_files_port`), the rebuild ports (`build_port`) | `local_buildfiles`, `building`, `build_info_store` |
 | the normal-db use case | `NormalSource`, `NormalSink`, `LeakScan` (`normal_db_port`) | `normal_db_store`, `leak_scan_store` |
+| export, verify and import | `ExportReads`, `ExportFiles`, `ExportScope`, `NotesFiles`, `ImportTarget` (`export_port`) | `export_store` (one read transaction for the whole export; a new database file for an import) |
+| snapshots and table restore | `Snapshots`, `TableRestore` (`snapshot_port`) | `snapshot_store` (SQLite online backup; one transaction per restore) |
+| the MCP server's reads and writes | `FactLookup`, `FactCapture` (`mcp_port`) | `mcp_moded_store` (holds them to the session's mode: off, normal or private) |
 | `leak_test` (fixture, injection) | `SqlRunner` (`sql_runner_port`) | `sql_runner_store` |
 | the CLI | the `Container` it is handed, whose `inputs` reads a facts file named on the command line | `container` |
 
@@ -93,6 +96,25 @@ same for a fact entry and a revision record (`FactEntry`, `Revision`; `revisions
 delegations), and `source_status` types a source's status (`SourceStatus`, `SourceState`) and its relations
 (`Relation`), `entity_rules` an entity (`Entity`) and `subject_rules` a subject (`Subject`) with the parsing,
 validation, matching and pure edits their files and lists are subject to.
+
+### How it is enforced
+
+Every gate runs locally, and CI runs them on each pull request (`.github/workflows/ci.yml`: ubuntu and macOS block,
+Windows is reported):
+
+| Gate | Command | What it catches |
+| --- | --- | --- |
+| tach | `uv run tach check` | an import that skips a ring or is not on a module's allowlist; unused allowlist entries |
+| tach externals | `uv run tach check-external` | a third-party package that is imported but not declared in `pyproject.toml` |
+| import-linter | `uv run python tests/arch_check.py` | what tach cannot say: the domain imports no I/O module, only `knowledge.py` and `cli_*` import typer, ... |
+| Arborescent | `uv run arborescent check` | a module whose `__arbor__` ring disagrees with `tach.toml`, an external import a ring does not list, effects (environment, processes, threads, ...) in a ring that forbids them; findings that already existed are recorded in `arborescent-baseline.json` and may only shrink |
+| module docs | `tests/test_module_docs.py` | a module whose docstring does not name its tach layer, or a public function without a docstring (older modules sit on a shrinking allowlist) |
+| generated docs | `uv run python knowledge.py docs check` | a README or docs region that differs from what the code renders |
+| types | `uv run mypy` | type errors in the modules listed under `[tool.mypy] files` in `pyproject.toml` (add a new module there) |
+| version | `tests/test_version.py` | `pyproject.toml`, `uv.lock` and the MCP server's reported version disagree, or the changelog has no entry for the version |
+
+`tests/test_architecture.py` runs the tach and import-linter gates inside the suite, so `uv run pytest` alone covers
+most of the table.
 
 ## Module map
 
@@ -358,5 +380,5 @@ seeding). Direction is one way:
   revisions, privacy and entities aggregates and the unit of work. `BuildSession` carries nothing of a client.
 
 The claims *audit* (`claims_audit`, `claims_rules`, `claims_store`, the `audit-claims` CLI) stays in the base: the
-`claims` and `claim_facts` tables are in the core `schema.sql` and the audit runs with `CLIENT_SOURCES=()`. Only the
+`claims` and `claim_facts` tables are in the core `schema.sql` and the audit runs with `client_sources = []` (the core alone). Only the
 seeding of claims from a private `claims.json` (`client/seed_claims.py`) is a client source.
