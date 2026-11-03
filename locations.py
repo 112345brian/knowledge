@@ -14,7 +14,6 @@ PRIVACY_RULES_FILENAME = "privacy_rules.json"
 ENTITIES_FILENAME = "entities.json"
 SUBJECTS_FILENAME = "subjects.json"
 
-CONFIG_ENV_VAR = "KNOWLEDGE_CONFIG"   # names the config file (see paths.config_file); a child process is started with it
 HOME_ENV_VAR = "KNOWLEDGE_HOME"   # where `~` means, when it must differ from the OS user's home (see expand_home)
 
 

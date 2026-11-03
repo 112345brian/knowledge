@@ -26,7 +26,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 import locations
 from locations import Locations
 
-CONFIG_ENV_VAR = locations.CONFIG_ENV_VAR
+CONFIG_ENV_VAR = "KNOWLEDGE_CONFIG"     # script_runner sets the same name for a child
 _APP_NAME = "knowledge"
 
 

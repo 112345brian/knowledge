@@ -244,11 +244,13 @@ def test_a_bad_local_file_is_refused_like_the_main_one(default_dir):
         paths.load()
 
 
-def test_the_config_variable_has_one_spelling_in_the_code():
-    """`KNOWLEDGE_CONFIG` is written once, in locations.py; every other module imports the constant, so the three
-    layers that name it (the loader, the script service and the process adapter) cannot drift apart."""
+def test_only_the_two_process_adapters_name_the_config_variable_and_they_agree():
+    """The variable is the protocol between the adapter that starts a child (script_runner) and the loader that reads
+    it (paths). Neither the model ring, the use cases nor the composition root may mention it: they pass a config file."""
     import glob
+    import script_runner
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     spelled = sorted(os.path.relpath(p, root) for p in glob.glob(os.path.join(root, "**", "*.py"), recursive=True)
                      if "/tests/" not in p and '"KNOWLEDGE_CONFIG"' in open(p, encoding="utf-8").read())
-    assert spelled == ["locations.py"]
+    assert spelled == ["paths.py", "script_runner.py"]
+    assert script_runner.CONFIG_ENV_VAR == paths.CONFIG_ENV_VAR

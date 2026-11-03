@@ -19,6 +19,7 @@ import building  # noqa: E402
 import local_buildfiles  # noqa: E402
 from build_port import NormalBuild  # noqa: E402
 from locations import Locations  # noqa: E402
+from script_runner_port import ScriptSettings  # noqa: E402
 
 SCHEMA_SQL = "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT);\n"
 GOOD_STEP = "def run(con, locations):\n    con.execute(\"INSERT INTO t (v) VALUES ('{v}')\")\n    con.commit()\n"
@@ -175,12 +176,12 @@ class _FakeRunner:
     def __init__(self, code=0):
         self.calls, self.code = [], code
 
-    def run_script(self, name, args=(), env=None):
-        self.calls.append(("script", name, list(args), env))
+    def run_script(self, name, args=(), settings=None):
+        self.calls.append(("script", name, list(args), settings))
         return self.code
 
-    def run_module(self, module, args=(), env=None):
-        self.calls.append(("module", module, list(args), env))
+    def run_module(self, module, args=(), settings=None):
+        self.calls.append(("module", module, list(args), settings))
         return self.code
 
 
@@ -200,9 +201,9 @@ def test_the_build_command_runs_build_py_through_the_script_runner_port():
     assert scripts_service.build(deps) == 7
     assert scripts_service.build(deps, check=True) == 7
     assert scripts_service.run_tool(deps, "client.clean_concerts_csv") == 7
-    env = {"KNOWLEDGE_CONFIG": "/checkout/A/config.toml"}
-    assert runner.calls == [("script", "build.py", [], env), ("script", "build.py", ["--check"], env),
-                            ("module", "client.clean_concerts_csv", [], env)]
+    settings = ScriptSettings("/checkout/A/config.toml")
+    assert runner.calls == [("script", "build.py", [], settings), ("script", "build.py", ["--check"], settings),
+                            ("module", "client.clean_concerts_csv", [], settings)]
     composed = scripts.compose(_checkout_locations(), clock.SystemClock())
     assert composed.deps.runner is script_runner      # the composition root binds the real adapter
 
@@ -219,13 +220,15 @@ def test_a_child_is_started_for_the_containers_configuration_not_the_environment
     runner = _FakeRunner()
     object.__setattr__(app.scripts.deps, "runner", runner)       # swap the adapter, keep the real wiring
     app.scripts.build()
-    (_kind, _name, _args, env), = runner.calls
-    assert env == {"KNOWLEDGE_CONFIG": "/checkout/A/config.toml", "KNOWLEDGE_FROZEN_NOW": "2026-10-03T08:00:00+00:00"}
-    # and the real adapter never lets the parent's own values through
-    child = script_runner.child_environment(env)
+    (_kind, _name, _args, settings), = runner.calls
+    assert settings == ScriptSettings("/checkout/A/config.toml", "2026-10-03T08:00:00+00:00")
+    # and the real adapter, which alone knows these are environment variables, never lets the parent's own values through
+    child = script_runner.child_environment(settings)
     assert child["KNOWLEDGE_CONFIG"] == "/checkout/A/config.toml" and child["KNOWLEDGE_FROZEN_NOW"] == "2026-10-03T08:00:00+00:00"
-    assert "KNOWLEDGE_CONFIG" not in script_runner.child_environment({}, {"KNOWLEDGE_CONFIG": "/checkout/B/config.toml", "X": "1"})
-    assert script_runner.child_environment({}, {"KNOWLEDGE_FROZEN_NOW": "x", "X": "1"}) == {"X": "1"}
+    assert "KNOWLEDGE_CONFIG" not in script_runner.child_environment(None, {"KNOWLEDGE_CONFIG": "/checkout/B/config.toml", "X": "1"})
+    assert script_runner.child_environment(None, {"KNOWLEDGE_FROZEN_NOW": "x", "X": "1"}) == {"X": "1"}
+    assert script_runner.child_environment(ScriptSettings("/c.toml"), {"KNOWLEDGE_FROZEN_NOW": "x", "X": "1"}) == \
+        {"X": "1", "KNOWLEDGE_CONFIG": "/c.toml"}
 
 
 def test_locations_that_did_not_come_from_a_config_file_cannot_start_a_script():
