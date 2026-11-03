@@ -108,6 +108,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | Module | Layer | Role | What it is |
 | --- | --- | --- | --- |
 | `inbox` | serving | driving adapter | Local review inbox (#33): a small web page for the pending queue (#6), standard library only. |
+| `mcp_server` | serving | driving adapter | MCP server over stdio (#2): lets Claude search the knowledge repository and add researched facts to it. |
 | `cli_add_fact` | cli | driving adapter | `knowledge.py add-fact`: the Typer command over add_fact.record_fact (CLI-first rule #34). |
 | `cli_audits` | cli | driving adapter | `knowledge.py audit-claims \| build-info \| audit-source-status \| audit-sources`: the premise and provenance audits. |
 | `cli_build` | cli | driving adapter | `knowledge.py build` and registered client tools: commands that run a script (through `ctx.obj.scripts`). |
@@ -153,6 +154,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `fact_ingest` | composition | composition root | The fact ingest (the facade: binds the use case in `fact_ingest_service` to the adapters a build step is given). |
 | `facts_batch` | composition | composition root | Batch add_facts (the facade: binds the use case in `facts_batch_service` to the real adapters and keeps the public API): the library… |
 | `lifecycle` | composition | composition root | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `mcp` | composition | composition root | Composition root for the MCP use case: binds `mcp_service` to the single-fact use case (`add_fact`) and the read side (`queries`), and… |
 | `migrate_memory` | composition | composition root | Import Claude Code memory files as private, pending facts (issue #29). |
 | `queries` | composition | composition root | Composition root for the read side: binds `queries_service` to the real read adapter (`fact_reads_store`). |
 | `review` | composition | composition root | Review of pending facts (#6): list the queue, approve or reject items. |
@@ -206,6 +208,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `facts_batch_service` | application | application service | Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the… |
 | `identity_service` | application | application service | The identity operations every build step shares: which source and which subject a name means. |
 | `lifecycle_service` | application | application service | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `mcp_service` | application | application service | The MCP server as a use case: one JSON-RPC message in, at most one reply out. |
 | `migrate_memory_service` | application | application service | Import Claude Code memory files as private, pending facts (issue #29). |
 | `normal_db_service` | application | application service | Building the normal-tier database and checking it for leaks: the use case. |
 | `privacy_floor_service` | application | application service | Apply the CURRENT privacy rules to every fact and subject of a built database (the privacy floor, #31). |
@@ -248,6 +251,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `leak_rules` | domain_services | domain service | Leak test rules (domain: no sqlite, no files). |
 | `lifecycle_reads_port` | domain_services | domain service | Read port for inputs used by lifecycle decisions. |
 | `lifecycle_rules` | domain_services | domain service | Fact lifecycle (#8, #23, #33), the rules: result types and the pure decisions. |
+| `mcp_port` | domain_services | domain service | Ports of the MCP use case: how it records a fact and how it looks facts up, without a file, db or git in sight. |
+| `mcp_rules` | domain_services | domain service | MCP tool catalog and message rules (domain: pure, no input or output). |
 | `memory_files_port` | domain_services | domain service | Port for discovering and reading source memory files. |
 | `migrate_memory_rules` | domain_services | domain service | Import Claude Code memory files as private, pending facts (issue #29), the rules (domain: no file, db, git, clock or lock). |
 | `modes` | domain_services | domain service | Issue #22: the mode rules (domain), plus set_mode. |
