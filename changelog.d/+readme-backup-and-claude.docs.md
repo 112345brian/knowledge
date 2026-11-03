@@ -1,0 +1,1 @@
+The README gained sections on backup, export and restore and on using the knowledge base from Claude (the MCP server, `mcp_mode`, the skills), a Releases section, the full list of gates and CI, and project-layout rows for the 0.2 modules.

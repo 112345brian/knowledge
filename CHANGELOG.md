@@ -3,6 +3,8 @@
 Versions follow [Semantic Versioning](https://semver.org); while the major version is 0, a minor bump may break
 compatibility, and each such change is listed under **Upgrading**.
 
+<!-- towncrier release notes start -->
+
 ## 0.2.0 - 2026-11-03
 
 ### Upgrading from 0.1.0

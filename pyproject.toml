@@ -12,11 +12,13 @@ dependencies = [
 [dependency-groups]
 dev = [
     "arborescent",
+    "bump-my-version>=1.8.1",
     "import-linter>=2.15",
     "mypy>=1.11",
     "pytest>=8",
     "pytest-xdist>=3.8.0",
     "tach>=0.35.2",
+    "towncrier>=26.9.0",
 ]
 
 [tool.uv]
@@ -1413,3 +1415,68 @@ external = ["click", "threading", "typer", "webbrowser"]
 [tool.arborescent.ring.serving]
 may_import = ["*"]
 external = ["http", "threading", "urllib"]
+
+# --------------------------------------------------------------------------------------------
+# Releases (README, "Releases"; docs/releasing.md). One file per change in changelog.d/ is compiled into CHANGELOG.md
+# by towncrier; bump-my-version then bumps the version everywhere it is written, commits and tags. Two commits, on
+# purpose: the changelog first, then the bump (which refuses a dirty tree).
+# --------------------------------------------------------------------------------------------
+[tool.bumpversion]
+current_version = "0.2.0"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+message = "Release v{new_version}"
+tag_message = "Release v{new_version}"
+allow_dirty = false
+
+# The version is written in three places (tests/test_version.py fails if they disagree). Each search starts at the
+# beginning of a line so it cannot match `current_version = ...` in this very table.
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = "\nversion = \"{current_version}\""
+replace = "\nversion = \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "mcp_rules.py"
+search = "\nSERVER_VERSION = \"{current_version}\""
+replace = "\nSERVER_VERSION = \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = "\nname = \"knowledge\"\nversion = \"{current_version}\""
+replace = "\nname = \"knowledge\"\nversion = \"{new_version}\""
+
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## {version} - {project_date}"
+issue_format = "{issue}"
+orphan_prefix = "+"
+underlines = ["", "", ""]
+
+[[tool.towncrier.type]]
+directory = "upgrade"
+name = "Upgrading"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "change"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "docs"
+name = "Documentation"
+showcontent = true

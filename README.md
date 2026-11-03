@@ -46,7 +46,7 @@ data directory.
 
 - Python 3.11 or later
 - Runtime packages: `pydantic-settings>=2.6`, `pydantic>=2`, `typer>=0.12`
-- Development packages (`dev` group, installed by `uv sync`): `arborescent`, `import-linter>=2.15`, `mypy>=1.11`, `pytest-xdist>=3.8.0`, `pytest>=8`, `tach>=0.35.2`
+- Development packages (`dev` group, installed by `uv sync`): `arborescent`, `bump-my-version>=1.8.1`, `import-linter>=2.15`, `mypy>=1.11`, `pytest-xdist>=3.8.0`, `pytest>=8`, `tach>=0.35.2`, `towncrier>=26.9.0`
 <!-- generated:requirements:end -->
 - [uv](https://docs.astral.sh/uv/)
 
@@ -342,10 +342,9 @@ Every action available in the UI is also a CLI command; see `cli_parity.py` and
 ## Releases
 
 Versions follow [Semantic Versioning](https://semver.org); [CHANGELOG.md](CHANGELOG.md) lists what changed and how to
-upgrade. To release: update `CHANGELOG.md` and the README/docs first, bump `version` in `pyproject.toml` (and
-`mcp_rules.SERVER_VERSION`, then `uv lock`; `tests/test_version.py` fails if the three disagree or the changelog has no
-entry for the version), merge through a pull request with CI green, then tag `vX.Y.Z` on the merge commit and publish
-the GitHub release with the changelog entry as its notes.
+upgrade. Each change adds a small fragment to [changelog.d/](changelog.d/README.md), and a release compiles them with
+towncrier and bumps the version with bump-my-version: see [docs/releasing.md](docs/releasing.md). Update the README and
+`docs/` before versioning, not after.
 
 ## License
 
