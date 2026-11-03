@@ -157,8 +157,8 @@ def test_a_database_without_some_curated_tables_installs_what_it_has():
 
 def test_identifiers_and_keyless_tables_are_refused():
     with pytest.raises(ValueError):
-        audit_rules.audit_trigger_sql("facts; DROP TABLE x", [("id", 1)])
+        live.audit_trigger_sql("facts; DROP TABLE x", [("id", 1)])
     with pytest.raises(ValueError):
-        audit_rules.audit_trigger_sql("facts", [("id; --", 1)])
+        live.audit_trigger_sql("facts", [("id; --", 1)])
     with pytest.raises(ValueError):
-        audit_rules.audit_trigger_sql("facts", [("id", 0)])
+        live.audit_trigger_sql("facts", [("id", 0)])

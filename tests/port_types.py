@@ -48,8 +48,8 @@ import build
 import client_registry
 import build_info_store
 import docs_store
-import db_export
 import export_store
+from client_registry import ClientRegistry
 import add_fact_store
 import client_bootstrap
 import fact_ingest
@@ -136,7 +136,7 @@ docs_files: DocsFiles = docs_store.RepoDocs()
 export_reads: ExportReads = export_store.SqliteExportReads("")
 export_files: ExportFiles = export_store.DirExportFiles("")
 import_target: ImportTarget = export_store.SqliteImportTarget("")
-export_scope: ExportScope = db_export.ClientScope()
+export_scope: ExportScope = export_store.RegistryScope(ClientRegistry(()))
 notes_source: NotesFiles = export_store.DirNotes("")
 notes_target: NotesFiles = export_store.DirNotes("")
 add_fact_port: AddFact = add_fact.compose(None, None)

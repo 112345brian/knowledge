@@ -227,7 +227,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `subject_hierarchy_service` | application | application service | Subject hierarchy use cases: load the hierarchy file's entries into the stored subjects, and find (or create) the subject a fact is filed… |
 | `subjects_service` | application | application service | Subject command use cases. |
 | `add_fact_port` | domain_services | domain service | Port exposing the single-fact use case to batch and migration flows. |
-| `audit_rules` | domain_services | domain service | Row-audit and append-only trigger SQL for the live database (docs/db-source-of-truth.md, "Logging"), pure. |
+| `audit_rules` | domain_services | domain service | Which tables the live database audits and how its fact history is protected (docs/db-source-of-truth.md, "Logging"), pure. |
 | `build_files_port` | domain_services | domain service | Port for the file-system work of building, swapping and checking database files: reading the schema, loading step modules, making the… |
 | `build_port` | domain_services | domain service | Ports of the database rebuild that are not the file system (`build_files_port` is that one): the session a build writes through, the… |
 | `build_records` | domain_services | domain service | The plain values a build step and the build repositories exchange: the core's (sources, subjects, facts, revisions, privacy and entities. |

@@ -574,7 +574,7 @@ FACT_READERS_ALLOWED = {
     "modes.py", "modes_store.py", "knowledge.py", "cli_common.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # CLI-only audit over the full local db (like claims_store); never serves tool results
     "fixity_store.py",
-    # builds the audit triggers that WRITE a row per change; it names the tables but never selects from them
+    # lists the tables whose changes are audited (policy only); it names the tables but never selects from them
     "audit_rules.py",
     # lists the table names the full-database export writes to files (pure; reads nothing, serves no tool results)
     "export_rules.py",

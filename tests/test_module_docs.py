@@ -119,7 +119,6 @@ NOT_YET_DESCRIBED = frozenset(
     "ingest.source_readers",
     "inputs_port",
     "knowledge",
-    "audit_rules",
     "leak_rules",
     "leak_scan_store",
     "leak_test",

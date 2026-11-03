@@ -102,6 +102,31 @@ class DirExportFiles:
         _write_atomic(_inside(self.directory, name), text)
 
 
+class RegistryScope:
+    """`ExportScope` over a client registry handed in by the composition root: the base asks it which client tables
+    exist, and never names them."""
+
+    def __init__(self, registry):
+        self._registry = registry
+
+    def bulk_tables(self, existing: Collection[str]) -> List[str]:
+        """The client-owned tables among `existing`, sorted."""
+        return [t for t in self._registry.data_tables() if t in set(existing)]
+
+    def known_bulk_tables(self) -> Collection[str]:
+        """Every table any registered client source owns."""
+        return self._registry.data_tables()
+
+    def groups(self) -> Mapping[str, Collection[str]]:
+        """One group per client source: its name and the tables it owns."""
+        return {name: tuple(self._registry.source(name).report_tables) for name in self._registry.names
+                if self._registry.source(name).report_tables}
+
+    def schema_files(self, tables: Collection[str]) -> List[str]:
+        """The schema files a database holding these client tables is created from."""
+        return self._registry.schema_files_for_tables(tables)
+
+
 class DirNotes:
     """`NotesFiles` over a flat directory of `*.md` notes. With no directory every use fails with a clear error."""
 
