@@ -187,13 +187,13 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `migrate_memory_store` | infrastructure | infrastructure | Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the source keys already in the entry… |
 | `modes_store` | infrastructure | infrastructure | Adapter for the mode rules (#22): the SQL that applies `modes` to the knowledge db. |
 | `normal_db_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the normal DB. |
-| `paths` | infrastructure | infrastructure | Reads where this person's data lives from the config file, once, at an entry point. |
+| `paths` | infrastructure | infrastructure | Reads the config file and the environment into `Locations`: the one adapter that knows where this person's data lives. |
 | `privacy_store` | infrastructure | infrastructure | Adapter for the privacy rules (driven side of the privacy domain). |
 | `private_edit_store` | infrastructure | infrastructure | The shared edit-and-commit flow for hand-curated JSON files in knowledge-private (#43, #42). |
 | `private_git` | infrastructure | infrastructure | Commit every mutation of the knowledge-private JSON files, so git is a reliable backup and safety net for them (issue #10). |
 | `review_store` | infrastructure | infrastructure | Adapter for review (#6): the reads behind the review queue. |
 | `revisions_store` | infrastructure | infrastructure | Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and the db. |
-| `script_runner` | infrastructure | infrastructure | Adapter for the standalone scripts (build.py and the client tools): `knowledge.py build` and each client tool are thin dispatches to them. |
+| `script_runner` | infrastructure | infrastructure | Starts the standalone scripts (build.py and the client tools) as child processes: the adapter behind `script_runner_port`. |
 | `source_repository_store` | infrastructure | infrastructure | SQLite adapter for `build_repositories_port.SourceRepository`: the sources, publishers, authors, identifiers, relations and vault_files… |
 | `source_status_store` | infrastructure | infrastructure | Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. |
 | `sql_runner_store` | infrastructure | infrastructure | Adapter for `sql_runner_port.SqlRunner`: executes scripts and statements against a sqlite file. |
@@ -216,7 +216,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `review_service` | application | application service | Review of pending facts (#6): list the queue, approve or reject items. |
 | `revision_apply_service` | application | application service | Apply the revision log to a built database, then re-assert the privacy floor (#30, #31). |
 | `rules_edit_service` | application | application service | Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag\|untag\|add-keyword\| remove-keyword`, mirroring add-fact's… |
-| `scripts_service` | application | application service | The commands that are a script run: rebuild the database, or a tool a client source ships. |
+| `scripts_service` | application | application service | The use cases that are a script run: rebuild the database, or run a tool a client source ships. |
 | `source_ingest_service` | application | application service | Application service for loading sources: store the records a reader produced, validate and store their relations, and record the vault… |
 | `subject_hierarchy_service` | application | application service | Subject hierarchy use cases: load the hierarchy file's entries into the stored subjects, and find (or create) the subject a fact is filed… |
 | `subjects_service` | application | application service | Subject command use cases. |
@@ -268,7 +268,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `revision_apply_rules` | domain_services | domain service | What applying the revision log to a built database means (pure; domain service). |
 | `revisions` | domain_services | domain service | Fact revisions (#30): an append-only log of changes to facts, queryable as history. |
 | `revisions_port` | domain_services | domain service | Port for persisted entries and the append-only revision log's writer. |
-| `script_runner_port` | domain_services | domain service | Port for starting this repo's standalone scripts and tools as separate processes. |
+| `script_runner_port` | domain_services | domain service | The port for starting this repo's standalone scripts and tools as separate processes. |
 | `sources_port` | domain_services | domain service | Port for sources: where normalized source records come from. |
 | `sql_runner_port` | domain_services | domain service | Port for running SQL against a database file by path: the leak self-test's fixture builder and its marker-injection step. |
 | `step_stores_port` | domain_services | domain service | Port for the data a build step loads from the private data files and the table writers that belong with them. |
@@ -280,7 +280,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `fact_state` | model | model | A fact's lifecycle as types with behaviour: `Status`, `Visibility` and `FactState`. |
 | `fixity_rules` | model | model | What a file fingerprint may hold: the vocabulary of a fixity record, free of how a file is read or hashed. |
 | `identifiers` | model | model | Persistent identifiers for sources (#48): DOI, ISBN, ISSN, PMID, arXiv and `other`, normalized so the same work cannot hide behind two… |
-| `locations` | model | model | Where this person's data lives, as one immutable value. |
+| `locations` | model | model | Where this person's data lives, as one immutable value (`Locations`) plus the pure path helpers around it. |
 | `pipeline_context` | model | model | What a build step is given besides its database connection: where the data lives and how to read it. |
 | `source_record` | model | model | A source as one value: what the build knows about a citable work before it has a database id. |
 | `source_status` | model | model | Source status over time, editions and source-to-source relations (#41). |

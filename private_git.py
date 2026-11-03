@@ -2,6 +2,8 @@
 backup and safety net for them (issue #10). The queryable fact history is the revision
 log (#30); this is the layer underneath it.
 
+Infrastructure ring (tach layer `infrastructure`): the only module that runs git against knowledge-private; library code never prints or exits.
+
 Reusable by any command that mutates a JSON file in knowledge-private (add-fact now;
 approve, supersede, retract, set-visibility later). The pattern:
 

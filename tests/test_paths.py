@@ -16,7 +16,6 @@ NAMES = ("db_dir", "data_dir", "notes_vault", "health_dir")
 @pytest.fixture
 def default_dir(tmp_path, monkeypatch):
     """The per-user config directory, redirected into tmp_path so no test reads a developer's real one."""
-    monkeypatch.setattr(paths.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     return tmp_path / "xdg" / "knowledge"
 
@@ -31,10 +30,11 @@ def test_the_per_user_default_is_used_when_the_env_var_is_unset(default_dir):
     assert paths.config_file() == str(default_dir / "config.toml")
 
 
-def test_the_default_is_dot_config_on_macos_too_so_one_dotfile_source_path_serves_both(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths.sys, "platform", "darwin")
+def test_the_default_is_dot_config_under_the_home_directory_not_a_per_os_location(tmp_path, monkeypatch):
+    """Not Library/Application Support or AppData: one path keeps a dotfile manager's source layout portable."""
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))      # what expanduser reads on Windows
     assert paths.config_file() == str(tmp_path / ".config" / "knowledge" / "config.toml")
 
 

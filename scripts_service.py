@@ -1,6 +1,8 @@
-"""The commands that are a script run: rebuild the database, or a tool a client source ships. The service decides which
-script, with which arguments and for which configuration; the `ScriptRunner` port runs it and returns its exit
-code. Never prints or exits. `scripts` is the composition root that binds it to the real runner.
+"""The use cases that are a script run: rebuild the database, or run a tool a client source ships.
+
+Application ring (tach layer `application`): it orchestrates through the `ScriptRunner` port and never imports an
+adapter. It decides which script, with which arguments and for which configuration; the port runs it and returns its
+exit code. Never prints or exits. `scripts` is the composition root that binds it to the real runner.
 
 A child process re-reads its configuration, so the service hands it exactly the container's: the config file the
 `Locations` came from and, for a fixed clock, its instant. How the child is told is the runner's business. Locations that did not come

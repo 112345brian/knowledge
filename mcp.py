@@ -1,6 +1,8 @@
 """Composition root for the MCP use case: binds `mcp_service` to the single-fact use case (`add_fact`) and the
 read side (`queries`), and publishes `handle_line`. `session_id` is supplied by the entry point (`mcp_server`),
-so nothing here generates an identifier or reads the environment."""
+so nothing here generates an identifier or reads the environment.
+
+Composition ring (tach layer `composition`): the one place that picks the concrete adapters for the MCP use case; `mcp_server` calls it."""
 from dataclasses import dataclass
 
 import mcp_service

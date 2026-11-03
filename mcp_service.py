@@ -1,5 +1,7 @@
 """The MCP server as a use case: one JSON-RPC message in, at most one reply out.
 
+Application ring (tach layer `application`): it orchestrates through the ports in `mcp_port` and the rules in `mcp_rules`, and imports no adapter.
+
 `handle_line(deps, line)` takes the text of a single request and returns the text of the reply (None for a
 notification). It reads facts and records them only through the ports in `mcp_port`, holds no state, and has no
 input or output of its own: `mcp_server` reads the lines and writes the replies. The rules (tool catalog,

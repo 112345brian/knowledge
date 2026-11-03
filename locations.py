@@ -1,6 +1,6 @@
-"""Where this person's data lives, as one immutable value.
+"""Where this person's data lives, as one immutable value (`Locations`) plus the pure path helpers around it.
 
-Model ring: imports nothing else in the repo and does no I/O. An entry point reads the config file once
+Model ring (tach layer `model`): the innermost ring. It imports nothing else in the repo and does no I/O. An entry point reads the config file once
 (`paths.load()`), builds a `Locations`, and hands it down; nothing below an entry point looks configuration
 up. The paths are already expanded (`~` resolved) by the loader; the properties here only join strings.
 """
@@ -118,18 +118,22 @@ class Locations:
 
     @property
     def db_dir(self):
+        """The directory that holds the built database and its backups."""
         return self.knowledge_db_dir
 
     @property
     def db_path(self):
+        """The live database file (`knowledge.db`) inside `db_dir`."""
         return join_path(self.knowledge_db_dir, "knowledge.db")
 
     @property
     def backup_dir(self):
+        """The directory of database backups, inside `db_dir`."""
         return join_path(self.knowledge_db_dir, "backups")
 
     @property
     def data_dir(self):
+        """The directory that holds the fact files, revision log, rules and entities."""
         return self.private_data_dir
 
     @property
@@ -146,13 +150,17 @@ class Locations:
         return join_path(self.need("notes_vault", "NOTES_VAULT", "a vault path"), *names)
 
     def revisions_log(self, data_dir=None):
+        """The append-only fact revision log (`fact_revisions.jsonl`) in `data_dir`."""
         return self.in_data_dir(REVISIONS_FILENAME, data_dir)
 
     def privacy_rules(self, data_dir=None):
+        """The privacy rules file (`privacy_rules.json`) in `data_dir`."""
         return self.in_data_dir(PRIVACY_RULES_FILENAME, data_dir)
 
     def entities_file(self, data_dir=None):
+        """The entities file (`entities.json`) in `data_dir`."""
         return self.in_data_dir(ENTITIES_FILENAME, data_dir)
 
     def subjects_file(self, data_dir=None):
+        """The subject hierarchy file (`subjects.json`) in `data_dir`."""
         return self.in_data_dir(SUBJECTS_FILENAME, data_dir)

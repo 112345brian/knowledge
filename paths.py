@@ -1,12 +1,13 @@
-"""Reads where this person's data lives from the config file, once, at an entry point.
+"""Reads the config file and the environment into `Locations`: the one adapter that knows where this person's data lives.
 
-`load()` returns a `Locations` (see locations.py) and keeps nothing: no cache, no module-level names. Whoever
-starts the program (the Typer app's `Container`, `build.py`, a tool's `main()`, a test) calls it and hands the
-result down. The values and the fact/source data live outside this repository.
+Infrastructure ring (tach layer `infrastructure`): it does the I/O and holds the third-party libraries
+(pydantic-settings, tomllib) that inner rings must not know. It imports only the model (`locations`); entry points and
+the composition root (`container`) call `load()` once and hand the resulting `Locations` down. It keeps no cache and no
+module-level state. The values and the fact/source data live outside this repository.
 
 The file is TOML, found by the usual rule: `$KNOWLEDGE_CONFIG` if set, else `knowledge/config.toml` under
-`$XDG_CONFIG_HOME` (default `~/.config`) on macOS and Linux and under the user's config directory on Windows. One
-path on macOS and Linux keeps a dotfile manager's source layout the same on every machine. A named file that is
+`$XDG_CONFIG_HOME` (default `~/.config`) on every OS, Windows included. One path everywhere keeps a dotfile
+manager's source layout (chezmoi's `dot_config/knowledge/`) the same on every machine. A named file that is
 missing is an error, never a silent fallback, and so is a default location with no file.
 
 Two things make one synced file serve several machines. Every path may start with `~`, which is resolved here per
@@ -16,10 +17,8 @@ variable (`KNOWLEDGE_DB_DIR`, ...); the main file must still exist, because a sc
 The settings, their types and the check that unknown keys are refused all come from `Settings` below.
 """
 import os
-import sys
 import tomllib
 
-import platformdirs
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, TomlConfigSettingsSource
 
@@ -31,11 +30,11 @@ _APP_NAME = "knowledge"
 
 
 class ConfigError(Exception):
-    """The configuration is missing, unreadable or invalid. The message says which file and what to fix."""
+    """Raised by `load()` when the configuration is missing, unreadable or invalid. The message says which file and what to fix."""
 
 
 class Settings(BaseSettings):
-    """Every setting the file may hold. A name here is a TOML key and, upper-cased with a KNOWLEDGE_ prefix, the
+    """The schema of the config file and its environment overrides: every setting it may hold, with its type. A name here is a TOML key and, upper-cased with a KNOWLEDGE_ prefix, the
     environment variable that overrides it. `client_inputs` is a table of the settings the registered client
     sources declare (`my_feed_json = "..."`); the base does not know them."""
     model_config = SettingsConfigDict(env_prefix="KNOWLEDGE_", extra="forbid", frozen=True)
@@ -49,33 +48,30 @@ class Settings(BaseSettings):
 
 
 def expand(path):
-    """`path` with `~` resolved: under $KNOWLEDGE_HOME when that is set (a machine whose data lives outside the OS
+    """Resolve a leading `~` in `path`: under $KNOWLEDGE_HOME when that is set (a machine whose data lives outside the OS
     user's home, e.g. `~/MEGA` on another drive), else the OS user's home. Only the expanded form is affected."""
     home = os.environ.get(locations.HOME_ENV_VAR)
     return os.path.expanduser(locations.expand_home(path, home) if home else path)
 
 
 def config_file():
-    """The file `load()` reads: $KNOWLEDGE_CONFIG (an empty value counts as unset), else the per-user default."""
+    """Say which file `load()` reads: $KNOWLEDGE_CONFIG (an empty value counts as unset), else the per-user default."""
     override = os.environ.get(CONFIG_ENV_VAR)
     if override:
         return os.path.abspath(expand(override))
-    if sys.platform == "win32":
-        directory = platformdirs.user_config_dir(_APP_NAME)
-    else:     # the same place on macOS and Linux, where platformdirs would pick Library/Application Support for macOS
-        directory = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), _APP_NAME)
-    return os.path.join(directory, "config.toml")
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(base, _APP_NAME, "config.toml")
 
 
 def local_override_file(path):
-    """The machine-local file merged over the config at `path`: `config.local.toml` beside `config.toml`."""
+    """Name the machine-local file merged over the config at `path`: `config.local.toml` beside `config.toml`."""
     root, extension = os.path.splitext(path)
     return f"{root}.local{extension}"
 
 
 def _read(path):
-    """The `Settings` in the TOML file at `path` with its local override merged over it and the environment over both;
-    ConfigError if they can't be read."""
+    """Read the `Settings` from the TOML file at `path`, with its local override merged over it and the environment over
+    both; raise ConfigError if they can't be read or don't fit the schema."""
     class FromFile(Settings):
         @classmethod
         def settings_customise_sources(cls, settings_cls, init_settings: PydanticBaseSettingsSource,
@@ -97,7 +93,8 @@ def _read(path):
 
 
 def load():
-    """Read the config file and return the `Locations` it describes."""
+    """Read the config file (see the module docstring) and return the `Locations` it describes: paths expanded and in
+    canonical form, the as-written forms kept beside them, and the file they came from."""
     path = config_file()
     if not os.path.isfile(path):
         source = f"{CONFIG_ENV_VAR}={os.environ[CONFIG_ENV_VAR]!r}" if os.environ.get(CONFIG_ENV_VAR) else "the default location"

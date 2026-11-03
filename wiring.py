@@ -1,5 +1,7 @@
 """Composition helper: verify a service's dependencies, then publish its functions with them bound.
 
+Composition ring (tach layer `composition`): used only by composition roots, never by a service or a rule.
+
 An application service function takes its `*Deps` object first. A composition root builds that object from
 the real adapters and calls `bind(fn, deps)` to publish `fn` without the leading argument. This lives in the
 composition ring because binding is wiring, not domain: the domain ring holds only the port protocols

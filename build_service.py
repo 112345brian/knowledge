@@ -1,5 +1,7 @@
 """Rebuild the knowledge database: the use case behind `build.py` and `knowledge build`.
 
+Application ring (tach layer `application`): it orchestrates the build through ports and imports no adapter.
+
 It owns the ORDER (schema, each step in registry order, provenance, finalize), the FAILURE NAMING (every stage
 that can fail raises `BuildError(stage)`), the ATOMIC PUBLICATION (a full build in a temp file next to the live
 database, then one replace: a failure anywhere before it leaves the previous knowledge.db byte-identical), the

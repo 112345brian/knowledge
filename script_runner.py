@@ -1,6 +1,8 @@
-"""Adapter for the standalone scripts (build.py and the client tools): `knowledge.py build`
-and each client tool are thin dispatches to them. This is the only place the CLI starts a Python
-subprocess, so the Typer app itself imports no `subprocess`."""
+"""Starts the standalone scripts (build.py and the client tools) as child processes: the adapter behind `script_runner_port`.
+
+Infrastructure ring (tach layer `infrastructure`): it implements the `ScriptRunner` port with `subprocess`, and is the
+only place the CLI starts a Python subprocess, so the Typer app itself imports no `subprocess`. It alone knows that a
+child's `ScriptSettings` travel as the KNOWLEDGE_CONFIG and KNOWLEDGE_FROZEN_NOW environment variables."""
 import os
 import subprocess
 import sys
@@ -27,10 +29,11 @@ def child_environment(settings=None, base=None):
 
 
 def run_script(name, args=(), settings=None):
-    """Run `name` (a script next to this file) with `args` and return its exit code."""
+    """Run `name` (a script next to this file) with `args`, configured with `settings`, and return its exit code."""
     return subprocess.call([sys.executable, os.path.join(HERE, name), *args], env=child_environment(settings))
 
 
 def run_module(module, args=(), settings=None):
-    """Run `python -m module` from the repo root (for the tools in the `ingest` package)."""
+    """Run `python -m module` from the repo root (for the tools in the `ingest` package), configured with `settings`, and
+    return its exit code."""
     return subprocess.call([sys.executable, "-m", module, *args], cwd=HERE, env=child_environment(settings))
