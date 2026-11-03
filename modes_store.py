@@ -75,7 +75,7 @@ def search_facts(session, con, terms, subject=None, trust=None, personal=None, l
     limit = modes.check_limit(limit)
     gate, gparams = _gate(mode, include_pending)
     sql = """
-        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
+        SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.recheck_by, f.statement
         FROM facts_fts
         JOIN facts f ON f.id = facts_fts.rowid
         JOIN subjects sub ON sub.id = f.subject_id
@@ -100,7 +100,7 @@ def list_facts(session, con, subject=None, trust=None, status=None, personal=Non
     mode = modes.readable(session, "listing facts")
     limit = modes.check_limit(limit)
     gate, gparams = _gate(mode, include_pending)
-    sql = ("""SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.statement
+    sql = ("""SELECT f.id, sub.name AS subject, f.trust_level, f.status, f.kind, f.valid_from, f.valid_to, f.applies_to, f.recheck_by, f.statement
               FROM facts f JOIN subjects sub ON sub.id = f.subject_id WHERE 1=1""" + gate)
     sql, params = _filters(sql, list(gparams), subject, trust, status, personal, kind, valid_at, entity, identifier)
     sql += " ORDER BY f.id LIMIT ?"
