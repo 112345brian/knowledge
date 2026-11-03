@@ -4,6 +4,9 @@
 "as of" argument into the cutoff instant. `revisions` (storage) and `modes` (visibility policy) both
 need them, and neither may pull the other in, so they live here.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 from datetime import datetime, timedelta, timezone
 

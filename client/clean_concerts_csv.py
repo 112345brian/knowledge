@@ -39,7 +39,7 @@ def main():
     app = Container()
     csv_path = app.locations.client_input("CONCERTS_CSV")
     if csv_path is None:
-        sys.exit("error: CONCERTS_CSV is not set in local_paths.py (the `concerts` client source is not configured)")
+        sys.exit("error: concerts_csv is not set under [client_inputs] in the config file (the `concerts` client source is not configured)")
     clean(app.datafiles, csv_path)
 
 

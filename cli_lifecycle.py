@@ -8,6 +8,9 @@ Exit codes (same as review): 0 changed or already in the requested state, 1 refu
 any error, 3 the revision was written but the commit failed. `--json` prints LifecycleResult.to_json().
 A change takes effect in knowledge.db after the next rebuild (`knowledge.py build`).
 """
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import json
 import sys

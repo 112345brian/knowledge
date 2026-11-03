@@ -20,6 +20,9 @@ parse, a timeout) is a silent no-op that returns nothing. Nothing here ever writ
 
 where_from URLs can reveal private interests, so they (and every column here) stay out of the normal-only DB.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import plistlib
 import re

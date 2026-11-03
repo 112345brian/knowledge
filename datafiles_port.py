@@ -1,6 +1,9 @@
 """Port for the data files a maintenance tool reads and rewrites: locked, atomic, byte-exact. The adapter
 (`local_datafiles`) owns the file system and the inter-process lock; a tool's core takes a `DataFiles` and does
 no I/O of its own."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, ContextManager, List, Protocol
 
 

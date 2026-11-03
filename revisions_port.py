@@ -4,6 +4,9 @@ Reading the log into the build database is `build_repositories_port.RevisionRepo
 `write_back`, ...); this port is only the editing side the CLI services use: the entry files and appending a
 revision.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, List, Protocol
 
 

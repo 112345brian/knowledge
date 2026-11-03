@@ -1,5 +1,8 @@
 """Helpers and option definitions shared by the knowledge.py command modules (cli_facts, cli_audits, cli_review,
 cli_privacy, cli_build): printing, the missing-db error, and the options every read command has."""
+
+__arbor__ = {"ring": "cli"}
+
 import json
 import sys
 from fact_reads_port import DatabaseNotFound

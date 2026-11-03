@@ -244,8 +244,8 @@ def test_fact_files_do_not_resolve_aliases_and_derive_the_personal_flag_and_orig
     assert fingerprinted(repo) == [note]
 
 
-def test_origin_notes_are_matched_and_stored_as_the_vault_is_written_in_local_paths():
-    """local_paths.py says `~/vault`; the notes cite `~/vault/...`. The expanded path is for reading files only."""
+def test_origin_notes_are_matched_and_stored_as_the_vault_is_written_in_the_config():
+    """the config file says `~/vault`; the notes cite `~/vault/...`. The expanded path is for reading files only."""
     note = "~/vault/Health/Sleep.md"
     deps, repo, _, _ = world(fact_files(pilot=[entry(source_key="a", statement="He sleeps eight hours.",
                                                       notes=f"{note}, extracted")]),

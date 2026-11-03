@@ -1,4 +1,7 @@
 """Subject command use cases. File and database work is supplied through ports."""
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 import subject_rules
 from entity_queries_port import EntityQueries

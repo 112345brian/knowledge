@@ -10,6 +10,9 @@ stays small and this module never imports it (no cycle).
 Exit codes (as add_fact.py): 0 ok; 1 any error (bad JSON, invalid/refused item, dirty tree...);
 3 the facts were written but the git commit failed.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import json
 import sys

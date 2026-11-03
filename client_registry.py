@@ -6,11 +6,14 @@ the client's own `client/bootstrap.py`
 names a client source, a client step, a client table or a client input: it asks this registry.
 
 A source says where its steps go (`Step.after` names the step it follows, a core step or one of its own; steps
-that follow the same step are ordered by `order`, then path), which schema files it needs, which `local_paths.py`
+that follow the same step are ordered by `order`, then path), which schema files it needs, which config
 settings it reads, which tables the build report counts and which private data files it owns. Declarations shared
 by several sources (two sources of one client may share a schema file and a step) are listed in each and
 applied once.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
@@ -25,7 +28,7 @@ class Step:
 @dataclass(frozen=True)
 class Input:
     """A file the source reads, for provenance and (when `required`) for the configuration check. `setting` is the
-    `local_paths.py` name: a client setting (`MY_FEED_JSON`) or a core directory (`NOTES_VAULT`); `file` is joined
+    upper-case name of a `[client_inputs]` setting (`MY_FEED_JSON`) or of a core directory (`NOTES_VAULT`); `file` is joined
     onto a directory setting."""
     setting: str
     key: str                        # the stable provenance key, without the `input:` prefix
@@ -56,17 +59,10 @@ class ClientSource:
     personal_fact_keys: Tuple[str, ...] = ()  # fact-file metadata whose presence makes the heuristic flag personal
 
 
-@dataclass(frozen=True)
-class _Implicit:
-    trigger: str                    # a setting; when it is defined and no CLIENT_SOURCES is declared ...
-    sources: Tuple[str, ...]        # ... these are enabled (checkouts written before CLIENT_SOURCES existed)
-
-
 class ClientRegistry:
     def __init__(self, core_pipeline: Sequence[str]):
         self._core = tuple(core_pipeline)
         self._sources: Dict[str, ClientSource] = {}
-        self._implicit: List[_Implicit] = []
 
     # ---- registration
 
@@ -125,10 +121,6 @@ class ClientRegistry:
                                  f"{conflicts} differently")
         self._sources[source.name] = source
 
-    def enable_when_defined(self, setting: str, sources: Iterable[str]) -> None:
-        """Checkouts that predate CLIENT_SOURCES: with none declared and `setting` defined, enable `sources`."""
-        self._implicit.append(_Implicit(setting, tuple(sources)))
-
     # ---- what is registered
 
     @property
@@ -147,17 +139,10 @@ class ClientRegistry:
         names = tuple(names)
         unknown = [n for n in names if n not in self._sources]
         if unknown:
-            raise ValueError(f"unknown client source(s) {unknown} in CLIENT_SOURCES; known: {list(self._sources)}")
+            raise ValueError(f"unknown client source(s) {unknown} in client_sources; known: {list(self._sources)}")
         if len(set(names)) != len(names):
-            raise ValueError(f"CLIENT_SOURCES lists a source twice: {list(names)}")
+            raise ValueError(f"client_sources lists a source twice: {list(names)}")
         return names
-
-    def implicit_sources(self, defined: Iterable[str]) -> Tuple[str, ...]:
-        defined = set(defined)
-        for rule in self._implicit:
-            if rule.trigger in defined:
-                return rule.sources
-        return ()
 
     # ---- the build, for the enabled sources
 
@@ -295,15 +280,11 @@ class ClientRegistry:
     def leak_rows(self) -> List[Tuple[str, tuple]]:
         return [r for src in self._sources.values() for r in src.leak_rows]
 
-    def note(self, sources: Sequence[str], implicit: bool = False) -> str:
-        """One line saying which optional client sources a build includes (and why, if that was a guess)."""
+    def note(self, sources: Sequence[str]) -> str:
+        """One line saying which optional client sources a build includes."""
         if not sources:
-            return "[build] client sources: none (core only; list them in CLIENT_SOURCES in local_paths.py)"
-        text = f"[build] client sources: {', '.join(sources)}"
-        if implicit:
-            text += ("  (assumed: local_paths.py defines the inputs of these sources but no CLIENT_SOURCES; add "
-                     f"CLIENT_SOURCES = {tuple(sources)!r} to make this explicit)")
-        return text
+            return "[build] client sources: none (core only; list them in client_sources in the config file)"
+        return f"[build] client sources: {', '.join(sources)}"
 
 
 class ClientSources(Protocol):
@@ -311,8 +292,7 @@ class ClientSources(Protocol):
     @property
     def names(self) -> Tuple[str, ...]: ...
     def check(self, names: Iterable[str]) -> Tuple[str, ...]: ...
-    def implicit_sources(self, defined: Iterable[str]) -> Tuple[str, ...]: ...
-    def note(self, sources: Sequence[str], implicit: bool = False) -> str: ...
+    def note(self, sources: Sequence[str]) -> str: ...
     def missing_inputs(self, enabled, defined: Iterable[str]) -> List[Tuple[str, str]]: ...
     def steps_for(self, enabled) -> List[str]: ...
     def all_steps(self) -> List[str]: ...

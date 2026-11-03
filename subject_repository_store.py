@@ -5,6 +5,9 @@ hierarchy entry defaults to are `identity_service` and `subject_rules`. The one 
 database's refusal of an alias (the table's uniqueness and the schema's triggers), which becomes `AliasRejected`.
 Each `add` allocates its row when called, in call order (the golden dump compares the ids). It never commits; the
 step that owns the connection does."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import sqlite3
 from typing import Mapping, Optional, Sequence
 

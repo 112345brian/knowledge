@@ -13,6 +13,7 @@ import sys
 
 import pytest
 import fact_queries
+from config_files import write_unused_inputs_config
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KNOWLEDGE = os.path.join(REPO, "knowledge.py")
@@ -25,12 +26,10 @@ class Env:
         self.db_dir = os.path.join(self.root, "db")
         for d in (self.private, self.db_dir):
             os.makedirs(d, exist_ok=True)
-        with open(os.path.join(self.private, "local_paths.py"), "w") as f:
-            f.write(f"KNOWLEDGE_DB_DIR = {self.db_dir!r}\nPRIVATE_DATA_DIR = {os.path.join(self.root, 'data')!r}\n")
-            for n in ("BODYBUILDING_VAULT", "HEALTH_DIR", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"):
-                f.write(f"{n} = {os.path.join(self.root, 'unused')!r}\n")
+        self.config = write_unused_inputs_config(os.path.join(self.private, "config.toml"), self.db_dir, os.path.join(self.root, 'data'),
+                                                      os.path.join(self.root, "unused"))
         self.db = os.path.join(self.db_dir, "knowledge.db")
-        self.env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": self.private}
+        self.env = {**os.environ, "KNOWLEDGE_CONFIG": self.config}
         if with_db:
             self.build_db()
 
@@ -231,15 +230,15 @@ def test_missing_db_message_and_exit_code(tmp_path, cmd):
 def lib(env, monkeypatch):
     """knowledge.py imported fresh against the fixture's private dir."""
     import importlib.util
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", env.private)
-    for m in ("paths", "local_paths", "fact_queries"):
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", env.config)
+    for m in ("paths", "fact_queries"):
         sys.modules.pop(m, None)
     spec = importlib.util.spec_from_file_location("knowledge_under_test", KNOWLEDGE)
     mod = importlib.util.module_from_spec(spec)
     monkeypatch.syspath_prepend(REPO)
     spec.loader.exec_module(mod)
     yield mod
-    for m in ("paths", "local_paths", "fact_queries"):
+    for m in ("paths", "fact_queries"):
         sys.modules.pop(m, None)
 
 

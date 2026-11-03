@@ -1,5 +1,8 @@
 """`knowledge.py privacy check | rules | tag | untag | add-keyword | remove-keyword`: the privacy rules. Thin printers
 over `ctx.obj.rules_edit` and `ctx.obj.queries`; registered with `app.add_typer(cli_privacy.app, name="privacy")`."""
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import privacy
 import sys

@@ -17,6 +17,7 @@ from test_add_fact import Env  # noqa: E402
 import private_git  # noqa: E402
 import new_fact
 from appctx import app
+from config_files import write_unused_inputs_config
 
 GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 
@@ -34,10 +35,8 @@ class GitEnv(Env):
         super().__init__(root)
         self.data_dir = os.path.join(self.private, "data")
         os.makedirs(self.data_dir, exist_ok=True)
-        with open(os.path.join(self.private, "local_paths.py"), "w") as f:
-            f.write(f"KNOWLEDGE_DB_DIR = {self.db_dir!r}\nPRIVATE_DATA_DIR = {self.data_dir!r}\n")
-            for n in ("BODYBUILDING_VAULT", "HEALTH_DIR", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"):
-                f.write(f"{n} = {os.path.join(self.root, 'unused')!r}\n")
+        self.config = write_unused_inputs_config(os.path.join(self.private, "config.toml"), self.db_dir, self.data_dir,
+                                                      os.path.join(self.root, "unused"))
         self.facts = os.path.join(self.data_dir, "general_facts.json")
         self.env = {**self.env, **GIT_ENV}
         git(self.private, "init", "-q")

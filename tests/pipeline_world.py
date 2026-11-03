@@ -14,6 +14,8 @@ import sqlite3
 import subprocess
 import sys
 
+from config_files import write_config
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 VAULT_SCHEMA = {
@@ -95,7 +97,7 @@ def _entry(key, subject, statement, **kw):
 
 def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements", "claims")):
     """Write every input under `root` and return the environment dict for a subprocess. `sources` is the
-    CLIENT_SOURCES the world's local_paths.py enables (the inputs are always written, enabled or not)."""
+    client_sources the world's config file enables (the inputs are always written, enabled or not)."""
     root = str(root)
     private = os.path.join(root, "knowledge-private")
     data = os.path.join(root, "data")
@@ -106,13 +108,12 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
     concerts = os.path.join(root, "concerts.csv")
     rym = os.path.join(root, "rym.csv")
     scrobbles = os.path.join(root, "scrobbles.json")
-    _write(os.path.join(private, "local_paths.py"),
-           # the inputs are written the way a person writes them (`~/...`) and KNOWLEDGE_HOME points `~` at the
-           # world: the build must read them there yet store the written form, never this machine's root
-           f"KNOWLEDGE_DB_DIR = {dbdir!r}\nPRIVATE_DATA_DIR = {data!r}\n"
-           'NOTES_VAULT = "~/vault"\nHEALTH_DIR = "~/health"\nCONCERTS_CSV = "~/concerts.csv"\n'
-           'RYM_EXPORT_CSV = "~/rym.csv"\nSCROBBLES_JSON = "~/scrobbles.json"\n'
-           f"CLIENT_SOURCES = {tuple(sources)!r}\n")
+    # the inputs are written the way a person writes them (`~/...`) and KNOWLEDGE_HOME points `~` at the
+    # world: the build must read them there yet store the written form, never this machine's root
+    config = write_config(os.path.join(private, "config.toml"), dbdir, data, notes_vault="~/vault", health_dir="~/health",
+                          client_sources=list(sources),
+                          client_inputs={"CONCERTS_CSV": "~/concerts.csv", "RYM_EXPORT_CSV": "~/rym.csv",
+                                         "SCROBBLES_JSON": "~/scrobbles.json"})
 
     # --- synthetic source notes and structured records
     notes = [("alpha2020", "primary-research", "Alpha Study", "Smith, J", "Doe, A", 2020, "Journal A", "training"),
@@ -218,7 +219,7 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
         "aliases": {"artist a, artist b": "Artist A & Artist B"},
         "members": {"Artist A & Artist B": ["Artist A", "Artist B"]},
         "festivals": ["Example Festival"]}))
-    return {**os.environ, "KNOWLEDGE_PRIVATE_DIR": private, "KNOWLEDGE_HOME": root,"KNOWLEDGE_FROZEN_NOW": "2026-10-01T00:00:00+00:00", "PYTHONHASHSEED": "0"}
+    return {**os.environ, "KNOWLEDGE_CONFIG": config, "KNOWLEDGE_HOME": root,"KNOWLEDGE_FROZEN_NOW": "2026-10-01T00:00:00+00:00", "PYTHONHASHSEED": "0"}
 
 
 DUMP_SCRIPT = r"""

@@ -11,10 +11,12 @@ import pytest  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _no_ambient_private_checkout(monkeypatch):
-    """The suite never reads a developer's real private checkout. A test that needs configuration builds its own
-    (a temp private dir plus monkeypatch.setenv, or explicit Locations); anything else gets the synthetic
+    """The suite never reads a developer's real config file. A test that needs configuration builds its own
+    (a temp config.toml plus monkeypatch.setenv, or explicit Locations); anything else gets the synthetic
     locations in tests/appctx.py."""
-    monkeypatch.delenv("KNOWLEDGE_PRIVATE_DIR", raising=False)
+    for var in ("KNOWLEDGE_CONFIG", "KNOWLEDGE_DB_DIR", "KNOWLEDGE_DATA_DIR", "KNOWLEDGE_NOTES_VAULT",
+                "KNOWLEDGE_HEALTH_DIR", "KNOWLEDGE_CLIENT_SOURCES", "KNOWLEDGE_CLIENT_INPUTS"):
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(autouse=True)

@@ -25,6 +25,9 @@ Usage:
     python3 -m ingest.backfill_dates --apply               # write
     python3 -m ingest.backfill_dates --data-dir DIR ...    # a copy, for trying it out
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import argparse
 import os
 import sys

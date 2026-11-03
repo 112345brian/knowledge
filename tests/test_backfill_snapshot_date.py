@@ -16,8 +16,8 @@ SNAP = "measurements_snapshot.json"
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "revisions", "revisions_store", "snapshot_date", "backfill_snapshot_date"):
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", e.config)
+    for m in ("paths", "revisions", "revisions_store", "snapshot_date", "backfill_snapshot_date"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
     return e

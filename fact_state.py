@@ -6,6 +6,9 @@ who may replace whom, and how a visibility change reads used to be string compar
 show. `Status` and `Visibility` are `str` enums, so a value read from JSON or the db still compares equal to
 its plain-string form and nothing that handles dicts has to change.
 """
+
+__arbor__ = {"ring": "model"}
+
 import enum
 from dataclasses import dataclass
 from typing import Mapping, Optional

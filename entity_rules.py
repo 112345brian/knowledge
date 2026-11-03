@@ -5,6 +5,9 @@ reading, the atomic write and the git flow (the entity rows are `entity_reposito
 may claim and how an edit changes a list of them lives here, so the CLI and the privacy resolver share it without
 reaching through an adapter.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 import unicodedata
 from dataclasses import dataclass

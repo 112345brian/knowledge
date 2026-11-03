@@ -2,6 +2,9 @@
 one, and what the leak check reads. Each method takes a path and returns plain rows; no connection, cursor or
 transaction crosses a port. The decisions (which rows, which texts, what counts as a leak) are `normal_rules`
 and `leak_rules`; `normal_db_service` runs them; `normal_db_store` and `leak_scan_store` are the SQLite adapters."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Iterator, Protocol, Sequence, Tuple
 
 from leak_rules import PrivateMaterial

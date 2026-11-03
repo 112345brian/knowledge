@@ -1,4 +1,7 @@
 """Port exposing the single-fact use case to batch and migration flows."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Optional, Protocol, Tuple
 
 

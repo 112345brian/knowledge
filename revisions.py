@@ -22,6 +22,9 @@ after the backfill gives identical keys.
 
 Nothing here reads a file, the clock or paths.py; the adapter passes everything in.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import hashlib
 import json
 from dataclasses import dataclass, field

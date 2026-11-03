@@ -4,6 +4,9 @@ of the data-supplied fields, free of how file attributes are read.
 Model ring: imports only `validtime`, and does no I/O. `acquisition_store` (the adapter that reads macOS file
 attributes) and the build steps share these names.
 """
+
+__arbor__ = {"ring": "model"}
+
 from datetime import datetime
 
 import validtime

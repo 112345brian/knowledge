@@ -247,6 +247,6 @@ def test_a_step_whose_input_is_not_configured_names_the_setting():
     for fn, setting in ((svc.import_concerts, "CONCERTS_CSV"), (svc.import_ratings, "RYM_EXPORT_CSV"),
                         (svc.import_scrobbles, "SCROBBLES_JSON")):
         state, deps = world(locations=bare)
-        with pytest.raises(ValueError, match=setting):
+        with pytest.raises(ValueError, match=setting.lower()):
             fn(deps)
         assert state.import_sources == {} and state.commits == 0

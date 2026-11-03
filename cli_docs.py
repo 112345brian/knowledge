@@ -4,6 +4,9 @@ The README command table and the CLI reference are rendered from this very comma
 read off the click group the app turns into (`command_docs`), not parsed from `--help` output. The rendering rules
 are `docs_rules`; the files are touched by `docs` through its port.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import sys
 from typing import Optional
 

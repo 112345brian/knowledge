@@ -4,6 +4,9 @@ Each method is one thing a step used to import a store module for: read a data f
 write a prepared set of values into the build database it was given. The adapter (`local_stores`) is the stores;
 a step knows none of them, so a test can hand a step a fake world and a step imports no infrastructure at all.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Optional, Protocol
 
 from build_repositories_port import EntityRepository, PrivacyRepository, RevisionRepository, SubjectRepository, UnitOfWork

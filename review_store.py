@@ -2,6 +2,9 @@
 from the built db, the current states from the entry files and the revision log. The decisions are
 in `review_rules`; the use cases are `review_service` and `lifecycle_service`.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 
 import revisions

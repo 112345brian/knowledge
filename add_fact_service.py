@@ -3,6 +3,9 @@
 adapter. `add_fact` is the facade that binds it to the real adapters, keeps the public API and is also the
 `python3 add_fact.py` script.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Optional
 

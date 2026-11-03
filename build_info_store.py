@@ -17,6 +17,9 @@ builds over identical inputs give identical (key, state, sha256, size_bytes, fil
 
 Normal-only DB: built_at and schema_version only (normal_rules.py, normal_db_store.py); commits, versions and keys stay out.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import hashlib
 import os
 import platform

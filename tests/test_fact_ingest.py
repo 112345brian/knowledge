@@ -21,8 +21,8 @@ LEGACY_11 = "2026-09-26"
 @pytest.fixture
 def ingest(tmp_path, monkeypatch):
     e = Env(tmp_path)
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "shared", "add_fact"):
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", e.config)
+    for m in ("paths", "shared", "add_fact"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
 

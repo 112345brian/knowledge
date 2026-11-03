@@ -4,6 +4,9 @@ The allowed values of the mutable fact fields and the shape of the stable identi
 (creating facts) and `revisions` (the change log) both validate against these, and neither may pull
 the other in, so they live here. Keep in sync with the CHECKs in schema.sql.
 """
+
+__arbor__ = {"ring": "model"}
+
 import re
 
 VALID_TRUST = {"verified", "high", "medium", "low", "unverified", "disputed"}

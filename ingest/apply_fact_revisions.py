@@ -13,6 +13,9 @@ could otherwise lower a visibility that 04/11 had raised (or miss a name a rewor
 contains), so the current rules are re-applied here, raise-only. History is never more visible than
 the fact itself: every revision snapshot of a private fact is raised to private too.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import revision_apply_service
 
 

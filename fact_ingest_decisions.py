@@ -13,6 +13,9 @@ against the build's fact repository. What lives here:
 The two steps differ only in an `IngestProfile` (how subjects are found, whether the origin note and the personal
 flag are derived or taken from the entry, whether the report carries the breakdown counts).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 

@@ -1,6 +1,9 @@
 """Adapter for `fact_reads_port.FactReads`: each read opens its own read-only connection to the built
 knowledge.db, runs one `fact_queries` / `claims_store` function and closes it. Callers never see a connection.
 A db built with an older schema, or bad full-text syntax, surfaces as `FactQueryError`."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import functools
 import inspect
 import sqlite3

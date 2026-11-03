@@ -4,6 +4,9 @@ Linking is deterministic whole-word matching over the same free text the privacy
 textmatch), so a link and a privacy decision cannot disagree. The invariant: a fact that mentions a private
 entity must already be stored `private` (the privacy pass guarantees it; this proves it per build).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Iterable, List, Mapping, Optional, Sequence
 
 import entity_rules

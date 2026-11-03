@@ -2,6 +2,9 @@
 the subject a fact is filed under. It talks to the build's `SubjectRepository` (`build_repositories_port`); every
 decision is `subject_rules` (what an entry defaults to, which alias may be claimed, which subject a name means)
 or `identity_service.SubjectIdentity`; every read and write is the repository."""
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Dict, Optional
 

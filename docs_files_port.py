@@ -1,4 +1,7 @@
 """Port for the files the documentation generator reads and writes: the docs, the two config files, and every module's source."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Mapping, Protocol
 
 

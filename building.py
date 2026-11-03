@@ -10,6 +10,9 @@ the step registry.
   * `compose` wires them with the provenance reader and the outputs (the table report and knowledge-normal.db,
     which `build.py` supplies because the normal-db builder is part of the pipeline layer).
 """
+
+__arbor__ = {"ring": "composition"}
+
 import os
 
 import build_info_store

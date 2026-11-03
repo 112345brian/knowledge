@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import locations  # noqa: E402
+from config_files import write_config  # noqa: E402
 import paths  # noqa: E402
 from locations import Locations, canonical_path, expand_home, join_path  # noqa: E402
 
@@ -46,7 +47,7 @@ def test_knowledge_home_redirects_tilde_and_unset_means_the_os_home(monkeypatch,
 
 
 def test_the_stored_form_does_not_follow_knowledge_home(monkeypatch, tmp_path):
-    """The database keeps `~/...` as local_paths.py wrote it; only reads see the redirected root."""
+    """The database keeps `~/...` as the config file wrote it; only reads see the redirected root."""
     monkeypatch.setenv(locations.HOME_ENV_VAR, str(tmp_path))
     loc = Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault=paths.expand("~/MEGA/v"),
                     notes_vault_written="~/MEGA/v")
@@ -57,7 +58,7 @@ def test_locations_joins_are_host_independent():
     loc = Locations(knowledge_db_dir="/db", private_data_dir="/data")
     assert (loc.db_path, loc.backup_dir, loc.data_path) == ("/db/knowledge.db", "/db/backups", "/data/general_facts.json")
     assert loc.in_data_dir("x.json", "/other") == "/other/x.json"
-    with pytest.raises(ValueError, match="NOTES_VAULT"):
+    with pytest.raises(ValueError, match="notes_vault"):
         loc.in_notes_vault("sources")
     assert Locations("/db", "/data", notes_vault="/v").in_notes_vault("sources") == "/v/sources"
 
@@ -77,7 +78,7 @@ def test_canonical_path_rewrites_only_unmistakably_windows_paths(path, expected)
     assert canonical_path(canonical_path(path)) == canonical_path(path)
 
 
-def test_the_stored_forms_are_canonical_whatever_local_paths_wrote():
+def test_the_stored_forms_are_canonical_whatever_the_config_wrote():
     loc = Locations("/db", "/data", notes_vault="C:/v", notes_vault_written="E:" + BS + "MEGA" + BS + "vault",
                     health_dir_written="~/health")
     assert (loc.notes_vault_stored, loc.health_dir_stored) == ("E:/MEGA/vault", "~/health")
@@ -96,21 +97,19 @@ def test_a_database_records_the_platform_that_wrote_it(tmp_path):
 
 
 def test_load_reads_from_the_redirected_home_and_stores_the_written_form(monkeypatch, tmp_path):
-    private = tmp_path / "private"
-    private.mkdir()
-    (private / "local_paths.py").write_text(
-        'PRIVATE_DATA_DIR = "/data"\nKNOWLEDGE_DB_DIR = "~/MEGA/db"\nNOTES_VAULT = "~/MEGA/vault"\n'
-        'HEALTH_DIR = "~/MEGA/health"\nCONCERTS_CSV = "~/MEGA/c.csv"\nRYM_EXPORT_CSV = "~/MEGA/r.csv"\n'
-        'SCROBBLES_JSON = "~/MEGA/s.json"\n', encoding="utf-8")
+    config = write_config(str(tmp_path / "private" / "config.toml"), "~/MEGA/db", "/data", notes_vault="~/MEGA/vault",
+                          health_dir="~/MEGA/health",
+                          client_inputs={"CONCERTS_CSV": "~/MEGA/c.csv", "RYM_EXPORT_CSV": "~/MEGA/r.csv",
+                                         "SCROBBLES_JSON": "~/MEGA/s.json"})
     home = tmp_path / "drive"
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", str(private))
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", config)
     monkeypatch.setenv(locations.HOME_ENV_VAR, str(home))
     loc = paths.load()
     root = canonical_path(str(home))
     # reads use the redirected root, in canonical spelling ...
     assert loc.knowledge_db_dir == root + "/MEGA/db" and loc.notes_vault == root + "/MEGA/vault"
     assert loc.client_input("CONCERTS_CSV") == root + "/MEGA/c.csv" and loc.client_input("SCROBBLES_JSON") == root + "/MEGA/s.json"
-    # ... while what the database stores is the text local_paths.py wrote, so it carries no machine's root
+    # ... while what the database stores is the text the config file wrote, so it carries no machine's root
     assert (loc.notes_vault_stored, loc.health_dir_stored) == ("~/MEGA/vault", "~/MEGA/health")
     assert tuple(loc.client_input_stored(n) for n in ("CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON")) == \
         ("~/MEGA/c.csv", "~/MEGA/r.csv", "~/MEGA/s.json")

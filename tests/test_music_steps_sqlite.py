@@ -183,7 +183,7 @@ def test_an_unconfigured_input_names_its_setting_and_writes_nothing(db):
     steps = music_ingest.compose(con, FakeInputs(), bare)
     for fn, setting in ((steps.import_concerts, "CONCERTS_CSV"), (steps.import_ratings, "RYM_EXPORT_CSV"),
                         (steps.import_scrobbles, "SCROBBLES_JSON")):
-        with pytest.raises(ValueError, match=setting):
+        with pytest.raises(ValueError, match=setting.lower()):
             fn()
     assert table(con, "SELECT COUNT(*) FROM import_sources") == [(0,)]
 

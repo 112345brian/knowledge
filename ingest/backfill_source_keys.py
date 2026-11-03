@@ -26,6 +26,9 @@ Extension point (used by backfill_dates.py, #35): pass `extra_adders` to `backfi
 a callable (entry, filename, index) -> {key: value} of keys to insert for that entry; keys the
 entry already has are skipped. `source_keys=False` turns the source_key pass off.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import argparse
 import os
 import sys

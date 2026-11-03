@@ -10,6 +10,9 @@ counts from the built db when there is one. The edit commands go through the sam
 take effect in knowledge.db after the next rebuild. Exit codes: 0 done or no change, 1 refused / error,
 3 written but not committed.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import json
 import sys

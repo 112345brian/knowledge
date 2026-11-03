@@ -17,6 +17,9 @@ it only after every step succeeds, so a failing step (exit 1, naming the step)
 leaves the previous knowledge.db byte-identical, and a reader holding the old
 file open keeps a consistent snapshot.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import sys
 
 import build_rules

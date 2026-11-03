@@ -1,4 +1,7 @@
 """Entity command use cases. All file and database work is supplied through ports."""
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 import entity_rules
 from entity_files_port import EntityFileReader, EntityFiles

@@ -1,4 +1,7 @@
 """Composition root for entity command use cases."""
+
+__arbor__ = {"ring": "composition"}
+
 import entities_service
 import entities_store
 import entity_migration_store

@@ -14,6 +14,9 @@ the SQL in knowledge.py / modes.py does, so Python and SQL cannot disagree.
 A past valid_to does NOT change a fact's status: validity is not retraction, and the stale-premise audit
 (claims_audit) treats it as information, never as invalidation.
 """
+
+__arbor__ = {"ring": "model"}
+
 import calendar
 import re
 

@@ -1,4 +1,7 @@
 """Composition root for checking and rebuilding the generated documentation regions."""
+
+__arbor__ = {"ring": "composition"}
+
 import docs_service
 from docs_service import DocsDeps
 from docs_store import RepoDocs

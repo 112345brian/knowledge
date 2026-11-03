@@ -41,6 +41,9 @@ log's own file lock and `expect` preconditions protect against the CLI and Claud
 
 Library code (view_model) never prints or exits.
 """
+
+__arbor__ = {"ring": "serving"}
+
 import html
 import ipaddress
 import json

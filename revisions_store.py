@@ -10,6 +10,9 @@ API (the Typer `history` / `show --as-of` commands are thin callers):
 Nothing here reads paths.py at import time (defaults resolve lazily), so tests can point every
 function at a temp directory.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import contextlib
 import json
 import os

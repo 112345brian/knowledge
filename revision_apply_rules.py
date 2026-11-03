@@ -5,6 +5,9 @@ record into the history and then makes the facts row follow the LATEST revision 
 carries, and how the `superseded_by` source key becomes a fact id. The store only writes what these functions
 return; it decides nothing.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Dict, Iterable, Mapping, Sequence, Tuple
 
 import build_records as r

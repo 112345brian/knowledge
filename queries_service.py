@@ -1,6 +1,9 @@
 """The read side as an application service: look facts, subjects, history, audits and build info up through the
 `FactReads` port. Plain data in, plain data out; never prints or exits. `queries` is the composition root that
 binds it to the real adapter, and `knowledge.py` is a thin printer over that."""
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 
 from clock_port import Clock

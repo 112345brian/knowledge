@@ -4,6 +4,9 @@ How a private marker is matched (case-folded, NFC and NFD forms), which derived 
 markers, and how a finding is printed. `normal_db_service` gets the db's cells and the full DB's private
 rows through the `LeakScan` port and applies these; `leak_scan_store` (the SQLite adapter) only reads.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Iterable, List, Set, Tuple

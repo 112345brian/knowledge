@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Personal knowledge base pipeline (schema.sql + ingest scripts -> knowledge.db) with a CLI."
 requires-python = ">=3.11"
 dependencies = [
+    "pydantic>=2",
+    "pydantic-settings>=2.6",
     "typer>=0.12",
 ]
 
 [dependency-groups]
 dev = [
+    "arborescent",
     "import-linter>=2.15",
     "mypy>=1.11",
     "pytest>=8",
@@ -18,6 +21,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+arborescent = { git = "https://github.com/112345brian/arborescent", rev = "938114f484a7dba6e60c1b69c91eafbb07e49578" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -93,6 +99,11 @@ files = [
     "private_git_port.py",
     "queries.py",
     "queries_service.py",
+    "mcp.py",
+    "mcp_port.py",
+    "mcp_rules.py",
+    "mcp_service.py",
+    "mcp_server.py",
     "review.py",
     "review_reads_port.py",
     "review_service.py",
@@ -201,7 +212,9 @@ source_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -255,6 +268,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.review_reads_port",
@@ -351,7 +366,7 @@ forbidden_modules = [
     "kn.knowledge",
     # serving
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
     # pipeline: build.py and the ingest steps and tools (tach models the steps as ingest.<name>)
     "kn.shared",
     "kn.backfill_dates",
@@ -425,7 +440,9 @@ source_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact",
     "kn.add_fact_service",
     "kn.add_fact_store",
@@ -481,6 +498,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.review_reads_port",
@@ -539,7 +558,7 @@ source_modules = [
     "kn.subject_hierarchy_service",
     "kn.textmatch",
     "kn.validtime",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
     "kn.build_composition",
     "kn.build_records",
     "kn.build_repositories_port",
@@ -592,7 +611,7 @@ source_modules = [
 ]
 forbidden_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 ignore_imports = [
     "kn.cli_inbox -> kn.inbox",   # launcher: the `inbox` command starts the server (see above)
@@ -605,7 +624,7 @@ name = "Serving never imports the pipeline"
 type = "forbidden"
 source_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 forbidden_modules = [
     "kn.shared",
@@ -653,7 +672,7 @@ name = "Serving reads facts only through modes"
 type = "forbidden"
 source_modules = [
     "kn.inbox",
-#planned:     "kn.mcp_server",
+    "kn.mcp_server",
 ]
 forbidden_modules = [
     "kn.add_fact",
@@ -758,10 +777,14 @@ forbidden_modules = [
     "kn.fact_reads_port",
     "kn.fact_reads_store",
     "kn.queries",
+    "kn.mcp",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.acquisition_store",
     "kn.add_fact",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.add_fact_service",
     "kn.add_fact_store",
     "kn.apply_fact_revisions",
@@ -925,6 +948,7 @@ forbidden_modules = [
     "kn.docs_files_port",
     "kn.docs_store",
     "kn.cli_docs",
+    "kn.mcp_server",
 ]
 allow_indirect_imports = true
 
@@ -994,6 +1018,8 @@ source_modules = [
     "kn.clock_port",
     "kn.ids_port",
     "kn.add_fact_port",
+    "kn.mcp_port",
+    "kn.mcp_rules",
     "kn.privacy_rules_port",
     "kn.revisions_port",
     "kn.revision_apply_rules",
@@ -1116,6 +1142,7 @@ source_modules = [
     "kn.scripts_service",
     "kn.music_service",
     "kn.queries_service",
+    "kn.mcp_service",
     "kn.add_fact_service",
     "kn.facts_batch_service",
     "kn.fact_ingest_service",
@@ -1241,3 +1268,56 @@ name = "The base (core and ingest) never imports a client source"
 type = "forbidden"
 source_modules = ["kncore"]
 forbidden_modules = ["kn"]
+
+# --------------------------------------------------------------------------------------------
+# Arborescent (https://github.com/112345brian/arborescent): the onion, enforced by its own engine as well as tach.
+# Rings and each module's ring come from tach.toml (`classify_from`); every module also declares its ring in code
+# (`__arbor__ = {"ring": ...}`, written by `arborescent annotate`) and `require_arbor_annotations` keeps it that way.
+# Inner rings (model, domain_services, application) list no external package, i.e. they import no I/O.
+# Findings that exist today are recorded in arborescent-baseline.json and may only shrink.
+# --------------------------------------------------------------------------------------------
+[tool.arborescent]
+python = "3.11"
+preset = "standard"
+sources = ["."]
+source_roots = ["."]
+exclude = ["tests", ".venv", "client", "docs", "scripts", "src"]
+classify_from = "tach.toml"
+
+rings = ["model", "domain_services", "application", "infrastructure", "composition", "pipeline", "cli", "serving"]
+disabled_tools = ["import-linter", "tach", "ruff", "ty"]
+require_arbor_annotations = true
+
+[tool.arborescent.classify]
+"ingest" = "pipeline"          # the package __init__: tach lists only ingest.<module> (arborescent#107)
+
+[tool.arborescent.ring.model]
+
+[tool.arborescent.ring.domain_services]
+may_import = ["model"]
+
+[tool.arborescent.ring.application]
+may_import = ["model", "domain_services"]
+
+[tool.arborescent.ring.infrastructure]
+may_import = ["model", "domain_services", "application"]
+external = ["os", "pathlib", "platform", "pydantic", "pydantic_settings", "shutil", "sqlite3", "subprocess", "tempfile", "tomllib"]
+os_branching = true
+forbid = []        # adapters: environment, processes, sleeping and dynamic loading are their job
+
+[tool.arborescent.ring.composition]
+may_import = ["model", "domain_services", "application", "infrastructure"]
+external = ["os"]
+
+[tool.arborescent.ring.pipeline]
+may_import = ["model", "domain_services", "application", "infrastructure", "composition"]
+external = ["os"]
+forbid = []        # adapters: environment, processes, sleeping and dynamic loading are their job
+
+[tool.arborescent.ring.cli]
+may_import = ["model", "domain_services", "application", "infrastructure", "composition", "pipeline"]
+external = ["click", "threading", "typer", "webbrowser"]
+
+[tool.arborescent.ring.serving]
+may_import = ["*"]
+external = ["http", "threading", "urllib"]

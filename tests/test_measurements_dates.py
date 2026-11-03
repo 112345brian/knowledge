@@ -60,8 +60,8 @@ def make_vault(path):
 @pytest.fixture
 def m03(tmp_path, monkeypatch):
     e = Env(tmp_path)
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
-    for m in ("paths", "local_paths", "shared", "add_fact", "add_fact_store", "new_fact", "snapshot_date", "revisions", "revisions_store", "backfill_source_keys"):
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", e.config)
+    for m in ("paths", "shared", "add_fact", "add_fact_store", "new_fact", "snapshot_date", "revisions", "revisions_store", "backfill_source_keys"):
         sys.modules.pop(m, None)
     monkeypatch.syspath_prepend(REPO)
     spec = importlib.util.spec_from_file_location("ing_03", os.path.join(REPO, "client", "measurements.py"))
@@ -110,7 +110,7 @@ def test_rows_and_vault_sources_carry_the_snapshot_date_from_the_data(m03):
     assert con.execute("SELECT COUNT(*) FROM sources WHERE description LIKE '%as of 2026-09-11%'").fetchone()[0] > 0
 
 
-def test_vault_sources_record_the_vault_as_local_paths_writes_it(m03):
+def test_vault_sources_record_the_vault_as_the_config_writes_it(m03):
     """The vault is read from its expanded path; the database stores `~/...`, not one machine's home."""
     m03.write_snapshot('{"synced_at": "2026-09-11"}')
     con = m03.build(written="~/vault")

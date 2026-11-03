@@ -11,6 +11,9 @@ to itself, and neither relation may form a cycle. Duplicate triples are collapse
 Run after 02. The relations are read afresh from manual_sources.json and the notes (the composed readers of
 source_readers, the same parsers 01 and 02 use), not carried over from those steps.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import source_ingest_service
 from ingest import source_readers
 

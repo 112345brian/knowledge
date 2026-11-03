@@ -6,6 +6,9 @@ privacy rules on every text field that is copied. `normal_db_service` reads the 
 rows and hands them to `select_content`, which decides what is copied; `normal_db_store` (the SQLite adapter)
 only reads and writes; `leak_rules` / `leak_test` check the result.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 

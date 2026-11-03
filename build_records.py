@@ -10,6 +10,9 @@ characterization tests (tests/test_build_characterization.py) compare against ro
 is `None`, which the adapter stores as NULL exactly as the step's own INSERT does today (the nullable columns of
 `sources` and `facts` have no non-NULL default, so an omitted column and an explicit None are the same row).
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from dataclasses import dataclass, field
 from typing import Mapping, NewType, Optional, Tuple
 

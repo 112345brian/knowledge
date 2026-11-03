@@ -3,6 +3,9 @@ remove-keyword`, mirroring add-fact's git safety net (#10): load, apply the doma
 private repo, write, commit only the rules file. It works through the ports (`rules`, `git`) and imports
 no adapter; the Typer command prints the result.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Optional
 from privacy_rules_port import Rules

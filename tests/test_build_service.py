@@ -286,7 +286,7 @@ def test_an_enabled_source_without_its_input_is_a_config_failure_that_runs_nothi
     deps, files, calls = make(sources=(source,))
     with pytest.raises(BuildError) as ei:
         build_service.build_database(deps, "/db/x")
-    assert ei.value.stage == "config" and missing in str(ei.value) and calls == []
+    assert ei.value.stage == "config" and missing.lower() in str(ei.value) and calls == []
 
 
 def test_sources_that_need_no_input_file_build_without_one():

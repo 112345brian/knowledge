@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test_cli_wiring import GIT_ENV, Env, ok  # noqa: E402
 from locations import canonical_path  # noqa: E402
+from config_files import write_unused_inputs_config
 
 
 @pytest.fixture
@@ -158,10 +159,8 @@ class GitEnv(Env):
         super().__init__(root)
         self.data_dir = os.path.join(self.private, "data")
         os.makedirs(self.data_dir, exist_ok=True)
-        with open(os.path.join(self.private, "local_paths.py"), "w") as f:
-            f.write(f"KNOWLEDGE_DB_DIR = {self.db_dir!r}\nPRIVATE_DATA_DIR = {self.data_dir!r}\n")
-            for n in ("BODYBUILDING_VAULT", "HEALTH_DIR", "CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"):
-                f.write(f"{n} = {os.path.join(self.root, 'unused')!r}\n")
+        self.config = write_unused_inputs_config(os.path.join(self.private, "config.toml"), self.db_dir, self.data_dir,
+                                                      os.path.join(self.root, "unused"))
         git(self.private, "init", "-q")
         git(self.private, "config", "user.name", "Test")
         git(self.private, "config", "user.email", "test@example.com")

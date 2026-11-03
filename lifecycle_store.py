@@ -2,6 +2,9 @@
 The rules file and the db's subject tree (for lowering visibility), and the subjects named in the
 entry files. The rules are in `lifecycle_rules`; the use case is `lifecycle`.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import sqlite3
 

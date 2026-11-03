@@ -3,6 +3,9 @@
 Model ring: a value, no I/O. `inputs` satisfies `inputs_port.Inputs` (the real one is `local_inputs`) and `stores` satisfies
 `step_stores_port.StepStores` (`local_stores`); they are typed `Any` here only because the ports live in an outer ring.
 """
+
+__arbor__ = {"ring": "model"}
+
 from dataclasses import dataclass
 from typing import Any
 

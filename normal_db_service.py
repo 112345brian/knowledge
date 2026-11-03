@@ -8,6 +8,9 @@ full DB, then replace the target. On ANY failure the temporary file is removed A
 removed too: a stale normal DB could still hold a fact that has since been made private, so no file is safer
 than an out-of-date one.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 
 import build_rules

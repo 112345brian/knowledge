@@ -8,6 +8,9 @@ SQLite's LIKE (see `claims_rules`).
 A fact cited by several claims yields one row per claim. A claim with no facts, or whose facts are
 all active and current, yields no rows.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import sqlite3
 from datetime import date
 

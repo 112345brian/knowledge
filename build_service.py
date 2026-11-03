@@ -1,5 +1,7 @@
 """Rebuild the knowledge database: the use case behind `build.py` and `knowledge build`.
 
+Application ring (tach layer `application`): it orchestrates the build through ports and imports no adapter.
+
 It owns the ORDER (schema, each step in registry order, provenance, finalize), the FAILURE NAMING (every stage
 that can fail raises `BuildError(stage)`), the ATOMIC PUBLICATION (a full build in a temp file next to the live
 database, then one replace: a failure anywhere before it leaves the previous knowledge.db byte-identical), the
@@ -11,6 +13,9 @@ It never prints or exits: progress goes to the `emit` callable the driving adapt
 returned. Everything it touches is a port: files (`build_files_port`), a session and step registry, provenance
 and outputs (`build_port`), the clock and the locations.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Tuple
 
@@ -64,19 +69,12 @@ def build_database(deps, target_path, sources=None, emit: Emit = _quiet) -> Tupl
     incomplete and the caller removes it (`build_to_temp` does)."""
     locations = deps.locations
     clients = deps.clients
-    if sources is None:
-        declared = locations.client_sources
-        implicit = not locations.client_sources_declared and not declared
-        sources = declared or (clients.implicit_sources(locations.client_inputs) if implicit else ())
-        implicit = implicit and bool(sources)
-    else:
-        implicit = False
-    sources = clients.check(sources)
-    emit(clients.note(sources, implicit=implicit))
+    sources = clients.check(locations.client_sources if sources is None else sources)
+    emit(clients.note(sources))
     missing = clients.missing_inputs(sources, locations.client_inputs)
     if missing:
         raise BuildError("config", "client source(s) enabled without their input file: " +
-                         ", ".join(f"{src} needs {name}" for src, name in missing) + " (set it in local_paths.py)")
+                         ", ".join(f"{src} needs {name.lower()}" for src, name in missing) + " (set it under [client_inputs] in the config file)")
     deps.files.remove_if_exists(target_path)
     try:
         session = deps.sessions.open(target_path)

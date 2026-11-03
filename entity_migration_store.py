@@ -5,6 +5,9 @@ What the migration does, and the proof that nothing gets less private, is `entit
 adapter reads the two files, writes them (entities first, so there is never a moment with neither) and owns the
 git flow. Before anything is written, every old keyword is re-checked against the NEW state.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 
 import entities_store

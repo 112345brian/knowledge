@@ -4,6 +4,9 @@ Which entries of the fact files are loadable, the is_personal heuristic for the 
 vault note an extracted fact came from, and the validated `date_added`. The scripts read the files and
 write the rows; they call these.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import re
 from dataclasses import dataclass
 from datetime import datetime

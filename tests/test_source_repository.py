@@ -230,7 +230,7 @@ def test_composed_readers_yield_manual_sources_then_notes_as_validated_records()
     assert n.identifiers == (("doi", "10.1210/jc.2007-1692"),) and n.relations == (Relation("n2020", "replaces", "old"),)
 
 
-def test_origin_paths_are_stored_as_the_vault_and_health_are_written_in_local_paths():
+def test_origin_paths_are_stored_as_the_vault_and_health_are_written_in_the_config():
     locs = dataclasses.replace(LOCS, notes_vault_written="~/vault", health_dir_written="~/health")
     w = world([{"citekey": "m1", "name": "M", "source_type": "primary", "origin_path": "{VAULT}/m.md"},
                {"citekey": "h1", "name": "H", "source_type": "primary", "origin_path": "{HEALTH}/h.md"}])
@@ -261,5 +261,5 @@ def test_no_vault_means_no_notes_and_a_missing_placeholder_value_fails():
     no_vault = Locations(knowledge_db_dir="/db", private_data_dir="/data")
     assert source_readers.VaultNotes(world([]), no_vault).records() == []
     w = world([{"citekey": "m1", "name": "M", "source_type": "primary", "origin_path": "{VAULT}/m.md"}])
-    with pytest.raises(ValueError, match="NOTES_VAULT"):
+    with pytest.raises(ValueError, match="notes_vault"):
         source_readers.ManualSources(w, no_vault).relations()

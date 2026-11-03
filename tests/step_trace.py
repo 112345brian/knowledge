@@ -167,8 +167,8 @@ def trace_build(root, sources=("concerts", "ratings", "scrobbles", "measurements
     env = build_world(root, sources)
     if mutate is not None:
         mutate(str(root))
-    saved = {k: os.environ.get(k) for k in ("KNOWLEDGE_PRIVATE_DIR", "KNOWLEDGE_HOME", "KNOWLEDGE_FROZEN_NOW", "PYTHONHASHSEED")}
-    os.environ["KNOWLEDGE_PRIVATE_DIR"] = env["KNOWLEDGE_PRIVATE_DIR"]
+    saved = {k: os.environ.get(k) for k in ("KNOWLEDGE_CONFIG", "KNOWLEDGE_HOME", "KNOWLEDGE_FROZEN_NOW", "PYTHONHASHSEED")}
+    os.environ["KNOWLEDGE_CONFIG"] = env["KNOWLEDGE_CONFIG"]
     os.environ["KNOWLEDGE_HOME"] = env["KNOWLEDGE_HOME"]
     os.environ["KNOWLEDGE_FROZEN_NOW"] = env["KNOWLEDGE_FROZEN_NOW"]
     try:

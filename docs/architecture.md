@@ -1,7 +1,7 @@
 # Architecture map (onion)
 
 Two sub-packages hold the ETL: `ingest/` is the core pipeline and `client/` the optional client sources (a checkout enables
-them with `CLIENT_SOURCES` in local_paths.py; see the README). Module names are unique across both, so the table below
+them with `client_sources` in the config file; see the README). Module names are unique across both, so the table below
 uses the bare name; `ingest/` never imports `client/`.
 
 The repo is an onion in flat modules: dependencies point only inward. The **model** (vocabularies, time and identifier
@@ -108,6 +108,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | Module | Layer | Role | What it is |
 | --- | --- | --- | --- |
 | `inbox` | serving | driving adapter | Local review inbox (#33): a small web page for the pending queue (#6), standard library only. |
+| `mcp_server` | serving | driving adapter | MCP server over stdio (#2): lets Claude search the knowledge repository and add researched facts to it. |
 | `cli_add_fact` | cli | driving adapter | `knowledge.py add-fact`: the Typer command over add_fact.record_fact (CLI-first rule #34). |
 | `cli_audits` | cli | driving adapter | `knowledge.py audit-claims \| build-info \| audit-source-status \| audit-sources`: the premise and provenance audits. |
 | `cli_build` | cli | driving adapter | `knowledge.py build` and registered client tools: commands that run a script (through `ctx.obj.scripts`). |
@@ -153,6 +154,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `fact_ingest` | composition | composition root | The fact ingest (the facade: binds the use case in `fact_ingest_service` to the adapters a build step is given). |
 | `facts_batch` | composition | composition root | Batch add_facts (the facade: binds the use case in `facts_batch_service` to the real adapters and keeps the public API): the library… |
 | `lifecycle` | composition | composition root | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `mcp` | composition | composition root | Composition root for the MCP use case: binds `mcp_service` to the single-fact use case (`add_fact`) and the read side (`queries`), and… |
 | `migrate_memory` | composition | composition root | Import Claude Code memory files as private, pending facts (issue #29). |
 | `queries` | composition | composition root | Composition root for the read side: binds `queries_service` to the real read adapter (`fact_reads_store`). |
 | `review` | composition | composition root | Review of pending facts (#6): list the queue, approve or reject items. |
@@ -185,13 +187,13 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `migrate_memory_store` | infrastructure | infrastructure | Adapter for migrate-memory (#29): finds and reads the memory files, holds the run lock, and lists the source keys already in the entry… |
 | `modes_store` | infrastructure | infrastructure | Adapter for the mode rules (#22): the SQL that applies `modes` to the knowledge db. |
 | `normal_db_store` | infrastructure | infrastructure | SQLite adapter for `normal_db_port.NormalSource` and `NormalSink`: it reads the full DB's rows and writes the normal DB. |
-| `paths` | infrastructure | infrastructure | Reads where this person's data lives from the private data checkout, once, at an entry point. |
+| `paths` | infrastructure | infrastructure | Reads the config file and the environment into `Locations`: the one adapter that knows where this person's data lives. |
 | `privacy_store` | infrastructure | infrastructure | Adapter for the privacy rules (driven side of the privacy domain). |
 | `private_edit_store` | infrastructure | infrastructure | The shared edit-and-commit flow for hand-curated JSON files in knowledge-private (#43, #42). |
 | `private_git` | infrastructure | infrastructure | Commit every mutation of the knowledge-private JSON files, so git is a reliable backup and safety net for them (issue #10). |
 | `review_store` | infrastructure | infrastructure | Adapter for review (#6): the reads behind the review queue. |
 | `revisions_store` | infrastructure | infrastructure | Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and the db. |
-| `script_runner` | infrastructure | infrastructure | Adapter for the standalone scripts (build.py and the client tools): `knowledge.py build` and each client tool are thin dispatches to them. |
+| `script_runner` | infrastructure | infrastructure | Starts the standalone scripts (build.py and the client tools) as child processes: the adapter behind `script_runner_port`. |
 | `source_repository_store` | infrastructure | infrastructure | SQLite adapter for `build_repositories_port.SourceRepository`: the sources, publishers, authors, identifiers, relations and vault_files… |
 | `source_status_store` | infrastructure | infrastructure | Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. |
 | `sql_runner_store` | infrastructure | infrastructure | Adapter for `sql_runner_port.SqlRunner`: executes scripts and statements against a sqlite file. |
@@ -206,6 +208,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `facts_batch_service` | application | application service | Batch add_facts (the use case, through the port protocols (`*_port`); `facts_batch` is the facade that binds it to the real adapters): the… |
 | `identity_service` | application | application service | The identity operations every build step shares: which source and which subject a name means. |
 | `lifecycle_service` | application | application service | Fact lifecycle (#8, #23): supersede, retract and set-visibility, each one appended revision. |
+| `mcp_service` | application | application service | The MCP server as a use case: one JSON-RPC message in, at most one reply out. |
 | `migrate_memory_service` | application | application service | Import Claude Code memory files as private, pending facts (issue #29). |
 | `normal_db_service` | application | application service | Building the normal-tier database and checking it for leaks: the use case. |
 | `privacy_floor_service` | application | application service | Apply the CURRENT privacy rules to every fact and subject of a built database (the privacy floor, #31). |
@@ -213,7 +216,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `review_service` | application | application service | Review of pending facts (#6): list the queue, approve or reject items. |
 | `revision_apply_service` | application | application service | Apply the revision log to a built database, then re-assert the privacy floor (#30, #31). |
 | `rules_edit_service` | application | application service | Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag\|untag\|add-keyword\| remove-keyword`, mirroring add-fact's… |
-| `scripts_service` | application | application service | The commands that are a script run: rebuild the database, or a tool a client source ships. |
+| `scripts_service` | application | application service | The use cases that are a script run: rebuild the database, or run a tool a client source ships. |
 | `source_ingest_service` | application | application service | Application service for loading sources: store the records a reader produced, validate and store their relations, and record the vault… |
 | `subject_hierarchy_service` | application | application service | Subject hierarchy use cases: load the hierarchy file's entries into the stored subjects, and find (or create) the subject a fact is filed… |
 | `subjects_service` | application | application service | Subject command use cases. |
@@ -248,6 +251,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `leak_rules` | domain_services | domain service | Leak test rules (domain: no sqlite, no files). |
 | `lifecycle_reads_port` | domain_services | domain service | Read port for inputs used by lifecycle decisions. |
 | `lifecycle_rules` | domain_services | domain service | Fact lifecycle (#8, #23, #33), the rules: result types and the pure decisions. |
+| `mcp_port` | domain_services | domain service | Ports of the MCP use case: how it records a fact and how it looks facts up, without a file, db or git in sight. |
+| `mcp_rules` | domain_services | domain service | MCP tool catalog and message rules (domain: pure, no input or output). |
 | `memory_files_port` | domain_services | domain service | Port for discovering and reading source memory files. |
 | `migrate_memory_rules` | domain_services | domain service | Import Claude Code memory files as private, pending facts (issue #29), the rules (domain: no file, db, git, clock or lock). |
 | `modes` | domain_services | domain service | Issue #22: the mode rules (domain), plus set_mode. |
@@ -263,7 +268,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `revision_apply_rules` | domain_services | domain service | What applying the revision log to a built database means (pure; domain service). |
 | `revisions` | domain_services | domain service | Fact revisions (#30): an append-only log of changes to facts, queryable as history. |
 | `revisions_port` | domain_services | domain service | Port for persisted entries and the append-only revision log's writer. |
-| `script_runner_port` | domain_services | domain service | Port for starting this repo's standalone scripts and tools as separate processes. |
+| `script_runner_port` | domain_services | domain service | The port for starting this repo's standalone scripts and tools as separate processes. |
 | `sources_port` | domain_services | domain service | Port for sources: where normalized source records come from. |
 | `sql_runner_port` | domain_services | domain service | Port for running SQL against a database file by path: the leak self-test's fixture builder and its marker-injection step. |
 | `step_stores_port` | domain_services | domain service | Port for the data a build step loads from the private data files and the table writers that belong with them. |
@@ -275,7 +280,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `fact_state` | model | model | A fact's lifecycle as types with behaviour: `Status`, `Visibility` and `FactState`. |
 | `fixity_rules` | model | model | What a file fingerprint may hold: the vocabulary of a fixity record, free of how a file is read or hashed. |
 | `identifiers` | model | model | Persistent identifiers for sources (#48): DOI, ISBN, ISSN, PMID, arXiv and `other`, normalized so the same work cannot hide behind two… |
-| `locations` | model | model | Where this person's data lives, as one immutable value. |
+| `locations` | model | model | Where this person's data lives, as one immutable value (`Locations`) plus the pure path helpers around it. |
 | `pipeline_context` | model | model | What a build step is given besides its database connection: where the data lives and how to read it. |
 | `source_record` | model | model | A source as one value: what the build knows about a citable work before it has a database id. |
 | `source_status` | model | model | Source status over time, editions and source-to-source relations (#41). |
@@ -320,7 +325,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 
 The repository is a general-purpose machine that clients extend. Everything outside `client/` is the **base**
 (the core, `ingest/` and the build); `client/` holds the **optional sources** a checkout enables with
-`CLIENT_SOURCES` in its private `local_paths.py` (music: concerts, ratings, scrobbles; measurements; claims
+`client_sources` in its config file (music: concerts, ratings, scrobbles; measurements; claims
 seeding). Direction is one way:
 
 - the base never imports `client.*` (shadow name `kn.<client module>`). Enforced by the import-linter contract

@@ -57,5 +57,3 @@ def register(registry: ClientRegistry) -> None:
         personal_fact_keys=("measurement_metric_link",)))
     registry.add(ClientSource("claims", steps=(Step("client/seed_claims.py", after=AFTER_FACTS, order=20),),
                               data_files=("claims.json",)))
-    # A local_paths.py written before CLIENT_SOURCES existed but defining the music inputs built everything.
-    registry.enable_when_defined("CONCERTS_CSV", ("concerts", "ratings", "scrobbles", "measurements", "claims"))

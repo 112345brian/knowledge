@@ -4,6 +4,9 @@ The rules (`docs_rules`) decide what each region says and how it is fenced; this
 docs through the `DocsFiles` port and compares or writes. It never prints or exits. `build` computes every file
 before writing any, so a damaged marker leaves the tree untouched.
 """
+
+__arbor__ = {"ring": "application"}
+
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 

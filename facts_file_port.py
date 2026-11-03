@@ -1,4 +1,7 @@
 """Port for the persisted fact-entry file and its validation lookups."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Optional, Protocol, Tuple
 
 

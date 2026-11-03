@@ -7,6 +7,9 @@ order of the writes are `fact_ingest_service`'s. Each `add` allocates its row wh
 dump compares the ids). The one rule the foundation's `NewFact` fixes is that an ingested fact was last reviewed the
 day it was added.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import re
 import sqlite3
 from typing import Any, Mapping, Optional

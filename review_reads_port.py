@@ -1,4 +1,7 @@
 """Read port for the pending review queue and current fact states."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Dict, List, Optional, Protocol, Tuple
 
 

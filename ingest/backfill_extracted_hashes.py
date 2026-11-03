@@ -19,6 +19,9 @@ Usage:
     python3 -m ingest.backfill_extracted_hashes --apply              # write
     python3 -m ingest.backfill_extracted_hashes --data-dir DIR ...   # a copy, for trying it out
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import argparse
 import os
 import sys

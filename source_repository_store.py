@@ -4,6 +4,9 @@ relations and vault_files tables of the build database, over the connection a st
 It stores what it is told and decides nothing: which identifier belongs to which source, and whether a vault file
 needs its fixity recorded, are `identity_service`'s. Each `add` allocates its row when called, in call order (the
 golden dump compares the ids)."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import sqlite3
 from typing import Mapping, Optional
 

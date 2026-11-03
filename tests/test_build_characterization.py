@@ -256,11 +256,11 @@ def test_a_missing_measurements_snapshot_fails_the_step_before_any_write(tmp_pat
 
 
 def test_core_only_build_without_a_notes_vault(tmp_path_factory):
-    """No client sources and no NOTES_VAULT: the notes step parses nothing and cited sources are warnings."""
+    """No client sources and no notes_vault: the notes step parses nothing and cited sources are warnings."""
     def mutate(root):
-        lp = os.path.join(root, "knowledge-private", "local_paths.py")
+        lp = os.path.join(root, "knowledge-private", "config.toml")
         with open(lp, encoding="utf-8") as f:
-            kept = [ln for ln in f.read().split("\n") if not ln.startswith("NOTES_VAULT")]
+            kept = [ln for ln in f.read().split("\n") if not ln.startswith("notes_vault")]
         with open(lp, "w", encoding="utf-8") as f:
             f.write("\n".join(kept) + "\n")
         manual = _load(os.path.join(root, "data", "manual_sources.json"))

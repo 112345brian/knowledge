@@ -1,5 +1,7 @@
 """Composition helper: verify a service's dependencies, then publish its functions with them bound.
 
+Composition ring (tach layer `composition`): used only by composition roots, never by a service or a rule.
+
 An application service function takes its `*Deps` object first. A composition root builds that object from
 the real adapters and calls `bind(fn, deps)` to publish `fn` without the leading argument. This lives in the
 composition ring because binding is wiring, not domain: the domain ring holds only the port protocols
@@ -10,6 +12,9 @@ call the missing or renamed method: every field of a `*Deps` must be a known por
 must have each of the protocol's methods with the protocol's parameters (in order) and attributes. A forgotten
 adapter is already a TypeError (the Deps fields are required); this catches the wrong adapter, or a renamed one.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import dataclasses
 import functools
 import inspect
@@ -36,6 +41,7 @@ from ids_port import Ids
 from inputs_port import Inputs
 from lifecycle_reads_port import LifecycleReads
 from locations import Locations
+from mcp_port import FactCapture, FactLookup, Session
 from memory_files_port import MemoryFiles
 from normal_db_port import LeakScan, NormalSink, NormalSource
 from private_git_port import PrivateGit
@@ -90,7 +96,7 @@ PORT_PROTOCOLS = {
     "clients": ClientSources, "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
-    "docs_files": DocsFiles,
+    "docs_files": DocsFiles, "capture": FactCapture, "lookup": FactLookup, "session": Session,
 }
 
 

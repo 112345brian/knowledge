@@ -1,4 +1,7 @@
 """Port for the application's clock."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Protocol
 
 

@@ -177,9 +177,7 @@ def test_an_enabled_source_without_its_input_path_is_named():
         client_bootstrap.registry().missing_inputs(("nope",), [])
 
 
-def test_the_build_names_the_sources_it_includes_and_flags_a_guess():
+def test_the_build_names_the_sources_it_includes():
     import build
     assert "none (core only" in client_bootstrap.registry().note(())
     assert client_bootstrap.registry().note(("concerts", "claims")) == "[build] client sources: concerts, claims"
-    guessed = client_bootstrap.registry().note(("concerts", "claims"), implicit=True)
-    assert "assumed" in guessed and "CLIENT_SOURCES = ('concerts', 'claims')" in guessed

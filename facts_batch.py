@@ -43,6 +43,9 @@ Decisions (each is tested):
 Callers must read the result: tests/test_facts_batch.py scans the repo and fails on a discarded
 `add_facts(...)` call.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import add_fact
 import add_fact_store
 import facts_batch_service

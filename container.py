@@ -5,6 +5,9 @@ asks it for what it needs. Nothing is built at import and nothing is global: two
 locations are independent, and a container made without locations reads them (`paths.load()`) the first time
 a use case is asked for.
 """
+
+__arbor__ = {"ring": "composition"}
+
 from functools import cached_property
 
 import add_fact

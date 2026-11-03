@@ -20,7 +20,7 @@ TOOLS = {"dates": "ingest.backfill_dates", "keys": "ingest.backfill_source_keys"
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     e = Env(tmp_path)
-    monkeypatch.setenv("KNOWLEDGE_PRIVATE_DIR", e.private)
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", e.config)
     monkeypatch.syspath_prepend(REPO)
     return e
 

@@ -1,5 +1,8 @@
 """Port for running SQL against a database file by path: the leak self-test's fixture builder and its
 marker-injection step. The caller supplies scripts and parameterised statements as data; nothing is returned."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, Protocol, Sequence, Tuple
 
 

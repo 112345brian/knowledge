@@ -5,6 +5,9 @@ arguments, prints or exits.
 
 Doesn't touch knowledge.db itself: rerun `python3 build.py` afterward to pick the new fact up.
 """
+
+__arbor__ = {"ring": "composition"}
+
 import os
 
 import add_fact_service

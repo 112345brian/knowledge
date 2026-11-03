@@ -20,7 +20,7 @@ from appctx import app
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICES = ("review_service", "lifecycle_service", "add_fact_service", "facts_batch_service", "migrate_memory_service",
-            "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service",
+            "rules_edit_service", "entities_service", "subjects_service", "subject_hierarchy_service", "fact_ingest_service", "queries_service", "scripts_service", "mcp_service",
             "privacy_floor_service", "entity_link_service", "revision_apply_service", "client.music_service", "normal_db_service", "build_service", "docs_service")
 
 
@@ -220,7 +220,7 @@ DEPS_CLASSES = {"review_service": "ReviewDeps", "lifecycle_service": "LifecycleD
                 "facts_batch_service": "FactsBatchDeps", "migrate_memory_service": "MigrateMemoryDeps",
                 "rules_edit_service": "RulesEditDeps", "entities_service": "EntitiesDeps", "subjects_service": "SubjectsDeps",
                 "subject_hierarchy_service": "HierarchyDeps", "fact_ingest_service": "FactIngestDeps",
-                "queries_service": "QueriesDeps", "scripts_service": "ScriptsDeps",
+                "queries_service": "QueriesDeps", "mcp_service": "McpDeps", "scripts_service": "ScriptsDeps",
                 "privacy_floor_service": "PrivacyFloorDeps", "entity_link_service": "EntityLinkDeps",
                 "revision_apply_service": "RevisionApplyDeps",
                 "client.music_service": "MusicIngestDeps",
@@ -397,7 +397,7 @@ def test_record_fact_reports_a_failed_commit_but_keeps_the_fact():
 
 
 def test_library_and_composition_modules_import_without_a_private_repo():
-    """Configuration is injected, not read at import: with no knowledge-private checkout at all, every
+    """Configuration is injected, not read at import: with no config file at all, every
     composition root, the read adapter and the Typer app still import. Only the first use of a path fails."""
     import subprocess
     import glob
@@ -405,12 +405,12 @@ def test_library_and_composition_modules_import_without_a_private_repo():
                    glob.glob("ingest/*.py") + glob.glob("client/*.py") if not p.endswith("__init__.py"))
     code = ("import add_fact, review, lifecycle, facts_batch, migrate_memory, rules_edit, entities, subjects, "
             "fact_queries, knowledge, cli_add_fact, build, queries, " + ", ".join(steps) + "; print('ok')")
-    env = {**os.environ, "KNOWLEDGE_PRIVATE_DIR": "/nonexistent/knowledge-private"}
+    env = {**os.environ, "KNOWLEDGE_CONFIG": "/nonexistent/config.toml"}
     r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
     r = subprocess.run([sys.executable, "-c", "import container; container.Container().add_fact.data_file_path()"], cwd=REPO, env=env,
                        capture_output=True, text=True)
-    assert r.returncode != 0 and "local_paths.py not found" in r.stderr
+    assert r.returncode != 0 and "config file not found" in r.stderr
 
 
 def test_verify_checks_that_the_calls_the_protocol_allows_are_accepted():

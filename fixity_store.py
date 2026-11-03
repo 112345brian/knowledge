@@ -12,6 +12,9 @@ if that proves noisy.
 
 Paths are stored as written (they may begin with `~`); every read expands `~` (under $KNOWLEDGE_HOME when set, else the OS home).
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import hashlib
 import mimetypes
 import os

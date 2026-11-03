@@ -3,6 +3,9 @@
 Domain service ring: no I/O. The byline split and the identifier warning are defined here. Optional sources keep
 their own name canonicalization and stateful lookup rules in `client/`.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import List, Optional, Tuple
 
 

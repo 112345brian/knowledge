@@ -2,6 +2,9 @@
 step modules, making the temporary build file, the atomic swap, the backups, opening the build database,
 reading a file's raw bytes, a scratch directory. `build`, `normal_db_service` and `leak_test` decide the
 order and the content; the adapter (`local_buildfiles`) owns the disk."""
+
+__arbor__ = {"ring": "domain_services"}
+
 from typing import Any, ContextManager, List, Protocol
 
 

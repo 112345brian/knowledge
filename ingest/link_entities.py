@@ -8,6 +8,9 @@ An absent entities.json is fine (the tables stay empty). A corrupt or invalid fi
 belongs to two entities, fails the build. As a safety net it also fails the build if any fact that mentions
 a private entity is not stored private (the privacy pass makes that impossible; this proves it per build).
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import entity_link_service
 
 

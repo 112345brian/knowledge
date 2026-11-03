@@ -2,6 +2,8 @@
 backup and safety net for them (issue #10). The queryable fact history is the revision
 log (#30); this is the layer underneath it.
 
+Infrastructure ring (tach layer `infrastructure`): the only module that runs git against knowledge-private; library code never prints or exits.
+
 Reusable by any command that mutates a JSON file in knowledge-private (add-fact now;
 approve, supersede, retract, set-visibility later). The pattern:
 
@@ -15,6 +17,9 @@ approve, supersede, retract, set-visibility later). The pattern:
 Never pushes. Library code never prints or exits; callers decide how to report a
 PrivateGitError. Git commands run via argv lists (no shell) with a fixed English locale.
 """
+
+__arbor__ = {"ring": "infrastructure"}
+
 import os
 import subprocess
 
@@ -35,7 +40,7 @@ def _detail(proc):
 
 def find_repo(directory):
     """Top-level dir of the git repo containing `directory`, or None if it is not in one
-    (or does not exist). Works with any KNOWLEDGE_PRIVATE_DIR layout."""
+    (or does not exist). Works wherever `data_dir` points."""
     if not os.path.isdir(directory):
         return None
     proc = _git(directory, "rev-parse", "--show-toplevel")

@@ -8,6 +8,7 @@ from add_fact_port import AddFact
 from client_registry import ClientSources
 from datafiles_port import DataFiles
 from fact_reads_port import FactReads
+from mcp_port import FactCapture, FactLookup, Session
 from fact_ingest_port import Identity
 from inputs_port import Inputs
 from reviews_port import Reviews
@@ -40,6 +41,8 @@ import local_stores
 import sqlite3
 import add_fact_store
 import add_fact
+import mcp
+import queries
 import build
 import client_registry
 import build_info_store
@@ -128,6 +131,9 @@ build_steps: StepRegistry = building.Registry(local_buildfiles, "")
 build_outputs: BuildOutputs = build.NormalOutputs(local_buildfiles, None)
 docs_files: DocsFiles = docs_store.RepoDocs()
 add_fact_port: AddFact = add_fact.compose(None, None)
+fact_capture: FactCapture = add_fact.compose(None, None)
+session: Session = mcp.RunSession("s")
+fact_lookup: FactLookup = queries.compose(None, None)
 client_sources: ClientSources = client_bootstrap.registry()
 datafiles: DataFiles = local_datafiles
 fact_reads: FactReads = fact_reads_store

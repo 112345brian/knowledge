@@ -6,6 +6,9 @@ Parsing of a memory file's text and frontmatter, the mapping to a `NewFact`, the
 reads the files and holds the run lock; `migrate_memory` is the use case that validates, appends
 through add_fact and commits. See migrate_memory.py for the full mapping and its documented defaults.
 """
+
+__arbor__ = {"ring": "domain_services"}
+
 import hashlib
 import re
 from dataclasses import dataclass, field

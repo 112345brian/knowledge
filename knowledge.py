@@ -34,6 +34,9 @@ registered by the client's bootstrap -- those
 still run fine on their own, without typer; this just gives one name to
 remember. `search`, `show`, `subjects`, and `facts` query knowledge.db.
 """
+
+__arbor__ = {"ring": "cli"}
+
 import sys
 
 import typer

@@ -48,6 +48,9 @@ build_info      the latest row's built_at and schema_version only (#47); commits
 source_identifiers   identifiers of included sources (#48); source_identifier_conflicts is never copied.
 Other full-database tables are omitted unless explicitly whitelisted by `normal_rules.TABLES`.
 """
+
+__arbor__ = {"ring": "pipeline"}
+
 import sys
 
 import leak_scan_store

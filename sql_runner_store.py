@@ -1,5 +1,8 @@
 """Adapter for `sql_runner_port.SqlRunner`: executes scripts and statements against a sqlite file. Stateless; the
 module is the adapter."""
+
+__arbor__ = {"ring": "infrastructure"}
+
 import sqlite3
 
 

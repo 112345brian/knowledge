@@ -1,5 +1,8 @@
 """`knowledge.py search | show | history | subjects | facts`: the read commands over the built db. Thin printers over
 `ctx.obj.queries` (the container's read side); registered in knowledge.py with `app.add_typer(cli_facts.app)`."""
+
+__arbor__ = {"ring": "cli"}
+
 import enum
 import revisions
 import validtime
