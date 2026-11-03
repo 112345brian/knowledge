@@ -124,6 +124,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `cli_parity` | cli | driving adapter | CLI-first parity registry (issue #34). |
 | `cli_privacy` | cli | driving adapter | `knowledge.py privacy check \| rules \| tag \| untag \| add-keyword \| remove-keyword`: the privacy rules. |
 | `cli_review` | cli | driving adapter | `knowledge.py review-pending \| approve \| reject`: the review queue. |
+| `cli_snapshot` | cli | driving adapter | CLI ring (tach layer `cli`): `knowledge.py db snapshot \| snapshots \| restore \| restore-tables` (CLI-first rule #34). |
 | `cli_sources` | cli | driving adapter | Typer commands about sources (#48): `source ids CITEKEY`. |
 | `cli_subjects` | cli | driving adapter | Typer commands for the subject hierarchy (#43): `subject list\|show\|alias\|describe\|deprecate`. |
 | `knowledge` | cli | driving adapter | Single entry point for this repo (Typer CLI; run `uv sync` once, then `uv run python knowledge.py --help`). |
@@ -151,6 +152,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `client_bootstrap` | composition | composition root | Composition: the one place the base looks for the client's registration, and the only place that does. |
 | `container` | composition | composition root | The composition root of the whole application: one object that wires every use case for one `Locations` and one `Clock`. |
 | `db_export` | composition | composition root | Composition root (tach layer `composition`) for exporting the database to text files and importing them into a new database. |
+| `db_snapshot` | composition | composition root | Composition root (tach layer `composition`) for database snapshots and the in-place restore of chosen tables. |
 | `docs` | composition | composition root | Composition root for checking and rebuilding the generated documentation regions. |
 | `entities` | composition | composition root | Composition root for entity command use cases. |
 | `fact_ingest` | composition | composition root | The fact ingest (the facade: binds the use case in `fact_ingest_service` to the adapters a build step is given). |
@@ -198,6 +200,7 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `review_store` | infrastructure | infrastructure | Adapter for review (#6): the reads behind the review queue. |
 | `revisions_store` | infrastructure | infrastructure | Adapter for the fact revision log (#30): the entry files, the log file and its lock, the clock and the db. |
 | `script_runner` | infrastructure | infrastructure | Starts the standalone scripts (build.py and the client tools) as child processes: the adapter behind `script_runner_port`. |
+| `snapshot_store` | infrastructure | infrastructure | Adapters of snapshots and of the in-place table restore: SQLite's online backup API and one transaction. |
 | `source_repository_store` | infrastructure | infrastructure | SQLite adapter for `build_repositories_port.SourceRepository`: the sources, publishers, authors, identifiers, relations and vault_files… |
 | `source_status_store` | infrastructure | infrastructure | Adapter for the source-status audit (#41): the SQL behind `knowledge.py audit-source-status`. |
 | `sql_runner_store` | infrastructure | infrastructure | Adapter for `sql_runner_port.SqlRunner`: executes scripts and statements against a sqlite file. |
@@ -219,10 +222,12 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `normal_db_service` | application | application service | Building the normal-tier database and checking it for leaks: the use case. |
 | `privacy_floor_service` | application | application service | Apply the CURRENT privacy rules to every fact and subject of a built database (the privacy floor, #31). |
 | `queries_service` | application | application service | The read side as an application service: look facts, subjects, history, audits and build info up through the `FactReads` port. |
+| `restore_tables_service` | application | application service | Replace chosen tables inside an existing database from a snapshot or an export folder. |
 | `review_service` | application | application service | Review of pending facts (#6): list the queue, approve or reject items. |
 | `revision_apply_service` | application | application service | Apply the revision log to a built database, then re-assert the privacy floor (#30, #31). |
 | `rules_edit_service` | application | application service | Edit the privacy rules file (#31): the use case behind `knowledge.py privacy tag\|untag\|add-keyword\| remove-keyword`, mirroring add-fact's… |
 | `scripts_service` | application | application service | The use cases that are a script run: rebuild the database, or run a tool a client source ships. |
+| `snapshot_service` | application | application service | Take, list and restore database snapshots. |
 | `source_ingest_service` | application | application service | Application service for loading sources: store the records a reader produced, validate and store their relations, and record the vault… |
 | `subject_hierarchy_service` | application | application service | Subject hierarchy use cases: load the hierarchy file's entries into the stored subjects, and find (or create) the subject a fact is filed… |
 | `subjects_service` | application | application service | Subject command use cases. |
@@ -278,6 +283,8 @@ after it keeps the new `knowledge.db` and removes the old `knowledge-normal.db`.
 | `revisions` | domain_services | domain service | Fact revisions (#30): an append-only log of changes to facts, queryable as history. |
 | `revisions_port` | domain_services | domain service | Port for persisted entries and the append-only revision log's writer. |
 | `script_runner_port` | domain_services | domain service | The port for starting this repo's standalone scripts and tools as separate processes. |
+| `snapshot_port` | domain_services | domain service | Domain service (tach layer `domain_services`): ports of snapshots and of the in-place restore of chosen tables. |
+| `snapshot_rules` | domain_services | domain service | Snapshot file names, retention and the restore-tables policy (docs/db-source-of-truth.md, "History and backup"), pure. |
 | `sources_port` | domain_services | domain service | Port for sources: where normalized source records come from. |
 | `sql_runner_port` | domain_services | domain service | Port for running SQL against a database file by path: the leak self-test's fixture builder and its marker-injection step. |
 | `step_stores_port` | domain_services | domain service | Port for the data a build step loads from the private data files and the table writers that belong with them. |

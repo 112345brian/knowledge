@@ -130,6 +130,11 @@ class Locations:
         return join_path(self.knowledge_db_dir, "knowledge.db")
 
     @property
+    def snapshot_dir(self):
+        """The directory of database snapshots (`snapshot_service`), inside `db_dir`."""
+        return join_path(self.knowledge_db_dir, "snapshots")
+
+    @property
     def backup_dir(self):
         """The directory of database backups, inside `db_dir`."""
         return join_path(self.knowledge_db_dir, "backups")

@@ -62,6 +62,11 @@ ACTIONS = {
     "db_export": ("db", "export"),
     "db_verify": ("db", "verify"),
     "db_import": ("db", "import"),
+    "take_snapshot": ("db", "snapshot"),
+    "list_snapshots": ("db", "snapshots"),
+    "restore_snapshot": ("db", "restore"),
+    "restore_tables_from_snapshot": ("db", "restore-tables"),
+    "restore_tables_from_export": ("db", "restore-tables"),
     "docs_build": ("docs", "build"),
     "docs_check": ("docs", "check"),
     "make_private": ("set-visibility",),   # inbox: raise-only use of set-visibility

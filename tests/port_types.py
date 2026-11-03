@@ -14,6 +14,7 @@ from inputs_port import Inputs
 from reviews_port import Reviews
 from script_runner_port import ScriptRunner
 from docs_files_port import DocsFiles
+from snapshot_port import Snapshots, TableRestore
 from export_port import ExportFiles, ExportReads, ExportScope, ImportTarget, NotesFiles
 from build_port import BuildOutputs, BuildSession, ProvenanceReader, SessionFactory, StepRegistry
 from clock_port import Clock
@@ -49,6 +50,7 @@ import client_registry
 import build_info_store
 import docs_store
 import export_store
+import snapshot_store
 from client_registry import ClientRegistry
 import add_fact_store
 import client_bootstrap
@@ -136,6 +138,9 @@ docs_files: DocsFiles = docs_store.RepoDocs()
 export_reads: ExportReads = export_store.SqliteExportReads("")
 export_files: ExportFiles = export_store.DirExportFiles("")
 import_target: ImportTarget = export_store.SqliteImportTarget("")
+snapshots: Snapshots = snapshot_store.SqliteSnapshots("", "")
+table_restore: TableRestore = snapshot_store.SqliteTableRestore("")
+snapshot_reads: ExportReads = export_store.SqliteExportReads("")
 export_scope: ExportScope = export_store.RegistryScope(ClientRegistry(()))
 notes_source: NotesFiles = export_store.DirNotes("")
 notes_target: NotesFiles = export_store.DirNotes("")

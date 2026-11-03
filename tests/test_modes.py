@@ -578,6 +578,8 @@ FACT_READERS_ALLOWED = {
     "audit_rules.py",
     # lists the table names the full-database export writes to files (pure; reads nothing, serves no tool results)
     "export_rules.py",
+    # names the history tables restore-tables refuses to replace (policy only; reads nothing)
+    "snapshot_rules.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     "entity_queries_store.py",

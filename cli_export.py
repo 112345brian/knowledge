@@ -27,7 +27,8 @@ SKIP_HELP = "A table to leave out (repeatable)."
 NOTES_HELP = "Also handle the notes part: the citation-note markdown files of the notes vault."
 
 
-def _fail(message: str):
+def fail(message: str):
+    """Print `error: message` on stderr and exit 1."""
     print(f"error: {message}", file=sys.stderr)
     raise typer.Exit(1)
 
@@ -58,7 +59,7 @@ def cmd_export(ctx: typer.Context, directory: Optional[str] = typer.Option(None,
     try:
         _print(ctx.obj.db_export(db, directory).export_database(table or (), group or (), skip or (), include_notes))
     except export_rules.ExportError as e:
-        _fail(str(e))
+        fail(str(e))
 
 
 @app.command("verify", help="Exit 1 when the backup folder differs from the database for the selection; writes nothing.")
@@ -70,7 +71,7 @@ def cmd_verify(ctx: typer.Context, directory: Optional[str] = typer.Option(None,
     try:
         problems = ctx.obj.db_export(db, directory).verify_export(table or (), group or (), skip or (), include_notes)
     except export_rules.ExportError as e:
-        _fail(str(e))
+        fail(str(e))
     if problems:
         print("the export and the database disagree:", file=sys.stderr)
         for line in problems:
@@ -88,5 +89,5 @@ def cmd_import(ctx: typer.Context, into: str = typer.Option(..., "--into", help=
     try:
         result = ctx.obj.db_import(into, directory, notes_into).import_database(not core_only, notes_into is not None)
     except (export_rules.ExportError, FileExistsError) as e:
-        _fail(str(e))
+        fail(str(e))
     _print(result)

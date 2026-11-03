@@ -112,6 +112,39 @@ Create a NEW database from the backup folder. Refuses to overwrite an existing f
 - `--into INTO` (required): Path of the new database file.
 - `--notes-into NOTES_INTO`: Also copy the exported notes into this directory (never overwrites).
 
+### `db restore`
+
+Copy a snapshot to a NEW database file. Never overwrites.
+
+- `--from SOURCE` (required): The snapshot (or any database file) to copy.
+- `--into INTO` (required): Path of the new database file.
+
+### `db restore-tables`
+
+Replace chosen tables inside an existing database from a snapshot or an export folder, in one transaction.
+
+- `--db DB`: Database (default: the configured one).
+- `--dry-run`: Do everything, then roll back and change nothing.
+- `--from-export FROM_EXPORT`: Take the rows from this export folder.
+- `--from-snapshot FROM_SNAPSHOT`: Take the rows from this snapshot file.
+- `--snapshot-dir SNAPSHOT_DIR`: Snapshot directory (default: snapshots/ beside the database).
+- `--table TABLE` (required): A table to replace (repeatable).
+
+### `db snapshot`
+
+Take a verified snapshot of the database and keep only the newest ones.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Snapshot directory (default: snapshots/ beside the database).
+- `--keep KEEP`: How many snapshots to keep.
+
+### `db snapshots`
+
+List the snapshots, newest first.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Snapshot directory (default: snapshots/ beside the database).
+
 ### `db verify`
 
 Exit 1 when the backup folder differs from the database for the selection; writes nothing.

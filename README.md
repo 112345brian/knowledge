@@ -139,6 +139,10 @@ and `<command> --help` for its options. Read commands accept `--json`.
 | `clean-concerts` | Clean concerts.csv in place (dedupes rows). |
 | `db export` | Write the selected tables (default: all) as deterministic files, each part with a manifest. |
 | `db import` | Create a NEW database from the backup folder. |
+| `db restore` | Copy a snapshot to a NEW database file. |
+| `db restore-tables` | Replace chosen tables inside an existing database from a snapshot or an export folder, in one transaction. |
+| `db snapshot` | Take a verified snapshot of the database and keep only the newest ones. |
+| `db snapshots` | List the snapshots, newest first. |
 | `db verify` | Exit 1 when the backup folder differs from the database for the selection; writes nothing. |
 | `docs build` | Rewrite every generated region of README.md and docs/\*.md from the code. |
 | `docs check` | Fail (exit 1) when a generated region differs from what the code renders; writes nothing. |
