@@ -237,8 +237,10 @@ for (name, sql) in con.execute("SELECT name, sql FROM sqlite_master WHERE type =
         continue
     cols = [r[1] for r in con.execute(f'PRAGMA table_info("{name}")')]
     # file_mtime is the real mtime of a file the test just wrote, and build_info records the commit and the
-    # interpreter, so these differ on every run or machine
+    # interpreter, so these differ on every run or machine. So does the hash of the vault db: a SQLite file's bytes
+    # carry the version of the SQLite library that wrote it.
     rows = [["<TS>" if isinstance(v, str) and TS.match(v) else ("<MTIME>" if cols[i] == "file_mtime" and v is not None else
+                                                  "<SQLITE-FILE>" if name == "build_inputs" and cols[i] == "sha256" and r[cols.index("input_key")] == "input:vault-db" and v is not None else
                                                   "<ENV>" if name == "build_info" and cols[i] in ("code_commit", "private_commit", "code_dirty", "private_dirty", "python_version", "sqlite_version", "platform") and v is not None else v)
              for i, v in enumerate(r)] for r in con.execute(f'SELECT * FROM "{name}"')]
     rows.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))

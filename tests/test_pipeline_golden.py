@@ -15,7 +15,10 @@ def test_pipeline_output_matches_the_golden_dump(tmp_path):
     assert sorted(got) == sorted(want), sorted(set(got) ^ set(want))
     for table in want:
         assert got[table]["columns"] == want[table]["columns"], table
-        assert got[table]["rows"] == want[table]["rows"], f"{table} differs"
+        if got[table]["rows"] != want[table]["rows"]:
+            differing = [(g, w) for g, w in zip(got[table]["rows"], want[table]["rows"]) if g != w]
+            raise AssertionError(f"{table} differs ({len(got[table]['rows'])} rows, want {len(want[table]['rows'])}); "
+                                 f"first differing row: got {differing[0][0] if differing else '-'} want {differing[0][1] if differing else '-'}")
 
 
 def test_the_world_exercises_every_ingest_step(tmp_path):

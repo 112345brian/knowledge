@@ -1,0 +1,46 @@
+name: ci
+
+# The whole local gate set, on every pull request and every push to main. The test suite already contains the
+# architecture gates (tach, import-linter contracts, tach check-external, arborescent, generated docs), so a green run
+# means the same thing it means locally. Nothing here needs the private data repo or any secret: the suite builds
+# its own synthetic data in temp dirs and scrubs the environment (tests/conftest.py).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    continue-on-error: ${{ matrix.experimental == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}      # the oldest supported (requires-python)
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: macos-latest, python: "3.12"}
+          # Windows is reported but not blocking until a run has shown the suite is clean there.
+          - {os: windows-latest, python: "3.12", experimental: true}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - name: Install (exactly what uv.lock says)
+        run: uv sync --locked
+      - name: Tests and architecture gates
+        run: uv run pytest
+      - name: Types
+        run: uv run mypy
