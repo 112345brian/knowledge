@@ -1,1 +1,0 @@
-Releases are cut with towncrier and bump-my-version: each change adds a fragment to `changelog.d/`, a release compiles them into `CHANGELOG.md`, and one command bumps the version in every file that carries it, commits and tags. See `docs/releasing.md`.

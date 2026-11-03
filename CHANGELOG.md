@@ -5,6 +5,22 @@ compatibility, and each such change is listed under **Upgrading**.
 
 <!-- towncrier release notes start -->
 
+## 0.2.1 - 2026-11-03
+
+### Added
+
+- Releases are cut with towncrier and bump-my-version: each change adds a fragment to `changelog.d/`, a release compiles them into `CHANGELOG.md`, and one command bumps the version in every file that carries it, commits and tags. See `docs/releasing.md`.
+
+### Changed
+
+- Tests now fail when a relative link in the README or docs is broken, when `docs/README.md` does not list a document, or when `CHANGELOG.md` has no entry for the current version.
+
+### Documentation
+
+- The README gained sections on backup, export and restore and on using the knowledge base from Claude (the MCP server, `mcp_mode`, the skills), a Releases section, the full list of gates and CI, and project-layout rows for the 0.2 modules.
+- `docs/architecture.md` has a table of every enforced gate and what it catches, and the I/O table covers the export, snapshot and MCP adapters; `docs/mcp.md` lists `mcp_moded_store`; `docs/README.md` indexes every document; the onion handoff note is marked historical.
+
+
 ## 0.2.0 - 2026-11-03
 
 ### Upgrading from 0.1.0
