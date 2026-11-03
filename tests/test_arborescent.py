@@ -6,22 +6,24 @@ arborescent-baseline.json, so only a NEW finding fails here. Core mode runs Arbo
 import-linter have their own tests in test_architecture.py.
 """
 import os
-import shutil
 import subprocess
+import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _arborescent(*args):
+    """Run Arborescent from the interpreter running the tests (a dev dependency), so it is the same on every OS."""
+    return subprocess.run([sys.executable, "-m", "arborescent", *args], cwd=REPO, capture_output=True, text=True)
+
+
 def test_arborescent_check_passes():
-    exe = shutil.which("arborescent", path=os.path.join(REPO, ".venv", "bin") + os.pathsep + os.environ.get("PATH", ""))
-    assert exe, "arborescent is a dev dependency: run `uv sync`"
-    p = subprocess.run([exe, "check", "--engines", "core"], cwd=REPO, capture_output=True, text=True)
+    p = _arborescent("check", "--engines", "core")
     assert p.returncode == 0, "arborescent check failed (uv run arborescent check):\n" + p.stdout[-4000:] + p.stderr[-1000:]
 
 
 def test_every_module_declares_its_ring_in_code_and_it_is_the_one_tach_enforces():
     """`__arbor__` is the in-code declaration; tach.toml's layer is the enforced one. Arborescent reports a mismatch
     (`arbor-ring-mismatch`), and this pins that no module is left relying on the `classify` fallback."""
-    p = subprocess.run([shutil.which("arborescent", path=os.path.join(REPO, ".venv", "bin")) or "arborescent", "discover"],
-                       cwd=REPO, capture_output=True, text=True)
+    p = _arborescent("discover")
     assert p.returncode == 0 and "no unclassified" in p.stdout, p.stdout + p.stderr
