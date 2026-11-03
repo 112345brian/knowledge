@@ -62,14 +62,14 @@ The build reads one TOML file: `$KNOWLEDGE_CONFIG` if set, otherwise `~/.config/
 error, never a silent fallback.
 
 ```toml
-db_dir = "~/MEGA/library/knowledge"            # where the built database goes
+db_dir = "~/knowledge/db"            # where the built database goes
 data_dir = "~/code/knowledge-private/data"     # where your fact files and rules live
-notes_vault = "~/MEGA/notes"                   # optional: a directory of citation notes
-health_dir = "~/MEGA/health"                   # optional
+notes_vault = "~/notes"                   # optional: a directory of citation notes
+health_dir = "~/health"                   # optional
 client_sources = ["concerts", "ratings"]       # optional: which client sources to build
 
 [client_inputs]                                # the inputs those sources read
-concerts_csv = "~/MEGA/concerts.csv"
+concerts_csv = "~/data/concerts.csv"
 ```
 
 - **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources` and the
@@ -95,12 +95,12 @@ For the differences that remain there are two ways to keep one synced config:
   ```
 
   ```toml
-  db_dir = "~/MEGA/library/knowledge"
+  db_dir = "~/knowledge/db"
   data_dir = "~/code/knowledge-private/data"
   {{- if eq .chezmoi.hostname "desktop" }}
   notes_vault = "D:/Notes"
   {{- else }}
-  notes_vault = "~/MEGA/notes"
+  notes_vault = "~/notes"
   {{- end }}
   ```
 
