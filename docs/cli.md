@@ -94,24 +94,30 @@ No options.
 
 ### `db export`
 
-Write one deterministic NDJSON file per curated table and a manifest.
+Write the backup folder: core and bulk table files (and notes with --include-notes), each part with a manifest.
 
-- `--db DB`: Database to export (default: the configured one).
-- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
+- `--parts PARTS`: Comma-separated parts of the export: core, bulk (default: core,bulk). Notes are added with --include-notes.
 
 ### `db import`
 
-Create a NEW database from an export. Refuses to overwrite an existing file.
+Create a NEW database from the backup folder. Refuses to overwrite an existing file or note.
 
-- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+- `--core-only`: Import only the core tables, not the bulk client tables.
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
 - `--into INTO` (required): Path of the new database file.
+- `--notes-into NOTES_INTO`: Also copy the exported notes into this directory (never overwrites).
 
 ### `db verify`
 
-Exit 1 when the export files differ from the database; writes nothing.
+Exit 1 when the backup folder differs from the database; writes nothing.
 
-- `--db DB`: Database to compare (default: the configured one).
-- `--dir DIRECTORY`: Export directory (default: export/ in the private data directory).
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
+- `--parts PARTS`: Comma-separated parts of the export: core, bulk (default: core,bulk). Notes are added with --include-notes.
 
 ### `docs build`
 

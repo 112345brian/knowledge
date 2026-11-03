@@ -119,3 +119,16 @@ def test_no_base_module_names_a_shipped_client_source():
                 text = open(os.path.join(REPO, folder, name), encoding="utf-8").read()
                 offenders += [f"{folder + '/' if folder else ''}{name}: {n}" for n in names if n in text]
     assert offenders == []
+
+
+def test_data_tables_and_schema_files_for_tables_name_what_a_backup_needs():
+    registry = ClientRegistry(build_rules.CORE_PIPELINE)
+    registry.add(ClientSource("a", schema=("client/a.sql",), report_tables=("rows_b", "rows_a")))
+    registry.add(ClientSource("b", schema=("client/a.sql", "client/b.sql"), report_tables=("rows_a", "other")))
+    registry.add(ClientSource("c"))                                    # no tables: contributes nothing
+    assert registry.data_tables() == ["other", "rows_a", "rows_b"]      # each once, sorted
+    assert registry.schema_files_for_tables([]) == ["schema.sql"]
+    assert registry.schema_files_for_tables(["rows_b"]) == ["schema.sql", "client/a.sql"]
+    assert registry.schema_files_for_tables(["other"]) == ["schema.sql", "client/a.sql", "client/b.sql"]
+    assert registry.schema_files_for_tables(["unknown"]) == ["schema.sql"]
+    assert ClientRegistry(build_rules.CORE_PIPELINE).data_tables() == []

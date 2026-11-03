@@ -168,7 +168,7 @@ wants one folder that is the whole backup, not an ingest from about 20 paths. De
 - Client modules **register their own table lists** as data (the base never imports `client/`), like the build step list.
 - The importers for the outside files become optional refreshes (increment 3).
 
-Open: measure the real size of `bulk/` before choosing git versus no git for it.
+Built (PR 95). Measured on the real data: `core/` 2.1 MB, `bulk/` 21 MB (2.6 MB gzipped; 153k scrobbles are most of it), `notes/` 2.0 MB (435 files). Export -> import -> export is byte-identical for core and bulk. Still open: whether `bulk/` goes into git (about 21 MB per changed refresh) or stays outside it; the default recommendation is outside git, with `core/` committed per write.
 
 ## Increments after approval (each independently mergeable, current pipeline untouched until step 4)
 

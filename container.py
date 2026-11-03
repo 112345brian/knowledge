@@ -86,13 +86,16 @@ class Container:
         return subjects.compose(self.locations)
 
     def db_export(self, db_path=None, directory=None):
-        """Export and verify use cases for a database (default: the configured one) and an export directory (default:
-        `export/` in the private data directory)."""
-        return db_export.compose_export(db_path or self.locations.db_path, directory or self.locations.in_data_dir("export"))
+        """Export and verify use cases for a database (default: the configured one), an export directory (default:
+        `export/` in the private data directory) and the configured notes vault's `sources/` (for the notes part)."""
+        vault = self.locations.notes_vault
+        return db_export.compose_export(db_path or self.locations.db_path, directory or self.locations.in_data_dir("export"),
+                                        self.locations.in_notes_vault("sources") if vault else None)
 
-    def db_import(self, db_path, directory=None):
-        """The import use case: build a new database at `db_path` from an export directory (default as for `db_export`)."""
-        return db_export.compose_import(db_path, directory or self.locations.in_data_dir("export"))
+    def db_import(self, db_path, directory=None, notes_into=None):
+        """The import use case: build a new database at `db_path` from an export directory (default as for
+        `db_export`); notes, when asked for, are written into `notes_into`."""
+        return db_export.compose_import(db_path, directory or self.locations.in_data_dir("export"), notes_into)
 
     def docs_at(self, root=None):
         """Generated documentation use case, rooted at this checkout or an explicit repository copy."""

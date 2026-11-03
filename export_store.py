@@ -15,7 +15,7 @@ from typing import Any, Collection, Iterator, List, Mapping, Sequence
 import audit_rules
 from export_rules import ExportError
 
-SCHEMA_SQL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
+CODE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def _columns(con: sqlite3.Connection, table: str) -> List[tuple]:
@@ -65,6 +65,27 @@ class SqliteExportReads:
             con.close()
 
 
+def _inside(directory: str, name: str) -> str:
+    """The path of `name` (a '/'-separated relative path) inside `directory`; ExportError if it would leave it."""
+    parts = name.split("/")
+    if not name or name.startswith("/") or any(p in ("", ".", "..") for p in parts):
+        raise ExportError(f"{name!r} is not a path inside the export folder")
+    return os.path.join(directory, *parts)
+
+
+def _write_atomic(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".export-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
 class DirExportFiles:
     """`ExportFiles` over a directory (created on the first write)."""
 
@@ -72,22 +93,43 @@ class DirExportFiles:
         self.directory = directory
 
     def read(self, name: str) -> str:
-        """The text of file `name`."""
-        with open(os.path.join(self.directory, name), encoding="utf-8", newline="") as f:
+        """The text of file `name` (a path inside the export folder)."""
+        with open(_inside(self.directory, name), encoding="utf-8", newline="") as f:
             return f.read()
 
     def write(self, name: str, text: str) -> None:
-        """Write `text` as file `name` atomically."""
-        os.makedirs(self.directory, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.directory, prefix=".export-")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                f.write(text)
-            os.replace(tmp, os.path.join(self.directory, name))
-        except BaseException:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
+        """Write `text` as file `name` atomically, creating its directory."""
+        _write_atomic(_inside(self.directory, name), text)
+
+
+class DirNotes:
+    """`NotesFiles` over a flat directory of `*.md` notes. With no directory every use fails with a clear error."""
+
+    def __init__(self, directory):
+        self.directory = directory
+
+    def _dir(self) -> str:
+        if not self.directory:
+            raise ExportError("no notes directory is configured (set notes_vault, or pass --notes-into)")
+        return self.directory
+
+    def names(self) -> List[str]:
+        """The `*.md` file names in the directory, sorted (none when it does not exist)."""
+        if not os.path.isdir(self._dir()):
+            return []
+        return sorted(n for n in os.listdir(self._dir()) if n.endswith(".md") and os.path.isfile(os.path.join(self._dir(), n)))
+
+    def read(self, name: str) -> str:
+        """The text of note `name`."""
+        with open(_inside(self._dir(), name), encoding="utf-8", newline="") as f:
+            return f.read()
+
+    def write(self, name: str, text: str) -> None:
+        """Write note `name` exclusively: FileExistsError if it is already there."""
+        path = _inside(self._dir(), name)
+        if os.path.exists(path):
+            raise FileExistsError(f"{path} already exists")
+        _write_atomic(path, text)
 
 
 class SqliteImportTarget:
@@ -98,16 +140,17 @@ class SqliteImportTarget:
         self.db_path = db_path
         self._con = None
 
-    def create(self) -> None:
-        """Create the new database with the core schema; refuse to overwrite one."""
+    def create(self, schema_files: Sequence[str]) -> None:
+        """Create the new database from these schema files (relative to the code directory); refuse to overwrite one."""
         if os.path.exists(self.db_path):
             raise FileExistsError(f"{self.db_path} already exists; an import never overwrites a database")
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         self._con = sqlite3.connect(self.db_path)
         try:
             self._con.execute("PRAGMA foreign_keys = OFF")
-            with open(SCHEMA_SQL, encoding="utf-8") as f:
-                self._con.executescript(f.read())
+            for name in schema_files:
+                with open(_inside(CODE_DIR, name), encoding="utf-8") as f:
+                    self._con.executescript(f.read())
             self._con.execute("PRAGMA foreign_keys = OFF")
         except BaseException:
             self.discard()

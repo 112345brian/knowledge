@@ -1,17 +1,18 @@
 """Import an export into a NEW database (the counterpart of `export_service`).
 
-Application ring (tach layer `application`): it checks the manifest and every file's hash before it creates anything,
-then creates the database through `ImportTarget`, inserts tables parents first, and removes the new database if
-anything fails after it was created. It never prints or exits.
+Application ring (tach layer `application`): it checks every manifest and every file's hash before it creates
+anything, then creates the database through `ImportTarget`, inserts the core tables parents first and then the bulk
+tables, and removes the new database if anything fails after it was created. The notes, when asked for, are written
+last and only to names that do not exist yet. It never prints or exits.
 """
 
 __arbor__ = {"ring": "application"}
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Dict, List, Mapping
 
 import export_rules as rules
-from export_port import ExportFiles, ImportTarget
+from export_port import ExportFiles, ExportScope, ImportTarget, NotesFiles
 
 CHUNK = 500
 
@@ -21,30 +22,65 @@ class ImportDeps:
     """What `import_database` reaches the world through."""
     export_files: ExportFiles
     import_target: ImportTarget
+    export_scope: ExportScope
+    notes_target: NotesFiles
 
 
-def import_database(deps: ImportDeps) -> Mapping[str, int]:
-    """Create a new database from the export. Returns {table: rows}. Nothing is created when the export is
-    incomplete, altered or from another schema version; the new database is removed again if inserting fails."""
-    manifest = rules.read_manifest(deps.export_files.read)
-    texts = rules.read_texts(deps.export_files.read)
+def _load(deps: ImportDeps, part: str, required: bool):
+    """(manifest, texts) of a part, verified; None when an optional part is absent."""
+    try:
+        manifest = rules.read_manifest(deps.export_files.read, part)
+    except rules.MissingPart:
+        if required:
+            raise
+        return None                       # only a part that was never exported is optional; a damaged one is an error
+    texts = rules.read_texts(deps.export_files.read, part, manifest)
     problems = rules.drift(manifest, texts)
     if problems:
-        raise rules.ExportError("the export is damaged: " + "; ".join(problems))
-    parsed = {t: rules.decode_table(texts[t]) for t in rules.EXPORT_TABLES}
-    deps.import_target.create()
+        raise rules.ExportError(f"the {part} part of the export is damaged: " + "; ".join(problems))
+    return manifest, texts
+
+
+def import_database(deps: ImportDeps, with_bulk: bool = True, with_notes: bool = False) -> Mapping[str, Mapping[str, int]]:
+    """Create a new database from the export; with `with_notes`, also copy the notes into the notes target. Returns
+    {part: {item: rows}} for what was imported (the bulk part is left out when the export has none). Nothing is
+    created when the export is incomplete, altered or from another schema version, or names a table no client
+    source owns; the new database is removed again if inserting fails."""
+    core = _load(deps, rules.CORE, required=True)
+    bulk = _load(deps, rules.BULK, required=False) if with_bulk else None
+    notes = _load(deps, rules.NOTES, required=True) if with_notes else None
+    assert core is not None
+    unknown = [t for t in (bulk[0].tables if bulk else ()) if t not in set(deps.export_scope.known_bulk_tables())]
+    if unknown:
+        raise rules.ExportError("the bulk part has table(s) no client source owns: " + ", ".join(sorted(unknown)))
+    if bulk and bulk[0].user_version != core[0].user_version:
+        raise rules.ExportError("the core and bulk parts are from different schema versions")
+    parsed: Dict[str, List] = {t: rules.decode_table(core[1][t]) for t in rules.CORE_TABLES}
+    bulk_parsed: Dict[str, List] = {t: rules.decode_table(bulk[1][t]) for t in sorted(bulk[0].tables)} if bulk else {}
+    if notes:
+        clash = sorted(set(notes[0].tables) & set(deps.notes_target.names()))
+        if clash:
+            raise FileExistsError("these notes already exist and are never overwritten: " + ", ".join(clash))
+    deps.import_target.create(deps.export_scope.schema_files(list(bulk_parsed)))
     try:
-        if deps.import_target.user_version() != manifest.user_version:
-            raise rules.ExportError(f"the export is schema version {manifest.user_version}, this code builds "
+        if deps.import_target.user_version() != core[0].user_version:
+            raise rules.ExportError(f"the export is schema version {core[0].user_version}, this code builds "
                                     f"{deps.import_target.user_version()}")
-        for table in rules.EXPORT_TABLES:
-            rows = parsed[table]
-            for start in range(0, len(rows), CHUNK):
-                deps.import_target.insert(table, rows[start:start + CHUNK])
+        for tables in (parsed, bulk_parsed):
+            for table, rows in tables.items():
+                for start in range(0, len(rows), CHUNK):
+                    deps.import_target.insert(table, rows[start:start + CHUNK])
         found = deps.import_target.finish()
         if found:
             raise rules.ExportError("the imported database is not sound: " + "; ".join(found))
     except BaseException:
         deps.import_target.discard()
         raise
-    return {t: len(parsed[t]) for t in rules.EXPORT_TABLES}
+    result: Dict[str, Mapping[str, int]] = {rules.CORE: {t: len(r) for t, r in parsed.items()}}
+    if bulk:
+        result[rules.BULK] = {t: len(r) for t, r in bulk_parsed.items()}
+    if notes:
+        for name in sorted(notes[1]):
+            deps.notes_target.write(name, notes[1][name])
+        result[rules.NOTES] = {n: 1 for n in sorted(notes[1])}
+    return result

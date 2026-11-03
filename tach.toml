@@ -475,7 +475,7 @@ depends_on = ["audit_rules", "export_rules"]
 [[modules]]
 path = "db_export"      # COMPOSITION ROOT: binds export_service to its adapters
 layer = "composition"
-depends_on = ["export_service", "import_service", "export_store", "wiring"]
+depends_on = ["client_bootstrap", "export_service", "import_service", "export_store", "wiring"]
 
 [[modules]]
 path = "cli_export"     # CLI: knowledge.py db export|verify|import

@@ -1,11 +1,18 @@
-"""The deterministic export format of the curated database (docs/db-source-of-truth.md, increment 2b), pure.
+"""The deterministic export format of the database (docs/db-source-of-truth.md, "One backup folder"), pure.
 
-Domain service (tach layer `domain_services`): which tables are exported, how a row becomes one line of text, and the
-manifest that proves a directory of such files is complete and unaltered. Nothing here reads a file or a database.
+Domain service (tach layer `domain_services`): which tables go in which part of the export, how a row becomes one line
+of text, and the manifests that prove a part is complete and unaltered. Nothing here reads a file or a database.
 
-One file per table (`<table>.ndjson`): one JSON object per row, keys sorted, no insignificant whitespace, UTF-8, one
-`\\n` after every row, rows in primary-key order. The same database always gives the same bytes; nothing in the files
-depends on the time of the export. `manifest.json` lists the schema version and each file's row count and SHA-256.
+The export folder has up to three parts, each with its own manifest:
+
+- `core/`: the curated tables (`CORE_TABLES`), small, committed to the private repo after each write;
+- `bulk/`: every table a client source owns (music, measurements, ...), large, refreshed on demand. The base does
+  not know these tables: the client registry hands them in;
+- `notes/`: the citation-note markdown files, copied only on request.
+
+A table is one file `<part>/<table>.ndjson`: one JSON object per row, keys sorted, no insignificant whitespace, UTF-8,
+one `\\n` after every row, rows in primary-key order. The same database always gives the same bytes; nothing depends on
+the time of the export. `<part>/manifest.json` lists the schema version and each file's row count and SHA-256.
 """
 
 __arbor__ = {"ring": "domain_services"}
@@ -13,31 +20,67 @@ __arbor__ = {"ring": "domain_services"}
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Sequence
 
 FORMAT = 1
-MANIFEST_NAME = "manifest.json"
+CORE = "core"
+BULK = "bulk"
+NOTES = "notes"
+TABLE_PARTS = (CORE, BULK)
+MANIFEST = "manifest.json"
 
-# Every table that holds data nothing else can recreate or that foreign keys point into, parents before children (the
-# importer inserts in this order). Not exported: build_info and build_inputs (build provenance), the full-text index
-# (rebuilt by the facts triggers) and the client tables (re-imported from their outside files).
-EXPORT_TABLES = (
+# Every table that holds data nothing else can recreate or that foreign keys point into, parents before children.
+# Not exported: build_info and build_inputs (build provenance) and the full-text index (rebuilt by the facts triggers).
+CORE_TABLES = (
     "publishers", "authors", "vault_files", "sources", "source_authors", "source_identifiers",
     "source_identifier_conflicts", "source_relations", "subjects", "subject_aliases", "entities", "entity_aliases",
     "facts", "fact_sources", "fact_entities", "fact_revisions", "claims", "claim_facts",
 )
+NOT_EXPORTED = ("build_info", "build_inputs")
+
+_IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
+_NOTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.,'()\[\]&+-]*\.md$")
 
 
 class ExportError(Exception):
     """The export or import cannot proceed; the message says why."""
 
 
-def file_name(table: str) -> str:
-    """The name of a table's export file."""
-    if table not in EXPORT_TABLES:
-        raise ExportError(f"{table!r} is not an exported table")
-    return f"{table}.ndjson"
+class MissingPart(ExportError):
+    """A part's manifest does not exist (the part was never exported); an invalid manifest is a plain ExportError."""
+
+
+def check_table(table: str) -> str:
+    """`table` if it is a plain lower-case SQL name (it becomes a file name and part of a statement), else ExportError."""
+    if not isinstance(table, str) or not _IDENT.match(table):
+        raise ExportError(f"{table!r} is not a valid table name")
+    return table
+
+
+def check_note(name: str) -> str:
+    """`name` if it is a plain `*.md` file name with no directory part, else ExportError."""
+    if not isinstance(name, str) or not _NOTE.match(name) or ".." in name:
+        raise ExportError(f"{name!r} is not a valid note file name")
+    return name
+
+
+def manifest_name(part: str) -> str:
+    """Path of a part's manifest inside the export folder."""
+    return f"{part}/{MANIFEST}"
+
+
+def file_name(part: str, table: str) -> str:
+    """Path of a table's file inside the export folder."""
+    if part not in TABLE_PARTS:
+        raise ExportError(f"{part!r} is not a table part")
+    return f"{part}/{check_table(table)}.ndjson"
+
+
+def note_path(name: str) -> str:
+    """Path of a note inside the export folder."""
+    return f"{NOTES}/{check_note(name)}"
 
 
 def encode_row(row: Mapping[str, Any]) -> str:
@@ -77,24 +120,30 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def line_count(text: str) -> int:
+    """Number of rows (lines) in a table text."""
+    return text.count("\n")
+
+
 @dataclass(frozen=True)
 class Manifest:
-    """What an export directory should contain: the schema version and, per table, (row count, SHA-256)."""
+    """What a part of an export should contain: the schema version and, per item, (row count, SHA-256). For a notes
+    part the items are file names and the row count is 1."""
     user_version: int
     tables: Mapping[str, Sequence]
 
 
 def build_manifest(user_version: int, texts: Mapping[str, str]) -> str:
-    """The text of `manifest.json` for the given table texts (all of `EXPORT_TABLES`, nothing else)."""
-    if set(texts) != set(EXPORT_TABLES):
-        raise ExportError("the manifest needs exactly the exported tables")
-    tables = {t: {"rows": texts[t].count("\n"), "sha256": digest(texts[t])} for t in EXPORT_TABLES}
-    return json.dumps({"format": FORMAT, "schema_user_version": user_version, "tables": tables},
+    """The text of a part's manifest for the given item texts."""
+    items = {name: {"rows": line_count(text) if not name.endswith(".md") else 1, "sha256": digest(text)}
+             for name, text in sorted(texts.items())}
+    return json.dumps({"format": FORMAT, "schema_user_version": user_version, "tables": items},
                       sort_keys=True, indent=2) + "\n"
 
 
-def parse_manifest(text: str) -> Manifest:
-    """The manifest in `text`; ExportError unless it is this format and lists exactly the exported tables."""
+def parse_manifest(text: str, part: str) -> Manifest:
+    """The manifest in `text`; ExportError unless it is this format and lists valid items. The core part must list
+    exactly `CORE_TABLES`; the bulk part any valid table names; the notes part valid note names."""
     try:
         data = json.loads(text)
         if data["format"] != FORMAT:
@@ -102,39 +151,41 @@ def parse_manifest(text: str) -> Manifest:
         tables = {t: (int(v["rows"]), str(v["sha256"])) for t, v in data["tables"].items()}
         version = int(data["schema_user_version"])
     except (ValueError, KeyError, TypeError, AttributeError) as e:
-        raise ExportError(f"manifest.json is not a valid manifest: {e!r}") from e
-    if set(tables) != set(EXPORT_TABLES):
-        raise ExportError("manifest.json does not list exactly the exported tables")
+        raise ExportError(f"{manifest_name(part)} is not a valid manifest: {e!r}") from e
+    for name in tables:
+        (check_note if part == NOTES else check_table)(name)
+    if part == CORE and set(tables) != set(CORE_TABLES):
+        raise ExportError(f"{manifest_name(part)} does not list exactly the core tables")
     return Manifest(version, tables)
 
 
 def drift(manifest: Manifest, texts: Mapping[str, str]) -> List[str]:
-    """One line per table whose text differs from the manifest (row count or hash); empty when they agree."""
+    """One line per item whose text differs from the manifest (row count or hash) or is missing; empty when they agree."""
     problems = []
-    for table in EXPORT_TABLES:
-        rows, sha = manifest.tables[table]
-        text = texts.get(table)
+    for name, (rows, sha) in manifest.tables.items():
+        text = texts.get(name)
         if text is None:
-            problems.append(f"{table}: file is missing")
-        elif digest(text) != sha or text.count("\n") != rows:
-            problems.append(f"{table}: differs from the manifest (manifest {rows} rows, file {text.count(chr(10))})")
+            problems.append(f"{name}: file is missing")
+        elif digest(text) != sha or (not name.endswith(".md") and line_count(text) != rows):
+            problems.append(f"{name}: differs from the manifest")
     return problems
 
 
-def read_texts(read: Callable[[str], str]) -> Dict[str, str]:
-    """The text of every table file that exists, read through `read(file name)` (FileNotFoundError: absent)."""
+def read_manifest(read: Callable[[str], str], part: str) -> Manifest:
+    """The part's manifest read through `read(path)`; ExportError when it is missing or invalid."""
+    try:
+        return parse_manifest(read(manifest_name(part)), part)
+    except FileNotFoundError as e:
+        raise MissingPart(f"{manifest_name(part)} is missing: this is not a complete export") from e
+
+
+def read_texts(read: Callable[[str], str], part: str, manifest: Manifest) -> Dict[str, str]:
+    """The text of every item the manifest lists that exists, read through `read(path)`."""
     texts: Dict[str, str] = {}
-    for table in EXPORT_TABLES:
+    for name in manifest.tables:
+        path = note_path(name) if part == NOTES else file_name(part, name)
         try:
-            texts[table] = read(file_name(table))
+            texts[name] = read(path)
         except FileNotFoundError:
             pass
     return texts
-
-
-def read_manifest(read: Callable[[str], str]) -> Manifest:
-    """The manifest read through `read`; ExportError when it is missing or invalid."""
-    try:
-        return parse_manifest(read(MANIFEST_NAME))
-    except FileNotFoundError as e:
-        raise ExportError("manifest.json is missing: this is not a complete export") from e
