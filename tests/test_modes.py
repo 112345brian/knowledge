@@ -574,6 +574,12 @@ FACT_READERS_ALLOWED = {
     "modes.py", "modes_store.py", "knowledge.py", "cli_common.py", "normal_db.py", "revisions.py", "revisions_store.py", "review_store.py", "privacy_store.py", "claims_store.py", "review.py",
     # CLI-only audit over the full local db (like claims_store); never serves tool results
     "fixity_store.py",
+    # lists the tables whose changes are audited (policy only); it names the tables but never selects from them
+    "audit_rules.py",
+    # lists the table names the full-database export writes to files (pure; reads nothing, serves no tool results)
+    "export_rules.py",
+    # names the history tables restore-tables refuses to replace (policy only; reads nothing)
+    "snapshot_rules.py",
     # CLI-only per-subject fact counts over the full local db (like knowledge.py); never serves tool results
     "cli_subjects.py",
     "entity_queries_store.py",

@@ -14,6 +14,8 @@ import add_fact
 import building
 import clock as clocks
 import entities
+import db_export
+import db_snapshot
 import docs
 import facts_batch
 import lifecycle
@@ -83,6 +85,30 @@ class Container:
     @cached_property
     def subjects(self):
         return subjects.compose(self.locations)
+
+    def db_export(self, db_path=None, directory=None):
+        """Export and verify use cases for a database (default: the configured one), an export directory (default:
+        `export/` in the private data directory) and the configured notes vault's `sources/` (for the notes part)."""
+        vault = self.locations.notes_vault
+        return db_export.compose_export(db_path or self.locations.db_path, directory or self.locations.in_data_dir("export"),
+                                        self.locations.in_notes_vault("sources") if vault else None)
+
+    def db_import(self, db_path, directory=None, notes_into=None):
+        """The import use case: build a new database at `db_path` from an export directory (default as for
+        `db_export`); notes, when asked for, are written into `notes_into`."""
+        return db_export.compose_import(db_path, directory or self.locations.in_data_dir("export"), notes_into)
+
+    def db_snapshots(self, db_path=None, directory=None):
+        """Snapshot use cases for a database (default: the configured one) and a snapshot directory (default: `snapshots/`
+        beside it)."""
+        return db_snapshot.compose_snapshots(db_path or self.locations.db_path, directory or self.locations.snapshot_dir, self.clock)
+
+    def db_restore_tables(self, db_path=None, snapshot_source=None, export_dir=None, snapshot_dir=None):
+        """Table-restore use cases for a database (default: the configured one), reading rows from a snapshot file or an
+        export folder (default folder: `export/` in the private data directory)."""
+        return db_snapshot.compose_restore_tables(
+            db_path or self.locations.db_path, snapshot_dir or self.locations.snapshot_dir, self.clock, snapshot_source,
+            export_dir or self.locations.in_data_dir("export"))
 
     def docs_at(self, root=None):
         """Generated documentation use case, rooted at this checkout or an explicit repository copy."""

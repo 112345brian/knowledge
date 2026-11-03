@@ -1,0 +1,216 @@
+"""Adapters of the database export and import: a SQLite file read-only, a directory of text files, a new SQLite file.
+
+Infrastructure ring (tach layer `infrastructure`): implements `export_port`. Reading opens the database read-only so
+an export can never change it; writing a file is atomic (a temp file in the same directory, then one replace);
+creating a database refuses to touch one that exists.
+"""
+
+__arbor__ = {"ring": "infrastructure"}
+
+import os
+import sqlite3
+import tempfile
+from typing import Any, Collection, Iterator, List, Mapping, Sequence
+
+import audit_rules
+from export_rules import ExportError
+
+CODE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _columns(con: sqlite3.Connection, table: str) -> List[tuple]:
+    return con.execute(f"PRAGMA table_info({audit_rules.ident(table)})").fetchall()
+
+
+class SqliteExportReads:
+    """`ExportReads` over a database file, opened read-only."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+
+    def _connect(self) -> sqlite3.Connection:
+        if not os.path.isfile(self.db_path):
+            raise ExportError(f"there is no database at {self.db_path}")
+        return sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+
+    def user_version(self) -> int:
+        """The schema version of the database."""
+        con = self._connect()
+        try:
+            return con.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            con.close()
+
+    def tables(self) -> Collection[str]:
+        """The names of the tables that exist."""
+        con = self._connect()
+        try:
+            return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        finally:
+            con.close()
+
+    def rows(self, table: str) -> Iterator[Mapping[str, Any]]:
+        """Every row of `table`, in primary-key order."""
+        con = self._connect()
+        try:
+            columns = _columns(con, table)
+            names = [c[1] for c in columns]
+            keys = [c[1] for c in sorted((c for c in columns if c[5]), key=lambda c: c[5])]
+            if not keys:
+                raise ExportError(f"{table} has no primary key, so its rows have no stable order")
+            cursor = con.execute(f"SELECT {', '.join(names)} FROM {table} ORDER BY {', '.join(keys)}")
+            for row in cursor:
+                yield dict(zip(names, row))
+        finally:
+            con.close()
+
+
+def _inside(directory: str, name: str) -> str:
+    """The path of `name` (a '/'-separated relative path) inside `directory`; ExportError if it would leave it."""
+    parts = name.split("/")
+    if not name or name.startswith("/") or any(p in ("", ".", "..") for p in parts):
+        raise ExportError(f"{name!r} is not a path inside the export folder")
+    return os.path.join(directory, *parts)
+
+
+def _write_atomic(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".export-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+class DirExportFiles:
+    """`ExportFiles` over a directory (created on the first write)."""
+
+    def __init__(self, directory: str):
+        self.directory = directory
+
+    def read(self, name: str) -> str:
+        """The text of file `name` (a path inside the export folder)."""
+        with open(_inside(self.directory, name), encoding="utf-8", newline="") as f:
+            return f.read()
+
+    def write(self, name: str, text: str) -> None:
+        """Write `text` as file `name` atomically, creating its directory."""
+        _write_atomic(_inside(self.directory, name), text)
+
+
+class RegistryScope:
+    """`ExportScope` over a client registry handed in by the composition root: the base asks it which client tables
+    exist, and never names them."""
+
+    def __init__(self, registry):
+        self._registry = registry
+
+    def bulk_tables(self, existing: Collection[str]) -> List[str]:
+        """The client-owned tables among `existing`, sorted."""
+        return [t for t in self._registry.data_tables() if t in set(existing)]
+
+    def known_bulk_tables(self) -> Collection[str]:
+        """Every table any registered client source owns."""
+        return self._registry.data_tables()
+
+    def groups(self) -> Mapping[str, Collection[str]]:
+        """One group per client source: its name and the tables it owns."""
+        return {name: tuple(self._registry.source(name).report_tables) for name in self._registry.names
+                if self._registry.source(name).report_tables}
+
+    def schema_files(self, tables: Collection[str]) -> List[str]:
+        """The schema files a database holding these client tables is created from."""
+        return self._registry.schema_files_for_tables(tables)
+
+
+class DirNotes:
+    """`NotesFiles` over a flat directory of `*.md` notes. With no directory every use fails with a clear error."""
+
+    def __init__(self, directory):
+        self.directory = directory
+
+    def _dir(self) -> str:
+        if not self.directory:
+            raise ExportError("no notes directory is configured (set notes_vault, or pass --notes-into)")
+        return self.directory
+
+    def names(self) -> List[str]:
+        """The `*.md` file names in the directory, sorted (none when it does not exist)."""
+        if not os.path.isdir(self._dir()):
+            return []
+        return sorted(n for n in os.listdir(self._dir()) if n.endswith(".md") and os.path.isfile(os.path.join(self._dir(), n)))
+
+    def read(self, name: str) -> str:
+        """The text of note `name`."""
+        with open(_inside(self._dir(), name), encoding="utf-8", newline="") as f:
+            return f.read()
+
+    def write(self, name: str, text: str) -> None:
+        """Write note `name` exclusively: FileExistsError if it is already there."""
+        path = _inside(self._dir(), name)
+        if os.path.exists(path):
+            raise FileExistsError(f"{path} already exists")
+        _write_atomic(path, text)
+
+
+class SqliteImportTarget:
+    """`ImportTarget` over a new database file with the core schema. Foreign keys are checked at the end, not per row
+    (the tables arrive parents first, but `facts.superseded_by_fact_id` points inside its own table)."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._con = None
+
+    def create(self, schema_files: Sequence[str]) -> None:
+        """Create the new database from these schema files (relative to the code directory); refuse to overwrite one."""
+        if os.path.exists(self.db_path):
+            raise FileExistsError(f"{self.db_path} already exists; an import never overwrites a database")
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+        self._con = sqlite3.connect(self.db_path)
+        try:
+            self._con.execute("PRAGMA foreign_keys = OFF")
+            for name in schema_files:
+                with open(_inside(CODE_DIR, name), encoding="utf-8") as f:
+                    self._con.executescript(f.read())
+            self._con.execute("PRAGMA foreign_keys = OFF")
+        except BaseException:
+            self.discard()
+            raise
+
+    def user_version(self) -> int:
+        """The schema version of the database."""
+        return self._con.execute("PRAGMA user_version").fetchone()[0]
+
+    def insert(self, table: str, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Insert `rows` into `table`; refuse a column this schema lacks."""
+        known = {c[1] for c in _columns(self._con, table)}
+        for row in rows:
+            extra = set(row) - known
+            if extra:
+                raise ExportError(f"{table}: the export has column(s) this schema lacks: {', '.join(sorted(extra))}")
+        for row in rows:
+            names = list(row)
+            self._con.execute(f"INSERT INTO {audit_rules.ident(table)} ({', '.join(audit_rules.ident(n) for n in names)}) "
+                              f"VALUES ({', '.join('?' for _ in names)})", [row[n] for n in names])
+
+    def finish(self) -> List[str]:
+        """Commit and return the integrity and foreign-key problems found."""
+        self._con.commit()
+        problems = [f"integrity: {r[0]}" for r in self._con.execute("PRAGMA integrity_check") if r[0] != "ok"]
+        problems += [f"foreign key: {r[0]} row {r[1]} -> {r[2]}" for r in self._con.execute("PRAGMA foreign_key_check")]
+        self._con.close()
+        self._con = None
+        return problems
+
+    def discard(self) -> None:
+        """Close and remove the database and its journal files."""
+        if self._con is not None:
+            self._con.close()
+            self._con = None
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            if os.path.exists(self.db_path + suffix):
+                os.remove(self.db_path + suffix)

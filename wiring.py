@@ -29,6 +29,8 @@ from client_registry import ClientSources
 from clock_port import Clock
 from datafiles_port import DataFiles
 from docs_files_port import DocsFiles
+from export_port import ExportFiles, ExportReads, ExportScope, ImportTarget, NotesFiles
+from snapshot_port import Snapshots, TableRestore
 from entity_files_port import EntityFileReader, EntityFiles
 from entity_migration_port import EntityMigration
 from build_repositories_port import EntityRepository
@@ -96,6 +98,8 @@ PORT_PROTOCOLS = {
     "clients": ClientSources, "files": BuildFiles, "source": NormalSource, "sink": NormalSink, "leak_scan": LeakScan,
     "sessions": SessionFactory, "steps": StepRegistry, "provenance": ProvenanceReader,
     "outputs": BuildOutputs,
+    "export_reads": ExportReads, "export_files": ExportFiles, "import_target": ImportTarget,
+    "export_scope": ExportScope, "snapshots": Snapshots, "table_restore": TableRestore, "snapshot_reads": ExportReads, "notes_source": NotesFiles, "notes_target": NotesFiles,
     "docs_files": DocsFiles, "capture": FactCapture, "lookup": FactLookup, "session": Session,
 }
 
