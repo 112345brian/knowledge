@@ -448,6 +448,16 @@ depends_on = [
 ]
 
 [[modules]]
+path = "audit_rules"    # DOMAIN SERVICE: audit and append-only trigger SQL for the live database (pure)
+layer = "domain_services"
+depends_on = []
+
+[[modules]]
+path = "live_schema_store"  # INFRASTRUCTURE: installs the live-only tables and generated triggers into a database
+layer = "infrastructure"
+depends_on = ["audit_rules"]
+
+[[modules]]
 path = "leak_rules"     # DOMAIN SERVICE: how a private marker is matched and which derived strings count (pure)
 layer = "domain_services"
 depends_on = []

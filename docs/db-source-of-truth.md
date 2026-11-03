@@ -40,7 +40,7 @@ together, commits. The existing application services keep their shape; their *po
 path. Ids become stable, so the revision log can point at `fact_id` as well as `source_key`.
 
 ### Revision log and privacy
-- `fact_revisions` becomes the log itself (today it is rebuilt from the jsonl). It is **append-only by trigger**
+- `fact_revisions` becomes the log itself (today it is rebuilt from the jsonl). It is **append-only by trigger**, with one existing exception: the privacy floor may raise a revision's `visibility` to `private` (and only that; `audit_rules.revisions_guard_sql`). Hard-deleting a fact is refused, because the cascade would delete its history
   (`BEFORE UPDATE/DELETE` raise) and each write inserts the revision in the same transaction as the `facts` change, so
   state and history cannot diverge. `fact_revisions.jsonl` is retired as an input and appears only in the export.
 - Privacy: `visibility` stays a stored column and the "anything unmarked is private" default stays. The privacy rules
@@ -158,6 +158,7 @@ Checked 2026-11-03 with two web searches (anecdotal sources; the sqlite.org page
 
 1. **Characterize.** Tests pinning every current write path (callers of `facts_file_port`, `revisions_port`, ...) and a
    golden export of today's data. No behavior change.
+2a. **Log tables and triggers (done, `live.sql`, `audit_rules`, `live_schema_store`)**: kept out of `schema.sql` so the rebuild and its schema fingerprint are untouched; applied to the live database only. The `sources` table is not audited yet (mostly derived). 2b. **Deterministic export and import round trip.** 2c. **Snapshots and `restore`.** The rest of this item:
 2. **Schema + stable ids + append-only triggers + `audit_log`/`access_log`/`operation_log` tables and triggers**, plus the deterministic export and `restore` (round-trip tested
    against the live data: file -> db -> export equals file).
 2b. **Logging use cases**: `AccessLog` and operation-log ports and adapters, the diagnostic log, `knowledge.py log ...`, and the leak-test extension.
