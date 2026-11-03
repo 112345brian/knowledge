@@ -67,13 +67,14 @@ data_dir = "~/code/knowledge-private/data"     # where your fact files and rules
 notes_vault = "~/notes"                   # optional: a directory of citation notes
 health_dir = "~/health"                   # optional
 client_sources = ["concerts", "ratings"]       # optional: which client sources to build
+mcp_mode = "normal"                       # optional: what the MCP server may read ("off", "normal" or "private")
 
 [client_inputs]                                # the inputs those sources read
 concerts_csv = "~/data/concerts.csv"
 vault_db = "~/health/tracking.db"            # the measurements source reads this database
 ```
 
-- **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources` and the
+- **Required:** `db_dir` and `data_dir`. **Optional:** `notes_vault`, `health_dir`, `client_sources`, `mcp_mode` (default `normal`) and the
   `[client_inputs]` table. `notes_vault` (citation notes, `sources/*.md`) and `vault_db` (the measurements database)
   are separate settings and may live in different folders. Nothing is guessed: a client source is built only if it is listed in `client_sources`
   (the default is the core alone), and one listed without its input stops the build with a configuration error.
@@ -139,6 +140,13 @@ and `<command> --help` for its options. Read commands accept `--json`.
 | `build` | Rebuild knowledge.db from schema.sql + scripts + data/. |
 | `build-info` | Which inputs and code produced this knowledge.db: the latest build row and its input manifest. |
 | `clean-concerts` | Clean concerts.csv in place (dedupes rows). |
+| `db export` | Write the selected tables (default: all) as deterministic files, each part with a manifest. |
+| `db import` | Create a NEW database from the backup folder. |
+| `db restore` | Copy a snapshot to a NEW database file. |
+| `db restore-tables` | Replace chosen tables inside an existing database from a snapshot or an export folder, in one transaction. |
+| `db snapshot` | Take a verified snapshot of the database and keep only the newest ones. |
+| `db snapshots` | List the snapshots, newest first. |
+| `db verify` | Exit 1 when the backup folder differs from the database for the selection; writes nothing. |
 | `docs build` | Rewrite every generated region of README.md and docs/\*.md from the code. |
 | `docs check` | Fail (exit 1) when a generated region differs from what the code renders; writes nothing. |
 | `edit REF` | Edit a fact by appending a revision. |

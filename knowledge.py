@@ -76,6 +76,8 @@ import cli_migrate; cli_migrate.register(app)  # migrate-memory (#29)
 from cli_inbox import register as _register_inbox; _register_inbox(app)  # inbox, edit (#33)
 
 import cli_docs; app.add_typer(cli_docs.app, name="docs")  # docs build|check
+import cli_export; app.add_typer(cli_export.app, name="db")  # db export|verify|import
+import cli_snapshot; cli_snapshot.register(cli_export.app)  # db snapshot|snapshots|restore|restore-tables (added to the db group)
 
 
 def main(argv=None):

@@ -24,7 +24,7 @@ from mcp_rules import PARITY_ACTIONS  # noqa: F401  (the actions this layer expo
 def serve(app, reader, writer, session_id, errors):
     """Answer every line of `reader` on `writer` until it ends. A line that cannot be read or answered is
     reported on `errors` and skipped: the loop never ends because of one message."""
-    handler = mcp.compose(app.add_fact, app.queries, session_id).handle_line
+    handler = mcp.compose(app.mcp_capture, app.mcp_lookup, session_id).handle_line
     for line in reader:
         try:
             reply = handler(line)

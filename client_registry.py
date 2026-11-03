@@ -200,6 +200,22 @@ class ClientRegistry:
             out += [f for f in src.schema if f not in out]
         return out
 
+    def data_tables(self) -> List[str]:
+        """Every table any registered source owns (its `report_tables`), each once, sorted: the tables the export
+        carries in its bulk part. A source lists the tables its schema fragment creates, so a table added to a
+        fragment but not listed here would be missing from a backup; tests/test_db_export.py fails then."""
+        return sorted({t for src in self._sources.values() for t in src.report_tables})
+
+    def schema_files_for_tables(self, tables: Iterable[str]) -> List[str]:
+        """schema.sql, then the fragments of every registered source that owns any of `tables`, each once: what a
+        database holding those client tables needs to be created from."""
+        wanted = set(tables)
+        out = ["schema.sql"]
+        for src in self._sources.values():
+            if wanted & set(src.report_tables):
+                out += [f for f in src.schema if f not in out]
+        return out
+
     def missing_inputs(self, enabled, defined: Iterable[str]) -> List[Tuple[str, str]]:
         """[(source, setting)] for enabled sources whose required input is not defined."""
         defined = set(defined)

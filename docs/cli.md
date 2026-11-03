@@ -92,6 +92,70 @@ Clean concerts.csv in place (dedupes rows).
 
 No options.
 
+### `db export`
+
+Write the selected tables (default: all) as deterministic files, each part with a manifest. core/ is meant to be committed (add-fact refuses a repo with uncommitted changes); bulk/ and notes/ are git-ignored by a .gitignore written into the folder, which you may edit.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--group GROUP`: A named group of tables (repeatable): facts, sources, subjects, entities, claims, logs, or a client source such as scrobbles.
+- `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
+- `--skip SKIP`: A table to leave out (repeatable).
+- `--table TABLE`: A table to export (repeatable). With no --table or --group, everything the database has is selected.
+
+### `db import`
+
+Create a NEW database from the backup folder. Refuses to overwrite an existing file or note.
+
+- `--core-only`: Skip the bulk part (the client tables).
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--into INTO` (required): Path of the new database file.
+- `--notes-into NOTES_INTO`: Also copy the exported notes into this directory (never overwrites).
+
+### `db restore`
+
+Copy a snapshot to a NEW database file. Never overwrites.
+
+- `--from SOURCE` (required): The snapshot (or any database file) to copy.
+- `--into INTO` (required): Path of the new database file.
+
+### `db restore-tables`
+
+Replace chosen tables inside an existing database from a snapshot or an export folder, in one transaction.
+
+- `--db DB`: Database (default: the configured one).
+- `--dry-run`: Do everything, then roll back and change nothing.
+- `--from-export FROM_EXPORT`: Take the rows from this export folder.
+- `--from-snapshot FROM_SNAPSHOT`: Take the rows from this snapshot file.
+- `--snapshot-dir SNAPSHOT_DIR`: Snapshot directory (default: snapshots/ beside the database).
+- `--table TABLE` (required): A table to replace (repeatable).
+
+### `db snapshot`
+
+Take a verified snapshot of the database and keep only the newest ones.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Snapshot directory (default: snapshots/ beside the database).
+- `--keep KEEP`: How many snapshots to keep.
+
+### `db snapshots`
+
+List the snapshots, newest first.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Snapshot directory (default: snapshots/ beside the database).
+
+### `db verify`
+
+Exit 1 when the backup folder differs from the database for the selection; writes nothing.
+
+- `--db DB`: Database (default: the configured one).
+- `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--group GROUP`: A named group of tables (repeatable): facts, sources, subjects, entities, claims, logs, or a client source such as scrobbles.
+- `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
+- `--skip SKIP`: A table to leave out (repeatable).
+- `--table TABLE`: A table to export (repeatable). With no --table or --group, everything the database has is selected.
+
 ### `docs build`
 
 Rewrite every generated region of README.md and docs/\*.md from the code. Hand-written text is untouched.

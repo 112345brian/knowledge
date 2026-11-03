@@ -16,6 +16,20 @@ claude mcp add knowledge -- uv run --project /path/to/knowledge python /path/to/
 | `list_subjects` | `subjects` | Existing subjects, to file a new fact under one. |
 | `add_fact` | `add-fact` | Record one fact with its source quote, trust level and freshness. |
 
+## Mode
+
+The server runs under the `mcp_mode` setting in the config file (or `KNOWLEDGE_MCP_MODE`), fixed for the life of the process:
+
+| `mcp_mode` | Reads | Writes |
+| --- | --- | --- |
+| `normal` (default) | Only `normal` facts on non-private subjects, active only; private subjects are not listed. | `add_fact` works (new facts are stored private and pending). |
+| `private` | Everything. | `add_fact` works. |
+| `off` | Every tool call is refused. | Refused. |
+
+`list_subjects` counts the facts the mode may see; its `include_pending` flag does not change the counts, and in `private` mode they include every status.
+
+Set `mcp_mode = "private"` if you want the assistant to see your private facts. Restart the client after changing it.
+
 ## What the server decides, not Claude
 
 - A fact added here is always `captured_via: mcp`, `pending` (a person approves it with `knowledge.py approve` or the inbox) and `private` unless asked otherwise (a privacy rule may still raise it).
