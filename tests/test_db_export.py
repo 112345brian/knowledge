@@ -68,11 +68,11 @@ class World:
         import db_export
         return db_export.compose_export(self.db, self.dir, self.notes)
 
-    def export(self, parts=("core", "bulk")):
-        return self.api().export_database(parts)
+    def export(self, tables=(), groups=(), skip=(), notes=False):
+        return self.api().export_database(tables, groups, skip, notes)
 
-    def verify(self, parts=("core", "bulk")):
-        return self.api().verify_export(parts)
+    def verify(self, tables=(), groups=(), skip=(), notes=False):
+        return self.api().verify_export(tables, groups, skip, notes)
 
     def restore(self, with_bulk=True, notes_into=None):
         import db_export
@@ -163,7 +163,7 @@ def test_core_only_import_creates_a_database_without_the_client_tables(w):
 
 
 def test_a_core_only_export_has_no_bulk_part_and_importing_it_still_works(w):
-    w.export(("core",))
+    w.export(tables=rules.CORE_TABLES)
     assert not any(n.startswith("bulk/") for n in w.files())
     assert set(w.restore()) == {"core"}                 # no bulk part: nothing to import, not an error
 
@@ -193,7 +193,7 @@ def test_verify_reports_a_missing_part_and_an_edited_or_deleted_file(w):
 
 
 def test_verify_notices_a_client_table_that_appeared_after_the_export(w):
-    w.export(("core", "bulk"))
+    w.export()
     os.remove(os.path.join(w.dir, "bulk", "artists.ndjson"))
     manifest_path = os.path.join(w.dir, "bulk", "manifest.json")
     manifest = json.load(open(manifest_path))
@@ -325,8 +325,8 @@ def test_exporting_a_database_that_lacks_a_core_table_or_does_not_exist_fails_cl
 
 def test_export_never_modifies_the_database(w):
     before = open(w.db, "rb").read()
-    w.export(("core", "bulk", "notes"))
-    w.verify(("core", "bulk", "notes"))
+    w.export(notes=True)
+    w.verify(notes=True)
     assert open(w.db, "rb").read() == before
 
 
@@ -338,10 +338,10 @@ def test_notes_are_not_exported_unless_asked_for(w):
 
 
 def test_notes_part_copies_the_markdown_and_restores_without_overwriting(w, tmp_path):
-    w.export(("core", "bulk", "notes"))
+    w.export(notes=True)
     files = w.files()
     assert files["notes/smith2020.md"].decode().endswith("Body \u2603\n") and "notes/README.md" in files
-    assert w.verify(("core", "bulk", "notes")) == []
+    assert w.verify(notes=True) == []
     target = str(tmp_path / "restored-notes")
     w.restore(notes_into=target)
     assert sorted(os.listdir(target)) == ["README.md", "smith2020.md"]
@@ -353,13 +353,13 @@ def test_notes_part_copies_the_markdown_and_restores_without_overwriting(w, tmp_
 
 
 def test_notes_drift_and_empty_or_missing_notes_are_reported(w):
-    w.export(("core", "notes"))
+    w.export(tables=rules.CORE_TABLES, notes=True)
     open(os.path.join(w.notes, "smith2020.md"), "a").write("edited")
-    assert w.verify(("notes",)) == ["notes/smith2020.md: the database has changed since the export"]
+    assert [p for p in w.verify(tables=("facts",), notes=True) if p.startswith("notes/")] == ["notes/smith2020.md: the database has changed since the export"]
     for name in os.listdir(w.notes):
         os.remove(os.path.join(w.notes, name))
     with pytest.raises(rules.ExportError, match="no notes"):
-        w.export(("notes",))
+        w.export(tables=("facts",), notes=True)
 
 
 def test_a_note_name_that_is_a_path_is_refused():
@@ -368,11 +368,131 @@ def test_a_note_name_that_is_a_path_is_refused():
             rules.check_note(bad)
 
 
-def test_unknown_parts_are_refused(w):
-    with pytest.raises(rules.ExportError):
-        w.export(("core", "everything"))
-    with pytest.raises(rules.ExportError):
-        w.export(())
+def test_unknown_names_and_empty_selections_are_refused(w):
+    with pytest.raises(rules.ExportError, match="not an exportable table"):
+        w.export(tables=("facts", "nonsense"))
+    with pytest.raises(rules.ExportError, match="not a group"):
+        w.export(groups=("everything",))
+    with pytest.raises(rules.ExportError, match="not an exportable table"):
+        w.export(skip=("nonsense",))
+    with pytest.raises(rules.ExportError, match="nothing is selected"):
+        w.export(tables=("facts",), skip=("facts",))
+    assert not os.path.exists(w.dir)
+
+
+# ---------------------------------------------------------------- granular selection
+
+def test_a_single_table_can_be_exported_and_verified(w):
+    result = w.export(tables=("artists",))
+    assert result == {"bulk": {"artists": 2}}
+    assert sorted(w.files()) == ["bulk/artists.ndjson", "bulk/manifest.json"]
+    assert w.verify(tables=("artists",)) == []
+    assert w.verify(tables=("facts",)) == ["core/manifest.json is missing: this is not a complete export"]
+
+
+def test_groups_and_skip_pick_tables(w):
+    assert set(w.export(groups=("facts",))["core"]) == {"facts", "fact_revisions", "fact_sources", "fact_entities"}
+    assert set(w.export(groups=("facts",), skip=("fact_entities",))["core"]) == {"facts", "fact_revisions", "fact_sources"}
+    music = w.export(groups=("concerts",))["bulk"]               # a client source's name is a group of its tables
+    assert "artists" in music and "measurements" not in music
+    assert set(w.export(groups=("subjects",), tables=("claims",))["core"]) == {"subjects", "subject_aliases", "claims"}
+    everything_but = w.export(skip=("facts", "fact_revisions"))
+    assert "facts" not in everything_but["core"] and "artists" in everything_but["bulk"]
+
+
+def test_partial_exports_merge_into_what_the_folder_already_holds(w):
+    w.export(tables=("facts",))
+    w.export(tables=("artists",))
+    w.export(tables=("claims",))
+    core = json.loads(w.files()["core/manifest.json"])["tables"]
+    assert sorted(core) == ["claims", "facts"] and sorted(json.loads(w.files()["bulk/manifest.json"])["tables"]) == ["artists"]
+    assert w.verify(tables=("facts", "claims", "artists")) == []
+    w.export()                                                    # a full export afterwards agrees with everything
+    assert w.verify() == []
+    assert len(json.loads(w.files()["core/manifest.json"])["tables"]) == len(rules.CORE_TABLES)
+
+
+def test_a_partial_export_after_a_schema_change_drops_the_stale_entries(w):
+    w.export()
+    path = os.path.join(w.dir, "core", "manifest.json")
+    manifest = json.load(open(path))
+    manifest["schema_user_version"] -= 1
+    json.dump(manifest, open(path, "w"))
+    w.export(tables=("facts",))
+    assert sorted(json.loads(w.files()["core/manifest.json"])["tables"]) == ["facts"]    # the old version's entries are gone
+
+
+def test_an_unselected_table_that_drifted_is_not_reported(w):
+    w.export()
+    con = sqlite3.connect(w.db)
+    con.execute("UPDATE artists SET name = 'Renamed' WHERE id = 1")
+    con.commit()
+    con.close()
+    assert w.verify(tables=("facts",)) == []
+    assert w.verify(groups=("concerts",)) == ["bulk/artists: the database has changed since the export"]
+
+
+def test_a_partial_export_that_cannot_stand_alone_is_not_importable_and_leaves_nothing(w):
+    w.export(tables=("facts",))                                   # facts point at subjects, which are not in the export
+    with pytest.raises(rules.ExportError, match="not sound"):
+        w.restore()
+    assert not os.path.exists(w.new_db)
+
+
+def test_a_partial_export_that_stands_alone_imports(w):
+    w.export(tables=("subjects", "subject_aliases"))
+    result = w.restore()
+    assert result == {"core": {"subjects": 2, "subject_aliases": 1}}
+    assert sqlite3.connect(w.new_db).execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
+
+
+def test_an_export_folder_with_no_table_parts_cannot_be_imported(w, tmp_path):
+    with pytest.raises(rules.ExportError, match="no table files"):
+        w.restore()
+
+
+# ---------------------------------------------------------------- the logs
+
+def with_logs(w):
+    import live_schema_store
+    con = sqlite3.connect(w.db)
+    live_schema_store.install(con)
+    live_schema_store.set_context(con, "cli", "s-1", "2026-11-04T10:00:00Z")
+    con.execute("UPDATE facts SET notes = 'changed' WHERE id = 2")
+    con.execute("INSERT INTO access_log (accessed_at, source_key, kind, via, mode) VALUES ('t', 'k1', 'show', 'cli', 'private')")
+    con.execute("INSERT INTO operation_log (started_at, name, via, outcome) VALUES ('t', 'x', 'cli', 'ok')")
+    con.commit()
+    con.close()
+
+
+def test_logs_are_left_out_when_the_database_has_none_and_exported_when_it_has(w):
+    assert not set(rules.LOG_TABLES) & set(w.export()["core"])
+    with_logs(w)
+    result = w.export()["core"]
+    assert result["audit_log"] >= 1 and result["access_log"] == 1 and result["operation_log"] == 1
+
+
+def test_logs_round_trip_and_the_restored_database_still_refuses_to_edit_them(w, tmp_path):
+    with_logs(w)
+    w.export()
+    original = w.files()
+    w.restore()
+    con = sqlite3.connect(w.new_db)
+    assert con.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] >= 1
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        con.execute("DELETE FROM audit_log")
+    second = str(tmp_path / "again")
+    w.container().db_export(w.new_db, second).export_database()
+    assert w.files(second) == original
+
+
+def test_only_the_logs_can_be_exported_and_naming_them_on_a_database_without_them_fails(w):
+    with pytest.raises(rules.ExportError, match="lacks table"):
+        w.export(tables=("audit_log",))
+    with pytest.raises(rules.ExportError, match="nothing is selected"):
+        w.export(groups=("logs",))                              # a group whose members are all absent selects nothing
+    with_logs(w)
+    assert set(w.export(groups=("logs",))["core"]) == set(rules.LOG_TABLES)
 
 
 # ---------------------------------------------------------------- the command line
@@ -395,12 +515,14 @@ def test_the_commands_export_verify_and_import(w):
     assert r.returncode == 1 and "already exists" in r.stderr
 
 
-def test_the_parts_and_notes_flags(w):
-    r = cli(w, "export", "--db", w.db, "--dir", w.dir, "--parts", "core")
-    assert r.returncode == 0 and "bulk" not in r.stdout
-    assert not os.path.exists(os.path.join(w.dir, "bulk"))
-    r = cli(w, "export", "--db", w.db, "--dir", w.dir, "--parts", "nonsense")
-    assert r.returncode == 1 and "parts must be" in r.stderr
+def test_the_selection_and_notes_flags(w):
+    r = cli(w, "export", "--db", w.db, "--dir", w.dir, "--table", "facts", "--table", "artists")
+    assert r.returncode == 0 and "core/facts: 2" in r.stdout and "bulk/artists: 2" in r.stdout and "measurements" not in r.stdout, r.stderr
+    r = cli(w, "export", "--db", w.db, "--dir", w.dir, "--group", "claims", "--skip", "claim_facts")
+    assert r.returncode == 0 and "core/claims: 1" in r.stdout and "claim_facts" not in r.stdout
+    r = cli(w, "export", "--db", w.db, "--dir", w.dir, "--table", "nonsense")
+    assert r.returncode == 1 and "not an exportable table" in r.stderr
+    assert cli(w, "verify", "--db", w.db, "--dir", w.dir, "--table", "facts").returncode == 0
     vault_sources = os.path.join(w.root, "vault", "sources")
     os.makedirs(vault_sources)
     open(os.path.join(vault_sources, "a.md"), "w").write("a")

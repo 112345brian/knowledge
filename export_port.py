@@ -29,6 +29,8 @@ class ExportScope(Protocol):
         """The client-owned tables among `existing`, sorted."""
     def known_bulk_tables(self) -> Collection[str]:
         """Every table any registered client source owns."""
+    def groups(self) -> Mapping[str, Collection[str]]:
+        """Named groups of client tables (one per client source: its name and the tables it owns)."""
     def schema_files(self, tables: Collection[str]) -> List[str]:
         """The schema files (schema.sql first) a database holding these client tables is created from."""
 

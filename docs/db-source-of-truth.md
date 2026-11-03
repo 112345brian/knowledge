@@ -170,6 +170,26 @@ wants one folder that is the whole backup, not an ingest from about 20 paths. De
 
 Built (PR 95). Measured on the real data: `core/` 2.1 MB, `bulk/` 21 MB (2.6 MB gzipped; 153k scrobbles are most of it), `notes/` 2.0 MB (435 files). Export -> import -> export is byte-identical for core and bulk. Still open: whether `bulk/` goes into git (about 21 MB per changed refresh) or stays outside it; the default recommendation is outside git, with `core/` committed per write.
 
+## Granular export (decided after 2b)
+
+The owner does not want a fixed split to decide what is backed up: scrobbles and measurements are data like any other
+once the db is the source of truth, and any subset should be exportable. Decided:
+
+- `core/`, `bulk/` and `notes/` are only a folder layout. What is exported is a **selection**: `--table` and `--group`
+  (repeatable) name tables or groups, `--skip` removes tables, naming nothing means everything the database has.
+  `verify` takes the same selection. Groups: facts, sources, subjects, entities, claims, logs, and one per client
+  source (its name and tables, from the client registry).
+- Selection is literal: a group does **not** pull in the tables it references. Verify and import report dangling references.
+- A manifest lists everything exported into its part so far, so partial exports accumulate in one folder; entries from
+  another schema version are dropped.
+- The logs (`audit_log`, `access_log`, `access_summary`, `operation_log`) are exportable and, when the database has them,
+  part of the default export.
+- `import` stays new-database-only and fails (creating nothing) if the export cannot stand alone. A separate
+  `restore-tables` command (increment 2c) replaces chosen tables inside an existing database in one transaction, after a
+  safety snapshot, and refuses if it would leave dangling references.
+- Whether `bulk/` is committed to git is a per-run choice, not baked in: git growth is the compressed size of what changed
+  (about 2.6 MB for a full scrobble rewrite, far less for appends), not the 21 MB on disk.
+
 ## Increments after approval (each independently mergeable, current pipeline untouched until step 4)
 
 1. **Characterize.** Tests pinning every current write path (callers of `facts_file_port`, `revisions_port`, ...) and a

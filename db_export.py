@@ -32,6 +32,11 @@ class ClientScope:
         """Every table any registered client source owns."""
         return self._registry.data_tables()
 
+    def groups(self):
+        """One group per client source: its name and the tables it owns."""
+        return {name: tuple(self._registry.source(name).report_tables) for name in self._registry.names
+                if self._registry.source(name).report_tables}
+
     def schema_files(self, tables):
         """The schema files a database holding these client tables is created from."""
         return self._registry.schema_files_for_tables(tables)

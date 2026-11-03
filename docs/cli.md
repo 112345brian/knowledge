@@ -94,30 +94,34 @@ No options.
 
 ### `db export`
 
-Write the backup folder: core and bulk table files (and notes with --include-notes), each part with a manifest.
+Write the selected tables (default: all) as deterministic files, each part with a manifest.
 
 - `--db DB`: Database (default: the configured one).
 - `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--group GROUP`: A named group of tables (repeatable): facts, sources, subjects, entities, claims, logs, or a client source such as scrobbles.
 - `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
-- `--parts PARTS`: Comma-separated parts of the export: core, bulk (default: core,bulk). Notes are added with --include-notes.
+- `--skip SKIP`: A table to leave out (repeatable).
+- `--table TABLE`: A table to export (repeatable). With no --table or --group, everything the database has is selected.
 
 ### `db import`
 
 Create a NEW database from the backup folder. Refuses to overwrite an existing file or note.
 
-- `--core-only`: Import only the core tables, not the bulk client tables.
+- `--core-only`: Skip the bulk part (the client tables).
 - `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
 - `--into INTO` (required): Path of the new database file.
 - `--notes-into NOTES_INTO`: Also copy the exported notes into this directory (never overwrites).
 
 ### `db verify`
 
-Exit 1 when the backup folder differs from the database; writes nothing.
+Exit 1 when the backup folder differs from the database for the selection; writes nothing.
 
 - `--db DB`: Database (default: the configured one).
 - `--dir DIRECTORY`: Export folder (default: export/ in the private data directory).
+- `--group GROUP`: A named group of tables (repeatable): facts, sources, subjects, entities, claims, logs, or a client source such as scrobbles.
 - `--include-notes`: Also handle the notes part: the citation-note markdown files of the notes vault.
-- `--parts PARTS`: Comma-separated parts of the export: core, bulk (default: core,bulk). Notes are added with --include-notes.
+- `--skip SKIP`: A table to leave out (repeatable).
+- `--table TABLE`: A table to export (repeatable). With no --table or --group, everything the database has is selected.
 
 ### `docs build`
 

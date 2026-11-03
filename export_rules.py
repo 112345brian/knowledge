@@ -5,10 +5,14 @@ of text, and the manifests that prove a part is complete and unaltered. Nothing 
 
 The export folder has up to three parts, each with its own manifest:
 
-- `core/`: the curated tables (`CORE_TABLES`), small, committed to the private repo after each write;
-- `bulk/`: every table a client source owns (music, measurements, ...), large, refreshed on demand. The base does
-  not know these tables: the client registry hands them in;
+- `core/`: the curated tables (`CORE_TABLES`) and, when the database has them, the logs (`LOG_TABLES`);
+- `bulk/`: every table a client source owns (music, measurements, ...). The base does not know these tables: the
+  client registry hands them in;
 - `notes/`: the citation-note markdown files, copied only on request.
+
+Parts are only a folder layout. WHAT is exported is a selection: named tables, named groups of tables, minus skipped
+tables (`select`), so one table can be exported, verified or restored without the rest. A manifest lists every table
+exported into its part so far: a partial export merges into what the folder already holds.
 
 A table is one file `<part>/<table>.ndjson`: one JSON object per row, keys sorted, no insignificant whitespace, UTF-8,
 one `\\n` after every row, rows in primary-key order. The same database always gives the same bytes; nothing depends on
@@ -38,7 +42,20 @@ CORE_TABLES = (
     "source_identifier_conflicts", "source_relations", "subjects", "subject_aliases", "entities", "entity_aliases",
     "facts", "fact_sources", "fact_entities", "fact_revisions", "claims", "claim_facts",
 )
-NOT_EXPORTED = ("build_info", "build_inputs")
+NOT_EXPORTED = ("build_info", "build_inputs", "audit_context")
+# The live database's logs (live.sql): exported when the database has them, never required.
+LOG_TABLES = ("audit_log", "access_log", "access_summary", "operation_log")
+LIVE_SCHEMA = "live.sql"
+# Named groups of tables for `--group`. A client source's name is also a group (its tables), added by the client registry.
+GROUPS = {
+    "facts": ("facts", "fact_revisions", "fact_sources", "fact_entities"),
+    "sources": ("publishers", "authors", "vault_files", "sources", "source_authors", "source_identifiers",
+                "source_identifier_conflicts", "source_relations"),
+    "subjects": ("subjects", "subject_aliases"),
+    "entities": ("entities", "entity_aliases"),
+    "claims": ("claims", "claim_facts"),
+    "logs": LOG_TABLES,
+}
 
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
 _NOTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.,'()\[\]&+-]*\.md$")
@@ -133,10 +150,20 @@ class Manifest:
     tables: Mapping[str, Sequence]
 
 
-def build_manifest(user_version: int, texts: Mapping[str, str]) -> str:
-    """The text of a part's manifest for the given item texts."""
-    items = {name: {"rows": line_count(text) if not name.endswith(".md") else 1, "sha256": digest(text)}
-             for name, text in sorted(texts.items())}
+def part_of(table: str) -> str:
+    """The part a table is written into: the core tables and the logs go in `core`, every other table in `bulk`."""
+    return CORE if table in CORE_TABLES or table in LOG_TABLES else BULK
+
+
+def build_manifest(user_version: int, texts: Mapping[str, str], previous: "Manifest | None" = None) -> str:
+    """The text of a part's manifest for the given item texts. Items of `previous` that are not in `texts` are kept
+    (a partial export adds to the folder), unless `previous` is from another schema version, which makes them stale."""
+    items = {}
+    if previous is not None and previous.user_version == user_version:
+        items = {n: {"rows": r, "sha256": h} for n, (r, h) in previous.tables.items() if n not in texts}
+    items.update({name: {"rows": line_count(text) if not name.endswith(".md") else 1, "sha256": digest(text)}
+                  for name, text in texts.items()})
+    items = dict(sorted(items.items()))
     return json.dumps({"format": FORMAT, "schema_user_version": user_version, "tables": items},
                       sort_keys=True, indent=2) + "\n"
 
@@ -154,8 +181,8 @@ def parse_manifest(text: str, part: str) -> Manifest:
         raise ExportError(f"{manifest_name(part)} is not a valid manifest: {e!r}") from e
     for name in tables:
         (check_note if part == NOTES else check_table)(name)
-    if part == CORE and set(tables) != set(CORE_TABLES):
-        raise ExportError(f"{manifest_name(part)} does not list exactly the core tables")
+    if part == CORE and not set(tables) <= set(CORE_TABLES) | set(LOG_TABLES):
+        raise ExportError(f"{manifest_name(part)} lists a table that is not a core table")
     return Manifest(version, tables)
 
 
@@ -189,3 +216,37 @@ def read_texts(read: Callable[[str], str], part: str, manifest: Manifest) -> Dic
         except FileNotFoundError:
             pass
     return texts
+
+
+def select(tables: Sequence[str], groups: Sequence[str], skip: Sequence[str], client_groups: Mapping[str, Sequence[str]],
+           existing: Iterable[str], client_tables: Iterable[str]) -> List[str]:
+    """The tables to export, in a fixed order (core tables, then logs, then client tables sorted): the named `tables`
+    plus the tables of the named `groups`, or everything the database has when neither is given, minus `skip`.
+    Naming a table the database lacks is an error; a group member the database lacks (the logs of a rebuilt
+    database, a disabled client source) is just left out. Unknown names are errors that list the known ones."""
+    existing = set(existing)
+    client = sorted(set(client_tables))
+    known_groups = dict(GROUPS)
+    for name, members in client_groups.items():
+        if name in known_groups:
+            raise ExportError(f"client group {name!r} has the name of a base group")
+        known_groups[name] = tuple(members)
+    order = [*CORE_TABLES, *LOG_TABLES, *client]
+    for name in (*tables, *skip):
+        if name not in order:
+            raise ExportError(f"{name!r} is not an exportable table; known: {', '.join(order)}")
+    for name in groups:
+        if name not in known_groups:
+            raise ExportError(f"{name!r} is not a group; known: {', '.join(sorted(known_groups))}")
+    absent = [t for t in tables if t not in existing]
+    if absent:
+        raise ExportError("the database lacks table(s): " + ", ".join(absent))
+    if tables or groups:
+        chosen = set(tables) | {t for g in groups for t in known_groups[g] if t in existing}
+    else:
+        missing = [t for t in CORE_TABLES if t not in existing]
+        if missing:
+            raise ExportError("the database lacks core table(s): " + ", ".join(missing))
+        chosen = {t for t in order if t in existing}
+    chosen -= set(skip)
+    return [t for t in order if t in chosen]
