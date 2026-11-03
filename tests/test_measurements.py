@@ -91,7 +91,7 @@ class World:
 def load(vault=None, world=None, scans=(("2026-01-01", "dexa"),), sources=None):
     vault = vault if vault is not None else FakeVault(dexa={"2026-01-01": DEXA})
     world = world if world is not None else World()
-    summary = svc.load_measurements(world.deps(vault), snapshot_date=SNAPSHOT, notes_vault="/vault",
+    summary = svc.load_measurements(world.deps(vault), snapshot_date=SNAPSHOT, vault_dir="/vault",
                                     manual_sources=sources or MANUAL, scans=list(scans))
     return summary, vault, world
 

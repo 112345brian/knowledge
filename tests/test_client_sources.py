@@ -26,7 +26,7 @@ def test_the_known_sources_and_their_fragments_are_pinned():
     for path in client_bootstrap.registry().schema_fragments():
         assert os.path.isfile(os.path.join(REPO, path)), path
     needing = {i.setting for n in client_bootstrap.registry().names for i in client_bootstrap.registry().source(n).inputs if i.required}
-    assert needing == {"CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON"}
+    assert needing == {"CONCERTS_CSV", "RYM_EXPORT_CSV", "SCROBBLES_JSON", "VAULT_DB"}
 
 
 def test_steps_with_no_client_source_are_the_core_steps_in_order():
@@ -171,7 +171,8 @@ def test_a_build_with_every_source_has_the_rows_each_one_adds(tmp_path):
 
 def test_an_enabled_source_without_its_input_path_is_named():
     assert client_bootstrap.registry().missing_inputs(("concerts", "scrobbles", "claims"), ["CONCERTS_CSV"]) == [("scrobbles", "SCROBBLES_JSON")]
-    assert client_bootstrap.registry().missing_inputs(("measurements", "claims"), []) == []              # these read no extra path
+    assert client_bootstrap.registry().missing_inputs(("measurements", "claims"), []) == [("measurements", "VAULT_DB")]
+    assert client_bootstrap.registry().missing_inputs(("claims",), []) == []                              # reads no extra path
     assert client_bootstrap.registry().missing_inputs((), []) == []
     with pytest.raises(ValueError, match="unknown client source"):
         client_bootstrap.registry().missing_inputs(("nope",), [])

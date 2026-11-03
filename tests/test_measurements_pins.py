@@ -93,7 +93,8 @@ def test_a_second_run_over_the_same_database_reuses_dimension_rows_and_sources(r
 
 def _ctx(m03):
     from appctx import locs
-    return locs(notes_vault=m03.vault_dir, notes_vault_written=None)
+    return locs(notes_vault=None, notes_vault_written=None,
+                client_inputs={"VAULT_DB": os.path.join(m03.vault_dir, "bodybuilding.db")}, client_inputs_written={})
 
 
 def test_a_missing_manual_source_writes_nothing_to_the_event_tables(rich):
@@ -105,7 +106,7 @@ def test_a_missing_manual_source_writes_nothing_to_the_event_tables(rich):
         json.dump({"version": 1, "manual_sources": {"dexa-2026": "nope"}, "scans": []}, f)
     rich.module.DATA_DIR = rich.env.data_dir
     with pytest.raises(RuntimeError, match="nope.*seed_sources"):
-        rich.module.run(con, locs(notes_vault=rich.vault_dir, notes_vault_written=None))
+        rich.module.run(con, _ctx(rich))
     assert con.execute("SELECT COUNT(*) FROM measurements").fetchone()[0] == 0
     assert con.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
 

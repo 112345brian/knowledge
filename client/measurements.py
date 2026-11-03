@@ -17,14 +17,15 @@ the vault-db sources, is the date the snapshot was taken. It is read from the da
 written once by backfill_snapshot_date.py); a missing or malformed file fails the build. #35.
 """
 
+import posixpath
+
 from client import measurement_rules, measurements_service, measurements_store, snapshot_date, vault_reader_store
-from locations import join_path
 
 
 def run(con, ctx):
     date = snapshot_date.read_snapshot_date(ctx.inputs, ctx.locations.private_data_dir)  # raises, naming the file, if it is not in the data
-    notes_vault = ctx.locations.need("notes_vault", "NOTES_VAULT", "the measurements source")
-    vault = vault_reader_store.SqliteVaultReader(ctx.inputs.open_database(join_path(notes_vault, "bodybuilding.db")))
+    vault_db = ctx.locations.need_input("VAULT_DB", "the measurements source")
+    vault = vault_reader_store.SqliteVaultReader(ctx.inputs.open_database(vault_db))
     try:
         config = snapshot_date.read_config(ctx.inputs, ctx.locations.private_data_dir)
         deps = measurements_service.MeasurementsDeps(
@@ -32,7 +33,8 @@ def run(con, ctx):
             sources=ctx.stores.source_repository(con), subjects=ctx.stores.subject_repository(con),
             unit_of_work=con)
         summary = measurements_service.load_measurements(
-            deps, snapshot_date=date, notes_vault=ctx.locations.notes_vault_stored, manual_sources=config["manual_sources"],
+            deps, snapshot_date=date, vault_dir=posixpath.dirname(ctx.locations.client_input_stored("VAULT_DB")),
+            manual_sources=config["manual_sources"],
             scans=config["scans"])
     finally:
         vault.close()

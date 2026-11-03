@@ -56,13 +56,17 @@ def test_a_placeholder_with_no_setting_names_the_setting_to_define():
     assert r.format_origin_path("{VAULT}/a.md", "/v", None) == "/v/a.md"
 
 
-def test_the_vault_input_is_listed_only_when_a_vault_is_configured():
+def test_the_vault_db_input_is_listed_only_when_it_is_configured():
     import build_info_store
     from locations import Locations
     without = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data"), client_bootstrap.registry())
     assert not [k for k, _ in without if k.endswith("vault-db")]
-    with_vault = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v"), client_bootstrap.registry())
-    assert ("input:vault-db", "/v/bodybuilding.db") in with_vault      # a POSIX fake joins as POSIX on every host
+    notes_only = build_info_store.input_paths(Locations(knowledge_db_dir="/db", private_data_dir="/data", notes_vault="/v"), client_bootstrap.registry())
+    assert not [k for k, _ in notes_only if k.endswith("vault-db")]     # the notes vault no longer implies a database in it
+    with_db = build_info_store.input_paths(
+        Locations(knowledge_db_dir="/db", private_data_dir="/data", client_inputs={"VAULT_DB": "/elsewhere/bodybuilding.db"}),
+        client_bootstrap.registry())
+    assert ("input:vault-db", "/elsewhere/bodybuilding.db") in with_db
 
 
 def test_no_vault_means_no_citation_notes():

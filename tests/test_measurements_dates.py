@@ -69,7 +69,6 @@ def m03(tmp_path, monkeypatch):
     spec.loader.exec_module(mod)
     vault = str(tmp_path / "bodybuilding.db")
     make_vault(vault)
-    vault_dir = str(tmp_path)        # the step reads <vault>/bodybuilding.db
 
     class Ctx:
         env = e
@@ -88,7 +87,9 @@ def m03(tmp_path, monkeypatch):
                 json.dump({"version": 1, "manual_sources": {"dexa-2026": "source-a", "dexa-2025": "source-b",
                           "labcorp": "source-c", "tape": "source-d", "strength": "source-e", "unlocated": "source-f"},
                           "scans": [["2025-01-01", "dexa-2025"], ["2026-01-01", "dexa-2026"]]}, f)
-            mod.run(con, locs(notes_vault=vault_dir, notes_vault_written=written))
+            written_db = {"VAULT_DB": written + "/bodybuilding.db"} if written else {}
+            mod.run(con, locs(notes_vault=None, notes_vault_written=None, client_inputs={"VAULT_DB": vault},
+                              client_inputs_written=written_db))
             return con
 
         @staticmethod
@@ -116,6 +117,20 @@ def test_vault_sources_record_the_vault_as_the_config_writes_it(m03):
     con = m03.build(written="~/vault")
     paths = [r[0] for r in con.execute("SELECT origin_path FROM sources WHERE citekey LIKE 'vault-db-%'")]
     assert paths and all(p.startswith("~/vault/source.db#") for p in paths)
+
+
+def test_the_vault_database_is_a_setting_of_its_own_not_a_file_in_the_notes_vault(m03):
+    """Measurements need `vault_db` whatever the notes vault is, or whether there is one: the two moved apart."""
+    m03.write_snapshot('{"synced_at": "2026-09-11"}')
+    con = m03.build()                 # builds with notes_vault=None
+    assert con.execute("SELECT COUNT(*) FROM measurements").fetchone()[0] > 20
+
+
+def test_without_a_vault_db_setting_the_step_names_it_instead_of_failing_on_a_path(m03):
+    m03.write_snapshot('{"synced_at": "2026-09-11"}')
+    con = sqlite3.connect(":memory:")
+    with pytest.raises(ValueError, match="vault_db is not set in the config file"):
+        m03.module.run(con, locs(client_inputs={}, client_inputs_written={}))
 
 
 def test_the_date_is_whatever_the_data_says_not_a_constant(m03):

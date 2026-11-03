@@ -113,7 +113,7 @@ def build_world(root, sources=("concerts", "ratings", "scrobbles", "measurements
     config = write_config(os.path.join(private, "config.toml"), dbdir, data, notes_vault="~/vault", health_dir="~/health",
                           client_sources=list(sources),
                           client_inputs={"CONCERTS_CSV": "~/concerts.csv", "RYM_EXPORT_CSV": "~/rym.csv",
-                                         "SCROBBLES_JSON": "~/scrobbles.json"})
+                                         "SCROBBLES_JSON": "~/scrobbles.json", "VAULT_DB": "~/vault/bodybuilding.db"})
 
     # --- synthetic source notes and structured records
     notes = [("alpha2020", "primary-research", "Alpha Study", "Smith, J", "Doe, A", 2020, "Journal A", "training"),
